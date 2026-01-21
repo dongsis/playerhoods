@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/lib/supabase/server-with-dev'
 import { formatDateTime, getGameTypeLabel } from '@/lib/utils'
 import { LogoutButton } from '@/components/LogoutButton'
 import type { MatchDetails } from '@/types'
@@ -9,8 +8,8 @@ import type { MatchDetails } from '@/types'
 export default async function MatchesPage() {
   const supabase = await createClient()
 
-  // 检查登录状态（支持开发模式用户切换）
-  const { user, isDevUser } = await getCurrentUser()
+  // 检查登录状态
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     redirect('/login')
   }

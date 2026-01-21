@@ -1,9 +1,8 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/lib/supabase/server-with-dev'
 import { formatDateTime, getGameTypeLabel, getParticipantStatusLabel } from '@/lib/utils'
-import { SignUpButton, ManageParticipantButton, CancelMatchButton, CopyLinkButton } from './actions'
+import { SignUpButton, ManageParticipantButton, CancelMatchButton, CopyLinkButton, ConfirmMatchButton } from './actions'
 import type { MatchDetails, ParticipantWithProfile } from '@/types'
 
 export default async function MatchDetailPage({
@@ -13,8 +12,8 @@ export default async function MatchDetailPage({
 }) {
   const supabase = await createClient()
 
-  // 检查登录状态（支持开发模式用户切换）
-  const { user } = await getCurrentUser()
+  // 检查登录状态
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     redirect('/login')
   }
@@ -171,14 +170,19 @@ export default async function MatchDetailPage({
         <div className="bg-white rounded-xl p-6">
           <h2 className="font-semibold mb-4">
             参与者 ({confirmedParticipants.length}/{match.required_count})
+            {pendingParticipants.length > 0 && (
+              <span className="text-sm font-normal text-yellow-600 ml-2">
+                +{pendingParticipants.length} 待审核
+              </span>
+            )}
           </h2>
-          
+
           {confirmedParticipants.length > 0 ? (
             <ul className="space-y-2">
               {confirmedParticipants.map((p: ParticipantWithProfile) => (
-                <ParticipantItem 
-                  key={p.id} 
-                  participant={p} 
+                <ParticipantItem
+                  key={p.id}
+                  participant={p}
                   isOrganizer={isOrganizer}
                   matchId={match.id}
                 />
@@ -189,8 +193,8 @@ export default async function MatchDetailPage({
           )}
         </div>
 
-        {/* 组织者视图：待审核 */}
-        {isOrganizer && pendingParticipants.length > 0 && (
+        {/* 待审核列表 - 组织者可操作，其他人只读 */}
+        {pendingParticipants.length > 0 && (
           <div className="bg-white rounded-xl p-6">
             <h2 className="font-semibold mb-4 flex items-center gap-2">
               待审核
@@ -200,12 +204,12 @@ export default async function MatchDetailPage({
             </h2>
             <ul className="space-y-2">
               {pendingParticipants.map((p: ParticipantWithProfile) => (
-                <ParticipantItem 
-                  key={p.id} 
-                  participant={p} 
+                <ParticipantItem
+                  key={p.id}
+                  participant={p}
                   isOrganizer={isOrganizer}
                   matchId={match.id}
-                  showActions
+                  showActions={isOrganizer}
                 />
               ))}
             </ul>
@@ -237,7 +241,13 @@ export default async function MatchDetailPage({
         {isOrganizer && match.status === 'active' && (
           <div className="bg-white rounded-xl p-6">
             <h2 className="font-semibold mb-4">组织者操作</h2>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4">
+              {!match.is_finalized && (
+                <ConfirmMatchButton
+                  matchId={match.id}
+                  disabled={!match.scheduled_at || !match.venue || match.time_status === 'tentative' || match.venue_status === 'tentative'}
+                />
+              )}
               <Link
                 href={`/matches/${match.id}/edit`}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -246,6 +256,11 @@ export default async function MatchDetailPage({
               </Link>
               <CancelMatchButton matchId={match.id} />
             </div>
+            {!match.is_finalized && (match.time_status === 'tentative' || match.venue_status === 'tentative') && (
+              <p className="text-sm text-gray-500 mt-3">
+                需要先确定时间和地点才能确认球局
+              </p>
+            )}
           </div>
         )}
       </div>

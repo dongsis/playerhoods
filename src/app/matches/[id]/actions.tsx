@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { getCurrentUserClient } from '@/lib/supabase/client-with-dev'
 import { useToast } from '@/components/Toast'
 
 // 报名/退出按钮
@@ -23,7 +22,7 @@ export function SignUpButton({
   const handleClick = async () => {
     setLoading(true)
     const supabase = createClient()
-    const { user } = await getCurrentUserClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
       router.push('/login')
@@ -41,7 +40,8 @@ export function SignUpButton({
         })
 
       if (error) {
-        showToast('报名失败，请重试', 'error')
+        console.error('报名失败:', error)
+        showToast(`报名失败: ${error.message}`, 'error')
       } else {
         showToast('报名成功，等待组织者确认')
       }
@@ -209,6 +209,56 @@ export function CancelMatchButton({ matchId }: { matchId: string }) {
       className="px-4 py-2 text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
     >
       {loading ? '取消中...' : '取消球局'}
+    </button>
+  )
+}
+
+// 确认球局按钮
+export function ConfirmMatchButton({
+  matchId,
+  disabled = false,
+}: {
+  matchId: string
+  disabled?: boolean
+}) {
+  const router = useRouter()
+  const { showToast } = useToast()
+  const [loading, setLoading] = useState(false)
+
+  const handleClick = async () => {
+    if (!confirm('确认球局后，时间和地点将锁定。确定要确认吗？')) {
+      return
+    }
+
+    setLoading(true)
+    const supabase = createClient()
+
+    // 更新 time_status 和 venue_status 为 finalized
+    const { error } = await supabase
+      .from('matches')
+      .update({
+        time_status: 'finalized',
+        venue_status: 'finalized',
+      })
+      .eq('id', matchId)
+
+    if (error) {
+      showToast('确认失败，请重试', 'error')
+    } else {
+      showToast('球局已确认')
+    }
+
+    router.refresh()
+    setLoading(false)
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading || disabled}
+      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {loading ? '确认中...' : '确认球局'}
     </button>
   )
 }
