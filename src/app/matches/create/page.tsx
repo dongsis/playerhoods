@@ -1,10 +1,36 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { GameType, DoublesMode, FinalizedStatus } from '@/types'
+
+// 生成15分钟间隔的时间选项，从8:30开始
+function generateTimeOptions() {
+  const options: string[] = []
+  for (let hour = 8; hour <= 23; hour++) {
+    for (let minute = 0; minute < 60; minute += 15) {
+      // 跳过8:00和8:15，从8:30开始
+      if (hour === 8 && minute < 30) continue
+      const h = hour.toString().padStart(2, '0')
+      const m = minute.toString().padStart(2, '0')
+      options.push(`${h}:${m}`)
+    }
+  }
+  return options
+}
+
+const TIME_OPTIONS = generateTimeOptions()
+
+// 时长选项（分钟）
+const DURATION_OPTIONS = [
+  { value: 60, label: '1 小时' },
+  { value: 90, label: '1.5 小时' },
+  { value: 120, label: '2 小时' },
+  { value: 150, label: '2.5 小时' },
+  { value: 180, label: '3 小时' },
+]
 
 export default function CreateMatchPage() {
   const router = useRouter()
@@ -18,8 +44,16 @@ export default function CreateMatchPage() {
   const [requiredCount, setRequiredCount] = useState(4)
   const [timeStatus, setTimeStatus] = useState<FinalizedStatus>('tentative')
   const [venueStatus, setVenueStatus] = useState<FinalizedStatus>('tentative')
-  const [scheduledAt, setScheduledAt] = useState('')
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [scheduledTime, setScheduledTime] = useState('08:30')
+  const [durationMinutes, setDurationMinutes] = useState(90) // 默认1.5小时（双打）
   const [venue, setVenue] = useState('')
+
+  // 组合日期和时间为 ISO 字符串
+  const scheduledAt = useMemo(() => {
+    if (!scheduledDate) return ''
+    return `${scheduledDate}T${scheduledTime}`
+  }, [scheduledDate, scheduledTime])
 
   // 根据游戏类型计算默认人数
   const getDefaultRequiredCount = (type: GameType, courts: number) => {
@@ -35,10 +69,16 @@ export default function CreateMatchPage() {
     }
   }
 
-  // 游戏类型变更时更新默认人数
+  // 根据游戏类型获取默认时长
+  const getDefaultDuration = (type: GameType) => {
+    return type === 'singles' ? 60 : 90 // 单打1小时，其他1.5小时
+  }
+
+  // 游戏类型变更时更新默认人数和时长
   const handleGameTypeChange = (type: GameType) => {
     setGameType(type)
     setRequiredCount(getDefaultRequiredCount(type, courtCount))
+    setDurationMinutes(getDefaultDuration(type))
   }
 
   // 场地数量变更时更新默认人数
@@ -75,6 +115,7 @@ export default function CreateMatchPage() {
         venue_status: venueStatus,
         scheduled_at: scheduledAt || null,
         venue: venue || null,
+        duration_minutes: durationMinutes,
       })
       .select()
       .single()
@@ -83,6 +124,20 @@ export default function CreateMatchPage() {
       setError(insertError.message)
       setLoading(false)
     } else {
+      // 自动把组织者加入参与者列表（confirmed 状态）
+      const { error: participantError } = await supabase
+        .from('participants')
+        .insert({
+          match_id: data.id,
+          user_id: user.id,
+          state: 'confirmed',
+        })
+
+      if (participantError) {
+        console.error('添加组织者到参与者列表失败:', participantError)
+        // 即使失败也继续跳转，但记录错误
+      }
+
       router.push(`/matches/${data.id}`)
     }
   }
@@ -201,17 +256,27 @@ export default function CreateMatchPage() {
 
           {/* 时间 */}
           <div>
-            <label htmlFor="scheduledAt" className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               时间
             </label>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 flex-wrap">
               <input
-                id="scheduledAt"
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                className="flex-1"
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                className="flex-1 min-w-[140px]"
               />
+              <select
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
+                className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                {TIME_OPTIONS.map((time) => (
+                  <option key={time} value={time}>
+                    {time}
+                  </option>
+                ))}
+              </select>
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -221,6 +286,29 @@ export default function CreateMatchPage() {
                 />
                 <span className="text-sm text-gray-600">已确定</span>
               </label>
+            </div>
+          </div>
+
+          {/* 时长 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              时长
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {DURATION_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setDurationMinutes(option.value)}
+                  className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                    durationMinutes === option.value
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
           </div>
 

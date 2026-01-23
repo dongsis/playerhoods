@@ -4,6 +4,56 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/Toast'
+import { checkAndSendFormationEmails } from './email-actions'
+
+// 辅助函数：检查成局状态
+// 成局条件：人数达标 AND 时间确定 AND 地点确定
+async function checkMatchFormationStatus(
+  supabase: ReturnType<typeof createClient>,
+  matchId: string
+): Promise<{ isFormed: boolean; isFull: boolean; message?: string }> {
+  // 获取球局信息
+  const { data: match } = await supabase
+    .from('matches')
+    .select('required_count, time_status, venue_status')
+    .eq('id', matchId)
+    .single()
+
+  if (!match) {
+    return { isFormed: false, isFull: false }
+  }
+
+  // 获取已确认参与者数量
+  const { count } = await supabase
+    .from('participants')
+    .select('*', { count: 'exact', head: true })
+    .eq('match_id', matchId)
+    .eq('state', 'confirmed')
+
+  const confirmedCount = count || 0
+  const isFull = confirmedCount >= match.required_count
+  const isTimeFinalized = match.time_status === 'finalized'
+  const isVenueFinalized = match.venue_status === 'finalized'
+  const isFormed = isFull && isTimeFinalized && isVenueFinalized
+
+  // 返回状态信息
+  if (isFormed) {
+    return { isFormed: true, isFull: true, message: '球局已成局！' }
+  }
+
+  if (isFull && (!isTimeFinalized || !isVenueFinalized)) {
+    const missing = []
+    if (!isTimeFinalized) missing.push('时间')
+    if (!isVenueFinalized) missing.push('地点')
+    return {
+      isFormed: false,
+      isFull: true,
+      message: `人数已满，待确定${missing.join('和')}后成局`
+    }
+  }
+
+  return { isFormed: false, isFull: false }
+}
 
 // 报名/退出按钮
 export function SignUpButton({
@@ -30,20 +80,41 @@ export function SignUpButton({
     }
 
     if (action === 'signup') {
-      // 报名
-      const { error } = await supabase
+      // 检查是否已有参与记录（可能是之前退出的）
+      // 使用 maybeSingle() 而不是 single()，因为可能没有记录
+      const { data: existingParticipants } = await supabase
         .from('participants')
-        .insert({
-          match_id: matchId,
-          user_id: user.id,
-          state: 'pending',
-        })
+        .select('id, state')
+        .eq('match_id', matchId)
+        .eq('user_id', user.id)
+
+      const existingParticipant = existingParticipants?.[0]
+
+      let error
+      if (existingParticipant) {
+        // 已有记录，更新状态为 pending（重新报名）
+        const result = await supabase
+          .from('participants')
+          .update({ state: 'pending' })
+          .eq('id', existingParticipant.id)
+        error = result.error
+      } else {
+        // 新报名
+        const result = await supabase
+          .from('participants')
+          .insert({
+            match_id: matchId,
+            user_id: user.id,
+            state: 'pending',
+          })
+        error = result.error
+      }
 
       if (error) {
         console.error('报名失败:', error)
         showToast(`报名失败: ${error.message}`, 'error')
       } else {
-        showToast('报名成功，等待组织者确认')
+        showToast(existingParticipant ? '重新报名成功，等待组织者确认' : '报名成功，等待组织者确认')
       }
     } else {
       // 退出 - 更新状态为 removed
@@ -116,6 +187,23 @@ export function ManageParticipantButton({
       showToast('操作失败，请重试', 'error')
     } else {
       showToast(action === 'confirm' ? '已确认参与者' : '已移除参与者')
+
+      // 检查成局状态并提示
+      const { isFormed, message } = await checkMatchFormationStatus(supabase, matchId)
+      if (message) {
+        showToast(message, message.includes('已成局') ? 'success' : 'info')
+      }
+
+      // 如果成局，发送邮件通知
+      if (isFormed) {
+        checkAndSendFormationEmails(matchId).then(result => {
+          if (result.emailsSent && result.emailsSent > 0) {
+            console.log(`[Email] Formation emails sent: ${result.emailsSent}`)
+          }
+        }).catch(err => {
+          console.error('[Email] Failed to send formation emails:', err)
+        })
+      }
     }
 
     router.refresh()
@@ -233,19 +321,43 @@ export function ConfirmMatchButton({
     setLoading(true)
     const supabase = createClient()
 
+    // 先获取当前用户确认权限
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      showToast('请先登录', 'error')
+      setLoading(false)
+      return
+    }
+
     // 更新 time_status 和 venue_status 为 finalized
-    const { error } = await supabase
+    const { error, data } = await supabase
       .from('matches')
       .update({
         time_status: 'finalized',
         venue_status: 'finalized',
       })
       .eq('id', matchId)
+      .select()
+
+    console.log('确认球局结果:', { error, data, matchId, userId: user.id })
 
     if (error) {
-      showToast('确认失败，请重试', 'error')
+      console.error('确认球局失败:', error)
+      showToast(`确认失败: ${error.message}`, 'error')
+    } else if (!data || data.length === 0) {
+      console.error('确认球局失败: 没有更新任何记录，可能是RLS策略阻止')
+      showToast('确认失败: 权限不足，只有组织者可以确认球局', 'error')
     } else {
       showToast('球局已确认')
+
+      // 检查成局状态并发送邮件
+      checkAndSendFormationEmails(matchId).then(result => {
+        if (result.isFormed && result.emailsSent && result.emailsSent > 0) {
+          showToast(`已通知 ${result.emailsSent} 位参与者`, 'success')
+        }
+      }).catch(err => {
+        console.error('[Email] Failed to send formation emails:', err)
+      })
     }
 
     router.refresh()

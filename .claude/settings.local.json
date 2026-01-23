@@ -3,7 +3,9 @@
     "allow": [
       "Read(//c/**)",
       "Bash(npx tsc:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(xargs:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

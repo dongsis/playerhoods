@@ -114,3 +114,167 @@ chore: clean up matches page
 
 每天推进一个可运行的小增量，
 比一次性想清楚所有事情更重要。
+
+
+常见问题
+
+3. Next.js Chunk / Module Not Found 错误
+
+典型症状
+
+Cannot find module './682.js'
+ChunkLoadError: Loading chunk app/... failed
+页面空白或 localhost refused to connect
+
+根因
+.next 缓存与源码不一致
+路由文件被移动/删除
+热更新残留旧 chunk
+
+标准修复流程（必须按顺序）
+
+1) 先停掉开发服务器
+
+在运行 npm run dev 的那个终端里按 Ctrl + C 停掉。
+
+2) 用 PowerShell 正确删除 .next（含缓存）
+
+在项目根目录（你这里是 C:\Users\dongs\Documents\playerhoods）执行：
+Remove-Item -Recurse -Force .next
+
+如果提示找不到或删不干净，再补一条（有时是缓存子目录残留）：
+Remove-Item -Recurse -Force .next\cache -ErrorAction SilentlyContinue
+
+说明：PowerShell 里正确的“rm -rf”等价写法就是 Remove-Item -Recurse -Force。
+
+3) 彻底重装依赖（建议做）
+
+这种 ./16.js 缺失，很多时候是 node_modules/lockfile 与构建产物不匹配导致。直接重装最省时间。
+
+npm 用户（看你像是 npm）：
+
+Remove-Item -Recurse -Force node_modules
+Remove-Item -Force package-lock.json
+npm cache clean --force
+npm install
+
+
+如果你用的是 pnpm/yarn，把对应的 lockfile（pnpm-lock.yaml / yarn.lock）也一起删掉再重装。
+
+4) 重新启动 dev
+npm run dev
+
+
+⚠️ 不要在 Chunk 报错时反复刷新浏览器
+
+4. 页面存在，但 localhost:3000 访问失败
+
+典型症状
+
+终端显示 Compiled successfully
+
+浏览器显示 ERR_CONNECTION_REFUSED
+
+根因
+
+Dev server 实际未监听 3000
+
+上一次进程异常退出
+
+排查
+
+netstat -ano | findstr :3000
+
+
+解决
+
+Ctrl + C
+npm run dev
+
+
+确认看到：
+
+Local: http://localhost:3000
+
+5. Supabase 环境变量缺失
+
+典型症状
+
+Your project's URL and Key are required to create a Supabase client
+
+middleware.ts 报错
+
+根因
+
+.env.local 不存在或变量名错误
+
+GitHub 拉代码后忘记补环境变量
+
+解决办法
+
+从 Supabase Dashboard → Settings → API
+
+创建 .env.local：
+
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+
+
+重启 dev server
+
+6. 注册成功，但数据库报错（Trigger / 表结构不一致）
+
+典型症状
+
+注册页面显示：Database error saving new user
+
+Logs 显示：
+
+column "email" of relation "user_settings" does not exist
+
+
+根因
+
+trigger 中 INSERT 使用了已删除或不存在的字段
+
+表结构调整后未同步 trigger
+
+解决办法
+
+以“表结构为准”修 trigger
+
+不要为 trigger 表随意加字段
+
+示例（正确做法）
+
+INSERT INTO public.user_settings (user_id)
+VALUES (NEW.id)
+ON CONFLICT (user_id) DO NOTHING;
+
+9. Git 仓库状态异常
+
+典型症状
+
+git status 报错
+
+push 失败 / repo 不干净
+
+根因
+
+解压覆盖 .git
+
+在错误目录初始化仓库
+
+修复原则
+
+一个项目只允许一个 .git
+
+不在嵌套目录 init
+
+正确流程
+
+git init
+git remote add origin https://github.com/xxx/playerhoods.git
+git add .
+git commit -m "initial clean state"
+git push -u origin main

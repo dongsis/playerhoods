@@ -43,6 +43,7 @@ export interface Match {
   venue_status: FinalizedStatus
   scheduled_at: string | null
   venue: string | null
+  duration_minutes: number | null  // 球局时长（分钟）
   gender_target_female: number | null
   gender_target_male: number | null
   created_at: string
@@ -54,6 +55,7 @@ export interface MatchDetails extends Match {
   confirmed_count: number
   is_full: boolean
   is_finalized: boolean
+  is_formed: boolean  // 是否已成局（confirmed_count >= required_count）
   organizer_name: string | null
 }
 
@@ -75,6 +77,21 @@ export interface ParticipantWithProfile extends Participant {
   profile: Profile
 }
 
+// 参与者状态变更历史
+export interface ParticipantHistory {
+  id: string
+  participant_id: string
+  old_state: ParticipantState | null
+  new_state: ParticipantState
+  changed_at: string
+  changed_by: string | null  // 谁触发的变更（组织者或用户自己）
+}
+
+// 参与者（含历史记录）
+export interface ParticipantWithHistory extends ParticipantWithProfile {
+  history: ParticipantHistory[]
+}
+
 // 创建球局表单数据
 export interface CreateMatchData {
   game_type: GameType
@@ -85,6 +102,7 @@ export interface CreateMatchData {
   venue_status: FinalizedStatus
   scheduled_at?: string
   venue?: string
+  duration_minutes?: number
   gender_target_female?: number
   gender_target_male?: number
 }

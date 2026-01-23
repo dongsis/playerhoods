@@ -1,9 +1,19 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { formatDateTime, getGameTypeLabel, getParticipantStatusLabel } from '@/lib/utils'
-import { SignUpButton, ManageParticipantButton, CancelMatchButton, CopyLinkButton, ConfirmMatchButton } from './actions'
-import type { MatchDetails, ParticipantWithProfile } from '@/types'
+import { formatDateTime, getGameTypeLabel, getParticipantStatusLabel, formatRelativeTime, formatExactTime, getStateChangeAction, formatTimeRange } from '@/lib/utils'
+import { SignUpButton, ManageParticipantButton, CancelMatchButton, CopyLinkButton } from './actions'
+import type { MatchDetails, ParticipantWithProfile, ParticipantHistory, GameType } from '@/types'
+
+// 扩展类型
+interface ParticipantWithHistory extends ParticipantWithProfile {
+  history?: ParticipantHistory[]
+}
+
+// 获取默认时长（分钟）
+function getDefaultDuration(gameType: GameType): number {
+  return gameType === 'singles' ? 60 : 90
+}
 
 export default async function MatchDetailPage({
   params,
@@ -39,14 +49,70 @@ export default async function MatchDetailPage({
     .eq('match_id', params.id)
     .order('created_at', { ascending: true })
 
-  // 检查当前用户的参与状态
-  const myParticipation = participants?.find(p => p.user_id === user.id)
+  // 检查当前用户的参与状态（排除已退出/移除的记录）
+  const myParticipation = participants?.find(p => p.user_id === user.id && p.state !== 'removed')
   const isOrganizer = match.organizer_id === user.id
+  // 检查用户是否曾经参与过（用于判断是否可以重新报名）
+  const hasWithdrawn = participants?.some(p => p.user_id === user.id && p.state === 'removed')
+
+  // 检查用户是否被移除（非组织者）
+  const wasRemoved = !isOrganizer && participants?.some(p => p.user_id === user.id && p.state === 'removed')
+
+  // 如果球局已成局且用户被移除，显示受限页面
+  if (match.is_formed && wasRemoved) {
+    return (
+      <main className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b border-gray-100">
+          <div className="max-w-2xl mx-auto px-4 h-16 flex items-center">
+            <Link href="/matches" className="text-gray-600 hover:text-gray-900 mr-4">
+              ← 返回
+            </Link>
+            <h1 className="font-semibold text-lg">球局详情</h1>
+          </div>
+        </header>
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          <div className="bg-white rounded-xl p-6 text-center">
+            <div className="text-gray-400 mb-4">
+              <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m0 0v2m0-2h2m-2 0H9m3-10V4m0 0V2m0 2h2m-2 0H9m12 8a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">无法查看此球局</h2>
+            <p className="text-gray-500">你已被移出此球局，无法查看详情。</p>
+            <Link
+              href="/matches"
+              className="inline-block mt-6 px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+            >
+              返回球局列表
+            </Link>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   // 分类参与者
   const confirmedParticipants = participants?.filter(p => p.state === 'confirmed') || []
   const pendingParticipants = participants?.filter(p => p.state === 'pending') || []
   const waitlistedParticipants = participants?.filter(p => p.state === 'waitlisted') || []
+
+  // 获取所有参与者的状态变更历史
+  const participantIds = participants?.map(p => p.id) || []
+  let participantHistory: ParticipantHistory[] = []
+  if (participantIds.length > 0) {
+    const { data: history } = await supabase
+      .from('participant_history')
+      .select('*')
+      .in('participant_id', participantIds)
+      .order('changed_at', { ascending: false })
+    participantHistory = history || []
+  }
+
+  // 将历史记录合并到参与者数据中
+  const participantsWithHistory: ParticipantWithHistory[] = (participants || []).map(p => ({
+    ...p,
+    history: participantHistory.filter(h => h.participant_id === p.id)
+  }))
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -68,7 +134,12 @@ export default async function MatchDetailPage({
             <span className="bg-primary-100 text-primary-700 px-3 py-1 rounded-full text-sm font-medium">
               {getGameTypeLabel(match.game_type, match.doubles_mode)}
             </span>
-            {match.is_full && (
+            {match.is_formed && (
+              <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
+                已成局
+              </span>
+            )}
+            {match.is_full && !match.is_formed && (
               <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm">
                 已满员
               </span>
@@ -89,6 +160,11 @@ export default async function MatchDetailPage({
                 <span className="text-sm font-normal text-orange-500 ml-2">（暂定）</span>
               )}
             </p>
+            {match.scheduled_at && (
+              <p className="text-base text-gray-700 mt-1">
+                {formatTimeRange(match.scheduled_at, match.duration_minutes || getDefaultDuration(match.game_type))}
+              </p>
+            )}
           </div>
 
           {/* 地点 */}
@@ -133,7 +209,7 @@ export default async function MatchDetailPage({
               <div className="flex items-center justify-between">
                 <div>
                   <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                    myParticipation.state === 'confirmed' 
+                    myParticipation.state === 'confirmed'
                       ? 'bg-green-100 text-green-700'
                       : myParticipation.state === 'pending'
                       ? 'bg-yellow-100 text-yellow-700'
@@ -149,19 +225,22 @@ export default async function MatchDetailPage({
                     </span>
                   )}
                 </div>
-                {myParticipation.state !== 'removed' && (
-                  <SignUpButton 
-                    matchId={match.id} 
-                    action="withdraw"
-                  />
-                )}
+                <SignUpButton
+                  matchId={match.id}
+                  action="withdraw"
+                />
               </div>
             ) : (
-              <SignUpButton 
-                matchId={match.id} 
-                action="signup"
-                disabled={match.is_full}
-              />
+              <div>
+                {hasWithdrawn && (
+                  <p className="text-sm text-gray-500 mb-2">你之前已退出此球局，可以重新报名</p>
+                )}
+                <SignUpButton
+                  matchId={match.id}
+                  action="signup"
+                  disabled={match.is_full}
+                />
+              </div>
             )}
           </div>
         )}
@@ -178,15 +257,20 @@ export default async function MatchDetailPage({
           </h2>
 
           {confirmedParticipants.length > 0 ? (
-            <ul className="space-y-2">
-              {confirmedParticipants.map((p: ParticipantWithProfile) => (
-                <ParticipantItem
-                  key={p.id}
-                  participant={p}
-                  isOrganizer={isOrganizer}
-                  matchId={match.id}
-                />
-              ))}
+            <ul className="divide-y divide-gray-100">
+              {confirmedParticipants.map((p: ParticipantWithProfile) => {
+                const pWithHistory = participantsWithHistory.find(ph => ph.id === p.id)
+                return (
+                  <ParticipantItem
+                    key={p.id}
+                    participant={p}
+                    isOrganizer={isOrganizer}
+                    matchId={match.id}
+                    showActions={isOrganizer && p.user_id !== match.organizer_id}
+                    history={pWithHistory?.history}
+                  />
+                )
+              })}
             </ul>
           ) : (
             <p className="text-gray-500">暂无确认参与者</p>
@@ -202,16 +286,20 @@ export default async function MatchDetailPage({
                 {pendingParticipants.length}
               </span>
             </h2>
-            <ul className="space-y-2">
-              {pendingParticipants.map((p: ParticipantWithProfile) => (
-                <ParticipantItem
-                  key={p.id}
-                  participant={p}
-                  isOrganizer={isOrganizer}
-                  matchId={match.id}
-                  showActions={isOrganizer}
-                />
-              ))}
+            <ul className="divide-y divide-gray-100">
+              {pendingParticipants.map((p: ParticipantWithProfile) => {
+                const pWithHistory = participantsWithHistory.find(ph => ph.id === p.id)
+                return (
+                  <ParticipantItem
+                    key={p.id}
+                    participant={p}
+                    isOrganizer={isOrganizer}
+                    matchId={match.id}
+                    showActions={isOrganizer}
+                    history={pWithHistory?.history}
+                  />
+                )
+              })}
             </ul>
           </div>
         )}
@@ -222,17 +310,21 @@ export default async function MatchDetailPage({
             <h2 className="font-semibold mb-4">
               候补 ({waitlistedParticipants.length})
             </h2>
-            <ul className="space-y-2">
-              {waitlistedParticipants.map((p: ParticipantWithProfile, index: number) => (
-                <ParticipantItem 
-                  key={p.id} 
-                  participant={p} 
-                  isOrganizer={isOrganizer}
-                  matchId={match.id}
-                  showActions={isOrganizer}
-                  waitlistPosition={index + 1}
-                />
-              ))}
+            <ul className="divide-y divide-gray-100">
+              {waitlistedParticipants.map((p: ParticipantWithProfile, index: number) => {
+                const pWithHistory = participantsWithHistory.find(ph => ph.id === p.id)
+                return (
+                  <ParticipantItem
+                    key={p.id}
+                    participant={p}
+                    isOrganizer={isOrganizer}
+                    matchId={match.id}
+                    showActions={isOrganizer}
+                    waitlistPosition={index + 1}
+                    history={pWithHistory?.history}
+                  />
+                )
+              })}
             </ul>
           </div>
         )}
@@ -241,13 +333,22 @@ export default async function MatchDetailPage({
         {isOrganizer && match.status === 'active' && (
           <div className="bg-white rounded-xl p-6">
             <h2 className="font-semibold mb-4">组织者操作</h2>
+            {match.is_formed && (
+              <p className="text-green-600 text-sm mb-4">
+                球局已成局！人数已满足要求，时间和地点已确定。
+              </p>
+            )}
+            {!match.is_formed && match.is_full && (
+              <p className="text-orange-600 text-sm mb-4">
+                人数已满，请确定{match.time_status === 'tentative' && '时间'}{match.time_status === 'tentative' && match.venue_status === 'tentative' && '和'}{match.venue_status === 'tentative' && '地点'}后成局
+              </p>
+            )}
+            {!match.is_formed && !match.is_full && (
+              <p className="text-gray-500 text-sm mb-4">
+                还需 {match.required_count - match.confirmed_count} 人确认，且确定时间地点后成局
+              </p>
+            )}
             <div className="flex flex-wrap gap-4">
-              {!match.is_finalized && (
-                <ConfirmMatchButton
-                  matchId={match.id}
-                  disabled={!match.scheduled_at || !match.venue || match.time_status === 'tentative' || match.venue_status === 'tentative'}
-                />
-              )}
               <Link
                 href={`/matches/${match.id}/edit`}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -256,9 +357,36 @@ export default async function MatchDetailPage({
               </Link>
               <CancelMatchButton matchId={match.id} />
             </div>
-            {!match.is_finalized && (match.time_status === 'tentative' || match.venue_status === 'tentative') && (
-              <p className="text-sm text-gray-500 mt-3">
-                需要先确定时间和地点才能确认球局
+          </div>
+        )}
+
+        {/* 活动日志 */}
+        {participantHistory.length > 0 && (
+          <div className="bg-white rounded-xl p-6">
+            <h2 className="font-semibold mb-4">活动日志</h2>
+            <ul className="space-y-3">
+              {participantHistory.slice(0, 20).map((h) => {
+                const participant = participantsWithHistory.find(p => p.id === h.participant_id)
+                return (
+                  <li key={h.id} className="flex items-start gap-3 text-sm">
+                    <span className="text-gray-400 whitespace-nowrap">
+                      {formatRelativeTime(h.changed_at)}
+                    </span>
+                    <span className="flex-1">
+                      <span className="font-medium">
+                        {participant?.profile?.display_name || '未知用户'}
+                      </span>
+                      <span className="text-gray-600 ml-1">
+                        {getStateChangeAction(h.old_state, h.new_state)}
+                      </span>
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+            {participantHistory.length > 20 && (
+              <p className="text-sm text-gray-400 mt-3">
+                仅显示最近 20 条记录
               </p>
             )}
           </div>
@@ -268,58 +396,89 @@ export default async function MatchDetailPage({
   )
 }
 
-function ParticipantItem({ 
-  participant, 
+function ParticipantItem({
+  participant,
   isOrganizer,
   matchId,
   showActions = false,
   waitlistPosition,
-}: { 
+  history = [],
+}: {
   participant: ParticipantWithProfile
   isOrganizer: boolean
   matchId: string
   showActions?: boolean
   waitlistPosition?: number
+  history?: ParticipantHistory[]
 }) {
+  // 从历史记录中提取关键时间点
+  const signupTime = history.find(h => h.old_state === null && h.new_state === 'pending')?.changed_at
+  const confirmedTime = history.find(h => h.new_state === 'confirmed')?.changed_at
+  const removedTime = history.filter(h => h.new_state === 'removed').pop()?.changed_at
+
   return (
-    <li className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50">
-      <div className="flex items-center gap-3">
-        {waitlistPosition && (
-          <span className="text-sm text-gray-400">#{waitlistPosition}</span>
-        )}
-        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-sm font-medium">
-          {participant.profile?.display_name?.[0] || '?'}
+    <li className="py-3 px-3 rounded-lg hover:bg-gray-50">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {waitlistPosition && (
+            <span className="text-sm text-gray-400">#{waitlistPosition}</span>
+          )}
+          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-sm font-medium">
+            {participant.profile?.display_name?.[0] || '?'}
+          </div>
+          <span>{participant.profile?.display_name || '未知用户'}</span>
+          {participant.profile?.gender && participant.profile.gender !== 'unspecified' && (
+            <span className="text-sm text-gray-400">
+              {participant.profile.gender === 'female' ? '♀' : '♂'}
+            </span>
+          )}
         </div>
-        <span>{participant.profile?.display_name || '未知用户'}</span>
-        {participant.profile?.gender && participant.profile.gender !== 'unspecified' && (
-          <span className="text-sm text-gray-400">
-            {participant.profile.gender === 'female' ? '♀' : '♂'}
-          </span>
-        )}
-      </div>
-      
-      {isOrganizer && showActions && (
-        <div className="flex gap-2">
-          {participant.state === 'pending' && (
-            <>
-              <ManageParticipantButton 
-                matchId={matchId}
-                participantId={participant.id}
-                action="confirm"
-              />
-              <ManageParticipantButton 
+
+        {isOrganizer && showActions && (
+          <div className="flex gap-2">
+            {participant.state === 'pending' && (
+              <>
+                <ManageParticipantButton
+                  matchId={matchId}
+                  participantId={participant.id}
+                  action="confirm"
+                />
+                <ManageParticipantButton
+                  matchId={matchId}
+                  participantId={participant.id}
+                  action="remove"
+                />
+              </>
+            )}
+            {participant.state === 'confirmed' && (
+              <ManageParticipantButton
                 matchId={matchId}
                 participantId={participant.id}
                 action="remove"
               />
-            </>
+            )}
+            {participant.state === 'waitlisted' && (
+              <ManageParticipantButton
+                matchId={matchId}
+                participantId={participant.id}
+                action="confirm"
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 时间记录 */}
+      {history.length > 0 && (
+        <div className="mt-2 ml-11 text-xs text-gray-400 space-x-3">
+          {signupTime && (
+            <span>报名: {formatExactTime(signupTime)}</span>
           )}
-          {participant.state === 'waitlisted' && (
-            <ManageParticipantButton 
-              matchId={matchId}
-              participantId={participant.id}
-              action="confirm"
-            />
+          {confirmedTime && (
+            <span>确认: {formatExactTime(confirmedTime)}</span>
+          )}
+          {removedTime && participant.state === 'removed' && (
+            <span>移除: {formatExactTime(removedTime)}</span>
           )}
         </div>
       )}
