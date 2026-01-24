@@ -1,3 +1,17 @@
+/**
+ * 球局详情页面
+ *
+ * [MVP 模式标注]
+ * 当前为「无 Group 模式」的 MVP 实现：
+ * - 任何登录用户可通过链接访问球局详情
+ * - 报名/退出不受 Group 边界限制
+ * - 组织者手动管理参与者
+ *
+ * 未来 Group 模式下：
+ * - 访问权限检查：用户必须是 Match 所属 Group 的成员
+ * - 报名权限：基于 Group 成员身份
+ * - Match 不改变 Group 结构
+ */
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'

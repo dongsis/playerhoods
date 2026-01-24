@@ -1,3 +1,16 @@
+/**
+ * 球局列表页面
+ *
+ * [MVP 模式标注]
+ * 当前为「无 Group 模式」的 MVP 实现：
+ * - Match 不绑定 Group，任何人可通过链接直接报名
+ * - 可见性基于参与关系，而非 Group 成员身份
+ *
+ * 未来 Group 模式下：
+ * - Match 必须绑定一个 Group 作为边界
+ * - 只有 Group 成员可以看到和报名该 Group 下的 Match
+ * - Match 使用 Group 作为 access boundary + action boundary
+ */
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'

@@ -199,8 +199,22 @@ Organizer 私有的邀请分组工具
 - 装备管理与匿名经验
 - 认可（Endorsement）
 - 市场与推广支持（无广告）
+### Future Direction | Agent Organizer
+
+- Organizer 是一个治理角色，不等同于具体的人
+- 群可选择将部分“执行型事务”委托给 Agent
+- Agent 仅执行已配置规则，不做价值判断
+- 群始终保留至少一名人类 Boundary Keeper 作为兜底
+- 原则：自动化用于降低摩擦，而不是替代人类判断
+- 非常关键的一句话（我希望你记住）
+- Agent 不是为了“消除人格差异”，
+- 而是为了“把人格从重复劳动中解放出来”。
 
 ---
 
 > 所有未来功能必须遵循 v1 原则：
 > 协商优先 / 低自动化 / 单一责任人 / 不做裁决系统
+
+
+Group governance (technical layer) is frozen at v1.0.
+Any change requires an explicit amendment.

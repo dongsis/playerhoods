@@ -1,3 +1,16 @@
+/**
+ * 创建球局页面
+ *
+ * [MVP 模式标注]
+ * 当前为「无 Group 模式」的 MVP 实现：
+ * - 任何登录用户可直接创建 Match
+ * - Match 不绑定 Group，通过链接分享
+ *
+ * 未来 Group 模式下：
+ * - 创建 Match 时必须选择一个 Group 作为边界
+ * - 只有 Group 成员可以发起 Match
+ * - Match 的可见性和报名权限由 Group 决定
+ */
 'use client'
 
 import { useState, useMemo } from 'react'

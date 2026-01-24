@@ -106,3 +106,96 @@ export interface CreateMatchData {
   gender_target_female?: number
   gender_target_male?: number
 }
+
+// ============================================================================
+// Group 相关类型
+// ============================================================================
+// Group 是唯一的人群概念，是 access boundary + action boundary
+// 不是社交网络、不是聊天群、不存在好友/关注关系
+// 关系只能通过「邀请 + 接受」显式成立
+
+// Group 类型
+// direct: 2-4人直约，对等无治理需求
+// organized: ≥5人，需要 boundary keeper
+export type GroupType = 'direct' | 'organized'
+
+// Group 可见性
+// private: 仅成员可见（默认）
+// discoverable: 符合条件的用户可发现，需申请加入
+// link_accessible: 不公开展示，仅通过链接/邀请码访问
+export type GroupVisibility = 'private' | 'discoverable' | 'link_accessible'
+
+// Group 准入策略 (Contract v1: §2.2)
+// invite_only: 仅通过邀请加入（direct group 唯一选项）
+// organizer_approval: 新人需 boundary keeper 确认（organized group 默认）
+// auto_join: 符合条件的用户自动加入（仅 organized group）
+export type GroupJoinPolicy = 'invite_only' | 'organizer_approval' | 'auto_join'
+
+// Group 成员状态
+// pending: 等待确认（申请加入或被邀请但未接受）
+// active: 正式成员
+// removed: 已移除（保留记录用于审计）
+export type GroupMemberStatus = 'pending' | 'active' | 'removed'
+
+// Group 加入方式
+// invited: 被邀请加入
+// applied: 主动申请加入
+// link: 通过链接加入
+// founder: 创建时加入
+export type GroupJoinMethod = 'invited' | 'applied' | 'link' | 'founder'
+
+// Group 基础类型
+export interface Group {
+  id: string
+  group_type: GroupType
+  name: string | null
+  visibility: GroupVisibility
+  join_policy: GroupJoinPolicy
+  created_by: string
+  boundary_keeper_user_id: string | null  // organized: 必填; direct: 必须为 null
+  invite_code: string | null
+  invite_code_expires_at: string | null
+  invite_code_max_uses: number | null
+  invite_code_uses: number
+  // 可选元数据 (Slice 2.1)
+  club: string | null  // 俱乐部/场地上下文
+  skill_level: string | null  // 技术水平描述
+  created_at: string
+  updated_at: string
+}
+
+// Group 详情（含派生字段）
+export interface GroupDetails extends Group {
+  member_count: number
+  pending_count: number
+  boundary_keeper_name: string | null
+}
+
+// Group 成员
+export interface GroupMember {
+  id: string
+  group_id: string
+  user_id: string
+  status: GroupMemberStatus
+  join_method: GroupJoinMethod
+  invited_by: string | null
+  joined_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Group 成员（含用户信息）
+export interface GroupMemberWithProfile extends GroupMember {
+  profile: Profile
+}
+
+// 创建 Group 表单数据
+export interface CreateGroupData {
+  group_type: GroupType
+  name?: string  // organized 必填，direct 可选
+  visibility?: GroupVisibility
+  join_policy?: GroupJoinPolicy
+  // 可选元数据 (Slice 2.1)
+  club?: string
+  skill_level?: string
+}

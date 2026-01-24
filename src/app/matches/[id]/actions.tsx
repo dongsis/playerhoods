@@ -1,3 +1,17 @@
+/**
+ * 球局操作组件
+ *
+ * [MVP 模式标注]
+ * 当前为「无 Group 模式」的 MVP 实现：
+ * - 报名/退出：任何登录用户可操作
+ * - 参与者管理：由 Match 组织者（创建者）手动管理
+ * - 确认/移除：基于 Match 级别权限，不涉及 Group
+ *
+ * 未来 Group 模式下：
+ * - 报名权限：检查是否为 Match 所属 Group 的成员
+ * - 参与者管理：Organized Group 由 boundary keeper 管理
+ * - Direct Group：对等处理，无特殊管理权限
+ */
 'use client'
 
 import { useState } from 'react'

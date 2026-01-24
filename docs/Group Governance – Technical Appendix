@@ -1,0 +1,262 @@
+Group Governance – Technical Appendix
+
+Version: v1.0
+Status: Frozen (Constitution-level)
+Applies to: playerhoods.com
+Audience: Humans, LLMs (Claude / ChatGPT), Database Layer
+Last Updated: 2026-01-23
+
+0. Purpose & Scope
+
+This Technical Appendix defines the mandatory technical constraints that implement and enforce the Group Constitution.
+
+It exists to:
+
+Eliminate ambiguity between intent and implementation
+
+Prevent schema and governance drift
+
+Ensure long-term backward compatibility
+
+Align LLM-generated code with system invariants
+
+This document is normative, not descriptive.
+
+1. Core Invariant
+1.1 Group Is the Only People Boundary
+
+At the technical level:
+
+Every people boundary MUST be represented by a Group
+
+There are no alternative representations:
+
+No implicit lists
+
+No ad-hoc arrays
+
+No temporary joins
+
+No inferred people sets
+
+If visibility, eligibility, authorization, or access control is involved,
+it must resolve to a Group ID.
+
+2. Schema Classification
+2.1 Strong Fields vs Weak Fields
+Strong Fields (Governance-Critical)
+
+Fields that participate in:
+
+Authorization
+
+Eligibility
+
+RLS
+
+Governance semantics
+
+Examples include:
+
+id
+
+group_type
+
+visibility
+
+join_policy
+
+created_by
+
+boundary_keeper_user_id
+
+Rules:
+
+Modifying a strong field is a constitutional change
+
+Requires explicit migration rationale
+
+Must not be introduced implicitly
+
+Weak Fields (Contextual Only)
+
+Fields that provide UI or descriptive context only.
+
+Examples:
+
+club
+
+skill_level
+
+Rules:
+
+MUST be optional (NULLABLE)
+
+MUST NOT participate in RLS
+
+MUST NOT affect eligibility or visibility
+
+MAY be added without a version bump only if appended
+
+3. View Stability Rules (Critical)
+3.1 Views Are Public APIs
+
+Any long-lived database view (e.g. group_details) is treated as a public API surface.
+
+Therefore:
+
+Column order is contractual
+
+Column names are stable
+
+Derived fields are position-sensitive
+
+3.2 Prohibited Pattern
+
+❌ Never use:
+
+SELECT g.*
+FROM public.groups g;
+
+
+Reason:
+
+g.* expands dynamically
+
+Adding a column shifts ordinal positions
+
+PostgreSQL interprets this as a column rename
+
+This causes hard runtime failures
+
+3.3 Mandatory Pattern
+
+✅ Always use explicit column lists:
+
+SELECT
+  g.id,
+  g.group_type,
+  g.name,
+  ...
+FROM public.groups g;
+
+3.4 Append-Only Rule for Views
+
+When extending a view:
+
+Existing columns MUST NOT move
+
+Existing derived columns MUST NOT change position
+
+New columns MUST be appended at the end
+
+Violating this rule is a breaking change.
+
+4. Derived Columns
+4.1 Position Locking
+
+Derived columns such as:
+
+member_count
+
+pending_count
+
+Are position-locked.
+
+Rules:
+
+Their ordinal position is immutable
+
+No new column may be inserted before them
+
+4.2 Source of Truth
+
+Derived columns MUST:
+
+Be computed from canonical tables (e.g. group_members)
+
+Reflect real-time state
+
+Avoid materialization unless explicitly frozen
+
+5. Migration Order Guarantees
+5.1 Required Execution Order
+
+When adding fields referenced by views:
+
+ALTER TABLE (add columns)
+
+CREATE OR REPLACE VIEW
+
+Any other order is invalid.
+
+5.2 Idempotency
+
+All migrations MUST:
+
+Be re-runnable
+
+Use IF NOT EXISTS where applicable
+
+Avoid destructive operations unless explicitly documented
+
+6. Naming Consistency
+
+View column names MUST match table column names
+
+Avoid semantic aliasing without schema change
+
+❌ Invalid:
+
+g.level AS skill_level
+
+
+✅ Valid:
+
+g.skill_level
+
+7. Enforcement Checklist (Pre-Merge)
+
+All must be true before merge:
+
+ No table.* in views
+
+ Existing view column order preserved
+
+ New fields appended only
+
+ Weak fields excluded from RLS
+
+ Migration order respected
+
+ No implicit governance change
+
+Failure of any item blocks the change.
+
+8. Governance Status
+
+This document is:
+
+Constitutional
+
+Non-negotiable
+
+Higher priority than implementation convenience
+
+Any deviation requires:
+
+Explicit documentation
+
+Versioned amendment
+
+Migration rationale
+
+9. Closing Statement
+
+Group governance is not a UI concern,
+not a product feature,
+and not an implementation detail.
+
+It is a system boundary.
+
+This appendix exists to ensure that boundary is never accidentally broken by code, tooling, or automation.
