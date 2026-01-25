@@ -22,6 +22,7 @@ Every slice involving Group **must explicitly declare**:
 
 ```
 Dependency: Must be used together with `docs/constitution/Group Constitution.md`
+`docs/governance/Group Governance – Technical Appendix.md`
 ```
 
 And must follow this instruction:

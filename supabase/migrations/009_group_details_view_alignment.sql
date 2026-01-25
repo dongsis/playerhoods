@@ -11,7 +11,7 @@
 -- Depends on:
 --   - docs/constitution/Group Constitution.md
 --   - docs/specs/GroupContract_v1.md
---   - docs/Group Governance – Technical Appendix.md
+--   - docs/governance/Group Governance – Technical Appendix.md
 --   - docs/playerhoods/supabase/migrations/Governance Migration Template.sql
 --
 -- Purpose:

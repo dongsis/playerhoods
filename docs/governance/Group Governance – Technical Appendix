@@ -1,0 +1,106 @@
+# Group Execution State (Authoritative) — playerhoods.com
+
+Last updated: 2026-01-24
+
+This file is the single source of truth for the current Group governance / contract / migration state.
+All future Group-related slices must read and comply with this file BEFORE generating any SQL / RLS / service / UI changes.
+
+---
+
+## 0. Design Principles (Binding for Future Slices)
+
+### 0.1 People-first UI
+- All user-facing flows MUST be person-centric.
+- Users select people, not groups.
+- Groups are governance/reference structures and MUST NOT be required as a primary selection unit.
+
+### 0.2 Club Entry Posture (Non-contractual)
+The system MAY support club-level entry experiences as a product/onboarding strategy.
+
+This posture:
+- Describes how users initially enter and discover people.
+- Does NOT introduce any contract-level objects, enums, or schema guarantees.
+- Does NOT alter GroupContract_v1 definitions or semantics.
+
+Constraints:
+- Club entry posture MUST NOT be relied upon by other contract-level components.
+- No downstream system may assume the existence of a “club entry group”
+  unless a future GroupContract_v2 explicitly defines it.
+
+### 0.3 Non-user Participation (Cold Start)
+- The system MUST support inviting non-users (email-based) into matches.
+- Non-user participation is match-scoped and MUST NOT require group membership.
+- Notification MAY be handled via email.
+
+### 0.4 Conditional Provenance
+- Provenance is recorded ONLY when the system enforces a participation boundary.
+- For open / guest / link-based participation, provenance SHOULD be NULL.
+- Provenance is not a permission subject and not a UI concept.
+
+---
+
+## 1. Frozen documents (must comply)
+
+- docs/constitution/Group Constitution.md
+- docs/specs/GroupContract_v1.md
+- docs/governance/Group Governance – Technical Appendix.md
+- docs/playerhoods/supabase/migrations/Governance Migration Template.sql
+
+If any slice output conflicts with the above documents, the documents win.
+
+---
+
+## 2. Non-negotiable rules
+
+### 2.1 Enum & semantics
+- No new enum values and no reinterpretation of existing enum values without GroupContract_v2.
+
+### 2.2 Contract-level views
+- NO table.* usage in contract-level views.
+- Explicit column lists are required.
+- public.group_details column order is locked for Contract v1 (positions 1–18).
+- Any future fields must append after position 18 only.
+
+### 2.3 Governance / Contract DB changes
+- Append-only migrations.
+- RLS tightening via policy replacement only.
+
+---
+
+## 3. Migration inventory (repository listing)
+
+003_auto_create_profile.sql
+004_fix_rls_policies.sql
+005_add_duration.sql
+006_backfill_user_settings.sql
+007_create_groups.sql
+008_group_creation_semantics.sql
+009_group_details_view_alignment.sql
+010_invite_flow_rls.sql
+011_accept_flow_rls.sql
+012_removal_exit_rls.sql
+
+---
+
+## 4. Applied migrations (facts only)
+
+007–012 applied and confirmed.
+See previous execution records for detailed semantics.
+
+---
+
+## 5. Contract Upgrade Triggers (Reminder)
+
+The following conditions SHALL trigger a mandatory review
+for upgrading GroupContract_v1 to GroupContract_v2:
+
+1. Introducing a new contract-level group classification
+   (e.g. formalizing “club entry group” as a guaranteed type).
+2. Adding or reinterpreting enum values related to group_type, join_policy, or visibility.
+3. Changing semantics or column order of public.group_details (positions 1–18).
+4. Requiring downstream systems to rely on club-level grouping
+   as a stable governance or permission boundary.
+
+If any slice meets one or more conditions:
+- GroupContract_v1 MUST remain unchanged.
+- GroupContract_v2 MUST be drafted before implementation.

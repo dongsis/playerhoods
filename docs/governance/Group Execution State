@@ -1,0 +1,214 @@
+# Group Execution State (Authoritative) — playerhoods.com
+
+Last updated: 2026-01-24
+
+This file is the single source of truth for the current Group governance / contract / migration state.  
+All future Group-related slices must read and comply with this file **before** generating any SQL / RLS / service / UI changes.
+
+---
+
+## 1. Frozen documents (must comply)
+
+- `docs/constitution/Group Constitution.md`
+- `docs/specs/GroupContract_v1.md`
+- `docs/governance/Group Governance – Technical Appendix.md`
+- `docs/playerhoods/supabase/migrations/Governance Migration Template.sql`
+
+If any slice output conflicts with the above documents, **the documents win**.
+
+---
+
+## 2. Non-negotiable rules
+
+### 2.1 Enum & semantics
+
+- No new enum values and no reinterpretation of existing enum values without **GroupContract_v2**.
+
+### 2.2 Contract-level views
+
+- NO `table.*` usage in contract-level views.
+- Explicit column lists are required.
+- `public.group_details` column order is locked for Contract v1 (positions **1–18**).
+- Any future fields must append after position 18 only.
+
+### 2.3 Governance / Contract DB changes
+
+Any change to governance / contract DB objects must use the **Governance Migration Template** and include:
+
+- explicit column views (no `table.*`)
+- append-only changes where applicable
+- post-migration verification (assertions or verification queries)
+
+**RLS note (Supabase/Postgres):** policies are permissive (**OR**).  
+Tightening access MUST be done via **policy replacement**, not additive policies.
+
+---
+
+## 3. Migration inventory (repository listing)
+
+From `supabase/migrations`:
+
+- `003_auto_create_profile.sql`
+- `004_fix_rls_policies.sql`
+- `005_add_duration.sql`
+- `006_backfill_user_settings.sql`
+- `007_create_groups.sql`
+- `008_group_creation_semantics.sql`
+- `009_group_details_view_alignment.sql`
+- `010_invite_flow_rls.sql`
+- `011_accept_flow_rls.sql`
+- `012_removal_exit_rls.sql`
+
+Note: Group governance begins at **007+**.
+
+---
+
+## 4. Applied migrations (facts only)
+
+### 4.1 Baseline (assumed existing)
+
+- `003_auto_create_profile.sql` — Applied (assumed existing baseline)
+- `004_fix_rls_policies.sql` — Applied (assumed existing baseline)
+- `005_add_duration.sql` — Applied (assumed existing baseline)
+- `006_backfill_user_settings.sql` — Applied (assumed existing baseline)
+
+### 4.2 Group governance (authoritative)
+
+- `007_create_groups.sql` — Applied
+- `008_group_creation_semantics.sql` — Applied
+- `009_group_details_view_alignment.sql` — Applied ✅ (confirmed passed)
+
+---
+
+### 010_invite_flow_rls.sql — Applied ✅ (confirmed)
+
+**Slice:** 2.2 — invited → pending (INSERT-time enforcement only)
+
+**Environment constraint:** Supabase/Postgres does NOT support `CREATE POLICY ... AS RESTRICTIVE`.
+
+**Implementation strategy:**
+- Replaced 007 policy `can_add_group_member` to **REMOVE invited branch**
+- Added strict policy `can_invite_group_member` for invited inserts only
+
+**Result:**
+- invited inserts cannot bypass validation via permissive OR
+- invited → pending semantics are fully enforced at INSERT time
+
+**Closed decision:**
+- organized + invite_only is **peer-invite** (any active member may invite)
+
+**Explicitly excluded (handled by other slices):**
+- link-based joining
+- applied/discoverable joining
+- acceptance (pending → active)
+- removal/exit (active → removed)
+
+---
+
+### 011_accept_flow_rls.sql — Applied ✅ (confirmed)
+
+**Slice:** 2.3 — Accept / Approve Flow  
+**Scope:** `group_members.status = 'pending' → 'active'`
+
+**Implementation:**
+- Replaced any legacy UPDATE policies on `group_members`
+- Added strict UPDATE policy `can_accept_group_member`
+- No new enums, no view changes, no Contract changes
+
+**Approval authority (execution-level):**
+- **Direct groups**
+  - Pending member must self-accept
+  - Condition: `group_members.user_id = auth.uid()`
+  - No third-party approval allowed
+- **Organized groups**
+  - Approval authority: boundary keeper
+  - Execution field: `groups.boundary_keeper_user_id`
+  - Condition: `groups.boundary_keeper_user_id = auth.uid()`
+  - Self-approval by pending member is forbidden
+
+**Resulting guarantees:**
+- Only pending rows are updatable
+- Only transition allowed is pending → active
+- No cross-user approval in direct groups
+- No self-approval in organized groups
+- No alternative UPDATE paths exist on `group_members`
+
+**Invariants preserved:**
+- GroupContract_v1 unchanged
+- `group_details` columns 1–18 remain locked
+- Append-only migration discipline preserved
+
+---
+
+### 012_removal_exit_rls.sql — Applied ✅ (confirmed)
+
+**Slice:** 2.4 — Removal / Exit Semantics  
+**Scope:** `group_members.status = 'active' → 'removed'`
+
+**Implementation:**
+- Added strict UPDATE policy `can_remove_group_member` (policy replacement discipline)
+- No new enums, no view changes, no Contract changes
+
+**Allowed paths:**
+- **Self-exit (all group types)**
+  - Any active member may remove themselves
+  - Condition: `group_members.user_id = auth.uid()`
+- **Organized groups**
+  - Boundary keeper may remove other members
+  - Execution field: `groups.boundary_keeper_user_id`
+  - Boundary keeper CANNOT be removed by others
+
+**Blocked paths:**
+- Direct group peer removal (non-self)
+- Non-boundary members removing others in organized groups
+- Removing boundary keeper by anyone else
+- Any UPDATE from non-active states
+- Any UPDATE to states other than removed
+
+**Invariants preserved:**
+- GroupContract_v1 unchanged
+- No new enums introduced
+- `group_details` columns 1–18 remain locked
+- RLS tightening achieved via policy replacement only
+
+---
+
+## 5. Closed decisions (must follow)
+
+### 5.1 Invite (invited insert → pending)
+
+- organized + invite_only: any ACTIVE member may invite (peer-based)
+- invited inserts must satisfy:
+  - `join_method = 'invited'`
+  - `status = 'pending'`
+  - `invited_by = auth.uid()`
+  - inviter must be active member of the target group
+  - organized + auto_join rejects invited inserts
+
+### 5.2 Acceptance (pending → active)
+
+- direct: self-accept only
+- organized: boundary keeper approval only (`groups.boundary_keeper_user_id`)
+
+### 5.3 Removal / exit (active → removed)
+
+- all groups: self-exit is allowed
+- organized: boundary keeper may remove others
+- boundary keeper cannot be removed by others
+- direct: peer-removal is not allowed (non-self)
+
+---
+
+## 6. Open items (not decided)
+
+- Link-based joining validation (RLS vs RPC / token-based)
+- Applied (discoverable) join semantics finalization
+- Capacity enforcement (direct vs organized size rules)
+
+---
+
+## 7. Current state machine (implemented)
+
+- invited → pending (Slice 2.2 / Migration 010)
+- pending → active (Slice 2.3 / Migration 011)
+- active → removed (Slice 2.4 / Migration 012)
