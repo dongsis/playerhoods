@@ -4,6 +4,7 @@ Last updated: 2026-01-24
 
 This file is the single source of truth for the current Group governance / contract / migration state.
 All future Group-related slices must read and comply with this file BEFORE generating any SQL / RLS / service / UI changes.
+Status: Slice 2.5 CLOSED — governance and security invariants verified.
 
 ---
 
@@ -79,13 +80,34 @@ If any slice output conflicts with the above documents, the documents win.
 010_invite_flow_rls.sql
 011_accept_flow_rls.sql
 012_removal_exit_rls.sql
-
+013_match_group_boundary_check.sql
+014_fix_matches_policy_stack.sql
 ---
 
 ## 4. Applied migrations (facts only)
 
 007–012 applied and confirmed.
 See previous execution records for detailed semantics.
+013_match_group_boundary_check.sql — Applied ✅ (confirmed)
+
+Slice: 2.5 — Match ↔ Group Boundary Check (people-first + guest)
+Scope: matches + match_participants + match_guests (no group back-writes)
+
+Key outcomes:
+- Matches do not require group selection (people-first).
+- Supports non-user (email guest) participants via match-scoped guest records.
+- Conditional provenance:
+  - Boundary-enforced participation requires provenance_group_id with ACTIVE membership proof.
+  - Open/guest participation uses NULL provenance.
+- No changes to GroupContract_v1, enums, or contract-level views.
+014_fix_matches_policy_stack.sql — Applied ✅ (confirmed)
+
+Purpose: Removed legacy permissive policies on public.matches that could bypass
+ownership constraints under permissive (OR) RLS evaluation.
+
+Result:
+- Only authenticated ownership policies remain on public.matches:
+  matches_select_own / matches_insert_own / matches_update_own / matches_delete_own
 
 ---
 

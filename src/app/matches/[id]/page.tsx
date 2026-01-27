@@ -16,13 +16,36 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatDateTime, getGameTypeLabel, getParticipantStatusLabel, formatRelativeTime, formatExactTime, getStateChangeAction, formatTimeRange } from '@/lib/utils'
-import { SignUpButton, ManageParticipantButton, CancelMatchButton, CopyLinkButton } from './actions'
+import { SignUpButton, ManageParticipantButton, CancelMatchButton, CopyLinkButton, AddGuestButton, RemoveGuestButton } from './actions'
 import type { MatchDetails, ParticipantWithProfile, ParticipantHistory, GameType } from '@/types'
 
 // 扩展类型
 interface ParticipantWithHistory extends ParticipantWithProfile {
   history?: ParticipantHistory[]
 }
+
+// Guest participant type (from match_participants + match_guests)
+// Note: Supabase returns joined relations as arrays
+interface GuestParticipant {
+  id: string
+  match_id: string
+  guest_id: string
+  invited_by: string
+  created_at: string
+  guest:
+    | {
+        id: string
+        email: string
+        display_name: string | null
+      }
+    | {
+        id: string
+        email: string
+        display_name: string | null
+      }[]
+    | null
+}
+
 
 // 获取默认时长（分钟）
 function getDefaultDuration(gameType: GameType): number {
@@ -53,7 +76,7 @@ export default async function MatchDetailPage({
     notFound()
   }
 
-  // 获取参与者列表
+  // 获取参与者列表 (legacy table)
   const { data: participants } = await supabase
     .from('participants')
     .select(`
@@ -63,9 +86,30 @@ export default async function MatchDetailPage({
     .eq('match_id', params.id)
     .order('created_at', { ascending: true })
 
+  // 获取 Guest 参与者 (Slice 2.6: match_participants + match_guests)
+ const { data: guestParticipants, error: guestErr } = await supabase
+  .from('match_participants')
+  .select(`
+    id,
+    match_id,
+    guest_id,
+    invited_by,
+    created_at,
+    guest:match_guests(id, email, display_name)
+  `)
+  .eq('match_id', params.id)
+  .not('guest_id', 'is', null)
+  .order('created_at', { ascending: true })
+
+console.log('guestErr =', guestErr)
+console.log('guestParticipants =', JSON.stringify(guestParticipants, null, 2))
+
+
   // 检查当前用户的参与状态（排除已退出/移除的记录）
   const myParticipation = participants?.find(p => p.user_id === user.id && p.state !== 'removed')
   const isOrganizer = match.organizer_id === user.id
+  // 检查用户是否为已确认的参与者（用于 AddGuestButton 可见性）
+  const isConfirmedParticipant = myParticipation?.state === 'confirmed'
   // 检查用户是否曾经参与过（用于判断是否可以重新报名）
   const hasWithdrawn = participants?.some(p => p.user_id === user.id && p.state === 'removed')
 
@@ -262,16 +306,22 @@ export default async function MatchDetailPage({
         {/* 参与者列表 */}
         <div className="bg-white rounded-xl p-6">
           <h2 className="font-semibold mb-4">
-            参与者 ({confirmedParticipants.length}/{match.required_count})
+            参与者 ({confirmedParticipants.length + (guestParticipants?.length || 0)}/{match.required_count})
             {pendingParticipants.length > 0 && (
               <span className="text-sm font-normal text-yellow-600 ml-2">
                 +{pendingParticipants.length} 待审核
               </span>
             )}
+            {(guestParticipants?.length || 0) > 0 && (
+              <span className="text-sm font-normal text-purple-600 ml-2">
+                含 {guestParticipants?.length} 位 Guest
+              </span>
+            )}
           </h2>
 
-          {confirmedParticipants.length > 0 ? (
+          {confirmedParticipants.length > 0 || (guestParticipants?.length || 0) > 0 ? (
             <ul className="divide-y divide-gray-100">
+              {/* Registered participants */}
               {confirmedParticipants.map((p: ParticipantWithProfile) => {
                 const pWithHistory = participantsWithHistory.find(ph => ph.id === p.id)
                 return (
@@ -285,9 +335,25 @@ export default async function MatchDetailPage({
                   />
                 )
               })}
+              {/* Guest participants (Slice 2.6) */}
+              {guestParticipants?.map((gp: GuestParticipant) => (
+                <GuestParticipantItem
+                  key={gp.id}
+                  guestParticipant={gp}
+                  isOrganizer={isOrganizer}
+                  matchId={match.id}
+                />
+              ))}
             </ul>
           ) : (
             <p className="text-gray-500">暂无确认参与者</p>
+          )}
+
+          {/* Add Guest button for confirmed participants */}
+          {match.status === 'active' && (isOrganizer || isConfirmedParticipant) && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <AddGuestButton matchId={match.id} />
+            </div>
           )}
         </div>
 
@@ -494,6 +560,58 @@ function ParticipantItem({
           {removedTime && participant.state === 'removed' && (
             <span>移除: {formatExactTime(removedTime)}</span>
           )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+// Guest participant item component (Slice 2.6)
+function GuestParticipantItem({
+  guestParticipant,
+  isOrganizer,
+  matchId,
+}: {
+  guestParticipant: GuestParticipant
+  isOrganizer: boolean
+  matchId: string
+}) {
+  // Extract guest info (Supabase returns as array)
+  const guest =
+  Array.isArray(guestParticipant.guest)
+    ? guestParticipant.guest?.[0]
+    : guestParticipant.guest
+
+  const displayName = guest?.display_name || guest?.email || '未知 Guest'
+  const initial = displayName[0]?.toUpperCase() || '?'
+
+  return (
+    <li className="py-3 px-3 rounded-lg hover:bg-gray-50">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center text-sm font-medium text-purple-700">
+            {initial}
+          </div>
+          <div>
+            <span>{displayName}</span>
+            <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+              Guest
+            </span>
+          </div>
+        </div>
+
+        {/* Organizer can remove guests */}
+        {isOrganizer && (
+          <RemoveGuestButton
+            participantId={guestParticipant.id}
+            guestName={displayName}
+          />
+        )}
+      </div>
+      {/* Show email if different from display name */}
+      {guest?.display_name && guest?.email && (
+        <div className="mt-1 ml-11 text-xs text-gray-400">
+          {guest.email}
         </div>
       )}
     </li>

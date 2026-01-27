@@ -115,10 +115,13 @@ chore: clean up matches page
 每天推进一个可运行的小增量，
 比一次性想清楚所有事情更重要。
 
+### Snippet使用
+在任何编辑器 / Claude Code 输入框里：
+输入：cec
+按 Tab
+完整 snippet 自动展开
 
-常见问题
-
-
+👉 这是效率最高、错误率最低的方式。
 
 
 ### 喂切片前夕Claude Project Prompt — playerhoods.com (Final)
@@ -148,6 +151,11 @@ Migrations:
 - Any change affecting Governance or Contract objects MUST use the - docs/supabase/migrations/Governance Migration Template.sql.
 - Include post-migration verification (column order checks).
 - If a rule is violated, rewrite the migration until fully compliant.
+
+Snippet:
+- For any task involving SQL, Supabase migrations, RLS policies, or database governance,
+the user will provide a separate Execution Contract snippet that MUST be followed strictly.
+- If such a snippet is not provided, the assistant MUST ask for it before proceeding.
 
 If there is ambiguity:
 - Do not guess.

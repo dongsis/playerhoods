@@ -22,6 +22,7 @@ import type { MatchDetails, ParticipantWithProfile, GameType } from '@/types'
 interface MatchWithParticipants extends MatchDetails {
   participants: ParticipantWithProfile[]
   pendingCount: number
+  guests?: any[]          // ✅ 先用 any，确保你能跑通
   isRemoved?: boolean // 当前用户是否被移除
 }
 
@@ -70,6 +71,19 @@ export default async function MatchesPage() {
   let matchesWithParticipants: MatchWithParticipants[] = []
   if (matches && matches.length > 0) {
     const matchIds = matches.map(m => m.id)
+    // 获取所有球局的 Guest 参与者
+    const { data: allGuestParticipants } = await supabase
+      .from('match_participants')
+      .select(`
+    id,
+    match_id,
+    guest_id,
+    guest:match_guests(id, email, display_name)
+  `)
+      .in('match_id', matchIds)
+      .not('guest_id', 'is', null)
+      ;
+    // 获取所有球局的正式参与者（legacy participants）
     const { data: allParticipants } = await supabase
       .from('participants')
       .select(`
@@ -82,15 +96,25 @@ export default async function MatchesPage() {
 
     // 将参与者分配到各个球局
     matchesWithParticipants = matches.map(match => {
-      const participants = allParticipants?.filter(p => p.match_id === match.id) || []
-      const pendingCount = participants.filter(p => p.state === 'pending').length
+      const participants =
+        allParticipants?.filter(p => p.match_id === match.id) || []
+
+      const pendingCount =
+        participants.filter(p => p.state === 'pending').length
+
+      // ✅ 新增：该 match 的 guests
+      const guests =
+        allGuestParticipants?.filter(g => g.match_id === match.id) || []
+
       return {
         ...match,
         participants,
         pendingCount,
+        guests, // ✅ 带进对象
         isRemoved: removedMatchIds.has(match.id),
       }
     })
+
   }
 
   return (
@@ -104,7 +128,7 @@ export default async function MatchesPage() {
             </div>
             <span className="font-semibold text-xl">PlayerHoods</span>
           </Link>
-          
+
           <div className="flex items-center gap-4">
             <Link
               href="/matches/create"
@@ -151,6 +175,9 @@ function MatchCard({ match, currentUserId }: { match: MatchWithParticipants; cur
   const isOrganizer = match.organizer_id === currentUserId
   const confirmedParticipants = match.participants.filter(p => p.state === 'confirmed')
   const pendingParticipants = match.participants.filter(p => p.state === 'pending')
+  const guests = match.guests || []
+  const guestCount = guests.length
+
 
   // 被移除的球局显示特殊卡片
   if (match.isRemoved) {
@@ -271,6 +298,30 @@ function MatchCard({ match, currentUserId }: { match: MatchWithParticipants; cur
               </div>
             </div>
           )}
+
+         
+          {(match.guests?.length || 0) > 0 && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500 mb-1">Guests：</p>
+              <div className="flex flex-wrap gap-1">
+                {(match.guests || []).map((gp: any) => {
+                  const guestRaw = gp.guest
+                  const guest = Array.isArray(guestRaw) ? guestRaw[0] : guestRaw
+                  const displayName = guest?.display_name || guest?.email || '未知 Guest'
+                  return (
+                    <span
+                      key={gp.id}
+                      className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-xs"
+                    >
+                      {displayName}
+                      <span className="text-purple-500">Guest</span>
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
 
           {/* 待确认参与者名单 */}
           {pendingParticipants.length > 0 && (

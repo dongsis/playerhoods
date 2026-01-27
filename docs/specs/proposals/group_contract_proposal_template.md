@@ -124,7 +124,6 @@ Answer explicitly:
 - ☐ Deferred
 
 ### 7.2 Freeze Confirmation (Required for Promotion)
-
 Once accepted, fill and **lock** this section:
 
 > This proposal is frozen and promoted to `GroupContract_v___.md`.
@@ -141,4 +140,5 @@ Once accepted, fill and **lock** this section:
 ## 8. Notes
 
 Optional notes, links to discussions, edge cases considered, or rejected alternatives.
+
 

@@ -171,7 +171,145 @@ Note: Group governance begins at **007+**.
 - `group_details` columns 1–18 remain locked
 - RLS tightening achieved via policy replacement only
 
+### 013_match_group_boundary_check.sql — Applied ✅ (confirmed)
+
+Slice: 2.5 — Match ↔ Group Boundary Check (people-first + guest)
+Scope: matches + match_participants + match_guests (no group back-writes)
+
+Key outcomes:
+- Matches do not require group selection (people-first).
+- Supports non-user (email guest) participants via match-scoped guest records.
+- Conditional provenance:
+  - Boundary-enforced participation requires provenance_group_id with ACTIVE membership proof.
+  - Open/guest participation uses NULL provenance.
+- No changes to GroupContract_v1, enums, or contract-level views.
+### 014_fix_matches_policy_stack.sql — Applied ✅ (confirmed)
+
+Purpose: Removed legacy permissive policies on public.matches that could bypass
+ownership constraints under permissive (OR) RLS evaluation.
+
+Result:
+- Only authenticated ownership policies remain on public.matches:
+  matches_select_own / matches_insert_own / matches_update_own / matches_delete_own
+
+
+### 015_fix_group_members_rls_recursion.sql — Applied ✅ (confirmed)
+
+Purpose:
+- Eliminated infinite recursion in RLS policies on public.group_members.
+
+Implementation:
+- Introduced SECURITY DEFINER boolean helpers:
+  - public.is_active_group_member(group_id, user_id)
+  - public.group_member_exists(group_id, user_id)
+- Replaced policies:
+  - group_members_can_read_members (SELECT)
+  - can_invite_group_member (INSERT)
+
+Result:
+- No direct self-referential SELECTs inside group_members policies.
+- Semantics preserved (no permission widening).
+- No changes to GroupContract_v1, enums, or contract-level views.
+
+### 016_guest_directory_add_guest_rpc.sql — Applied ✅ (manual via Supabase SQL Editor)
+
+- Slice 2.6 — Guest Directory + Add Guest RPC
+- Atomic add_guest_to_match(match_id, email, display_name)
+- Confirmed/active participants may add guests
+- Organizer may remove any participant
+- No guest claim / no historical merge
+
+### 017_fix_is_match_participant_legacy.sql — Applied ✅ (confirmed)
+
+- Slice: 2.6 Hardening — Authorization bridge for legacy participants
+- Scope: Execution-level helper function only (no schema/view/contract changes)
+- Change:
+  Replaced public.is_match_participant(p_match_id, p_user_id) to check BOTH:
+  New path: public.match_participants (user rows)
+  egacy path: public.participants with state = 'confirmed'
+  Purpose:
+  Ensure public.add_guest_to_match(...) authorization works for:
+  Match creator (organizer)
+  Confirmed participants who are still represented only in legacy participants
+  Invariants preserved:
+  No new enums introduced
+  No Contract v1 view changes
+  No changes to Group governance objects
+  Authorization semantics remain: “creator OR confirmed participant can add guest”
+
+### 018_match_guests_read_for_participants.sql — Applied ✅ 
+Slice: 2.6 Bug Fix — Guest details readable by match participants
+Scope: RLS policy on public.match_guests SELECT only (read-path fix)
+Problem:
+Existing policy match_guests_select_own restricts reads to created_by = auth.uid()
+When match detail UI joins match_participants → match_guests, participants cannot read guest rows
+Result: UI shows “unknown guest” and guest counts may be incorrect
+Change:
+Added permissive SELECT policy match_guests_select_for_participants (OR with existing)
+Allows authenticated users to read a guest row iff the guest participates in a match that the user:
+participates in (new match_participants user rows), OR
+participates in (legacy participants state='confirmed'), OR
+created (via matches.created_by)
+Invariants preserved:
+No schema changes
+No view changes
+No Contract v1 changes
+RLS change is loosening (read access), not tightening; therefore additive policy is acceptable under current Postgres permissive-OR model
 ---
+
+
+### 4.3 Match Slices — Execution Summary (People-first, Group provenance optional)
+A) Current Match execution model (facts only)
+The system currently runs two parallel participant representations:
+Legacy path: public.participants
+Used by existing UI flows (display / confirm / status logic)
+New guest-capable path (Slice 2.5+):
+public.match_guests (guest directory, inviter-scoped)
+public.match_participants (guest/user participation rows; supports group boundary fields)
+Migration discipline:
+Match-related changes are execution-level and do not modify GroupContract_v1 or public.group_details view ordering.
+
+B) Guest add flow (Slice 2.6) — authoritative execution truth
+The authoritative write path for adding a non-user participant (guest) is:
+public.add_guest_to_match(p_match_id, p_email, p_display_name) (RPC)
+Guarantees (execution-level):
+Guest uniqueness is match-scoped, not system-scoped
+Authorization is enforced server-side:
+Match creator OR confirmed participant may add guests (see 017)
+Guest directory rows are inviter-scoped by default (created_by = caller)
+
+C) Applied migrations (Match-related)
+
+013_match_group_boundary_check.sql — Applied ✅
+Introduced match_guests + match_participants
+Added execution fields (e.g., enforce_group_boundary, provenance_group_id) for future boundary checks
+014_fix_matches_policy_stack.sql — Applied ✅
+Normalized matches RLS expectations (notably created_by usage)
+016_guest_directory_add_guest_rpc.sql — Applied ✅
+Added RPC public.add_guest_to_match(...)
+Intended as the atomic, match-scoped guest add mechanism
+
+017_fix_is_match_participant_legacy.sql — Applied ✅
+Updated public.is_match_participant(...) authorization bridge:
+Recognizes confirmed legacy participants (participants.state='confirmed')
+Prevents false “unauthorized” when UI still relies on legacy participants
+018_match_guests_read_for_participants.sql — (Pending Apply / Applied ✅)
+Adds SELECT visibility for match participants to read match_guests rows
+Fixes “unknown guest” / missing guest details due to inviter-only read restriction
+
+D) Invariants preserved
+
+No changes to:
+Group Constitution / GroupContract_v1
+public.group_details column order (1–18)
+Group governance semantics or enums
+Any access tightening continues to require policy replacement (OR environment), while read loosening may be additive.
+
+
+
+
+
+
 
 ## 5. Closed decisions (must follow)
 
@@ -212,3 +350,9 @@ Note: Group governance begins at **007+**.
 - invited → pending (Slice 2.2 / Migration 010)
 - pending → active (Slice 2.3 / Migration 011)
 - active → removed (Slice 2.4 / Migration 012)
+
+“当前 participant 数据模型并行；guest path 仅写 match_participants；legacy UI 仍读 participants；未做统一。”
+
+任何结构/权限变更必须以 migration 文件为唯一载体，并通过 Supabase CLI apply。
+禁止只在 Dashboard SQL Editor 手动执行而不落 migration。
+若紧急手动执行，必须在 24h 内补同等 migration 文件并标注原因。

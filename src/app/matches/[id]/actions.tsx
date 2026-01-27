@@ -315,6 +315,208 @@ export function CancelMatchButton({ matchId }: { matchId: string }) {
   )
 }
 
+// 添加 Guest 按钮和表单
+export function AddGuestButton({ matchId }: { matchId: string }) {
+  const router = useRouter()
+  const { showToast } = useToast()
+  const [showForm, setShowForm] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState('')
+  const [displayName, setDisplayName] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!email || !email.includes('@')) {
+      showToast('请输入有效的邮箱地址', 'error')
+      return
+    }
+
+    setLoading(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      showToast('请先登录', 'error')
+      setLoading(false)
+      return
+    }
+
+    // Use atomic RPC (Slice 2.6)
+    // Authorization: caller must be match creator OR confirmed participant
+    // Handles: find-or-create guest + add to match + duplicate check (match-scoped)
+    const { data, error: rpcError } = await supabase.rpc('add_guest_to_match', {
+      p_match_id: matchId,
+      p_email: email,
+      p_display_name: displayName.trim() || null,
+    })
+
+    if (rpcError) {
+      console.error('添加 Guest 失败:', rpcError)
+      showToast(`添加失败: ${rpcError.message}`, 'error')
+      setLoading(false)
+      return
+    }
+
+    // Handle both object and array RPC return shapes
+    // Supabase may return single object or array depending on function signature
+    const result = Array.isArray(data) ? data[0] : data
+
+    // Guard null/undefined payload
+    if (!result || typeof result.status !== 'string') {
+      console.error('RPC 返回格式异常:', data)
+      showToast('添加失败：服务器响应异常', 'error')
+      setLoading(false)
+      return
+    }
+
+    // Handle RPC result status
+    if (result.status === 'already_in_match') {
+      showToast('该邮箱已在此球局中', 'error')
+      setLoading(false)
+      return
+    }
+
+    if (result.status === 'unauthorized') {
+      showToast('您没有权限添加 Guest', 'error')
+      setLoading(false)
+      return
+    }
+
+    if (result.status === 'match_not_found') {
+      showToast('球局不存在', 'error')
+      setLoading(false)
+      return
+    }
+
+    if (result.status !== 'success') {
+      showToast(`添加失败: ${result.status}`, 'error')
+      setLoading(false)
+      return
+    }
+
+    showToast(`已添加 Guest: ${displayName || email}`)
+    setEmail('')
+    setDisplayName('')
+    setShowForm(false)
+    router.refresh()
+    setLoading(false)
+  }
+
+  if (!showForm) {
+    return (
+      <button
+        onClick={() => setShowForm(true)}
+        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+      >
+        添加 Guest
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+      <h3 className="font-medium mb-3">添加 Guest（非注册用户）</h3>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label htmlFor="guest-email" className="block text-sm text-gray-600 mb-1">
+            邮箱 <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="guest-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="guest@example.com"
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+        <div>
+          <label htmlFor="guest-name" className="block text-sm text-gray-600 mb-1">
+            姓名（可选）
+          </label>
+          <input
+            id="guest-name"
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="显示名称"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50"
+          >
+            {loading ? '添加中...' : '确认添加'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowForm(false)
+              setEmail('')
+              setDisplayName('')
+            }}
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            取消
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+// 移除 Guest 按钮 (Slice 2.6)
+export function RemoveGuestButton({
+  participantId,
+  guestName,
+}: {
+  participantId: string
+  guestName: string
+}) {
+  const router = useRouter()
+  const { showToast } = useToast()
+  const [loading, setLoading] = useState(false)
+
+  const handleRemove = async () => {
+    if (!confirm(`确定要移除 ${guestName} 吗？`)) {
+      return
+    }
+
+    setLoading(true)
+    const supabase = createClient()
+
+    const { error } = await supabase
+      .from('match_participants')
+      .delete()
+      .eq('id', participantId)
+
+    if (error) {
+      console.error('移除 Guest 失败:', error)
+      showToast(`移除失败: ${error.message}`, 'error')
+    } else {
+      showToast(`已移除 ${guestName}`)
+      router.refresh()
+    }
+
+    setLoading(false)
+  }
+
+  return (
+    <button
+      onClick={handleRemove}
+      disabled={loading}
+      className="text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
+    >
+      {loading ? '移除中...' : '移除'}
+    </button>
+  )
+}
+
 // 确认球局按钮
 export function ConfirmMatchButton({
   matchId,

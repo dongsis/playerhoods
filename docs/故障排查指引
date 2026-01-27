@@ -1,0 +1,245 @@
+# Guest 显示问题复盘 + 三方协作 Debug Playbook（可复用故障排查文档）
+
+> 项目：playerhoods.com  
+> 范围：Match / Participant / Guest（Supabase + Next.js）  
+> 目的：沉淀一次真实故障的经验，形成 **可复用的排查流程 + 协作章程**，避免未来重复耗时。  
+> 更新时间：2026-01-26
+
+---
+
+## 0. TL;DR（给未来的你）
+
+本次故障“表象”像 RLS，但最终根因是 **前端把 join 字段的返回结构（object vs array）假设错了**，导致 fallback 显示“未知 Guest”。  
+过程中真正耗时的原因是：**缺少一套固定的“证据链”与三方协作分工规则**，导致在 DB/RLS 与 UI/渲染之间反复切换。
+
+这份文档提供三件可以长期复用的东西：
+
+1) **三方协作规则**：什么问题优先交给 Claude、什么问题优先交给 ChatGPT、你要提供哪些证据。  
+2) **“问题包”模板**：如果你要把代码/上下文给 ChatGPT，怎么给才不需要猜。  
+3) **RLS/可见性排查 Checklist**：遇到权限/可见性类 bug 的标准步骤。
+
+---
+
+## 1. 这次故障的复盘（Postmortem）
+
+### 1.1 现象（Symptoms）
+- DB 中 `match_guests / match_participants` 数据存在且正确
+- SQL/Join 验证能看到 `guest.display_name/email`
+- UI：人数 count（详情页/主面板）逐步修正确，但 **Guest 名字长期显示“未知 Guest”**
+- Organizer / Participant 两个角色都可能看到“未知 Guest”（取决于当时策略）
+
+### 1.2 真实根因（Root Causes）
+这不是单点问题，而是“多层叠加”的典型案例：
+
+**A) RLS 复杂度真实存在**
+- 起初 `match_guests_select_own` 只允许创建者读，导致 join 为 `guest: []/null`
+- 后续通过 helper function + 单一 SELECT policy 将可见性修正为 match-scoped
+
+**B) 最终致命点：前端数据结构假设错误**
+- 前端按数组取：`guestParticipant.guest?.[0]`
+- 实际返回常为对象：`guest: { email, display_name }`
+- 于是 `guest?.[0] === undefined` → fallback 成 “未知 Guest”
+
+**C) Type Contract 与 Runtime Contract 不一致**
+- TS 类型把 guest 写成 `Guest[] | null`，反向“支持”了错误写法
+- 真实返回结构依赖 Supabase 关系推断/别名，有时 object、有时 array（需 normalize）
+
+### 1.3 最终稳定状态（Final State）
+- ✅ DB/RLS：participant（含 legacy confirmed）与 organizer 可读同 match 的 guest 行
+- ✅ 前端：Guest 名字正常显示（通过兼容 object/array 的 normalize）
+- ✅ Count：`match_details.confirmed_count` 口径包含 guest_count
+- ✅ 协作：形成固定 debug 协议（见后文）
+
+---
+
+## 2. 三方协作方式（你 × Claude Code × ChatGPT）
+
+### 2.1 三方能力边界（谁擅长什么）
+
+| 角色 | 最强优势 | 最适合做的事 | 不适合承担的主责 |
+|---|---|---|---|
+| 你（Owner） | 产品规则、现场复现、最终决策 | 给出“谁应该看到什么”、提供证据链、决定是否上线 | 反复写/改大量 SQL/RLS（会很累且风险高） |
+| Claude Code（Repo 现场执行） | 直接读全量代码、快速改动、立即运行验证 | 定位文件、加日志、修前端映射、生成诊断 dump | 设计治理/权限的长期正确性（容易“快修但累积债务”） |
+| ChatGPT（架构裁判/方法论） | 规则抽象、权限语义、最小改动策略、系统一致性 | 定义 RLS/可见性语义、确定排查路径、审阅迁移影响、写 playbook/文档 | 直接翻你本地 repo（看不到）导致“现场细节”只能靠输入 |
+
+**一句话：**
+- **Claude**：最快把问题“修掉”（execution）
+- **ChatGPT**：确保修法“不会破坏系统未来”（governance）
+- **你**：定义目标 + 选择路径（product decision）
+
+### 2.2 分流规则（什么问题给谁更快）
+
+#### 优先给 Claude（代码现场型）
+满足任一条件就让 Claude 先上：
+- UI 显示不对，但 DB/SQL 已证明数据存在
+- console.log 已能拿到 data，但渲染仍错误
+- 典型关键词：`undefined/null`、map/render、类型、条件分支、组件缓存、RSC、SSR/CSR 差异
+
+**Claude 的标准动作：**
+1) grep 定位文件与调用链
+2) 在最靠近渲染处打印真实返回 shape（JSON.stringify）
+3) 修 normalize / 类型 / 渲染逻辑
+4) 只要能用最小改动修复，坚决不动 DB/RLS
+
+#### 优先给 ChatGPT（语义/权限/架构型）
+满足任一条件就先找 ChatGPT：
+- RLS/Policy/Function/View 设计要改
+- 你不确定“规则应该是什么”（谁能看、谁能操作）
+- 需要判断改动是否会破坏 Group Contract / Execution State
+- 涉及 migration 合并、命名、残留 policy 清理、长期维护成本
+
+**ChatGPT 的标准动作：**
+1) 抽象规则 → 形成可验证的 truth table
+2) 给出“最小可行改动”（Minimal Delta）
+3) 明确验证查询（SQL / UI / role-based）
+4) 输出可落地 migration（并注明影响面）
+
+### 2.3 一个固定的 Debug 节奏（最省时）
+
+**永远先拿“证据链”再改代码**。节奏如下：
+
+1) **数据存在**：service role / dashboard 证明表里有数据  
+2) **权限可读**：以真实用户请求验证 RLS（前端/模拟）  
+3) **真实 shape**：打印第一条对象的 JSON（而不是凭类型猜）  
+4) **再动代码**：只改“所属层级”的最小点（DB/RLS 或 UI 映射）
+
+> 本次耗时的核心原因：第 3 步（真实 shape）出现得太晚。
+
+---
+
+## 3. “问题包”模板：你如何把信息/代码给 ChatGPT 才能一次诊断完整
+
+你说得对：如果我看不到 repo，就会被迫“猜”。要避免猜，需要你给一个标准“问题包”。
+
+### 3.1 推荐输入包（最小闭环）
+把以下内容一次性贴给我（通常 10–20 分钟准备完）：
+
+**A) 现象与复现**
+- 现象：看到什么
+- 期望：应该看到什么
+- 复现步骤：1-2-3（含角色：organizer/participant）
+- 页面 URL（本地/线上）
+
+**B) 关键代码（闭环链路）**
+- `src/app/matches/[id]/page.tsx`（完整）
+- `src/app/matches/[id]/actions.tsx`（完整）
+- `src/app/matches/page.tsx`（列表页相关）
+- `src/types` 中相关类型（Participant/Guest/MatchDetails）
+- `src/lib/supabase/server.ts`（createClient/session 相关）
+
+**C) DB/RLS 关键信息**
+- 涉及表 / view / function 名称（例如：`match_guests`, `match_participants`, `match_details`, `can_view_match_guest_in_match`）
+- 当前 `pg_policies`（只需相关表）
+- 最近执行的 migration 列表与顺序（017/018/019/020…）
+
+**D) 证据链（必须有）**
+- 关键 supabase query 的返回（第一条 JSON）
+- 是否有 error（必须贴出）
+- 如果是 RLS：贴出 `auth.uid()` 在当前请求下是否非空
+
+### 3.2 让 Claude 充当“采集器”（最省力）
+如果你懒得手动整理，让 Claude 输出一个“诊断 dump”，然后转发给我。dump 需要包含：
+
+1) 相关文件清单（入口→数据→渲染）  
+2) 每个文件的关键片段（20–80 行）  
+3) 真实返回 shape（JSON）  
+4) 当前 policy/function/view 的定义（只贴相关）
+
+这样我这边就能做到接近“看到了全局”，而不是猜。
+
+---
+
+## 4. RLS / 可见性问题排查 Checklist（长期复用）
+
+下面是你以后遇到“看不到/未知/空数组”时的标准流程。每一步都有“通过/失败”的下一步指向。
+
+### 4.1 先判断：这是不是 RLS 问题？（不要靠感觉）
+
+**强信号：**
+- Supabase 返回 `data` 为空但 `error` 不为空（或有 401/permission denied） → 高概率 RLS  
+- Supabase join 字段为 `[]/null`，但主表行存在 → 高概率被子表 RLS 挡住  
+- SQL（service role）能查到，前端用户查不到 → 高概率 RLS
+
+**弱信号：**
+- SQL 能查到，前端也能拿到数据（console.log 有 display_name）但 UI 仍显示 fallback → 高概率前端映射问题
+
+### 4.2 “四层证据链”标准动作（必须做）
+
+1) **DB 存在性**（service/admin）  
+   - 表里有没有对应行（`match_participants` 是否有 guest_id）  
+2) **RLS 可读性**（真实用户）  
+   - 用前端同一用户请求验证（不要用 SQL Editor 的默认 session）  
+3) **Join 形状**（真实返回）  
+   - `console.log(JSON.stringify(data?.[0], null, 2))`  
+4) **渲染链路**  
+   - 确认 map/key/条件分支是否走到预期
+
+### 4.3 常见坑清单（你们这次都遇到了）
+
+- SQL Editor 里 `auth.uid()` 为 NULL（不是 bug，是上下文不带 JWT）  
+- 同一个表存在多个 SELECT policy，OR 叠加导致行为难以预测（应收敛为单一最终 policy）  
+- policy 内部查询 RLS 受保护表导致“嵌套 RLS”失败（用 SECURITY DEFINER helper）  
+- Supabase join 返回 object 或 array 不稳定（必须 normalize）  
+- TS 类型先写错导致代码跟着错（先 log 后写类型）  
+- Server Components / RSC 缓存导致看起来“没更新”（需 hard refresh 或检查 fetch/cache）
+
+---
+
+## 5. 推荐的“防回归”措施（做一次，长期省时间）
+
+### 5.1 前端：统一 normalize + 契约断言
+对所有 join 字段统一做 normalize：
+
+```ts
+type GuestRow = { id: string; email: string; display_name: string | null }
+type GuestRel = GuestRow | GuestRow[] | null
+
+export function normalizeGuest(g: GuestRel): GuestRow | null {
+  if (!g) return null
+  return Array.isArray(g) ? (g[0] ?? null) : g
+}
+```
+
+开发态加断言（shape 变了立刻报警）：
+```ts
+if (process.env.NODE_ENV === 'development') {
+  console.assert(guest && guest.email, 'Guest shape unexpected', guestParticipant.guest)
+}
+```
+
+### 5.2 DB：Policy 收敛与命名纪律
+- 每张关键表的 SELECT policy **尽量收敛为 1 条**（减少 OR 叠加）
+- policy/function/view 的命名与版本管理保持一致（避免 `_broken/_disabled/_v2` 长期残留）
+- 每次 migration 输出 “Verification queries”（你们这次证明非常有用）
+
+### 5.3 协作：固定“证据链 + 分流规则”
+- 没有证据链，不开改动
+- 一次只改一个层级（DB/RLS 或 UI/渲染），避免同时改两端导致不可归因
+
+---
+
+## 6. 附：本次建议的最终可见性语义（长期锚点）
+
+**Match-scoped guest visibility（最终语义）**：
+
+一个用户可以看到 guest 当且仅当满足任一：
+- 我是 guest 的创建者
+- 我是该 match 的 organizer（或 match creator）
+- 我在该 match 中（legacy participants 非 removed，或 match_participants.user_id 存在）
+- 我是 invited_by（非 organizer 也可邀请 → 必须可见）
+
+> 注意：具体实现可以是单一 SELECT policy + SECURITY DEFINER helper function。
+
+---
+
+## 7. 结束语（给未来的你）
+
+这次不是“技术小白卡住”，而是系统从 MVP 向“可治理平台”演进时必经的一次复杂故障：  
+跨越了 **DB/RLS/Join/Type/Render** 多层边界。
+
+你最重要的收获不是某个 SQL，而是：  
+**建立一套可复用的排查方法与协作协议。**
+
+---
+
+（完）

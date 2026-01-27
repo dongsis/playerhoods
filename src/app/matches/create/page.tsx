@@ -116,9 +116,11 @@ export default function CreateMatchPage() {
     }
 
     // 创建球局
+    // RLS policy (014) requires: created_by = auth.uid()
     const { data, error: insertError } = await supabase
       .from('matches')
       .insert({
+        created_by: user.id,
         organizer_id: user.id,
         game_type: gameType,
         doubles_mode: gameType === 'doubles' ? doublesMode : null,
