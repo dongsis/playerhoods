@@ -75,7 +75,7 @@ export type Match = {
   status: MatchStatus
   admission_mode: MatchAdmissionMode
   club_id: string | null
-  court_ids: string[] | null
+  court_ids: string[] | null  // deprecated: use match_courts table; kept until column dropped
   match_date: string | null
   start_time: string | null
   duration_minutes: number | null
@@ -87,6 +87,19 @@ export type Match = {
   can_participants_manage_participants: boolean
   formed_at: string | null
   start_at_utc: string | null
+  created_at: string
+}
+
+export type MatchCourt = {
+  id: string
+  match_id: string
+  slot_index: number
+  court_label: string
+  court_location: string | null
+  court_notes: string | null
+  start_at: string | null
+  end_at: string | null
+  created_by: string
   created_at: string
 }
 
@@ -119,6 +132,11 @@ export type MatchParticipant = {
 }
 
 // View types
+export type ProfileDisplay = {
+  id: string
+  display_name: string
+}
+
 export type MatchFormed = {
   match_id: string
   required_count: number
@@ -137,17 +155,26 @@ export type MatchParticipantAction = {
 }
 
 // Joined types for UI convenience
+// Use ProfileDisplay (from view) for other-user display name resolution
 export type MatchParticipantWithDetails = MatchParticipant & {
-  profile?: Profile | null
+  profile?: ProfileDisplay | null
   guest?: Guest | null
 }
 
 export type MatchParticipantActionWithProfile = MatchParticipantAction & {
-  profile?: Profile | null
+  profile?: ProfileDisplay | null
 }
 
 export type GroupMemberWithProfile = GroupMember & {
-  profile?: Profile | null
+  profile?: ProfileDisplay | null
+}
+
+export type MatchSummary = Match & {
+  organizer_name: string
+  confirmed_count: number
+  pending_count: number
+  confirmed_names: string[]
+  pending_names: string[]
 }
 
 // Database interface for Supabase client typing
@@ -190,6 +217,12 @@ export interface Database {
         Update: Partial<Match>
         Relationships: []
       }
+      match_courts: {
+        Row: MatchCourt
+        Insert: Partial<MatchCourt> & { match_id: string; slot_index: number; court_label: string; created_by: string }
+        Update: Partial<MatchCourt>
+        Relationships: []
+      }
       guests: {
         Row: Guest
         Insert: Partial<Guest> & { display_name: string; created_by: string }
@@ -212,6 +245,10 @@ export interface Database {
     Views: {
       match_formed: {
         Row: MatchFormed
+        Relationships: []
+      }
+      profile_display: {
+        Row: ProfileDisplay
         Relationships: []
       }
     }
@@ -240,7 +277,6 @@ export interface Database {
           p_start_time?: string | null
           p_duration_minutes?: number | null
           p_club_id?: string | null
-          p_court_ids?: string[] | null
           p_invitation_scope_group_ids?: string[] | null
           p_can_participants_invite_users?: boolean
           p_can_participants_add_guests?: boolean

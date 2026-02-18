@@ -7,7 +7,9 @@
       "Bash(npm view:*)",
       "Bash(npx tsc:*)",
       "Bash(timeout:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ]
   }
 }

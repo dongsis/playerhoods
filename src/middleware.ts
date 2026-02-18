@@ -38,7 +38,8 @@ export async function middleware(request: NextRequest) {
 
   // Protected routes - redirect to login if not authenticated
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login')
-  const isProtectedRoute = !isAuthRoute && request.nextUrl.pathname !== '/'
+  const isOnboarding = request.nextUrl.pathname.startsWith('/onboarding')
+  const isProtectedRoute = !isAuthRoute && !isOnboarding && request.nextUrl.pathname !== '/'
 
   if (!user && isProtectedRoute) {
     return NextResponse.redirect(new URL('/login', request.url))
@@ -47,6 +48,22 @@ export async function middleware(request: NextRequest) {
   // Redirect logged-in users away from login page
   if (user && isAuthRoute) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
+  // Profile onboarding: redirect if display_name not set
+  if (user && isProtectedRoute) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile || !profile.display_name) {
+      const next = request.nextUrl.pathname
+      return NextResponse.redirect(
+        new URL(`/onboarding/profile?next=${encodeURIComponent(next)}`, request.url)
+      )
+    }
   }
 
   return response

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Group, GroupMember, GroupMemberWithProfile, Profile } from '@/lib/types/database'
+import type { Database, Group, GroupMember, GroupMemberWithProfile, ProfileDisplay } from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -39,17 +39,17 @@ export async function getGroupMembers(supabase: Client, groupId: string): Promis
   const members = (membersData || []) as GroupMember[]
   if (members.length === 0) return []
 
-  // Then get profiles for all user_ids
+  // Then get display names for all user_ids via public view
   const userIds = members.map(m => m.user_id)
   const { data: profilesData, error: profilesError } = await supabase
-    .from('profiles')
+    .from('profile_display')
     .select('*')
     .in('id', userIds)
 
   if (profilesError) throw profilesError
 
   // Join them manually
-  const profiles = (profilesData || []) as Profile[]
+  const profiles = (profilesData || []) as ProfileDisplay[]
   const profileMap = new Map(profiles.map(p => [p.id, p]))
 
   const result: GroupMemberWithProfile[] = members.map(member => ({

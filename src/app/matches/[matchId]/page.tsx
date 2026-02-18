@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getMatch, getMatchFormed, getMatchParticipants, getMyParticipation, isUserInMatchScope, getMatchActions } from '@/lib/api/matches'
+import { getMatch, getMatchFormed, getMatchParticipants, getMatchCourts, getMyParticipation, isUserInMatchScope, getMatchActions } from '@/lib/api/matches'
 import { MatchActions } from './MatchActions'
 import { ParticipantsList } from './ParticipantsList'
 import { InviteUserForm } from './InviteUserForm'
@@ -25,9 +25,10 @@ export default async function MatchDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [formed, participants, myParticipation, inScope, actionsMap] = await Promise.all([
+  const [formed, participants, matchCourts, myParticipation, inScope, actionsMap] = await Promise.all([
     getMatchFormed(supabase, matchId).catch((e) => { console.error('getMatchFormed error:', e); return null }),
     getMatchParticipants(supabase, matchId).catch((e) => { console.error('getMatchParticipants error:', e); return [] }),
+    getMatchCourts(supabase, matchId).catch((e) => { console.error('getMatchCourts error:', e); return [] }),
     user ? getMyParticipation(supabase, matchId, user.id).catch((e) => { console.error('getMyParticipation error:', e); return null }) : null,
     user ? isUserInMatchScope(supabase, matchId, user.id).catch((e) => { console.error('isUserInMatchScope error:', e); return false }) : false,
     getMatchActions(supabase, matchId).catch((e) => { console.error('getMatchActions error:', e); return new Map() }),
@@ -63,6 +64,9 @@ export default async function MatchDetailPage({ params }: Props) {
           <span><strong>Status:</strong> {match.status}</span>
           <span><strong>Date:</strong> {match.match_date || 'TBD'}</span>
           {match.start_time && <span><strong>Time:</strong> {match.start_time}</span>}
+          {matchCourts.length > 0 && (
+            <span><strong>Courts:</strong> {matchCourts.map(c => c.court_label).join(', ')}</span>
+          )}
         </div>
       </header>
 

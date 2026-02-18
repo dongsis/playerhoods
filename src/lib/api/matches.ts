@@ -2,11 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Database,
   Match,
+  MatchSummary,
+  MatchCourt,
   MatchParticipant,
   MatchParticipantWithDetails,
   MatchParticipantAction,
   MatchParticipantActionWithProfile,
   MatchFormed,
+  ProfileDisplay,
   Club,
   Court,
   Profile,
@@ -25,6 +28,106 @@ export async function getMatches(supabase: Client) {
 
   if (error) throw error
   return data as Match[]
+}
+
+function getDisplayName(
+  userId: string | null,
+  guestId: string | null,
+  profileMap: Map<string, ProfileDisplay>,
+  guestMap: Map<string, Guest>,
+): string {
+  if (guestId) {
+    const guest = guestMap.get(guestId)
+    return guest ? `${guest.display_name} (Guest)` : 'Guest'
+  }
+  if (userId) {
+    const p = profileMap.get(userId)
+    if (p?.display_name) return p.display_name
+    return userId.slice(0, 6)
+  }
+  return 'Unknown'
+}
+
+export async function getMatchesWithSummary(supabase: Client): Promise<MatchSummary[]> {
+  // 1. Fetch matches + formed counts in parallel
+  const [matchesRes, formedRes] = await Promise.all([
+    supabase.from('matches').select('*').order('match_date', { ascending: true }),
+    supabase.from('match_formed').select('*'),
+  ])
+
+  if (matchesRes.error) throw matchesRes.error
+  if (formedRes.error) throw formedRes.error
+
+  const matches = matchesRes.data as Match[]
+  const formedRows = formedRes.data as MatchFormed[]
+  const formedMap = new Map(formedRows.map(f => [f.match_id, f]))
+
+  if (matches.length === 0) return []
+
+  // 2. Fetch all active participants for these matches
+  const matchIds = matches.map(m => m.id)
+  const { data: participantsData, error: participantsError } = await supabase
+    .from('match_participants')
+    .select('*')
+    .in('match_id', matchIds)
+    .in('status', ['pending', 'confirmed'])
+
+  if (participantsError) throw participantsError
+  const participants = (participantsData || []) as MatchParticipant[]
+
+  // 3. Fetch profiles + guests for display names (include organizer IDs)
+  const organizerIds = matches.map(m => m.organizer_id)
+  const userIds = [...new Set([
+    ...participants.filter(p => p.user_id).map(p => p.user_id as string),
+    ...organizerIds,
+  ])]
+  const guestIds = [...new Set(participants.filter(p => p.guest_id).map(p => p.guest_id as string))]
+
+  let profileMap = new Map<string, ProfileDisplay>()
+  let guestMap = new Map<string, Guest>()
+
+  const [profilesRes, guestsRes] = await Promise.all([
+    userIds.length > 0
+      ? supabase.from('profile_display').select('*').in('id', userIds)
+      : Promise.resolve({ data: [], error: null }),
+    guestIds.length > 0
+      ? supabase.from('guests').select('*').in('id', guestIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (profilesRes.error) throw profilesRes.error
+  if (guestsRes.error) throw guestsRes.error
+
+  profileMap = new Map(((profilesRes.data || []) as ProfileDisplay[]).map(p => [p.id, p]))
+  guestMap = new Map(((guestsRes.data || []) as Guest[]).map(g => [g.id, g]))
+
+  // 4. Group participants by match and compute summaries
+  const participantsByMatch = new Map<string, MatchParticipant[]>()
+  for (const p of participants) {
+    const list = participantsByMatch.get(p.match_id) || []
+    list.push(p)
+    participantsByMatch.set(p.match_id, list)
+  }
+
+  return matches.map(match => {
+    const formed = formedMap.get(match.id)
+    const mps = participantsByMatch.get(match.id) || []
+    const confirmed = mps.filter(p => p.status === 'confirmed')
+    const pending = mps.filter(p => p.status === 'pending')
+
+    return {
+      ...match,
+      organizer_name: getDisplayName(match.organizer_id, null, profileMap, guestMap),
+      confirmed_count: formed?.confirmed_count ?? confirmed.length,
+      pending_count: pending.length,
+      confirmed_names: confirmed.slice(0, 3).map(p =>
+        getDisplayName(p.user_id, p.guest_id, profileMap, guestMap)
+      ),
+      pending_names: pending.slice(0, 3).map(p =>
+        getDisplayName(p.user_id, p.guest_id, profileMap, guestMap)
+      ),
+    }
+  })
 }
 
 export async function getMatch(supabase: Client, matchId: string) {
@@ -64,15 +167,15 @@ export async function getMatchParticipants(supabase: Client, matchId: string): P
   const userIds = participants.filter(p => p.user_id).map(p => p.user_id as string)
   const guestIds = participants.filter(p => p.guest_id).map(p => p.guest_id as string)
 
-  let profileMap = new Map<string, Profile>()
+  let profileMap = new Map<string, ProfileDisplay>()
   if (userIds.length > 0) {
     const { data: profilesData, error: profilesError } = await supabase
-      .from('profiles')
+      .from('profile_display')
       .select('*')
       .in('id', userIds)
 
     if (profilesError) throw profilesError
-    const profiles = (profilesData || []) as Profile[]
+    const profiles = (profilesData || []) as ProfileDisplay[]
     profileMap = new Map(profiles.map(p => [p.id, p]))
   }
 
@@ -137,6 +240,41 @@ export async function getCourts(supabase: Client, clubId: string) {
 
   if (error) throw error
   return data as Court[]
+}
+
+// ============================================================================
+// match_courts operations
+// ============================================================================
+
+export async function getMatchCourts(supabase: Client, matchId: string) {
+  const { data, error } = await supabase
+    .from('match_courts')
+    .select('*')
+    .eq('match_id', matchId)
+    .order('slot_index', { ascending: true })
+
+  if (error) throw error
+  return data as MatchCourt[]
+}
+
+export async function addMatchCourt(
+  supabase: Client,
+  data: { match_id: string; slot_index: number; court_label: string; created_by: string; court_location?: string; court_notes?: string }
+) {
+  const { error } = await supabase
+    .from('match_courts')
+    .insert(data)
+
+  if (error) throw error
+}
+
+export async function removeMatchCourt(supabase: Client, matchCourtId: string) {
+  const { error } = await supabase
+    .from('match_courts')
+    .delete()
+    .eq('id', matchCourtId)
+
+  if (error) throw error
 }
 
 // ============================================================================
@@ -253,14 +391,14 @@ export async function getMatchActions(
   const actions = (data || []) as MatchParticipantAction[]
   if (actions.length === 0) return new Map()
 
-  // Fetch profiles for all actors
+  // Fetch display names for all actors via public view
   const userIds = [...new Set(actions.map(a => a.created_by))]
   const { data: profilesData } = await supabase
-    .from('profiles')
+    .from('profile_display')
     .select('*')
     .in('id', userIds)
 
-  const profileMap = new Map((profilesData || []).map((p: Profile) => [p.id, p]))
+  const profileMap = new Map((profilesData || []).map((p: ProfileDisplay) => [p.id, p]))
 
   // Group by participant_id
   const result = new Map<string, MatchParticipantActionWithProfile[]>()
@@ -277,6 +415,7 @@ export async function getMatchActions(
 }
 
 // Match creation via RPC (creates match + auto-adds organizer as confirmed participant)
+// Court slots are inserted separately into match_courts after creation.
 export async function createMatch(
   supabase: Client,
   data: {
@@ -286,7 +425,7 @@ export async function createMatch(
     duration_minutes?: number
     game_type?: string
     club_id?: string
-    court_ids?: string[]
+    court_slots?: { court_label: string }[]
     invitation_scope_group_ids?: string[]
     can_participants_invite_users?: boolean
     can_participants_add_guests?: boolean
@@ -301,7 +440,6 @@ export async function createMatch(
   if (data.start_time) args.p_start_time = data.start_time
   if (data.duration_minutes != null) args.p_duration_minutes = data.duration_minutes
   if (data.club_id) args.p_club_id = data.club_id
-  if (data.court_ids?.length) args.p_court_ids = data.court_ids
   if (data.invitation_scope_group_ids?.length) args.p_invitation_scope_group_ids = data.invitation_scope_group_ids
   if (data.can_participants_invite_users != null) args.p_can_participants_invite_users = data.can_participants_invite_users
   if (data.can_participants_add_guests != null) args.p_can_participants_add_guests = data.can_participants_add_guests
@@ -310,5 +448,24 @@ export async function createMatch(
   const { data: match, error } = await supabase.rpc('rpc_match_create', args)
 
   if (error) throw error
-  return match as Match
+  const created = match as Match
+
+  // Insert court slots into match_courts table
+  if (data.court_slots?.length) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const rows = data.court_slots.map((slot, i) => ({
+        match_id: created.id,
+        slot_index: i + 1,
+        court_label: slot.court_label,
+        created_by: user.id,
+      }))
+      const { error: courtError } = await supabase
+        .from('match_courts')
+        .insert(rows)
+      if (courtError) throw courtError
+    }
+  }
+
+  return created
 }
