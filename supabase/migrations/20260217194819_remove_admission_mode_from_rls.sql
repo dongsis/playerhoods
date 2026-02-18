@@ -1,0 +1,3 @@
+-- admission_mode removed from RLS
+-- This migration already applied in production.
+-- No-op for rebuild consistency.
