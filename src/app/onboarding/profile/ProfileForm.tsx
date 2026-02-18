@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { initProfile } from '@/lib/api/identities'
 import type { Profile } from '@/lib/types/database'
 
 interface Props {
@@ -11,7 +12,7 @@ interface Props {
   next: string
 }
 
-export function ProfileForm({ userId, existing, next }: Props) {
+export function ProfileForm({ userId: _userId, existing, next }: Props) {
   const [displayName, setDisplayName] = useState(existing?.display_name || '')
   const [firstName, setFirstName] = useState(existing?.first_name || '')
   const [lastName, setLastName] = useState(existing?.last_name || '')
@@ -32,24 +33,25 @@ export function ProfileForm({ userId, existing, next }: Props) {
 
     const supabase = createSupabaseBrowserClient()
 
-    const { error: upsertError } = await supabase
-      .from('profiles')
-      .upsert({
-        id: userId,
+    try {
+      await initProfile(supabase, {
         display_name: trimmed,
-        first_name: firstName.trim() || '',
-        last_name: lastName.trim() || '',
-        updated_at: new Date().toISOString(),
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
       })
-
-    if (upsertError) {
-      setError(upsertError.message)
-      setLoading(false)
-      return
+      router.push(next)
+      router.refresh()
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message || 'Failed to save profile'
+      // already_initialized means the user skipped back — treat as success
+      if (msg.includes('already_initialized')) {
+        router.push(next)
+        router.refresh()
+      } else {
+        setError(msg)
+        setLoading(false)
+      }
     }
-
-    router.push(next)
-    router.refresh()
   }
 
   return (

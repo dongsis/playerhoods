@@ -1,0 +1,131 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database, Club, ClubIdentity, ClubHandleCheckResult } from '@/lib/types/database'
+
+type Client = SupabaseClient<Database>
+
+// ============================================================================
+// Profile identity RPCs
+// ============================================================================
+
+/** First-time onboarding: set display_name, first_name, last_name via RPC. */
+export async function initProfile(
+  supabase: Client,
+  params: { display_name: string; first_name?: string; last_name?: string }
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_profile_init', {
+    p_display_name: params.display_name,
+    p_first_name: params.first_name ?? null,
+    p_last_name: params.last_name ?? null,
+  })
+  if (error) throw error
+}
+
+/** Update non-identity profile fields (first_name, last_name only). */
+export async function updateProfile(
+  supabase: Client,
+  params: { first_name?: string; last_name?: string }
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_profile_update', {
+    p_first_name: params.first_name ?? null,
+    p_last_name: params.last_name ?? null,
+  })
+  if (error) throw error
+}
+
+// ============================================================================
+// Club handle RPCs
+// ============================================================================
+
+/** Check if a handle is available in a club; returns suggestions if taken. */
+export async function checkClubHandle(
+  supabase: Client,
+  clubId: string,
+  handle: string
+): Promise<ClubHandleCheckResult> {
+  const { data, error } = await supabase.rpc('rpc_club_handle_check', {
+    p_club_id: clubId,
+    p_handle: handle,
+  })
+  if (error) throw error
+  // RPC returns a table row as array; take first element
+  const row = (data as ClubHandleCheckResult[])?.[0]
+  return row ?? { available: false, suggestions: [] }
+}
+
+/** Join a club with the given handle. */
+export async function joinClub(
+  supabase: Client,
+  clubId: string,
+  handle: string
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_club_join', {
+    p_club_id: clubId,
+    p_handle: handle,
+  })
+  if (error) throw error
+}
+
+/** Rename the user's handle in a specific club. Updates display_name if primary club. */
+export async function setClubHandle(
+  supabase: Client,
+  clubId: string,
+  newHandle: string
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_club_handle_set', {
+    p_club_id: clubId,
+    p_new_handle: newHandle,
+  })
+  if (error) throw error
+}
+
+/** Change the user's primary club; syncs display_name to that club's handle. */
+export async function setPrimaryClub(supabase: Client, clubId: string): Promise<void> {
+  const { error } = await supabase.rpc('rpc_profile_set_primary_club', {
+    p_club_id: clubId,
+  })
+  if (error) throw error
+}
+
+// ============================================================================
+// Queries
+// ============================================================================
+
+/** Get all club memberships (with club info) for the current user. */
+export async function getMyClubIdentities(
+  supabase: Client
+): Promise<(ClubIdentity & { club: Club })[]> {
+  const { data, error } = await supabase
+    .from('club_identities')
+    .select('*, club:clubs(*)')
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as unknown as (ClubIdentity & { club: Club })[]
+}
+
+/** Get all clubs the user has NOT yet joined (for the join UI). */
+export async function getJoinableClubs(
+  supabase: Client
+): Promise<Club[]> {
+  // First get clubs user has joined
+  const { data: myIds, error: err1 } = await supabase
+    .from('club_identities')
+    .select('club_id')
+  if (err1) throw err1
+
+  const joinedIds = (myIds ?? []).map(r => r.club_id)
+
+  const query = supabase
+    .from('clubs')
+    .select('*')
+    .order('name', { ascending: true })
+
+  if (joinedIds.length > 0) {
+    const { data, error } = await query.not('id', 'in', `(${joinedIds.join(',')})`)
+    if (error) throw error
+    return (data ?? []) as Club[]
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+  return (data ?? []) as Club[]
+}

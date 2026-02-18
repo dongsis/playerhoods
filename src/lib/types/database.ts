@@ -25,6 +25,7 @@ export type Profile = {
   plays_doubles: boolean
   primary_club_id: string | null
   secondary_club_ids: string[] | null
+  is_super_admin: boolean
   created_at: string
   updated_at: string
 }
@@ -36,6 +37,14 @@ export type Club = {
   notes: string | null
   timezone: string
   created_at: string
+}
+
+export type ClubAdmin = {
+  id: string
+  user_id: string
+  club_id: string
+  granted_by: string
+  granted_at: string
 }
 
 export type Court = {
@@ -169,12 +178,38 @@ export type GroupMemberWithProfile = GroupMember & {
   profile?: ProfileDisplay | null
 }
 
+export type ClubAdminWithDetails = ClubAdmin & {
+  profile?: ProfileDisplay | null
+}
+
 export type MatchSummary = Match & {
   organizer_name: string
   confirmed_count: number
   pending_count: number
   confirmed_names: string[]
   pending_names: string[]
+}
+
+// Club identity (per-club handle)
+export type ClubIdentity = {
+  id: string
+  club_id: string
+  user_id: string
+  club_handle: string
+  club_handle_norm: string
+  created_at: string
+}
+
+export type ClubHandleCheckResult = {
+  available: boolean
+  suggestions: string[]
+}
+
+// RPC return type for user search
+export type AdminUserSearchResult = {
+  user_id: string
+  display_name: string
+  email: string
 }
 
 // Database interface for Supabase client typing
@@ -191,6 +226,19 @@ export interface Database {
         Row: Club
         Insert: Partial<Club>
         Update: Partial<Club>
+        Relationships: []
+      }
+      club_admins: {
+        Row: ClubAdmin
+        Insert: Partial<ClubAdmin> & { user_id: string; club_id: string; granted_by: string }
+        Update: Partial<ClubAdmin>
+        Relationships: []
+      }
+      club_identities: {
+        Row: ClubIdentity
+        // club_handle_norm is GENERATED ALWAYS — excluded from Insert/Update
+        Insert: Partial<Omit<ClubIdentity, 'club_handle_norm'>> & { club_id: string; user_id: string; club_handle: string }
+        Update: Partial<Omit<ClubIdentity, 'club_handle_norm'>>
         Relationships: []
       }
       courts: {
@@ -256,6 +304,66 @@ export interface Database {
       is_user_in_match_scope: {
         Args: { p_match_id: string; p_user_id: string }
         Returns: boolean
+      }
+      rpc_profile_init: {
+        Args: { p_display_name: string; p_first_name?: string | null; p_last_name?: string | null }
+        Returns: void
+      }
+      rpc_profile_update: {
+        Args: { p_first_name?: string | null; p_last_name?: string | null }
+        Returns: void
+      }
+      rpc_club_handle_check: {
+        Args: { p_club_id: string; p_handle: string }
+        Returns: ClubHandleCheckResult[]
+      }
+      rpc_club_join: {
+        Args: { p_club_id: string; p_handle: string }
+        Returns: void
+      }
+      rpc_club_handle_set: {
+        Args: { p_club_id: string; p_new_handle: string }
+        Returns: void
+      }
+      rpc_profile_set_primary_club: {
+        Args: { p_club_id: string }
+        Returns: void
+      }
+      is_club_admin: {
+        Args: { p_club_id: string }
+        Returns: boolean
+      }
+      rpc_admin_user_search: {
+        Args: { p_query: string }
+        Returns: AdminUserSearchResult[]
+      }
+      rpc_club_admin_grant: {
+        Args: { p_user_id: string; p_club_id: string }
+        Returns: void
+      }
+      rpc_club_admin_revoke: {
+        Args: { p_user_id: string; p_club_id: string }
+        Returns: void
+      }
+      rpc_club_create: {
+        Args: { p_name: string; p_location_text?: string | null; p_timezone?: string; p_notes?: string | null }
+        Returns: Club
+      }
+      rpc_club_update: {
+        Args: { p_club_id: string; p_name?: string | null; p_location_text?: string | null; p_timezone?: string | null; p_notes?: string | null }
+        Returns: void
+      }
+      rpc_court_create: {
+        Args: { p_club_id: string; p_court_code: string; p_surface?: string | null; p_notes?: string | null }
+        Returns: Court
+      }
+      rpc_court_update: {
+        Args: { p_court_id: string; p_court_code?: string | null; p_surface?: string | null; p_notes?: string | null }
+        Returns: void
+      }
+      rpc_court_delete: {
+        Args: { p_court_id: string }
+        Returns: void
       }
       rpc_group_accept_invite: {
         Args: { p_group_id: string }
