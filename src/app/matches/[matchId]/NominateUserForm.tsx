@@ -18,6 +18,7 @@ interface Props {
  */
 export function NominateUserForm({ matchId }: Props) {
   const [userId, setUserId] = useState('')
+  const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -32,9 +33,10 @@ export function NominateUserForm({ matchId }: Props) {
     const supabase = createSupabaseBrowserClient()
 
     try {
-      await nominateUser(supabase, matchId, userId)
+      await nominateUser(supabase, matchId, userId, note || undefined)
       setSuccess(true)
       setUserId('')
+      setNote('')
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to nominate user')
@@ -58,6 +60,13 @@ export function NominateUserForm({ matchId }: Props) {
           {loading ? 'Nominating...' : 'Nominate'}
         </button>
       </div>
+      <input
+        type="text"
+        placeholder="Add a note (optional)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        style={{ padding: '0.4rem', marginTop: '0.5rem', width: '100%', boxSizing: 'border-box' as const }}
+      />
       {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
       {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Nomination sent! Needs user acceptance and organizer approval.</p>}
     </form>

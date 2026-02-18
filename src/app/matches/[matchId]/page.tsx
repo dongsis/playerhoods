@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getMatch, getMatchFormed, getMatchParticipants, getMyParticipation, isUserInMatchScope } from '@/lib/api/matches'
+import { getMatch, getMatchFormed, getMatchParticipants, getMyParticipation, isUserInMatchScope, getMatchActions } from '@/lib/api/matches'
 import { MatchActions } from './MatchActions'
 import { ParticipantsList } from './ParticipantsList'
 import { InviteUserForm } from './InviteUserForm'
@@ -25,11 +25,12 @@ export default async function MatchDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [formed, participants, myParticipation, inScope] = await Promise.all([
+  const [formed, participants, myParticipation, inScope, actionsMap] = await Promise.all([
     getMatchFormed(supabase, matchId).catch((e) => { console.error('getMatchFormed error:', e); return null }),
     getMatchParticipants(supabase, matchId).catch((e) => { console.error('getMatchParticipants error:', e); return [] }),
     user ? getMyParticipation(supabase, matchId, user.id).catch((e) => { console.error('getMyParticipation error:', e); return null }) : null,
     user ? isUserInMatchScope(supabase, matchId, user.id).catch((e) => { console.error('isUserInMatchScope error:', e); return false }) : false,
+    getMatchActions(supabase, matchId).catch((e) => { console.error('getMatchActions error:', e); return new Map() }),
   ])
 
   const isOrganizer = user?.id === match.organizer_id
@@ -46,6 +47,9 @@ export default async function MatchDetailPage({ params }: Props) {
   const pendingParticipants = participants.filter((p) => p.status === 'pending')
   const confirmedParticipants = participants.filter((p) => p.status === 'confirmed')
   const removedParticipants = participants.filter((p) => p.status === 'removed')
+
+  // Serialize actionsMap for client components (Map can't be serialized)
+  const actionsRecord: Record<string, import('@/lib/types/database').MatchParticipantActionWithProfile[]> = Object.fromEntries(actionsMap)
 
   return (
     <div>
@@ -110,6 +114,7 @@ export default async function MatchDetailPage({ params }: Props) {
           isOrganizer={isOrganizer}
           matchStatus={match.status}
           color="green"
+          actionsRecord={actionsRecord}
         />
 
         <ParticipantsList
@@ -121,6 +126,7 @@ export default async function MatchDetailPage({ params }: Props) {
           matchStatus={match.status}
           color="orange"
           showApproveButton
+          actionsRecord={actionsRecord}
         />
 
         <details style={{ marginTop: '1rem' }}>
@@ -133,6 +139,7 @@ export default async function MatchDetailPage({ params }: Props) {
             isOrganizer={isOrganizer}
             matchStatus={match.status}
             color="gray"
+            actionsRecord={actionsRecord}
           />
         </details>
       </section>

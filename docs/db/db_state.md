@@ -1,9 +1,11 @@
+> **Deprecation:** `matches.admission_mode (deprecated)` is **deprecated** in v1.3; column may exist but must not be used for logic.
+
 ## [v1.3] Admission & Removal Semantics Update
 This document is governed by **Match Admission Semantics v1.3**:
 - **Request** is group-based (scope groups only), not individual-based.
 - **Invite / Nominate** target individuals and are not restricted by scope.
-- **Removed** is inactive but reversible; re-entry occurs by **reactivating the same participant record**.
-- If removed by **ORG**, re-entry requires **ORG reactivation** before user can accept.
+- **Removed** is inactive but reversible; Restart occurs via **Request to Join** (user) or **Invite** (organizer).
+- If removed by **ORG**, Restart is unified (no removed_by branching). Organizer may **Invite** again; user may **Request to Join** again.
 - Removed users within scope may see a rejoin / waiting entry.
 See: `docs/governance/Execution_State_Addendum_v1.3.md`
 
@@ -53,7 +55,9 @@ See: `docs/governance/Execution_State_Addendum_v1.3.md`
 | ## Table: matches            | - id (uuid, NOT NULL, default: gen_random_uuid())
 - organizer_id (uuid, NOT NULL)
 - status (USER-DEFINED, NOT NULL, default: 'active'::match_status)
-- admission_mode (USER-DEFINED, NOT NULL, default: 'invite'::match_admission_mode)
+- admission_mode (deprecated) (USER-DEFINED, NOT NULL, default: 'invite'::match_admission_mode)
+> Note: `matches.admission_mode (deprecated)` is **deprecated** in v1.3; column may exist but must not be used for logic.
+
 - club_id (uuid, nullable)
 - court_ids (ARRAY, NOT NULL, default: '{}'::uuid[])
 - match_date (date, NOT NULL, default: ((now() AT TIME ZONE 'utc'::text))::date)
@@ -139,10 +143,10 @@ See: `docs/governance/Execution_State_Addendum_v1.3.md`
 | match_participants | match_participants_insert_guest_by_org                | PERMISSIVE | {authenticated} | INSERT    | null                                                                                                                                                                                                                                               | (is_match_organizer(match_id, auth.uid()) AND (join_method = 'guest_add'::match_join_method) AND (created_by = auth.uid()) AND (guest_id IS NOT NULL))                                                                                                                                                                                                                          |
 | match_participants | match_participants_insert_guest_confirmed_if_invite   | PERMISSIVE | {authenticated} | INSERT    | null                                                                                                                                                                                                                                               | (can_add_guests(match_id, auth.uid()) AND (join_method = 'guest_add'::match_join_method) AND (created_by = auth.uid()) AND (guest_id IS NOT NULL) AND (user_id IS NULL) AND (status = 'confirmed'::match_participant_status) AND (EXISTS ( SELECT 1
    FROM matches m
-  WHERE ((m.id = match_participants.match_id) AND (m.admission_mode = 'invite'::match_admission_mode))))) |
+  WHERE ((m.id = match_participants.match_id) AND (m.admission_mode (deprecated) = 'invite'::match_admission_mode))))) |
 | match_participants | match_participants_insert_guest_pending_if_request    | PERMISSIVE | {authenticated} | INSERT    | null                                                                                                                                                                                                                                               | (can_add_guests(match_id, auth.uid()) AND (join_method = 'guest_add'::match_join_method) AND (created_by = auth.uid()) AND (guest_id IS NOT NULL) AND (user_id IS NULL) AND (status = 'pending'::match_participant_status) AND (EXISTS ( SELECT 1
    FROM matches m
-  WHERE ((m.id = match_participants.match_id) AND (m.admission_mode = 'request'::match_admission_mode)))))  |
+  WHERE ((m.id = match_participants.match_id) AND (m.~~admission_mode (deprecated) = 'request'~~ (deprecated; must not gate logic)::match_admission_mode)))))  |
 | match_participants | match_participants_insert_invite_by_org               | PERMISSIVE | {authenticated} | INSERT    | null                                                                                                                                                                                                                                               | (can_invite_users(match_id, auth.uid()) AND (join_method = 'invited'::match_join_method) AND (status = 'pending'::match_participant_status) AND (created_by = auth.uid()) AND (user_id IS NOT NULL) AND (guest_id IS NULL))                                                                                                                                                     |
 | match_participants | match_participants_insert_request                     | PERMISSIVE | {authenticated} | INSERT    | null                                                                                                                                                                                                                                               | ((user_id = auth.uid()) AND (join_method = 'requested'::match_join_method) AND (status = 'pending'::match_participant_status) AND (created_by = auth.uid()) AND is_user_in_match_scope(match_id, auth.uid()))                                                                                                                                                                   |
 | match_participants | match_participants_select                             | PERMISSIVE | {authenticated} | SELECT    | (is_match_organizer(match_id, auth.uid()) OR is_match_participant_active(match_id, auth.uid()))                                                                                                                                                    | null                                                                                                                                                                                                                                                                                                                                                                            |
@@ -212,3 +216,31 @@ See: `docs/governance/Execution_State_Addendum_v1.3.md`
 | public     | profiles           | 0                   |
 | public     | courts             | 0                   |
 | public     | clubs              | 0                   |
+
+## v1.3 FINAL / FROZEN — Unified Restart Doctrine
+
+**Frozen On:** 2026-02-11 UTC
+
+### Core rule
+Restarting participation always uses exactly two channels (regardless of history):
+
+- **User → Request to Join** (`rpc_match_request_join`)
+- **Organizer → Invite** (`rpc_match_invite_user`)
+
+No branching on:
+- `removed_by`
+- prior `join_method`
+- prior confirmation state or order
+
+### Scope rule (first-entry only)
+- If **mp == NULL** (no prior record): scope is required for **Request to Join**
+- If **mp exists** and `status = 'removed'`: scope is **NOT** required for **Request to Join**
+
+### removed_* semantics (restart clears)
+On restart (request / invite / nominate), clear removed fields because they represent **current removed state only**:
+- `removed_at = NULL`
+- `removed_by = NULL`
+- `removal_note = NULL`
+
+### admission_mode (deprecated)
+`matches.admission_mode (deprecated)` is **deprecated** in v1.3 (column may exist but **MUST NOT** be used for RLS / RPC / UI logic).

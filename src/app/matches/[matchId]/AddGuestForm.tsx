@@ -19,6 +19,7 @@ interface Props {
 export function AddGuestForm({ matchId, isOrganizer }: Props) {
   const [displayName, setDisplayName] = useState('')
   const [notes, setNotes] = useState('')
+  const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -34,13 +35,14 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
 
     try {
       if (isOrganizer) {
-        await addGuestOrg(supabase, matchId, displayName, notes || undefined)
+        await addGuestOrg(supabase, matchId, displayName, notes || undefined, note || undefined)
       } else {
-        await addGuestParticipant(supabase, matchId, displayName, notes || undefined)
+        await addGuestParticipant(supabase, matchId, displayName, notes || undefined, note || undefined)
       }
       setSuccess(true)
       setDisplayName('')
       setNotes('')
+      setNote('')
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add guest')
@@ -67,6 +69,15 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
           placeholder="Notes (optional)"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
+        />
+      </div>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <input
+          type="text"
+          placeholder="Add a note (optional)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
           style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
         />
       </div>

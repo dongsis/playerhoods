@@ -34,6 +34,7 @@ export type Club = {
   name: string
   location_text: string | null
   notes: string | null
+  timezone: string
   created_at: string
 }
 
@@ -85,6 +86,7 @@ export type Match = {
   can_participants_add_guests: boolean
   can_participants_manage_participants: boolean
   formed_at: string | null
+  start_at_utc: string | null
   created_at: string
 }
 
@@ -124,10 +126,24 @@ export type MatchFormed = {
   is_formed: boolean
 }
 
+export type MatchParticipantAction = {
+  id: string
+  match_id: string
+  match_participant_id: string
+  action_type: string
+  note: string | null
+  created_by: string
+  created_at: string
+}
+
 // Joined types for UI convenience
 export type MatchParticipantWithDetails = MatchParticipant & {
   profile?: Profile | null
   guest?: Guest | null
+}
+
+export type MatchParticipantActionWithProfile = MatchParticipantAction & {
+  profile?: Profile | null
 }
 
 export type GroupMemberWithProfile = GroupMember & {
@@ -186,6 +202,12 @@ export interface Database {
         Update: Partial<MatchParticipant>
         Relationships: []
       }
+      match_participant_actions: {
+        Row: MatchParticipantAction
+        Insert: Partial<MatchParticipantAction> & { match_participant_id: string; action_type: string; created_by: string }
+        Update: Partial<MatchParticipantAction>
+        Relationships: []
+      }
     }
     Views: {
       match_formed: {
@@ -228,31 +250,31 @@ export interface Database {
       }
       // v1.3 RPCs
       rpc_match_request_join: {
-        Args: { p_match_id: string }
+        Args: { p_match_id: string; p_note?: string }
         Returns: void
       }
       rpc_match_invite_user: {
-        Args: { p_match_id: string; p_user_id: string }
+        Args: { p_match_id: string; p_user_id: string; p_note?: string }
         Returns: void
       }
       rpc_match_nominate_user: {
-        Args: { p_match_id: string; p_user_id: string }
+        Args: { p_match_id: string; p_user_id: string; p_note?: string }
         Returns: void
       }
       rpc_match_accept_invite: {
-        Args: { p_match_id: string }
+        Args: { p_match_id: string; p_note?: string }
         Returns: void
       }
       rpc_match_org_approve_participant: {
-        Args: { p_match_participant_id: string }
+        Args: { p_match_participant_id: string; p_note?: string }
         Returns: void
       }
       rpc_match_user_withdraw: {
-        Args: { p_match_id: string }
+        Args: { p_match_id: string; p_note?: string }
         Returns: void
       }
       rpc_match_remove_participant: {
-        Args: { p_match_participant_id: string }
+        Args: { p_match_participant_id: string; p_note?: string }
         Returns: void
       }
       rpc_match_reactivate_participant: {
@@ -260,11 +282,11 @@ export interface Database {
         Returns: void
       }
       rpc_match_add_guest_org: {
-        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string }
+        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string; p_note?: string }
         Returns: void
       }
       rpc_match_add_guest_participant: {
-        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string }
+        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string; p_note?: string }
         Returns: void
       }
     }

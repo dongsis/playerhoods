@@ -16,6 +16,7 @@ interface Props {
  */
 export function InviteUserForm({ matchId }: Props) {
   const [userId, setUserId] = useState('')
+  const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -30,9 +31,10 @@ export function InviteUserForm({ matchId }: Props) {
     const supabase = createSupabaseBrowserClient()
 
     try {
-      await inviteUserToMatch(supabase, matchId, userId)
+      await inviteUserToMatch(supabase, matchId, userId, note || undefined)
       setSuccess(true)
       setUserId('')
+      setNote('')
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to invite user')
@@ -56,6 +58,13 @@ export function InviteUserForm({ matchId }: Props) {
           {loading ? 'Inviting...' : 'Invite'}
         </button>
       </div>
+      <input
+        type="text"
+        placeholder="Add a note (optional)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        style={{ padding: '0.4rem', marginTop: '0.5rem', width: '100%', boxSizing: 'border-box' as const }}
+      />
       {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
       {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Invitation sent!</p>}
     </form>

@@ -1,16 +1,50 @@
 # Execution State & Technical Appendix — playerhoods.com (v1.2)
 
+> **Deprecation:** `matches.admission_mode (deprecated)` is **deprecated** in v1.3; column may exist but must not be used for logic.
+
+
+## v1.3 FINAL / FROZEN — Unified Restart Doctrine
+
+**Frozen On:** 2026-02-11 UTC
+
+### Core rule
+Restarting participation always uses exactly two channels (regardless of history):
+
+- **User → Request to Join** (`rpc_match_request_join`)
+- **Organizer → Invite** (`rpc_match_invite_user`)
+
+No branching on:
+- `removed_by`
+- prior `join_method`
+- prior confirmation state or order
+
+### Scope rule (first-entry only)
+- If **mp == NULL** (no prior record): scope is required for **Request to Join**
+- If **mp exists** and `status = 'removed'`: scope is **NOT** required for **Request to Join**
+
+### removed_* semantics (restart clears)
+On restart (request / invite / nominate), clear removed fields because they represent **current removed state only**:
+- `removed_at = NULL`
+- `removed_by = NULL`
+- `removal_note = NULL`
+
+### admission_mode (deprecated)
+> Note: `matches.admission_mode (deprecated)` is **deprecated** in v1.3; column may exist but must not be used for logic.
+
+`matches.admission_mode (deprecated)` is **deprecated** in v1.3 (column may exist but **MUST NOT** be used for RLS / RPC / UI logic).
+
+
 > **v1.3 Release**  
 > This document is the authoritative v1.3 release.  
-> Key semantics updated: request is group-based; invite/nominate are individual-based; removed is reversible via organizer reactivation (same participant record).
+> Key semantics updated: request is group-based; invite/nominate are individual-based; removed can be restarted via **Request to Join** (user) or **Invite** (organizer) on the same participant record.
 
 
 ## [v1.3] Admission & Removal Semantics Update
 This document is governed by **Match Admission Semantics v1.3**:
 - **Request** is group-based (scope groups only), not individual-based.
 - **Invite / Nominate** target individuals and are not restricted by scope.
-- **Removed** is inactive but reversible; re-entry occurs by **reactivating the same participant record**.
-- If removed by **ORG**, re-entry requires **ORG reactivation** before user can accept.
+- **Removed** is inactive but reversible; Restart occurs via **Request to Join** (user) or **Invite** (organizer).
+- If removed by **ORG**, Restart is unified (no removed_by branching). Organizer may **Invite** again; user may **Request to Join** again.
 - Removed users within scope may see a rejoin / waiting entry.
 See: `docs/governance/Execution_State_Addendum_v1.3.md`
 
@@ -157,14 +191,14 @@ Status synchronization rule:
 - guest 无 `user_accepted_at`（无 user-side confirmation）
 
 ### 5.2 Guest Initial State Rule（Frozen, v1.2）
-Guest 的初始状态只取决于**创建者身份**（不再依赖 admission_mode）：
+Guest 的初始状态只取决于**创建者身份**（不再依赖 admission_mode (deprecated)）：
 
 - **ORG 添加 guest**：  
   `status = confirmed` 且 `org_approved_at = now()`
 - **非 ORG（confirmed participant 且有权限）添加 guest**：  
   `status = pending`，必须由 ORG approve 后 confirmed
 
-🚫 禁止：使用 `match.admission_mode` 控制 guest 初始状态（v1.2 已彻底移除 admission_mode）
+🚫 禁止：使用 `match.admission_mode (deprecated)` 控制 guest 初始状态（v1.2 已彻底移除 admission_mode (deprecated)）
 
 ---
 
@@ -411,7 +445,7 @@ foundation-stage 发现不符合真实约球语义，因此 v1.2 引入双边确
 **Writes**
 - status=removed
 - removed_at=now() (if exists)
-- removed_by=auth.uid() (if exists)
+- `removed_by = auth.uid()` (audit only; not used for gating) (if exists)
 
 **Notes**: terminal; user no longer counted in formed_count
 
@@ -518,15 +552,15 @@ foundation-stage 发现不符合真实约球语义，因此 v1.2 引入双边确
 ---
 
 
-### User Rejoin & Reactivation Semantics (v1.3 — Frozen)
+### User Rejoin & Restart Semantics (v1.3 — Frozen)
 
 There is **no user-initiated rejoin RPC** in v1.3.
 
 If a participant is in `removed` status:
 
-- Re-entry into the match flow MUST occur via **organizer reactivation** on the **same participant record**.
+- Restart MUST occur via **User Request to Join** or **Organizer Invite** on the same participant record.
 - Users MAY express intent to rejoin via UI, but this action MUST NOT change database state.
-- Only after organizer reactivation may the user proceed with acceptance (if applicable).
+- After restart, acceptance/approval proceed according to the restart channel (dual confirmation).
 
 User-triggered state transitions MUST NOT bypass organizer authority.
 
@@ -575,7 +609,7 @@ removed 成员不被视为 Group 成员，且不参与任何 Group 级权限计�
 
 设置 removed_at = now()
 
-设置 removed_by = auth.uid()（self-leave 审计）
+设置 `removed_by = auth.uid()` (audit only; not used for gating)（self-leave 审计）
 
 3.2 约束
 

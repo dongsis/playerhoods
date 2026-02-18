@@ -1,11 +1,40 @@
 # Match Admission Semantics — v1.3 Addendum
 
+## v1.3 FINAL / FROZEN — Unified Restart Doctrine
+
+**Frozen On:** 2026-02-11 UTC
+
+### Core rule
+Restarting participation always uses exactly two channels (regardless of history):
+
+- **User → Request to Join** (`rpc_match_request_join`)
+- **Organizer → Invite** (`rpc_match_invite_user`)
+
+No branching on:
+- `removed_by`
+- prior `join_method`
+- prior confirmation state or order
+
+### Scope rule (first-entry only)
+- If **mp == NULL** (no prior record): scope is required for **Request to Join**
+- If **mp exists** and `status = 'removed'`: scope is **NOT** required for **Request to Join**
+
+### removed_* semantics (restart clears)
+On restart (request / invite / nominate), clear removed fields because they represent **current removed state only**:
+- `removed_at = NULL`
+- `removed_by = NULL`
+- `removal_note = NULL`
+
+### admission_mode
+`matches.admission_mode` is **deprecated** in v1.3 (column may exist but **MUST NOT** be used for RLS / RPC / UI logic).
+
+
 ## [v1.3] Admission & Removal Semantics Update
 This document is governed by **Match Admission Semantics v1.3**:
 - **Request** is group-based (scope groups only), not individual-based.
 - **Invite / Nominate** target individuals and are not restricted by scope.
-- **Removed** is inactive but reversible; re-entry occurs by **reactivating the same participant record**.
-- If removed by **ORG**, re-entry requires **ORG reactivation** before user can accept.
+- **Removed** is inactive but reversible; Restart occurs via **Request to Join** (user) or **Invite** (organizer).
+- If removed by **ORG**, Restart is unified (no removed_by branching). Organizer may **Invite** again; user may **Request to Join** again.
 - Removed users within scope may see a rejoin / waiting entry.
 See: `docs/governance/Execution_State_Addendum_v1.3.md`
 
@@ -16,7 +45,7 @@ This addendum upgrades admission and removal semantics from v1.2 to v1.3.
 
 **Unlocked / changed semantics:**
 - `removed` is no longer terminal; it becomes **inactive but reversible**
-- Re-entry is performed by **reactivating the same participant record**
+- Restart is performed via **Request to Join** (user) or **Invite** (organizer).
 - Admission boundaries across **request / invite / nominate** are clarified
 - Visibility and re-entry rights for removed participants are formalized
 
@@ -95,34 +124,39 @@ All other frozen constraints (enums, core tables, uniqueness) remain unchanged u
 - Cause: ORG remove or reject
 - Consequences:
   - User **cannot** rejoin or accept independently
-  - **Organizer must explicitly reactivate**
-  - Only after reactivation may the user accept again
+  - Organizer restarts by **Inviting** again (`rpc_match_invite_user`).
+  - After restart, confirmation proceeds normally (dual confirmation).
 
 ---
 
-## 4. Reactivation Semantics (New)
+## 4. Unified Restart Semantics (v1.3 FINAL / FROZEN)
 
-### 4.1 Reactivation Definition
-- **Reactivation** is an organizer-only action
-- Reactivation transitions a participant from `removed` → `pending`
-- Reactivation does **not** create a the same participant record (reactivated in v1.3)
-- Reactivation restores eligibility to continue admission confirmation
+Reactivation is **deprecated**. v1.3 FINAL defines a unified restart model:
 
-### 4.2 Reactivation Constraints
-- Reactivation applies only to organizer-removed participants and must be explicit and auditable
-- No automatic reactivation is permitted
+- **User restart**: `rpc_match_request_join(match_id)`
+  - Requires scope only when `mp == null`
+  - If `mp.status='removed'`, scope is NOT required (prior relationship)
 
----
+- **Organizer restart**: `rpc_match_invite_user(match_id, user_id)`
+  - Invite is never scope-restricted
+
+Restart always updates the existing row (same `(match_id, user_id)`):
+- `status = 'pending'`
+- resets confirmation fields according to channel
+- clears `removed_at/removed_by/removal_note` (current removed state only)
+
+`rpc_match_reactivate_participant` may remain in DB but is not part of the product semantics/UI.
+
 
 ## 5. Visibility & Re-entry Access (Strategy A)
 
 ### 5.1 Visibility for Removed Participants
 - Removed users **within scope** may still see the match
-- They see a **“rejoin / waiting for reactivation”** entry point
-- Acceptance is disabled until organizer reactivation
+- They see a **“Request to Join”** entry point
+- Restart initiates a fresh pending flow; acceptance/approval follow normal dual-confirmation rules.
 
-### 5.2 Post-Reactivation Visibility
-- After organizer reactivation:
+### 5.2 Post-Restart Visibility
+- After restart (request/invite):
   - Participant re-enters `pending`
   - User regains the ability to accept
   - Normal confirmation rules resume
@@ -135,7 +169,7 @@ All other frozen constraints (enums, core tables, uniqueness) remain unchanged u
 - `pending → confirmed`
 - `confirmed → removed`
 - `pending → removed`
-- `removed → pending` (**organizer reactivation only**)
+- `removed → pending` (via Request / Invite unified restart)
 
 ### 6.2 Prohibited Transitions
 - `removed → confirmed` (direct)
@@ -154,7 +188,7 @@ partial unique indexes
 
 ## 8. Audit & History (Required by v1.3 Semantics)
 - `match_participants` stores **current state only**
-- Historical actions (remove, reactivate, accept, approve) must be recorded via append-only event logging
+- Historical actions (remove, restart, accept, approve) must be recorded via append-only event logging
 - Historical integrity must not depend on overwritten fields
 
 ---

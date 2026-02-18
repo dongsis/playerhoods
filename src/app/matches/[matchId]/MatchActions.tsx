@@ -21,6 +21,7 @@ interface Props {
 export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState('')
   const router = useRouter()
 
   const handleAction = async (action: () => Promise<void>, redirectAfter?: string) => {
@@ -28,6 +29,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
     setLoading(true)
     try {
       await action()
+      setNote('')
       if (redirectAfter) {
         router.push(redirectAfter)
       } else {
@@ -47,15 +49,27 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
   const isPending = mp?.status === 'pending'
   const isRemoved = mp?.status === 'removed'
   const isConfirmedDerived = mp && mp.status !== 'removed' && mp.user_accepted_at != null && mp.org_approved_at != null
-  const isActiveParticipant = mp && mp.status !== 'removed'
+
+  const noteInput = (
+    <input
+      type="text"
+      placeholder="Add a note (optional)"
+      value={note}
+      onChange={(e) => setNote(e.target.value)}
+      style={{ padding: '0.4rem', marginBottom: '0.5rem', width: '100%', boxSizing: 'border-box' as const }}
+    />
+  )
+
+  const getNoteValue = () => note || undefined
 
   // ── 4) Removed — always show Request to Join ──
   if (isRemoved) {
     return (
       <div>
+        {noteInput}
         <button
           data-testid="request-join"
-          onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
+          onClick={() => handleAction(() => requestJoinMatch(supabase, matchId, getNoteValue()))}
           disabled={loading}
         >
           {loading ? 'Requesting...' : 'Request to Join'}
@@ -73,9 +87,10 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
     if (inScope) {
       return (
         <div>
+          {noteInput}
           <button
             data-testid="request-join"
-            onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
+            onClick={() => handleAction(() => requestJoinMatch(supabase, matchId, getNoteValue()))}
             disabled={loading}
           >
             {loading ? 'Requesting...' : 'Request to Join'}
@@ -99,10 +114,11 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
 
     return (
       <div>
+        {noteInput}
         {/* 2.1 Accept (invited or nominated, not yet accepted) */}
         {!hasUserAccepted && (isInvited || isNominated) && (
           <button
-            onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
+            onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId, getNoteValue()))}
             disabled={loading}
             style={{ background: 'green', color: 'white', border: 'none', padding: '0.5rem 1rem', marginRight: '0.5rem' }}
           >
@@ -112,7 +128,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
 
         {/* 2.2 Withdraw */}
         <button
-          onClick={() => handleAction(() => userWithdraw(supabase, matchId), '/matches')}
+          onClick={() => handleAction(() => userWithdraw(supabase, matchId, getNoteValue()), '/matches')}
           disabled={loading}
           style={{ background: '#666', color: 'white', border: 'none', padding: '0.5rem 1rem' }}
         >
@@ -140,8 +156,9 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
   if (isConfirmedDerived && !isOrganizer) {
     return (
       <div>
+        {noteInput}
         <button
-          onClick={() => handleAction(() => userWithdraw(supabase, matchId), '/matches')}
+          onClick={() => handleAction(() => userWithdraw(supabase, matchId, getNoteValue()), '/matches')}
           disabled={loading}
           style={{ background: '#666', color: 'white', border: 'none', padding: '0.5rem 1rem' }}
         >

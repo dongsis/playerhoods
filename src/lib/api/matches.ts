@@ -4,6 +4,8 @@ import type {
   Match,
   MatchParticipant,
   MatchParticipantWithDetails,
+  MatchParticipantAction,
+  MatchParticipantActionWithProfile,
   MatchFormed,
   Club,
   Court,
@@ -142,59 +144,66 @@ export async function getCourts(supabase: Client, clubId: string) {
 // ============================================================================
 
 /** Request to join a match. v1.3: Must be in scope groups. */
-export async function requestJoinMatch(supabase: Client, matchId: string) {
+export async function requestJoinMatch(supabase: Client, matchId: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_request_join', {
     p_match_id: matchId,
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
 /** Invite a user. v1.3: NOT restricted by scope. */
-export async function inviteUserToMatch(supabase: Client, matchId: string, userId: string) {
+export async function inviteUserToMatch(supabase: Client, matchId: string, userId: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_invite_user', {
     p_match_id: matchId,
     p_user_id: userId,
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
 /** Nominate a user (participant action). v1.3: NOT restricted by scope. */
-export async function nominateUser(supabase: Client, matchId: string, userId: string) {
+export async function nominateUser(supabase: Client, matchId: string, userId: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_nominate_user', {
     p_match_id: matchId,
     p_user_id: userId,
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
 /** Accept a pending invitation. v1.3: Sets user_accepted_at. */
-export async function acceptMatchInvite(supabase: Client, matchId: string) {
+export async function acceptMatchInvite(supabase: Client, matchId: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_accept_invite', {
     p_match_id: matchId,
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
 /** ORG approves a pending participant. v1.3: ORG ONLY. */
-export async function orgApproveParticipant(supabase: Client, participantId: string) {
+export async function orgApproveParticipant(supabase: Client, participantId: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_org_approve_participant', {
     p_match_participant_id: participantId,
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
 /** User withdraws (decline invite or leave). v1.3: Unified. */
-export async function userWithdraw(supabase: Client, matchId: string) {
+export async function userWithdraw(supabase: Client, matchId: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_user_withdraw', {
     p_match_id: matchId,
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
 /** ORG/manager removes participant. */
-export async function removeParticipant(supabase: Client, participantId: string) {
+export async function removeParticipant(supabase: Client, participantId: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_remove_participant', {
     p_match_participant_id: participantId,
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
@@ -208,23 +217,63 @@ export async function reactivateParticipant(supabase: Client, participantId: str
 }
 
 /** ORG adds guest (immediately confirmed). */
-export async function addGuestOrg(supabase: Client, matchId: string, displayName: string, notes?: string) {
+export async function addGuestOrg(supabase: Client, matchId: string, displayName: string, guestNotes?: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_add_guest_org', {
     p_match_id: matchId,
     p_guest_display_name: displayName,
-    p_guest_notes: notes ?? '',
+    p_guest_notes: guestNotes ?? '',
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
 /** Participant adds guest (pending, needs ORG approval). */
-export async function addGuestParticipant(supabase: Client, matchId: string, displayName: string, notes?: string) {
+export async function addGuestParticipant(supabase: Client, matchId: string, displayName: string, guestNotes?: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_add_guest_participant', {
     p_match_id: matchId,
     p_guest_display_name: displayName,
-    p_guest_notes: notes ?? '',
+    p_guest_notes: guestNotes ?? '',
+    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
+}
+
+/** Fetch all action logs for a match, grouped by participant. */
+export async function getMatchActions(
+  supabase: Client,
+  matchId: string
+): Promise<Map<string, MatchParticipantActionWithProfile[]>> {
+  const { data, error } = await supabase
+    .from('match_participant_actions')
+    .select('*')
+    .eq('match_id', matchId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  const actions = (data || []) as MatchParticipantAction[]
+  if (actions.length === 0) return new Map()
+
+  // Fetch profiles for all actors
+  const userIds = [...new Set(actions.map(a => a.created_by))]
+  const { data: profilesData } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', userIds)
+
+  const profileMap = new Map((profilesData || []).map((p: Profile) => [p.id, p]))
+
+  // Group by participant_id
+  const result = new Map<string, MatchParticipantActionWithProfile[]>()
+  for (const action of actions) {
+    const enriched: MatchParticipantActionWithProfile = {
+      ...action,
+      profile: profileMap.get(action.created_by) || null,
+    }
+    const list = result.get(action.match_participant_id) || []
+    list.push(enriched)
+    result.set(action.match_participant_id, list)
+  }
+  return result
 }
 
 // Match creation via RPC (creates match + auto-adds organizer as confirmed participant)
