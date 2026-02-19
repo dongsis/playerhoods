@@ -18,6 +18,46 @@ import type {
 
 type Client = SupabaseClient<Database>
 
+// ============================================================================
+// v1.4.1 enriched types
+// ============================================================================
+
+/** Participant with display_name resolved via club handle (or profile fallback). */
+export type MatchParticipantEnriched = MatchParticipant & { display_name: string }
+
+/** Flattened activity row for ActivityFeed — all names resolved server-side. */
+export type ActivityItem = {
+  id: string
+  action_type: string
+  note: string | null
+  actor_name: string
+  subject_name: string
+  created_at: string
+}
+
+export type MatchListItem = {
+  match: Match
+  clubTimezone: string | null
+  clubName: string | null
+  confirmedCount: number
+  pendingCount: number
+  isFormed: boolean
+  participants: MatchParticipantEnriched[]
+  myParticipant: MatchParticipantEnriched | null
+}
+
+export type MatchDetailData = {
+  match: Match
+  clubTimezone: string | null
+  clubName: string | null
+  participants: MatchParticipantEnriched[]
+  myParticipant: MatchParticipantEnriched | null
+  isOrganizer: boolean
+  confirmedCount: number
+  activities: ActivityItem[]
+  organizerName: string
+}
+
 // Read operations (respect RLS)
 
 export async function getMatches(supabase: Client) {
@@ -38,7 +78,7 @@ function getDisplayName(
 ): string {
   if (guestId) {
     const guest = guestMap.get(guestId)
-    return guest ? `${guest.display_name} (Guest)` : 'Guest'
+    return guest ? `${guest.display_name} (Not registered)` : 'Not registered'
   }
   if (userId) {
     const p = profileMap.get(userId)
@@ -468,4 +508,290 @@ export async function createMatch(
   }
 
   return created
+}
+
+// ============================================================================
+// v1.4.1 enriched data loaders
+// ============================================================================
+
+/** Builds identity map: `${clubId}:${userId}` → club_handle */
+async function fetchIdentityMap(
+  supabase: Client,
+  clubIds: string[],
+  userIds: string[],
+): Promise<Map<string, string>> {
+  if (clubIds.length === 0 || userIds.length === 0) return new Map()
+  const { data } = await supabase
+    .from('club_identities')
+    .select('club_id, user_id, club_handle')
+    .in('club_id', clubIds)
+    .in('user_id', userIds)
+  return new Map(
+    ((data ?? []) as { club_id: string; user_id: string; club_handle: string }[])
+      .map(i => [`${i.club_id}:${i.user_id}`, i.club_handle])
+  )
+}
+
+function resolveNameFromMaps(
+  userId: string | null,
+  guestId: string | null,
+  clubId: string | null,
+  identityMap: Map<string, string>,
+  profileMap: Map<string, string>,
+  guestMap: Map<string, string>,
+): string {
+  if (guestId) return `${guestMap.get(guestId) ?? 'Not registered'} (Not registered)`
+  if (!userId) return 'Unknown'
+  if (clubId) {
+    const handle = identityMap.get(`${clubId}:${userId}`)
+    if (handle) return handle
+  }
+  return profileMap.get(userId) ?? 'Unknown'
+}
+
+/**
+ * Fetch all visible matches for the list page, enriched with:
+ * - club timezone (for time formatting)
+ * - per-participant display names (club handle preferred, profile fallback)
+ * - confirmed/pending counts
+ * - caller's own participant row
+ */
+export async function getMatchListData(
+  supabase: Client,
+  userId: string | null,
+): Promise<MatchListItem[]> {
+  const [matchesRes, formedRes] = await Promise.all([
+    supabase
+      .from('matches')
+      .select('*')
+      .neq('status', 'cancelled')
+      .order('start_at_utc', { ascending: true }),
+    supabase.from('match_formed').select('*'),
+  ])
+  if (matchesRes.error) throw matchesRes.error
+  if (formedRes.error) throw formedRes.error
+
+  const matches = matchesRes.data as Match[]
+  if (matches.length === 0) return []
+
+  const formedMap = new Map((formedRes.data as MatchFormed[]).map(f => [f.match_id, f]))
+  const matchIds = matches.map(m => m.id)
+  const clubIds = [...new Set(matches.filter(m => m.club_id).map(m => m.club_id as string))]
+
+  const [participantsRes, clubsRes] = await Promise.all([
+    supabase.from('match_participants').select('*').in('match_id', matchIds),
+    clubIds.length > 0
+      ? supabase.from('clubs').select('id, name, timezone').in('id', clubIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (participantsRes.error) throw participantsRes.error
+  if (clubsRes.error) throw clubsRes.error
+
+  const allParticipants = (participantsRes.data ?? []) as MatchParticipant[]
+  const clubMap = new Map(
+    ((clubsRes.data ?? []) as { id: string; name: string; timezone: string }[])
+      .map(c => [c.id, c])
+  )
+
+  const userIds = [...new Set(allParticipants.filter(p => p.user_id).map(p => p.user_id as string))]
+  const guestIds = [...new Set(allParticipants.filter(p => p.guest_id).map(p => p.guest_id as string))]
+
+  const [profilesRes, identityMap, guestsRes] = await Promise.all([
+    userIds.length > 0
+      ? supabase.from('profile_display').select('id, display_name').in('id', userIds)
+      : Promise.resolve({ data: [] }),
+    fetchIdentityMap(supabase, clubIds, userIds),
+    guestIds.length > 0
+      ? supabase.from('guests').select('id, display_name').in('id', guestIds)
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const profileMap = new Map(
+    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name])
+  )
+  const guestMap = new Map(
+    ((guestsRes.data ?? []) as { id: string; display_name: string }[]).map(g => [g.id, g.display_name])
+  )
+
+  const byMatch = new Map<string, MatchParticipant[]>()
+  for (const p of allParticipants) {
+    const arr = byMatch.get(p.match_id) ?? []
+    arr.push(p)
+    byMatch.set(p.match_id, arr)
+  }
+
+  return matches.map(match => {
+    const formed = formedMap.get(match.id)
+    const club = match.club_id ? (clubMap.get(match.club_id) ?? null) : null
+    const mps = byMatch.get(match.id) ?? []
+
+    const enriched: MatchParticipantEnriched[] = mps.map(p => ({
+      ...p,
+      display_name: resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap),
+    }))
+
+    const confirmed = enriched.filter(p => p.status === 'confirmed')
+    const pending = enriched.filter(p => p.status === 'pending')
+    const myParticipant = userId ? (enriched.find(p => p.user_id === userId) ?? null) : null
+
+    return {
+      match,
+      clubTimezone: club?.timezone ?? null,
+      clubName: club?.name ?? null,
+      confirmedCount: formed?.confirmed_count ?? confirmed.length,
+      pendingCount: pending.length,
+      isFormed: formed?.is_formed ?? false,
+      participants: enriched,
+      myParticipant,
+    }
+  })
+}
+
+/**
+ * Fetch all data for the match detail page:
+ * - enriched participants (display names resolved)
+ * - flat activity feed (actor + subject names resolved, newest first)
+ */
+export async function getMatchDetailData(
+  supabase: Client,
+  matchId: string,
+  userId: string | null,
+): Promise<MatchDetailData> {
+  const [matchRes, participantsRes, actionsRes, formedRes] = await Promise.all([
+    supabase.from('matches').select('*').eq('id', matchId).single(),
+    supabase.from('match_participants').select('*').eq('match_id', matchId).order('created_at', { ascending: true }),
+    supabase.from('match_participant_actions').select('*').eq('match_id', matchId).order('created_at', { ascending: false }),
+    supabase.from('match_formed').select('*').eq('match_id', matchId).maybeSingle(),
+  ])
+  if (matchRes.error) throw matchRes.error
+
+  const match = matchRes.data as Match
+  const participants = (participantsRes.data ?? []) as MatchParticipant[]
+  const actions = (actionsRes.data ?? []) as MatchParticipantAction[]
+
+  // Fetch club
+  type ClubRow = { id: string; name: string; timezone: string }
+  let club: ClubRow | null = null
+  if (match.club_id) {
+    const { data } = await supabase
+      .from('clubs')
+      .select('id, name, timezone')
+      .eq('id', match.club_id)
+      .single()
+    club = data as unknown as ClubRow | null
+  }
+
+  // Collect IDs needed for name resolution (include organizer even if not a participant)
+  const userIds = [...new Set([
+    match.organizer_id,
+    ...participants.filter(p => p.user_id).map(p => p.user_id as string),
+    ...actions.map(a => a.created_by),
+  ])]
+  const guestIds = [...new Set(participants.filter(p => p.guest_id).map(p => p.guest_id as string))]
+  const clubIds = match.club_id ? [match.club_id] : []
+
+  const [profilesRes, identityMap, guestsRes] = await Promise.all([
+    userIds.length > 0
+      ? supabase.from('profile_display').select('id, display_name').in('id', userIds)
+      : Promise.resolve({ data: [] }),
+    fetchIdentityMap(supabase, clubIds, userIds),
+    guestIds.length > 0
+      ? supabase.from('guests').select('id, display_name').in('id', guestIds)
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const profileMap = new Map(
+    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name])
+  )
+  const guestMap = new Map(
+    ((guestsRes.data ?? []) as { id: string; display_name: string }[]).map(g => [g.id, g.display_name])
+  )
+
+  const resolve = (uid: string | null, gid: string | null) =>
+    resolveNameFromMaps(uid, gid, match.club_id, identityMap, profileMap, guestMap)
+
+  const enriched: MatchParticipantEnriched[] = participants.map(p => ({
+    ...p,
+    display_name: resolve(p.user_id, p.guest_id),
+  }))
+
+  const participantById = new Map(participants.map(p => [p.id, p]))
+  const activities: ActivityItem[] = actions.map(a => {
+    const subject = participantById.get(a.match_participant_id)
+    return {
+      id: a.id,
+      action_type: a.action_type,
+      note: a.note,
+      actor_name: resolve(a.created_by, null),
+      subject_name: subject ? resolve(subject.user_id, subject.guest_id) : 'Unknown',
+      created_at: a.created_at,
+    }
+  })
+
+  const confirmed = enriched.filter(p => p.status === 'confirmed')
+  const myParticipant = userId ? (enriched.find(p => p.user_id === userId) ?? null) : null
+
+  return {
+    match,
+    clubTimezone: club?.timezone ?? null,
+    clubName: club?.name ?? null,
+    participants: enriched,
+    myParticipant,
+    isOrganizer: userId === match.organizer_id,
+    confirmedCount: formedRes.data?.confirmed_count ?? confirmed.length,
+    activities,
+    organizerName: resolve(match.organizer_id, null),
+  }
+}
+
+// ============================================================================
+// Scope user lookup (for invite / nominate dropdowns)
+// ============================================================================
+
+export type ScopeUser = { id: string; display_name: string }
+
+/**
+ * Returns all active members of the match's invitation scope groups,
+ * with display names resolved, excluding any user already in the match
+ * (non-removed status). Sorted alphabetically.
+ */
+export async function getMatchScopeUsers(
+  supabase: Client,
+  match: Match,
+  excludeUserIds: string[],
+): Promise<ScopeUser[]> {
+  const groupIds = match.invitation_scope_group_ids
+  if (!groupIds || groupIds.length === 0) return []
+
+  const { data: members, error } = await supabase
+    .from('group_members')
+    .select('user_id')
+    .in('group_id', groupIds)
+    .eq('status', 'active')
+  if (error) throw error
+
+  const excludeSet = new Set(excludeUserIds)
+  const userIds = [...new Set(
+    (members ?? [])
+      .map(m => m.user_id)
+      .filter((uid): uid is string => !!uid && !excludeSet.has(uid)),
+  )]
+  if (userIds.length === 0) return []
+
+  const clubIds = match.club_id ? [match.club_id] : []
+  const [profilesRes, identityMap] = await Promise.all([
+    supabase.from('profile_display').select('id, display_name').in('id', userIds),
+    fetchIdentityMap(supabase, clubIds, userIds),
+  ])
+
+  const profileMap = new Map(
+    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name]),
+  )
+
+  return userIds
+    .map(uid => ({
+      id: uid,
+      display_name: resolveNameFromMaps(uid, null, match.club_id, identityMap, profileMap, new Map()),
+    }))
+    .sort((a, b) => a.display_name.localeCompare(b.display_name))
 }

@@ -11,15 +11,14 @@ interface Props {
 }
 
 /**
- * Add a guest to a match.
+ * Add a nonregistered player to a match.
  * v1.3: Split into two RPCs based on caller role:
- * - ORG: rpc_match_add_guest_org (guest immediately confirmed)
- * - Participant: rpc_match_add_guest_participant (guest pending, needs ORG approval)
+ * - ORG: rpc_match_add_guest_org (immediately confirmed)
+ * - Participant: rpc_match_add_guest_participant (pending, needs ORG approval)
  */
 export function AddGuestForm({ matchId, isOrganizer }: Props) {
   const [displayName, setDisplayName] = useState('')
-  const [notes, setNotes] = useState('')
-  const [note, setNote] = useState('')
+  const [guestNotes, setGuestNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -35,17 +34,16 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
 
     try {
       if (isOrganizer) {
-        await addGuestOrg(supabase, matchId, displayName, notes || undefined, note || undefined)
+        await addGuestOrg(supabase, matchId, displayName, guestNotes || undefined)
       } else {
-        await addGuestParticipant(supabase, matchId, displayName, notes || undefined, note || undefined)
+        await addGuestParticipant(supabase, matchId, displayName, guestNotes || undefined)
       }
       setSuccess(true)
       setDisplayName('')
-      setNotes('')
-      setNote('')
+      setGuestNotes('')
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add guest')
+      setError(err instanceof Error ? err.message : 'Failed to add player')
     } finally {
       setLoading(false)
     }
@@ -56,7 +54,7 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
       <div style={{ marginBottom: '0.5rem' }}>
         <input
           type="text"
-          placeholder="Guest name"
+          placeholder="Player name"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           required
@@ -67,25 +65,16 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
         <input
           type="text"
           placeholder="Notes (optional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
-        />
-      </div>
-      <div style={{ marginBottom: '0.5rem' }}>
-        <input
-          type="text"
-          placeholder="Add a note (optional)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
+          value={guestNotes}
+          onChange={(e) => setGuestNotes(e.target.value)}
           style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
         />
       </div>
       <button type="submit" disabled={loading}>
-        {loading ? 'Adding...' : 'Add Guest'}
+        {loading ? 'Adding...' : 'Add Nonregistered Player'}
       </button>
       {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
-      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Guest added!</p>}
+      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Player added!</p>}
     </form>
   )
 }

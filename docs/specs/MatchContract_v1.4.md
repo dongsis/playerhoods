@@ -43,6 +43,18 @@ This document is governed by **Match Admission Semantics v1.3**:
 - Removed users within scope may see a rejoin / waiting entry.
 See: `docs/governance/Execution_State_Addendum_v1.3.md`
 
+---
+
+## Identity Context (v1.4)
+
+Match-level identity resolution follows club identity rules.
+
+A participant’s visible name inside a club-scoped match
+is always their club_handle for that club.
+
+display_name is considered a derived value.
+
+---
 
 ## Match Status (Lifecycle Only)
 - active

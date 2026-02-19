@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import type { Profile } from '@/lib/types/database'
+import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Playerhoods',
@@ -27,7 +28,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <body style={{ fontFamily: 'system-ui, sans-serif', margin: 0, padding: '1rem' }}>
+      <body className="font-sans bg-gray-50 text-gray-900" style={{ margin: 0 }}>
         {user && (
           <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#222', color: '#aaa', fontSize: '0.75rem', padding: '0.25rem 0.5rem', zIndex: 9999, fontFamily: 'monospace' }}>
             {displayLabel} | {user.email}

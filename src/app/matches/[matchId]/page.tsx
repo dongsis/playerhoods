@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getMatch, getMatchFormed, getMatchParticipants, getMatchCourts, getMyParticipation, isUserInMatchScope, getMatchActions } from '@/lib/api/matches'
+import { getMatchDetailData, getMatchCourts, isUserInMatchScope, getMatchScopeUsers } from '@/lib/api/matches'
+import { formatMatchTime } from '@/lib/utils/format-time'
 import { MatchActions } from './MatchActions'
-import { ParticipantsList } from './ParticipantsList'
+import { ParticipantGroups } from './ParticipantGroups'
+import { ActivityFeed } from './ActivityFeed'
 import { InviteUserForm } from './InviteUserForm'
 import { NominateUserForm } from './NominateUserForm'
 import { AddGuestForm } from './AddGuestForm'
@@ -17,177 +19,128 @@ export default async function MatchDetailPage({ params }: Props) {
   const user = await getUser()
   const supabase = await createSupabaseServerClient()
 
-  let match
+  let detail
   try {
-    match = await getMatch(supabase, matchId)
-  } catch (e) {
-    console.error('getMatch error for matchId:', matchId, e)
+    detail = await getMatchDetailData(supabase, matchId, user?.id ?? null)
+  } catch {
     notFound()
   }
 
-  const [formed, participants, matchCourts, myParticipation, inScope, actionsMap] = await Promise.all([
-    getMatchFormed(supabase, matchId).catch((e) => { console.error('getMatchFormed error:', e); return null }),
-    getMatchParticipants(supabase, matchId).catch((e) => { console.error('getMatchParticipants error:', e); return [] }),
-    getMatchCourts(supabase, matchId).catch((e) => { console.error('getMatchCourts error:', e); return [] }),
-    user ? getMyParticipation(supabase, matchId, user.id).catch((e) => { console.error('getMyParticipation error:', e); return null }) : null,
-    user ? isUserInMatchScope(supabase, matchId, user.id).catch((e) => { console.error('isUserInMatchScope error:', e); return false }) : false,
-    getMatchActions(supabase, matchId).catch((e) => { console.error('getMatchActions error:', e); return new Map() }),
+  const { match, clubTimezone, clubName, participants, myParticipant, isOrganizer, confirmedCount, activities, organizerName } = detail
+
+  // Active non-removed participant user IDs — exclude from invite/nominate dropdowns
+  const activeParticipantIds = participants
+    .filter(p => p.status !== 'removed' && p.user_id)
+    .map(p => p.user_id as string)
+
+  const [matchCourts, inScope, scopeUsers] = await Promise.all([
+    getMatchCourts(supabase, matchId).catch(() => []),
+    user ? isUserInMatchScope(supabase, matchId, user.id).catch(() => false) : false,
+    (match.status === 'active' && (isOrganizer || myParticipant?.status === 'confirmed'))
+      ? getMatchScopeUsers(supabase, match, activeParticipantIds).catch(() => [])
+      : Promise.resolve([]),
   ])
 
-  const isOrganizer = user?.id === match.organizer_id
-  const myStatus = myParticipation?.status
-  const isConfirmed = myStatus === 'confirmed'
-  const isPending = myStatus === 'pending'
-
-  // Check if user can perform actions
-  const canInvite = isOrganizer || (isConfirmed && match.can_participants_invite_users)
+  const isConfirmed  = myParticipant?.status === 'confirmed'
+  const canInvite    = isOrganizer || (isConfirmed && match.can_participants_invite_users)
   const canAddGuests = isOrganizer || (isConfirmed && match.can_participants_add_guests)
-  const canManage = isOrganizer || (isConfirmed && match.can_participants_manage_participants)
+  const canManage    = isOrganizer || (isConfirmed && match.can_participants_manage_participants)
 
-  // Group participants by status
-  const pendingParticipants = participants.filter((p) => p.status === 'pending')
-  const confirmedParticipants = participants.filter((p) => p.status === 'confirmed')
-  const removedParticipants = participants.filter((p) => p.status === 'removed')
-
-  // Serialize actionsMap for client components (Map can't be serialized)
-  const actionsRecord: Record<string, import('@/lib/types/database').MatchParticipantActionWithProfile[]> = Object.fromEntries(actionsMap)
+  const time = formatMatchTime(match.start_at_utc, match.match_date, match.start_time, clubTimezone)
+  const need = Math.max(match.required_count - confirmedCount, 0)
 
   return (
-    <div>
-      <nav style={{ marginBottom: '1rem' }}>
-        <Link href="/matches">Back to Matches</Link>
+    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1rem' }}>
+      <nav style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
+        <Link href="/matches">← Matches</Link>
       </nav>
 
-      <header style={{ marginBottom: '2rem' }}>
-        <h1>{match.game_type || 'Match'}</h1>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <span><strong>Status:</strong> {match.status}</span>
-          <span><strong>Date:</strong> {match.match_date || 'TBD'}</span>
-          {match.start_time && <span><strong>Time:</strong> {match.start_time}</span>}
-          {matchCourts.length > 0 && (
-            <span><strong>Courts:</strong> {matchCourts.map(c => c.court_label).join(', ')}</span>
+      {/* Header */}
+      <header style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ margin: '0 0 0.4rem', fontSize: '1.3rem' }}>
+          {match.game_type || 'Match'}
+          {' '}
+          {confirmedCount >= match.required_count ? (
+            <span style={{ background: '#2d8a4e', color: 'white', padding: '0.1rem 0.5rem', fontSize: '0.75rem', borderRadius: '4px', verticalAlign: 'middle' }}>
+              FORMED
+            </span>
+          ) : (
+            <span style={{ background: '#d97706', color: 'white', padding: '0.1rem 0.5rem', fontSize: '0.75rem', borderRadius: '4px', verticalAlign: 'middle' }}>
+              {confirmedCount}/{match.required_count}
+              {need > 0 && ` · need ${need}`}
+            </span>
           )}
+        </h1>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.85rem', color: '#555' }}>
+          <span>{time}</span>
+          {clubName && <span>{clubName}</span>}
+          {matchCourts.length > 0 && (
+            <span>Court: {matchCourts.map(c => c.court_label).join(', ')}</span>
+          )}
+          {match.duration_minutes && <span>{match.duration_minutes}min</span>}
+          <span>Org: <strong style={{ color: '#333' }}>{organizerName}</strong></span>
         </div>
       </header>
 
-      {/* Formation status */}
-      <section style={{
-        marginBottom: '2rem',
-        padding: '1rem',
-        border: formed?.is_formed ? '2px solid green' : '1px solid #ccc',
-        background: formed?.is_formed ? '#e6ffe6' : 'transparent'
-      }}>
-        <h2>Formation Status</h2>
-        <p>
-          <strong>{formed?.confirmed_count || 0}</strong> / {match.required_count} confirmed
-          {formed?.is_formed && <strong style={{ color: 'green', marginLeft: '1rem' }}>FORMED</strong>}
-        </p>
-        {match.formed_at && (
-          <small>Formed at: {new Date(match.formed_at).toLocaleString()}</small>
-        )}
-      </section>
-
-      {/* User's participation status and actions */}
-      <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
-        <h3>Your Status</h3>
-        {isOrganizer && <p><strong>You are the organizer</strong></p>}
-        {!myParticipation && !isOrganizer && <p>Not participating</p>}
-        {isPending && <p>Status: <strong style={{ color: 'orange' }}>Pending</strong></p>}
-        {isConfirmed && <p>Status: <strong style={{ color: 'green' }}>Confirmed</strong></p>}
-        {myStatus === 'removed' && <p>Status: <strong style={{ color: 'red' }}>Removed</strong></p>}
-
-        {match.status === 'active' && (
+      {/* Self-actions (accept/withdraw/request) */}
+      {match.status === 'active' && (
+        <section style={{ marginBottom: '1.5rem', padding: '0.75rem 1rem', border: '1px solid #e0e0e0', borderRadius: '6px' }}>
           <MatchActions
             matchId={matchId}
             isOrganizer={isOrganizer}
-            myParticipation={myParticipation}
+            myParticipation={myParticipant}
             inScope={inScope}
           />
-        )}
-      </section>
+        </section>
+      )}
 
-      {/* Participants list with management */}
+      {/* Participant groups */}
       <section style={{ marginBottom: '2rem' }}>
-        <h2>Participants</h2>
-
-        <ParticipantsList
-          title="Confirmed"
+        <h2 style={{ fontSize: '1rem', margin: '0 0 0.75rem' }}>Participants</h2>
+        <ParticipantGroups
           matchId={matchId}
-          participants={confirmedParticipants}
-          canManage={canManage}
-          isOrganizer={isOrganizer}
           matchStatus={match.status}
-          color="green"
-          actionsRecord={actionsRecord}
-        />
-
-        <ParticipantsList
-          title="Pending"
-          matchId={matchId}
-          participants={pendingParticipants}
-          canManage={canManage}
+          participants={participants}
           isOrganizer={isOrganizer}
-          matchStatus={match.status}
-          color="orange"
-          showApproveButton
-          actionsRecord={actionsRecord}
+          canManage={canManage}
+          myUserId={user?.id ?? null}
         />
-
-        <details style={{ marginTop: '1rem' }}>
-          <summary style={{ cursor: 'pointer' }}>Removed ({removedParticipants.length})</summary>
-          <ParticipantsList
-            title=""
-            matchId={matchId}
-            participants={removedParticipants}
-            canManage={false}
-            isOrganizer={isOrganizer}
-            matchStatus={match.status}
-            color="gray"
-            actionsRecord={actionsRecord}
-          />
-        </details>
       </section>
 
-      {/* Invite/Nominate/Add forms (only for active matches) */}
+      {/* Add participants (organizer/allowed) */}
       {match.status === 'active' && (canInvite || canAddGuests) && (
-        <section style={{ padding: '1rem', border: '1px solid #ccc' }}>
-          <h3>Add Participants</h3>
+        <section id="invite" style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
+          <h3 style={{ margin: '0 0 1rem', fontSize: '0.95rem' }}>Add Participants</h3>
 
-          {/* v1.3: Invite (ORG only) */}
           {isOrganizer && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h4>Invite User</h4>
-              <p style={{ fontSize: '0.9rem', color: '#666', margin: '0.5rem 0' }}>
-                Invite a user directly. Not restricted by scope groups.
-              </p>
-              <InviteUserForm matchId={matchId} />
+            <div style={{ marginBottom: '1.25rem' }}>
+              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite User</h4>
+              <InviteUserForm matchId={matchId} scopeUsers={scopeUsers} />
             </div>
           )}
 
-          {/* v1.3: Nominate (confirmed participant with invite permission) */}
           {canInvite && !isOrganizer && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h4>Nominate User</h4>
-              <p style={{ fontSize: '0.9rem', color: '#666', margin: '0.5rem 0' }}>
-                Nominate a user to join. Requires both user acceptance and organizer approval.
-              </p>
-              <NominateUserForm matchId={matchId} />
+            <div style={{ marginBottom: '1.25rem' }}>
+              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Nominate User</h4>
+              <NominateUserForm matchId={matchId} scopeUsers={scopeUsers} />
             </div>
           )}
 
           {canAddGuests && (
-            <div>
-              <h4>Add Guest</h4>
-              <p style={{ fontSize: '0.9rem', color: '#666', margin: '0.5rem 0' }}>
-                {isOrganizer
-                  ? 'Guest will be added as confirmed immediately.'
-                  : 'Guest will be pending until organizer approves.'}
-              </p>
+            <div id="guest">
+              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Add Nonregistered Player</h4>
               <AddGuestForm matchId={matchId} isOrganizer={isOrganizer} />
             </div>
           )}
         </section>
       )}
+
+      {/* Activity feed */}
+      <section>
+        <h2 style={{ fontSize: '1rem', margin: '0 0 0.75rem' }}>Activity</h2>
+        <ActivityFeed activities={activities} />
+      </section>
     </div>
   )
 }

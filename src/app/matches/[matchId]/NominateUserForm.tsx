@@ -4,19 +4,14 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { nominateUser } from '@/lib/api/matches'
+import type { ScopeUser } from '@/lib/api/matches'
 
 interface Props {
   matchId: string
+  scopeUsers: ScopeUser[]
 }
 
-/**
- * Nominate a user to join a match.
- * v1.3: Calls rpc_match_nominate_user
- * - NOT restricted by scope (unlike request join)
- * - Creates pending participant with nominated_by set
- * - Requires both user accept + ORG approve to become confirmed
- */
-export function NominateUserForm({ matchId }: Props) {
+export function NominateUserForm({ matchId, scopeUsers }: Props) {
   const [userId, setUserId] = useState('')
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
@@ -26,12 +21,11 @@ export function NominateUserForm({ matchId }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!userId) return
     setError(null)
     setSuccess(false)
     setLoading(true)
-
     const supabase = createSupabaseBrowserClient()
-
     try {
       await nominateUser(supabase, matchId, userId, note || undefined)
       setSuccess(true)
@@ -45,30 +39,41 @@ export function NominateUserForm({ matchId }: Props) {
     }
   }
 
+  if (scopeUsers.length === 0) {
+    return (
+      <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
+        No eligible users in scope.
+      </p>
+    )
+  }
+
   return (
     <form onSubmit={handleSubmit}>
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-        <input
-          type="text"
-          placeholder="User ID (UUID)"
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <select
           value={userId}
-          onChange={(e) => setUserId(e.target.value)}
+          onChange={e => setUserId(e.target.value)}
           required
-          style={{ padding: '0.5rem', flex: 1 }}
-        />
-        <button type="submit" disabled={loading}>
-          {loading ? 'Nominating...' : 'Nominate'}
+          style={{ padding: '0.4rem 0.5rem', flex: 1, minWidth: '160px', fontSize: '0.9rem' }}
+        >
+          <option value="">— Select a person —</option>
+          {scopeUsers.map(u => (
+            <option key={u.id} value={u.id}>{u.display_name}</option>
+          ))}
+        </select>
+        <button type="submit" disabled={loading || !userId} style={{ padding: '0.4rem 0.8rem' }}>
+          {loading ? 'Nominating…' : 'Nominate'}
         </button>
       </div>
       <input
         type="text"
         placeholder="Add a note (optional)"
         value={note}
-        onChange={(e) => setNote(e.target.value)}
-        style={{ padding: '0.4rem', marginTop: '0.5rem', width: '100%', boxSizing: 'border-box' as const }}
+        onChange={e => setNote(e.target.value)}
+        style={{ padding: '0.4rem', marginTop: '0.4rem', width: '100%', boxSizing: 'border-box', fontSize: '0.85rem' }}
       />
-      {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
-      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Nomination sent! Needs user acceptance and organizer approval.</p>}
+      {error   && <p style={{ color: 'red',   fontSize: '0.8rem', margin: '0.3rem 0 0' }}>{error}</p>}
+      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Nominated! Needs user acceptance and organizer approval.</p>}
     </form>
   )
 }

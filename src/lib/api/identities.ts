@@ -92,11 +92,13 @@ export async function setPrimaryClub(supabase: Client, clubId: string): Promise<
 
 /** Get all club memberships (with club info) for the current user. */
 export async function getMyClubIdentities(
-  supabase: Client
+  supabase: Client,
+  userId: string,
 ): Promise<(ClubIdentity & { club: Club })[]> {
   const { data, error } = await supabase
     .from('club_identities')
     .select('*, club:clubs(*)')
+    .eq('user_id', userId)
     .order('created_at', { ascending: true })
   if (error) throw error
   return (data ?? []) as unknown as (ClubIdentity & { club: Club })[]
@@ -104,12 +106,14 @@ export async function getMyClubIdentities(
 
 /** Get all clubs the user has NOT yet joined (for the join UI). */
 export async function getJoinableClubs(
-  supabase: Client
+  supabase: Client,
+  userId: string,
 ): Promise<Club[]> {
-  // First get clubs user has joined
+  // First get clubs this user has joined
   const { data: myIds, error: err1 } = await supabase
     .from('club_identities')
     .select('club_id')
+    .eq('user_id', userId)
   if (err1) throw err1
 
   const joinedIds = (myIds ?? []).map(r => r.club_id)

@@ -118,6 +118,21 @@ status = 'pending'
 
 status = 'removed' is terminal.
 
+---
+
+## Participant Identity Resolution (v1.4)
+
+When rendering participants in a match:
+
+If match.club_id exists:
+  Use club_identities.club_handle for that club.
+
+Else:
+  Fallback to profiles.display_name.
+
+This ensures identity consistency within club context.
+
+---
 ## 3. Join Paths (Authoritative)
 3.1 Join Method Enum (Frozen)
 

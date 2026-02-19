@@ -15,6 +15,35 @@ No branching on:
 - prior `join_method`
 - prior confirmation state or order
 
+---
+
+## Club Handle Semantics (v1.4)
+
+Identity is club-scoped.
+
+Definitions:
+
+club_handle:
+  The user-visible identity inside a specific club.
+
+club_handle_norm:
+  lower(club_handle), generated column.
+  Used only for uniqueness enforcement.
+
+display_name:
+  Always equals the handle of primary_club_id.
+
+Rules:
+
+1. A user may have multiple handles (one per club).
+2. Handles are unique per club.
+3. Case-only changes are allowed.
+4. display_name is never directly user-editable.
+5. Renaming primary club handle updates display_name atomically.
+
+This semantic is authoritative from v1.4 onward.
+
+---
 ### Scope rule (first-entry only)
 - If **mp == NULL** (no prior record): scope is required for **Request to Join**
 - If **mp exists** and `status = 'removed'`: scope is **NOT** required for **Request to Join**

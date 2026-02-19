@@ -3,14 +3,20 @@ import Link from 'next/link'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import {
-  isSuperAdmin, isClubAdmin,
-  getClub, getClubCourts, getClubAdmins,
-  updateClub, createCourt, updateCourt, deleteCourt,
-  grantClubAdmin, revokeClubAdmin, searchUsersForAdmin,
+  isSuperAdmin,
+  isClubAdmin,
+  getClub,
+  getClubCourts,
+  getClubAdmins,
+  updateClub,
+  createCourt,
+  updateCourt,
+  deleteCourt,
+  grantClubAdmin,
+  revokeClubAdmin,
+  searchUsersForAdmin,
 } from '@/lib/api/clubs'
-import { ClubEditForm } from './ClubEditForm'
-import { CourtsManager } from './CourtsManager'
-import { AdminManager } from './AdminManager'
+import { ClubDetailShell } from './ClubDetailShell'
 
 interface Props {
   params: Promise<{ clubId: string }>
@@ -22,12 +28,12 @@ export default async function ClubAdminPage({ params }: Props) {
   if (!user) redirect('/login')
 
   const supabase = await createSupabaseServerClient()
-  const [superAdmin, clubAdmin] = await Promise.all([
+  const [superAdmin, clubAdminRole] = await Promise.all([
     isSuperAdmin(supabase),
     isClubAdmin(supabase, clubId),
   ])
 
-  if (!superAdmin && !clubAdmin) redirect('/matches')
+  if (!superAdmin && !clubAdminRole) redirect('/matches')
 
   let club
   try {
@@ -41,7 +47,8 @@ export default async function ClubAdminPage({ params }: Props) {
     superAdmin ? getClubAdmins(supabase, clubId) : Promise.resolve([]),
   ])
 
-  // Server actions
+  // ---- Server actions ----
+
   async function handleUpdateClub(formData: FormData) {
     'use server'
     const supabase = await createSupabaseServerClient()
@@ -105,45 +112,47 @@ export default async function ClubAdminPage({ params }: Props) {
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem' }}>
-      <nav style={{ marginBottom: '1rem', display: 'flex', gap: '1rem' }}>
-        {superAdmin && <Link href="/admin/clubs">← All Clubs</Link>}
-        <Link href="/matches">← Matches</Link>
+      {/* Breadcrumb */}
+      <nav style={{ fontSize: '0.82rem', color: '#888', marginBottom: '1.25rem' }}>
+        <Link href="/matches" style={{ color: '#888', textDecoration: 'none' }}>
+          Matches
+        </Link>
+        <span style={{ margin: '0 0.4rem' }}>›</span>
+        {superAdmin && (
+          <>
+            <Link href="/admin/clubs" style={{ color: '#888', textDecoration: 'none' }}>
+              Club Admin
+            </Link>
+            <span style={{ margin: '0 0.4rem' }}>›</span>
+          </>
+        )}
+        <span>{club.name}</span>
       </nav>
 
-      <h1>{club.name}</h1>
-      <p style={{ color: '#666', margin: '0 0 2rem' }}>
-        {club.location_text && `${club.location_text} · `}{club.timezone}
-      </p>
+      {/* Club header */}
+      <header style={{ marginBottom: '1.75rem' }}>
+        <h1 style={{ margin: '0 0 0.2rem', fontSize: '1.5rem', fontWeight: 700 }}>{club.name}</h1>
+        {(club.location_text || club.timezone) && (
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
+            {[club.location_text, club.timezone].filter(Boolean).join(' · ')}
+          </p>
+        )}
+      </header>
 
-      {/* Club info edit */}
-      <section style={{ marginBottom: '2.5rem', padding: '1rem', border: '1px solid #ccc' }}>
-        <h2 style={{ marginTop: 0 }}>Club Info</h2>
-        <ClubEditForm club={club} onSubmit={handleUpdateClub} />
-      </section>
-
-      {/* Courts management */}
-      <section style={{ marginBottom: '2.5rem', padding: '1rem', border: '1px solid #ccc' }}>
-        <h2 style={{ marginTop: 0 }}>Courts ({courts.length})</h2>
-        <CourtsManager
-          courts={courts}
-          onCreateCourt={handleCreateCourt}
-          onUpdateCourt={handleUpdateCourt}
-          onDeleteCourt={handleDeleteCourt}
-        />
-      </section>
-
-      {/* Admin management (super admin only) */}
-      {superAdmin && (
-        <section style={{ padding: '1rem', border: '1px solid #ccc' }}>
-          <h2 style={{ marginTop: 0 }}>Club Admins</h2>
-          <AdminManager
-            admins={admins}
-            onSearch={handleSearchUsers}
-            onGrant={handleGrantAdmin}
-            onRevoke={handleRevokeAdmin}
-          />
-        </section>
-      )}
+      {/* Tabs shell */}
+      <ClubDetailShell
+        club={club}
+        courts={courts}
+        admins={admins}
+        isSuperAdmin={superAdmin}
+        onUpdateClub={handleUpdateClub}
+        onCreateCourt={handleCreateCourt}
+        onUpdateCourt={handleUpdateCourt}
+        onDeleteCourt={handleDeleteCourt}
+        onSearchUsers={handleSearchUsers}
+        onGrantAdmin={handleGrantAdmin}
+        onRevokeAdmin={handleRevokeAdmin}
+      />
     </div>
   )
 }

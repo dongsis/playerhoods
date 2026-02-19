@@ -23,8 +23,8 @@ export default async function ProfilePage() {
 
   const [{ data: profile }, identities, joinable] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
-    getMyClubIdentities(supabase),
-    getJoinableClubs(supabase),
+    getMyClubIdentities(supabase, user.id),
+    getJoinableClubs(supabase, user.id),
   ])
 
   if (!profile) redirect('/onboarding/profile')

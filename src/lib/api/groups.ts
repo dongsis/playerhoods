@@ -125,6 +125,31 @@ export async function createGroup(
   return group as Group
 }
 
+/**
+ * All users who can be invited to a group (not already an active/pending member).
+ * Returns sorted list of { id, display_name }.
+ */
+export async function getInvitableUsers(
+  supabase: Client,
+  groupId: string,
+): Promise<{ id: string; display_name: string }[]> {
+  const [membersRes, usersRes] = await Promise.all([
+    supabase
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', groupId)
+      .neq('status', 'removed'),
+    supabase
+      .from('profile_display')
+      .select('id, display_name')
+      .order('display_name', { ascending: true }),
+  ])
+
+  const existingIds = new Set((membersRes.data ?? []).map(m => m.user_id))
+  return ((usersRes.data ?? []) as { id: string; display_name: string }[])
+    .filter(u => !existingIds.has(u.id))
+}
+
 /** Invite user to group. Handles re-invite of removed members. */
 export async function inviteUserToGroup(
   supabase: Client,

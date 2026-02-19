@@ -46,6 +46,23 @@ See: `docs/governance/Execution_State_Addendum_v1.3.md`
 
 ## Entity
 Group represents an action boundary.
+---
+
+## Member Identity (v1.4)
+
+Member identity inside a group/club is resolved as:
+
+club_handle
+
+NOT profiles.display_name directly.
+
+display_name is a derived value reflecting primary club identity.
+
+All membership and display contexts MUST resolve identity via club_identities.
+
+This prevents cross-club identity leakage.
+
+---
 
 ## Membership Status
 - pending
