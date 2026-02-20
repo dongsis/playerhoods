@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getMatchDetailData, getMatchCourts, isUserInMatchScope, getMatchScopeUsers } from '@/lib/api/matches'
+import { revalidatePath } from 'next/cache'
+import { getMatchDetailData, getMatchCourts, isUserInMatchScope, getMatchScopeUsers, getCourts, updateMatchDetails, setMatchSingleCourt } from '@/lib/api/matches'
 import { formatMatchTime } from '@/lib/utils/format-time'
 import { MatchActions } from './MatchActions'
 import { ParticipantGroups } from './ParticipantGroups'
@@ -9,6 +10,7 @@ import { ActivityFeed } from './ActivityFeed'
 import { InviteUserForm } from './InviteUserForm'
 import { NominateUserForm } from './NominateUserForm'
 import { AddGuestForm } from './AddGuestForm'
+import { MatchEditForm } from './MatchEditForm'
 
 interface Props {
   params: Promise<{ matchId: string }>
@@ -33,13 +35,35 @@ export default async function MatchDetailPage({ params }: Props) {
     .filter(p => p.status !== 'removed' && p.user_id)
     .map(p => p.user_id as string)
 
-  const [matchCourts, inScope, scopeUsers] = await Promise.all([
+  const [matchCourts, inScope, scopeUsers, clubCourts] = await Promise.all([
     getMatchCourts(supabase, matchId).catch(() => []),
     user ? isUserInMatchScope(supabase, matchId, user.id).catch(() => false) : false,
     (match.status === 'active' && (isOrganizer || myParticipant?.status === 'confirmed'))
       ? getMatchScopeUsers(supabase, match, activeParticipantIds).catch(() => [])
       : Promise.resolve([]),
+    match.club_id ? getCourts(supabase, match.club_id).catch(() => []) : Promise.resolve([]),
   ])
+
+  // ── Organizer-only server actions ──────────────────────────────────────────
+  async function handleUpdateMatchDetails(data: {
+    match_date: string | null
+    start_time: string | null
+    duration_minutes: number | null
+  }) {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    await updateMatchDetails(srv, matchId, data)
+    revalidatePath(`/matches/${matchId}`)
+  }
+
+  async function handleSetCourt(courtLabel: string | null) {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    const u = await getUser()
+    if (!u) throw new Error('not_authenticated')
+    await setMatchSingleCourt(srv, matchId, courtLabel, u.id)
+    revalidatePath(`/matches/${matchId}`)
+  }
 
   const isConfirmed  = myParticipant?.status === 'confirmed'
   const canInvite    = isOrganizer || (isConfirmed && match.can_participants_invite_users)
@@ -52,7 +76,7 @@ export default async function MatchDetailPage({ params }: Props) {
   return (
     <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1rem' }}>
       <nav style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
-        <Link href="/matches">← Matches</Link>
+        <Link href="/dashboard">← Matches</Link>
       </nav>
 
       {/* Header */}
@@ -82,6 +106,21 @@ export default async function MatchDetailPage({ params }: Props) {
           <span>Org: <strong style={{ color: '#333' }}>{organizerName}</strong></span>
         </div>
       </header>
+
+      {/* Organizer: edit date / time / court */}
+      {isOrganizer && match.status === 'active' && (
+        <div style={{ marginBottom: '1rem' }}>
+          <MatchEditForm
+            matchDate={match.match_date}
+            startTime={match.start_time}
+            durationMinutes={match.duration_minutes}
+            currentCourts={matchCourts}
+            clubCourts={clubCourts}
+            onSave={handleUpdateMatchDetails}
+            onSetCourt={handleSetCourt}
+          />
+        </div>
+      )}
 
       {/* Self-actions (accept/withdraw/request) */}
       {match.status === 'active' && (

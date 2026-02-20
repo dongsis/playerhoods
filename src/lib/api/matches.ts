@@ -318,6 +318,60 @@ export async function removeMatchCourt(supabase: Client, matchCourtId: string) {
 }
 
 // ============================================================================
+// Organizer match-level mutations (direct update, allowed by RLS)
+// ============================================================================
+
+/** Cancel a match. Organizer only — allowed by matches_update_organizer RLS policy. */
+export async function cancelMatch(supabase: Client, matchId: string): Promise<void> {
+  const { error } = await supabase
+    .from('matches')
+    .update({ status: 'cancelled' })
+    .eq('id', matchId)
+  if (error) throw error
+}
+
+/**
+ * Update match schedule fields. Organizer only.
+ * The `trg_compute_match_start_at_utc` trigger auto-recomputes start_at_utc
+ * when match_date or start_time change (requires match to have a club_id).
+ */
+export async function updateMatchDetails(
+  supabase: Client,
+  matchId: string,
+  data: { match_date?: string | null; start_time?: string | null; duration_minutes?: number | null }
+): Promise<void> {
+  const { error } = await supabase
+    .from('matches')
+    .update(data)
+    .eq('id', matchId)
+  if (error) throw error
+}
+
+/**
+ * Replace all court slots with a single court label. Pass null to clear.
+ * Organizer only — match_courts RLS allows organizer to insert/delete.
+ */
+export async function setMatchSingleCourt(
+  supabase: Client,
+  matchId: string,
+  courtLabel: string | null,
+  userId: string
+): Promise<void> {
+  const { error: delErr } = await supabase
+    .from('match_courts')
+    .delete()
+    .eq('match_id', matchId)
+  if (delErr) throw delErr
+
+  if (courtLabel) {
+    const { error: insErr } = await supabase
+      .from('match_courts')
+      .insert({ match_id: matchId, slot_index: 0, court_label: courtLabel, created_by: userId })
+    if (insErr) throw insErr
+  }
+}
+
+// ============================================================================
 // v1.3 Write operations (via RPC only)
 // ============================================================================
 
@@ -382,14 +436,6 @@ export async function removeParticipant(supabase: Client, participantId: string,
   const { error } = await supabase.rpc('rpc_match_remove_participant', {
     p_match_participant_id: participantId,
     ...(note ? { p_note: note } : {}),
-  })
-  if (error) throw error
-}
-
-/** ORG reactivates removed participant. v1.3: Only changes status. */
-export async function reactivateParticipant(supabase: Client, participantId: string) {
-  const { error } = await supabase.rpc('rpc_match_reactivate_participant', {
-    p_match_participant_id: participantId,
   })
   if (error) throw error
 }

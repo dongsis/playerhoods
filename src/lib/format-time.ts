@@ -139,7 +139,6 @@ export function formatActionType(type: string): string {
     approved:    'approved',
     withdrawn:   'withdrew',
     removed:     'removed',
-    reactivated: 'reactivated',
     guest_added: 'added guest',
     declined:    'declined invite for',
   }

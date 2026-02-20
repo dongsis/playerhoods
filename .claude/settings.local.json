@@ -23,7 +23,9 @@
       "Bash(npm install:*)",
       "Bash(node_modules/.bin/tailwindcss:*)",
       "Bash(npx tailwindcss:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(echo:*)",
+      "Bash(dir:*)"
     ]
   }
 }

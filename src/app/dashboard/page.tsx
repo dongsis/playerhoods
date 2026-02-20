@@ -1,74 +1,89 @@
-import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getMatches } from '@/lib/api/matches'
-import { getGroups } from '@/lib/api/groups'
-import { LogoutButton } from './LogoutButton'
+import { getMatchListData, cancelMatch } from '@/lib/api/matches'
+import { getAllPlayersGroupedByClub } from '@/lib/api/players'
+import { getMyClubIdentities, getJoinableClubs, updateProfile } from '@/lib/api/identities'
+import { isSuperAdmin, getMyAdminClubs } from '@/lib/api/clubs'
+import { getInvitableUsers, inviteUserToGroup } from '@/lib/api/groups'
+import type { Profile } from '@/lib/types/database'
+import { DashboardShell } from './DashboardShell'
 
 export default async function DashboardPage() {
   const user = await getUser()
+  if (!user) redirect('/login')
+
   const supabase = await createSupabaseServerClient()
 
-  // Fetch user's matches and groups
-  const [matches, groups] = await Promise.all([
-    getMatches(supabase).catch(() => []),
-    getGroups(supabase).catch(() => []),
-  ])
+  const [items, playersData, myIdentities, joinableClubs, superAdmin, myAdminClubs, profileRes] =
+    await Promise.all([
+      getMatchListData(supabase, user.id),
+      getAllPlayersGroupedByClub(supabase),
+      getMyClubIdentities(supabase, user.id),
+      getJoinableClubs(supabase, user.id),
+      isSuperAdmin(supabase),
+      getMyAdminClubs(supabase).catch(() => []),
+      supabase
+        .from('profiles')
+        .select('display_name, first_name, last_name, primary_club_id')
+        .eq('id', user.id)
+        .single(),
+    ])
 
-  // Filter active matches
-  const activeMatches = matches.filter((m) => m.status === 'active')
+  const profile = (profileRes.data as Pick<
+    Profile,
+    'display_name' | 'first_name' | 'last_name' | 'primary_club_id'
+  > | null) ?? {
+    display_name: user.email ?? '',
+    first_name: null,
+    last_name: null,
+    primary_club_id: null,
+  }
+
+  async function handleCancelMatch(matchId: string) {
+    'use server'
+    const supabaseSrv = await createSupabaseServerClient()
+    await cancelMatch(supabaseSrv, matchId)
+    revalidatePath('/dashboard')
+  }
+
+  async function handleGetInvitableUsers(groupId: string) {
+    'use server'
+    const supabaseSrv = await createSupabaseServerClient()
+    return getInvitableUsers(supabaseSrv, groupId)
+  }
+
+  async function handleInviteToGroup(groupId: string, inviteeId: string) {
+    'use server'
+    const supabaseSrv = await createSupabaseServerClient()
+    await inviteUserToGroup(supabaseSrv, groupId, inviteeId)
+    revalidatePath('/dashboard')
+  }
+
+  async function handleUpdateProfile(formData: FormData) {
+    'use server'
+    const supabaseSrv = await createSupabaseServerClient()
+    await updateProfile(supabaseSrv, {
+      first_name: (formData.get('first_name') as string) || undefined,
+      last_name: (formData.get('last_name') as string) || undefined,
+    })
+    revalidatePath('/dashboard')
+  }
 
   return (
-    <div>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h1>Dashboard</h1>
-        <div>
-          <span style={{ marginRight: '1rem' }}>{user?.email}</span>
-          <LogoutButton />
-        </div>
-      </header>
-
-      <nav style={{ marginBottom: '2rem' }}>
-        <Link href="/groups" style={{ marginRight: '1rem' }}>Groups</Link>
-        <Link href="/matches" style={{ marginRight: '1rem' }}>Matches</Link>
-      </nav>
-
-      <section style={{ marginBottom: '2rem' }}>
-        <h2>Active Matches ({activeMatches.length})</h2>
-        {activeMatches.length === 0 ? (
-          <p>No active matches. <Link href="/matches/new">Create one</Link></p>
-        ) : (
-          <ul>
-            {activeMatches.slice(0, 5).map((match) => (
-              <li key={match.id}>
-                <Link href={`/matches/${match.id}`}>
-                  {match.game_type || 'Match'} - {match.match_date || 'TBD'}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        {activeMatches.length > 5 && (
-          <Link href="/matches">View all matches</Link>
-        )}
-      </section>
-
-      <section>
-        <h2>My Groups ({groups.length})</h2>
-        {groups.length === 0 ? (
-          <p>No groups. <Link href="/groups/new">Create one</Link></p>
-        ) : (
-          <ul>
-            {groups.slice(0, 5).map((group) => (
-              <li key={group.id}>
-                <Link href={`/groups/${group.id}`}>{group.name}</Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        {groups.length > 5 && (
-          <Link href="/groups">View all groups</Link>
-        )}
-      </section>
-    </div>
+    <DashboardShell
+      userId={user.id}
+      items={items}
+      playersData={playersData}
+      profile={profile}
+      myIdentities={myIdentities}
+      joinableCount={joinableClubs.length}
+      myAdminClubs={myAdminClubs}
+      isSuperAdmin={superAdmin}
+      onUpdateProfile={handleUpdateProfile}
+      onCancelMatch={handleCancelMatch}
+      onGetInvitableUsers={handleGetInvitableUsers}
+      onInviteToGroup={handleInviteToGroup}
+    />
   )
 }

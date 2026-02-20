@@ -6,7 +6,6 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   orgApproveParticipant,
   removeParticipant,
-  reactivateParticipant,
   inviteUserToMatch,
 } from '@/lib/api/matches'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
@@ -21,9 +20,9 @@ interface Props {
   myUserId: string | null
 }
 
-// Dual-confirmation status tags
+// Dual-confirmation status tags (not shown for guests)
 function ConfirmationTags({ p }: { p: MatchParticipantEnriched }) {
-  if (p.status !== 'pending') return null
+  if (p.status !== 'pending' || p.join_method === 'guest_add') return null
   return (
     <span style={{ fontSize: '0.72rem', marginLeft: '0.4rem' }}>
       <span style={{ color: p.user_accepted_at ? '#2d8a4e' : '#d97706' }}>
@@ -44,6 +43,7 @@ function ParticipantRow({
   isOrganizer,
   canManage,
   isMe,
+  adderName,
 }: {
   p: MatchParticipantEnriched
   matchId: string
@@ -51,6 +51,7 @@ function ParticipantRow({
   isOrganizer: boolean
   canManage: boolean
   isMe: boolean
+  adderName?: string
 }) {
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -82,10 +83,8 @@ function ParticipantRow({
   const canRemove =
     canManage && isActive && p.status !== 'removed'
 
-  const canReactivate =
-    isOrganizer && isActive && p.status === 'removed' && p.user_id !== null
-
-  const canReinvite =
+  // v1.4: No standalone reactivate. Organizer re-invites via invite_user (removed branch → reset + reconcile).
+  const canInviteBack =
     isOrganizer && isActive && p.status === 'removed' && p.user_id !== null
 
   return (
@@ -97,11 +96,18 @@ function ParticipantRow({
             {isMe && <span style={{ fontWeight: 400, color: '#888', fontSize: '0.75rem', marginLeft: '0.3rem' }}>(you)</span>}
           </span>
 
-          {p.nominated_by && (
-            <span style={{ fontSize: '0.72rem', color: '#888', marginLeft: '0.4rem' }}>nominated</span>
+          {p.join_method === 'guest_add' ? (
+            <span style={{ fontSize: '0.72rem', color: '#555', marginLeft: '0.4rem' }}>
+              (confirmed attendance by {adderName ?? 'unknown'})
+            </span>
+          ) : (
+            <>
+              {p.nominated_by && (
+                <span style={{ fontSize: '0.72rem', color: '#888', marginLeft: '0.4rem' }}>nominated</span>
+              )}
+              <ConfirmationTags p={p} />
+            </>
           )}
-
-          <ConfirmationTags p={p} />
 
           {p.status === 'removed' && p.removal_note && (
             <span style={{ fontSize: '0.72rem', color: '#c00', marginLeft: '0.4rem' }}>
@@ -117,7 +123,7 @@ function ParticipantRow({
         </div>
 
         {/* Org action controls */}
-        {(canApprove || canRemove || canReactivate || canReinvite) && (
+        {(canApprove || canRemove || canInviteBack) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
             <input
               type="text"
@@ -147,23 +153,13 @@ function ParticipantRow({
               </button>
             )}
 
-            {canReactivate && (
-              <button
-                onClick={() => act(() => reactivateParticipant(supabase, p.id))}
-                disabled={isPending}
-                style={{ background: '#4a90d9', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
-              >
-                Reactivate
-              </button>
-            )}
-
-            {canReinvite && !canReactivate && (
+            {canInviteBack && (
               <button
                 onClick={() => act(() => inviteUserToMatch(supabase, matchId, p.user_id!, note || undefined))}
                 disabled={isPending}
                 style={{ background: '#4a90d9', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
               >
-                Re-invite
+                Invite back
               </button>
             )}
           </div>
@@ -217,10 +213,22 @@ export function ParticipantGroups({
   canManage,
   myUserId,
 }: Props) {
-  // Guests are folded into status sections, not shown separately
-  const confirmed = participants.filter(p => p.status === 'confirmed')
-  const pending   = participants.filter(p => p.status === 'pending')
-  const removed   = participants.filter(p => p.status === 'removed')
+  // Build name map: user_id → display_name (for resolving guest adders)
+  const nameMap = new Map(
+    participants
+      .filter(p => p.user_id !== null)
+      .map(p => [p.user_id!, p.display_name])
+  )
+
+  // Guests (guest_add) count as confirmed — but only when not removed
+  const confirmed = participants.filter(p =>
+    p.status === 'confirmed' || (p.join_method === 'guest_add' && p.status !== 'removed')
+  )
+  const pending   = participants.filter(p => p.status === 'pending' && p.join_method !== 'guest_add')
+  // Removed guests are only visible to organizer/manager; regular removed members are always shown
+  const removed   = participants.filter(p =>
+    p.status === 'removed' && (canManage || p.join_method !== 'guest_add')
+  )
 
   const rowProps = (p: MatchParticipantEnriched) => ({
     p,
@@ -229,6 +237,7 @@ export function ParticipantGroups({
     isOrganizer,
     canManage,
     isMe: p.user_id === myUserId,
+    adderName: p.join_method === 'guest_add' ? (nameMap.get(p.created_by ?? '') ?? undefined) : undefined,
   })
 
   return (

@@ -421,10 +421,6 @@ export interface Database {
         Args: { p_match_participant_id: string; p_note?: string }
         Returns: void
       }
-      rpc_match_reactivate_participant: {
-        Args: { p_match_participant_id: string }
-        Returns: void
-      }
       rpc_match_add_guest_org: {
         Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string; p_note?: string }
         Returns: void

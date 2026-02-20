@@ -120,6 +120,7 @@ export default async function ProfilePage() {
           <h2 style={{ marginTop: 0 }}>Join a Club</h2>
           <ClubJoinForm
             clubs={joinable}
+            defaultHandle={profile.display_name ?? ''}
             onCheckHandle={handleCheckHandle}
             onJoin={handleJoin}
           />

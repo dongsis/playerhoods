@@ -5,13 +5,14 @@ import type { Club } from '@/lib/types/database'
 
 interface Props {
   clubs: Club[]
+  defaultHandle?: string
   onCheckHandle: (clubId: string, handle: string) => Promise<{ available: boolean; suggestions: string[] }>
   onJoin: (clubId: string, handle: string) => Promise<void>
 }
 
-export function ClubJoinForm({ clubs, onCheckHandle, onJoin }: Props) {
+export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin }: Props) {
   const [selectedClub, setSelectedClub] = useState<string>('')
-  const [handle, setHandle] = useState('')
+  const [handle, setHandle] = useState(defaultHandle)
   const [checkResult, setCheckResult] = useState<{ available: boolean; suggestions: string[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
