@@ -27,7 +27,7 @@ export default function LoginPage() {
     }
 
     // ✅ 登录成功后跳走，去哪都行，只要不是 /login
-    router.replace('/matches')
+    router.replace('/dashboard')
   }
 
   return (

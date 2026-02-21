@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useMemo, useTransition, useEffect } from 'react'
+import { useState, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { PlayersData } from '@/lib/api/players'
+import type { PlayersData, PendingGroupInvite } from '@/lib/api/players'
+import { acceptGroupInvite } from '@/lib/api/groups'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Group } from '@/lib/types/database'
 
 type InvitableUser = { id: string; display_name: string }
@@ -10,8 +12,32 @@ type InvitableUser = { id: string; display_name: string }
 interface Props {
   data: PlayersData
   userId?: string
-  onGetInvitableUsers?: (groupId: string) => Promise<InvitableUser[]>
   onInviteToGroup?: (groupId: string, userId: string) => Promise<void>
+}
+
+/** Compute invitable users for a group from already-loaded PlayersData.
+ *  Uses club_identities data (open RLS) — no extra server call needed. */
+function getInvitableForGroup(data: PlayersData, groupId: string): InvitableUser[] {
+  const existingIds = new Set(
+    (data.groups.find(g => g.group.id === groupId)?.members ?? []).map(m => m.userId)
+  )
+  const seen = new Set<string>()
+  const result: InvitableUser[] = []
+  for (const { members } of data.clubs) {
+    for (const m of members) {
+      if (!seen.has(m.userId) && !existingIds.has(m.userId)) {
+        seen.add(m.userId)
+        result.push({ id: m.userId, display_name: m.handle })
+      }
+    }
+  }
+  for (const p of data.noClub) {
+    if (!seen.has(p.id) && !existingIds.has(p.id)) {
+      seen.add(p.id)
+      result.push({ id: p.id, display_name: p.display_name })
+    }
+  }
+  return result.sort((a, b) => a.display_name.localeCompare(b.display_name))
 }
 
 type View = 'club' | 'group' | 'all'
@@ -20,32 +46,21 @@ type View = 'club' | 'group' | 'all'
 
 function GroupInvitePanel({
   group,
-  onGetUsers,
+  initialUsers,
   onInvite,
   onClose,
 }: {
   group: Group
-  onGetUsers: (groupId: string) => Promise<InvitableUser[]>
+  initialUsers: InvitableUser[]
   onInvite: (groupId: string, userId: string) => Promise<void>
   onClose: () => void
 }) {
   const router = useRouter()
-  const [users, setUsers] = useState<InvitableUser[] | null>(null)
+  const [users] = useState<InvitableUser[]>(initialUsers)
   const [inviting, setInviting] = useState<string | null>(null)
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    startTransition(async () => {
-      try {
-        const u = await onGetUsers(group.id)
-        setUsers(u)
-      } catch {
-        setError('Failed to load users')
-      }
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group.id])
 
   const handleInvite = (userId: string) => {
     setInviting(userId)
@@ -53,7 +68,7 @@ function GroupInvitePanel({
     startTransition(async () => {
       try {
         await onInvite(group.id, userId)
-        setUsers(prev => prev?.filter(u => u.id !== userId) ?? prev)
+        setSentIds(prev => new Set([...prev, userId]))
         router.refresh()
       } catch (err: unknown) {
         setError((err as { message?: string })?.message || 'Invite failed')
@@ -80,28 +95,30 @@ function GroupInvitePanel({
       <div className="px-4 py-3 max-h-60 overflow-y-auto">
         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
 
-        {users === null && isPending && (
-          <p className="text-xs text-gray-400 italic">Loading…</p>
-        )}
-
-        {users !== null && users.length === 0 && (
+        {users.length === 0 && (
           <p className="text-xs text-gray-400 italic">Everyone is already a member.</p>
         )}
 
-        {users !== null && users.length > 0 && (
+        {users.length > 0 && (
           <div className="space-y-1.5">
             {users.map(u => (
               <div key={u.id} className="flex items-center justify-between gap-3">
                 <span className="text-sm text-gray-700">
                   {u.display_name || '(unnamed)'}
                 </span>
-                <button
-                  onClick={() => handleInvite(u.id)}
-                  disabled={isPending || inviting === u.id}
-                  className="px-2.5 py-0.5 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors whitespace-nowrap"
-                >
-                  {inviting === u.id ? '…' : 'Invite'}
-                </button>
+                {sentIds.has(u.id) ? (
+                  <span className="px-2.5 py-0.5 text-xs text-gray-400 whitespace-nowrap">
+                    Sent
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleInvite(u.id)}
+                    disabled={isPending || inviting === u.id}
+                    className="px-2.5 py-0.5 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors whitespace-nowrap"
+                  >
+                    {inviting === u.id ? '…' : 'Invite'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -111,12 +128,63 @@ function GroupInvitePanel({
   )
 }
 
+// ─── Pending group invite banner ──────────────────────────────────────────────
+
+function GroupInviteBanner({
+  invite,
+  onAccepted,
+}: {
+  invite: PendingGroupInvite
+  onAccepted: () => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  const handleAccept = () => {
+    setError(null)
+    const supabase = createSupabaseBrowserClient()
+    startTransition(async () => {
+      try {
+        await acceptGroupInvite(supabase, invite.groupId)
+        onAccepted()
+        router.refresh()
+      } catch (err: unknown) {
+        setError((err as { message?: string })?.message ?? 'Failed to accept')
+      }
+    })
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-3 bg-blue-50 border border-blue-100 rounded-2xl">
+      <div>
+        <span className="text-sm font-medium text-blue-800">
+          You&apos;re invited to <span className="font-semibold">{invite.groupName}</span>
+        </span>
+        {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+      </div>
+      <button
+        onClick={handleAccept}
+        disabled={isPending}
+        className="shrink-0 px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+      >
+        {isPending ? '…' : 'Join group'}
+      </button>
+    </div>
+  )
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export function PlayersPanel({ data, userId, onGetInvitableUsers, onInviteToGroup }: Props) {
-  const [view, setView] = useState<View>('club')
+export function PlayersPanel({ data, userId, onInviteToGroup }: Props) {
+  const [view, setView] = useState<View>('all')
   const [search, setSearch] = useState('')
   const [openInviteGroupId, setOpenInviteGroupId] = useState<string | null>(null)
+  const [dismissedInvites, setDismissedInvites] = useState<Set<string>>(new Set())
+
+  const pendingInvites = data.pendingGroupInvites.filter(
+    inv => !dismissedInvites.has(inv.groupId)
+  )
 
   const query = search.trim().toLowerCase()
 
@@ -185,14 +253,14 @@ export function PlayersPanel({ data, userId, onGetInvitableUsers, onInviteToGrou
           className="flex-1 min-w-[180px] px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-gray-300"
         />
         <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
-          <button onClick={() => setView('club')} className={btnClass('club')}>
-            By Club
+          <button onClick={() => setView('all')} className={btnClass('all')}>
+            All ({totalCount})
           </button>
           <button onClick={() => setView('group')} className={btnClass('group')}>
             By Group
           </button>
-          <button onClick={() => setView('all')} className={btnClass('all')}>
-            All ({totalCount})
+          <button onClick={() => setView('club')} className={btnClass('club')}>
+            By Club
           </button>
         </div>
       </div>
@@ -247,7 +315,15 @@ export function PlayersPanel({ data, userId, onGetInvitableUsers, onInviteToGrou
       {/* By Group */}
       {view === 'group' && (
         <div className="space-y-5">
-          {filteredGroups.length === 0 && (
+          {/* Pending group invite banners — always at the top */}
+          {pendingInvites.map(inv => (
+            <GroupInviteBanner
+              key={inv.groupId}
+              invite={inv}
+              onAccepted={() => setDismissedInvites(prev => new Set([...prev, inv.groupId]))}
+            />
+          ))}
+          {filteredGroups.length === 0 && pendingInvites.length === 0 && (
             <p className="text-sm text-gray-400 italic">No groups found.</p>
           )}
           {filteredGroups.map(({ group, members }) => {
@@ -262,7 +338,7 @@ export function PlayersPanel({ data, userId, onGetInvitableUsers, onInviteToGrou
                     {group.name}
                   </h3>
                   <span className="text-xs text-gray-300 font-normal">{members.length}</span>
-                  {isOrganizer && onGetInvitableUsers && onInviteToGroup && (
+                  {isOrganizer && onInviteToGroup && (
                     <button
                       onClick={() =>
                         setOpenInviteGroupId(inviteOpen ? null : group.id)
@@ -279,10 +355,10 @@ export function PlayersPanel({ data, userId, onGetInvitableUsers, onInviteToGrou
                 </div>
 
                 {/* Invite panel */}
-                {inviteOpen && onGetInvitableUsers && onInviteToGroup && (
+                {inviteOpen && onInviteToGroup && (
                   <GroupInvitePanel
                     group={group}
-                    onGetUsers={onGetInvitableUsers}
+                    initialUsers={getInvitableForGroup(data, group.id)}
                     onInvite={onInviteToGroup}
                     onClose={() => setOpenInviteGroupId(null)}
                   />

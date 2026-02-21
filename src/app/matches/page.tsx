@@ -1,3 +1,4 @@
+// DEPRECATED: This page is superseded by /dashboard. Do not link here directly.
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'

@@ -806,8 +806,39 @@ export async function getMatchScopeUsers(
   match: Match,
   excludeUserIds: string[],
 ): Promise<ScopeUser[]> {
-  const groupIds = match.invitation_scope_group_ids
-  if (!groupIds || groupIds.length === 0) return []
+  let groupIds: string[] | null = match.invitation_scope_group_ids ?? null
+
+  // Fallback: if no scope groups set on the match, use the organizer's active group memberships
+  // visible to the current caller via RLS:
+  //   - organizer themselves: group_members_select_self (user_id = auth.uid())
+  //   - confirmed participant in a shared group: group_members_select_active_roster_for_active_members
+  if (!groupIds || groupIds.length === 0) {
+    const { data: orgMemberships } = await supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', match.organizer_id)
+      .eq('status', 'active')
+    groupIds = (orgMemberships ?? []).map(m => m.group_id as string)
+  }
+
+  // Final fallback: organizer not in any group → show all platform users via club_identities
+  // (open RLS USING(true): no access restriction). Covers "Invite is NOT scope-restricted" per v1.4.
+  if (!groupIds || groupIds.length === 0) {
+    const excludeSet = new Set(excludeUserIds)
+    const { data: allIdentities } = await supabase
+      .from('club_identities')
+      .select('user_id, club_handle')
+      .order('club_handle', { ascending: true })
+    const seen = new Set<string>()
+    const result: ScopeUser[] = []
+    for (const row of allIdentities ?? []) {
+      const uid = row.user_id as string | null
+      if (!uid || excludeSet.has(uid) || seen.has(uid)) continue
+      seen.add(uid)
+      result.push({ id: uid, display_name: row.club_handle as string })
+    }
+    return result
+  }
 
   const { data: members, error } = await supabase
     .from('group_members')

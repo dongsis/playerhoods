@@ -5,7 +5,7 @@ import { getMatchListData, cancelMatch } from '@/lib/api/matches'
 import { getAllPlayersGroupedByClub } from '@/lib/api/players'
 import { getMyClubIdentities, getJoinableClubs, updateProfile } from '@/lib/api/identities'
 import { isSuperAdmin, getMyAdminClubs } from '@/lib/api/clubs'
-import { getInvitableUsers, inviteUserToGroup } from '@/lib/api/groups'
+import { inviteUserToGroup } from '@/lib/api/groups'
 import type { Profile } from '@/lib/types/database'
 import { DashboardShell } from './DashboardShell'
 
@@ -47,12 +47,6 @@ export default async function DashboardPage() {
     revalidatePath('/dashboard')
   }
 
-  async function handleGetInvitableUsers(groupId: string) {
-    'use server'
-    const supabaseSrv = await createSupabaseServerClient()
-    return getInvitableUsers(supabaseSrv, groupId)
-  }
-
   async function handleInviteToGroup(groupId: string, inviteeId: string) {
     'use server'
     const supabaseSrv = await createSupabaseServerClient()
@@ -82,7 +76,6 @@ export default async function DashboardPage() {
       isSuperAdmin={superAdmin}
       onUpdateProfile={handleUpdateProfile}
       onCancelMatch={handleCancelMatch}
-      onGetInvitableUsers={handleGetInvitableUsers}
       onInviteToGroup={handleInviteToGroup}
     />
   )

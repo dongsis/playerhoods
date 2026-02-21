@@ -70,7 +70,7 @@ export default async function ProfilePage() {
   return (
     <div style={{ maxWidth: '700px', margin: '0 auto', padding: '1.5rem' }}>
       <nav style={{ marginBottom: '1rem' }}>
-        <Link href="/matches">← Matches</Link>
+        <Link href="/dashboard">← Dashboard</Link>
       </nav>
 
       <h1>Your Profile</h1>

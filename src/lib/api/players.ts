@@ -17,10 +17,13 @@ export type GroupWithMembers = {
   members: GroupMemberRow[]
 }
 
+export type PendingGroupInvite = { groupId: string; groupName: string }
+
 export type PlayersData = {
   clubs: ClubWithMembers[]
   groups: GroupWithMembers[]
   noClub: { id: string; display_name: string }[]
+  pendingGroupInvites: PendingGroupInvite[]
 }
 
 /**
@@ -29,7 +32,7 @@ export type PlayersData = {
  * 5 parallel queries merged in JS — no nested WHERE.
  */
 export async function getAllPlayersGroupedByClub(supabase: Client): Promise<PlayersData> {
-  const [identitiesRes, clubsRes, profilesRes, groupsRes, groupMembersRes] = await Promise.all([
+  const [identitiesRes, clubsRes, profilesRes, groupsRes, groupMembersRes, pendingInvitesRes] = await Promise.all([
     supabase
       .from('club_identities')
       .select('user_id, club_id, club_handle')
@@ -50,6 +53,11 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
       .from('group_members')
       .select('group_id, user_id')
       .eq('status', 'active'),
+    // group_members_select_self RLS auto-filters to auth.uid() rows only
+    supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('status', 'pending'),
   ])
 
   const identities = (identitiesRes.data ?? []) as {
@@ -111,5 +119,18 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
     }
   }
 
-  return { clubs: clubsResult, groups: groupsResult, noClub }
+  // Resolve pending group invites: deduplicate by group_id and exclude already-active groups
+  const groupMap = new Map(groups.map(g => [g.id, g.name]))
+  const activeGroupIds = new Set((groupMembersRes.data ?? []).map(row => row.group_id as string))
+  const seenGroupIds = new Set<string>()
+  const pendingGroupInvites: PendingGroupInvite[] = []
+  for (const row of (pendingInvitesRes.data ?? [])) {
+    const groupId = row.group_id as string
+    if (!seenGroupIds.has(groupId) && !activeGroupIds.has(groupId)) {
+      seenGroupIds.add(groupId)
+      pendingGroupInvites.push({ groupId, groupName: groupMap.get(groupId) ?? groupId })
+    }
+  }
+
+  return { clubs: clubsResult, groups: groupsResult, noClub, pendingGroupInvites }
 }

@@ -62,7 +62,7 @@ export default function NewMatchPage() {
       <h1>Create New Match</h1>
 
       <nav style={{ marginBottom: '1rem' }}>
-        <Link href="/matches">Back to Matches</Link>
+        <Link href="/dashboard">Back to Dashboard</Link>
       </nav>
 
       <form onSubmit={handleSubmit}>

@@ -1,4 +1,10 @@
 # Repo Layout
+⚠️ Archived — Superseded by v1.5
+
+This document reflects v1.3 semantics.
+Refer to:
+docs/blueprint/v1.5/System_Blueprint.md
+docs/specs/MatchContract_v1.5.md
 
 ## v1.3 FINAL / FROZEN — Unified Restart Doctrine
 

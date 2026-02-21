@@ -17,7 +17,7 @@ export default async function AdminClubsPage() {
     clubs = await getAllClubs(supabase)
   } else {
     const myAdminClubs = await getMyAdminClubs(supabase)
-    if (myAdminClubs.length === 0) redirect('/matches')
+    if (myAdminClubs.length === 0) redirect('/dashboard')
     clubs = myAdminClubs.map(r => r.club)
   }
 
@@ -30,8 +30,8 @@ export default async function AdminClubsPage() {
     <div style={{ maxWidth: '860px', margin: '0 auto', padding: '1.5rem' }}>
       {/* Breadcrumb */}
       <nav style={{ fontSize: '0.82rem', color: '#888', marginBottom: '1.25rem' }}>
-        <Link href="/matches" style={{ color: '#888', textDecoration: 'none' }}>
-          Matches
+        <Link href="/dashboard" style={{ color: '#888', textDecoration: 'none' }}>
+          Dashboard
         </Link>
         <span style={{ margin: '0 0.4rem' }}>›</span>
         <span>Club Admin</span>

@@ -7,6 +7,7 @@ import type { MatchListItem } from '@/lib/api/matches'
 import { acceptMatchInvite } from '@/lib/api/matches'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
+import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
 
 // ─── inbox split ─────────────────────────────────────────────────────────────
 
@@ -35,6 +36,9 @@ function MatchRow({ item }: { item: MatchListItem }) {
 
   const isInvited =
     myParticipant?.status === 'pending' && myParticipant?.join_method === 'invited'
+  const isRequested =
+    myParticipant?.status === 'pending' && myParticipant?.join_method === 'requested'
+  const isRemoved = myParticipant?.status === 'removed'
 
   const handleConfirm = () => {
     setConfirmError(null)
@@ -88,7 +92,7 @@ function MatchRow({ item }: { item: MatchListItem }) {
       <div className="flex-1 text-sm text-gray-600 truncate">{roster}</div>
       {isInvited && (
         <div className="shrink-0 flex items-center gap-2">
-          <span className="text-xs text-blue-600 font-medium whitespace-nowrap">You&apos;re invited</span>
+          <span className="text-xs text-blue-600 font-medium whitespace-nowrap">Invited</span>
           <button
             onClick={handleConfirm}
             disabled={isPending}
@@ -98,6 +102,16 @@ function MatchRow({ item }: { item: MatchListItem }) {
           </button>
           {confirmError && <span className="text-xs text-red-500">{confirmError}</span>}
         </div>
+      )}
+      {isRequested && (
+        <span className="shrink-0 text-xs text-amber-600 font-medium whitespace-nowrap">
+          Awaiting approval
+        </span>
+      )}
+      {isRemoved && (
+        <span className="shrink-0 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-600 rounded-full whitespace-nowrap">
+          Removed
+        </span>
       )}
       <Link
         href={`/matches/${match.id}`}
@@ -197,9 +211,10 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
 
   const now = useMemo(() => new Date().toISOString(), [])
 
-  const { incoming, lookingFor, history } = useMemo(() => {
+  const { incoming, lookingFor, removed, history } = useMemo(() => {
     const incoming: MatchListItem[] = []
     const lookingFor: MatchListItem[] = []
+    const removed: MatchListItem[] = []
     const history: MatchListItem[] = []
 
     for (const item of items) {
@@ -209,6 +224,9 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
         else history.push(item)
       } else if (status === 'pending') {
         if (!isPast(item, now)) lookingFor.push(item)
+      } else if (status === 'removed') {
+        // Show removal notification only for upcoming active matches
+        if (item.match.status === 'active' && !isPast(item, now)) removed.push(item)
       } else if (status == null) {
         if (item.match.status === 'active' && !isPast(item, now)) lookingFor.push(item)
       }
@@ -218,7 +236,7 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
       (b.match.start_at_utc ?? '').localeCompare(a.match.start_at_utc ?? '')
     )
 
-    return { incoming, lookingFor, history }
+    return { incoming, lookingFor, removed, history }
   }, [items, now])
 
   const subTabBtn = (key: 'upcoming' | 'history', label: string, count: number) => (
@@ -247,6 +265,23 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
 
       {subTab === 'upcoming' && (
         <>
+          {/* Notifications: pending invites + removed from match */}
+          {(removed.length > 0 || lookingFor.some(i => i.myParticipant?.join_method === 'invited')) && (
+            <section>
+              <SectionHeading label="Notifications" count={removed.length + lookingFor.filter(i => i.myParticipant?.join_method === 'invited').length} />
+              <div className="space-y-2">
+                {lookingFor
+                  .filter(i => i.myParticipant?.join_method === 'invited')
+                  .map(item => (
+                    <MatchRow key={item.match.id} item={item} />
+                  ))}
+                {removed.map(item => (
+                  <MatchRow key={item.match.id} item={item} />
+                ))}
+              </div>
+            </section>
+          )}
+
           <section>
             <SectionHeading label="My Matches" count={incoming.length} />
             {incoming.length === 0 ? (
@@ -278,16 +313,29 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
             )}
           </section>
 
-          {lookingFor.length > 0 && (
+          {lookingFor.filter(i => i.myParticipant?.join_method !== 'invited').length > 0 && (
             <section>
-              <SectionHeading label="Looking for Players" count={lookingFor.length} />
+              <SectionHeading
+                label="Looking for Players"
+                count={lookingFor.filter(i => i.myParticipant?.join_method !== 'invited').length}
+              />
               <div className="space-y-2">
-                {lookingFor.map(item => (
-                  <MatchRow key={item.match.id} item={item} />
-                ))}
+                {lookingFor
+                  .filter(i => i.myParticipant?.join_method !== 'invited')
+                  .map(item => (
+                    <MatchRow key={item.match.id} item={item} />
+                  ))}
               </div>
             </section>
           )}
+
+          {/* Create new match */}
+          <section className="pt-2">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              Create a Match
+            </h3>
+            <CreateMatchInline />
+          </section>
         </>
       )}
 

@@ -33,7 +33,7 @@ export default async function ClubAdminPage({ params }: Props) {
     isClubAdmin(supabase, clubId),
   ])
 
-  if (!superAdmin && !clubAdminRole) redirect('/matches')
+  if (!superAdmin && !clubAdminRole) redirect('/dashboard')
 
   let club
   try {
@@ -114,8 +114,8 @@ export default async function ClubAdminPage({ params }: Props) {
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem' }}>
       {/* Breadcrumb */}
       <nav style={{ fontSize: '0.82rem', color: '#888', marginBottom: '1.25rem' }}>
-        <Link href="/matches" style={{ color: '#888', textDecoration: 'none' }}>
-          Matches
+        <Link href="/dashboard" style={{ color: '#888', textDecoration: 'none' }}>
+          Dashboard
         </Link>
         <span style={{ margin: '0 0.4rem' }}>›</span>
         {superAdmin && (

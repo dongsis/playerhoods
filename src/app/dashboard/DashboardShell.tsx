@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { Profile, ClubIdentity, Club, ClubAdmin } from '@/lib/types/database'
@@ -21,7 +21,6 @@ interface Props {
   isSuperAdmin: boolean
   onUpdateProfile: (formData: FormData) => Promise<void>
   onCancelMatch: (matchId: string) => Promise<void>
-  onGetInvitableUsers: (groupId: string) => Promise<{ id: string; display_name: string }[]>
   onInviteToGroup: (groupId: string, userId: string) => Promise<void>
 }
 
@@ -36,17 +35,37 @@ export function DashboardShell({
   isSuperAdmin,
   onUpdateProfile,
   onCancelMatch,
-  onGetInvitableUsers,
   onInviteToGroup,
 }: Props) {
   const isAdmin = isSuperAdmin || myAdminClubs.length > 0
   const [activeTab, setActiveTab] = useState<DashTab>('matches')
 
+  // Compute nav badge counts
+  const badges = useMemo(() => {
+    const nowIso = new Date().toISOString()
+    let matchesBadge = 0
+    for (const item of items) {
+      const mp = item.myParticipant
+      if (!mp) continue
+      const past = item.match.start_at_utc
+        ? item.match.start_at_utc < nowIso
+        : item.match.match_date
+          ? item.match.match_date < nowIso.slice(0, 10)
+          : false
+      // Pending invite needing user action
+      if (mp.status === 'pending' && mp.join_method === 'invited' && !past) matchesBadge++
+      // Removed from upcoming active match
+      if (mp.status === 'removed' && item.match.status === 'active' && !past) matchesBadge++
+    }
+    const playersBadge = playersData.pendingGroupInvites.length
+    return { matches: matchesBadge || undefined, players: playersBadge || undefined }
+  }, [items, playersData.pendingGroupInvites.length])
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Left nav — sticky sidebar */}
       <aside className="w-56 shrink-0 border-r border-gray-100 bg-white sticky top-0 h-screen">
-        <LeftNav active={activeTab} onTab={setActiveTab} isAdmin={isAdmin} />
+        <LeftNav active={activeTab} onTab={setActiveTab} isAdmin={isAdmin} badges={badges} />
       </aside>
 
       {/* Main content */}
@@ -58,7 +77,6 @@ export function DashboardShell({
           <PlayersPanel
             data={playersData}
             userId={userId}
-            onGetInvitableUsers={onGetInvitableUsers}
             onInviteToGroup={onInviteToGroup}
           />
         )}

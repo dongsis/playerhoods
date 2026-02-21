@@ -24,8 +24,10 @@ $env:PGPASSWORD="你的数据库密码"
   --no-privileges `
   -f "db_dump/schema_public.sql"
 
+可执行命令：
 
 mkdir db_dump -Force | Out-Null
+
 $env:PGPASSWORD="2566Addingham"
 
 & "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" `
