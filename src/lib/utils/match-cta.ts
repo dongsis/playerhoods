@@ -14,6 +14,9 @@ interface ParticipantSnapshot {
   id: string
   status: string
   join_method: string
+  /** v1.5 primary field — set by rpc_match_accept_invite / rpc_match_manual_confirm */
+  participant_accepted_at: string | null
+  /** Legacy field — kept for backward-compat with pre-v1.5 rows */
   user_accepted_at: string | null
   org_approved_at: string | null
 }
@@ -22,29 +25,32 @@ interface ParticipantSnapshot {
  * Derives the single most important CTA for a match card in the list view.
  *
  * Priority:
- *  1. Accept  — I have an uninvited invite (user_accepted_at = null)
+ *  1. Accept  — I have a pending invite I haven't accepted yet
  *  2. Approve — I'm organizer and someone is waiting for org approval
  *  3. Withdraw — I'm pending (can cancel) or confirmed non-organizer (can leave)
- *  4. Request — match is request-mode, I'm not a participant (scope checked server-side on click)
+ *  4. Request — match has a scope (invitation_scope_group_ids set), I'm not yet a participant
  *  5. null
  */
 export function computeCardCTA(params: {
   matchStatus: string
-  admissionMode: string
+  /** v1.5: true when match.invitation_scope_group_ids is non-empty. Replaces deprecated admissionMode. */
+  hasScope: boolean
   myParticipant: ParticipantSnapshot | null
   isOrganizer: boolean
-  /** Participants with user_accepted_at SET but org_approved_at NULL */
+  /** Participants with accepted_at SET but org_approved_at NULL */
   pendingApprovals: ParticipantSnapshot[]
 }): CardCTA {
   if (params.matchStatus !== 'active') return null
 
   const mp = params.myParticipant
+  // v1.5: prefer participant_accepted_at; fall back to user_accepted_at for legacy rows
+  const accepted = mp ? (mp.participant_accepted_at ?? mp.user_accepted_at) : null
 
   // 1. Uninvited invite — must accept
   if (
     mp?.status === 'pending' &&
     mp.join_method === 'invited' &&
-    !mp.user_accepted_at
+    !accepted
   ) {
     return { kind: 'accept' }
   }
@@ -68,8 +74,9 @@ export function computeCardCTA(params: {
     return { kind: 'withdraw' }
   }
 
-  // 4. Not a participant in a request-mode match — can request
-  if (!mp && !params.isOrganizer && params.admissionMode === 'request') {
+  // 4. Not a participant in a scope-enabled match — can request
+  // (actual scope eligibility is enforced server-side by the RPC)
+  if (!mp && !params.isOrganizer && params.hasScope) {
     return { kind: 'request' }
   }
 

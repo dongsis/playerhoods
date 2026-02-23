@@ -10,6 +10,8 @@ import {
   joinClub,
   getMyClubIdentities,
   getJoinableClubs,
+  getMyVenuePreferences,
+  removeVenuePreference,
 } from '@/lib/api/identities'
 import { ProfileEditForm } from './ProfileEditForm'
 import { ClubIdentityRow } from './ClubIdentityRow'
@@ -21,10 +23,11 @@ export default async function ProfilePage() {
 
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: profile }, identities, joinable] = await Promise.all([
+  const [{ data: profile }, identities, joinable, venuePrefs] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
     getMyClubIdentities(supabase, user.id),
     getJoinableClubs(supabase, user.id),
+    getMyVenuePreferences(supabase, user.id).catch(() => []),
   ])
 
   if (!profile) redirect('/onboarding/profile')
@@ -67,6 +70,15 @@ export default async function ProfilePage() {
     revalidatePath('/profile')
   }
 
+  async function handleRemoveVenuePref(venueId: string) {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    const u = await getUser()
+    if (!u) return
+    await removeVenuePreference(srv, u.id, venueId)
+    revalidatePath('/profile')
+  }
+
   return (
     <div style={{ maxWidth: '700px', margin: '0 auto', padding: '1.5rem' }}>
       <nav style={{ marginBottom: '1rem' }}>
@@ -75,14 +87,14 @@ export default async function ProfilePage() {
 
       <h1>Your Profile</h1>
 
-      {/* Display name (read-only — set via club handle or onboarding) */}
+      {/* Display name (read-only — set via primary venue handle or onboarding) */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
         <h2 style={{ marginTop: 0 }}>Identity</h2>
         <p style={{ margin: '0 0 0.25rem' }}>
           <strong>Display Name:</strong> {profile.display_name || <em style={{ color: '#888' }}>not set</em>}
         </p>
         <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
-          Your display name is set by your primary club handle. To change it, rename your handle in the primary club below.
+          Your display name is your global identity on playerhoods.com. To change it, rename your handle in the primary venue below.
         </p>
       </section>
 
@@ -96,11 +108,11 @@ export default async function ProfilePage() {
         />
       </section>
 
-      {/* Club memberships */}
+      {/* Venue memberships */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
-        <h2 style={{ marginTop: 0 }}>Club Memberships</h2>
+        <h2 style={{ marginTop: 0 }}>Venue Memberships</h2>
         {identities.length === 0 ? (
-          <p style={{ color: '#888' }}>You have not joined any clubs yet.</p>
+          <p style={{ color: '#888' }}>You have not joined any venues yet.</p>
         ) : (
           identities.map(identity => (
             <ClubIdentityRow
@@ -114,10 +126,44 @@ export default async function ProfilePage() {
         )}
       </section>
 
-      {/* Join a club */}
+      {/* My saved venues (lightweight preference, no handle required) */}
+      {venuePrefs.length > 0 && (
+        <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
+          <h2 style={{ marginTop: 0 }}>My Saved Venues</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {venuePrefs.map(v => (
+              <div
+                key={v.id}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}
+              >
+                <div>
+                  <Link href={`/venues/${v.id}`} style={{ fontWeight: 500, fontSize: '0.9rem' }}>
+                    {v.name}
+                  </Link>
+                  {(v.location_text || v.timezone) && (
+                    <div style={{ fontSize: '0.78rem', color: '#888' }}>
+                      {[v.location_text, v.timezone].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </div>
+                <form action={handleRemoveVenuePref.bind(null, v.id)}>
+                  <button
+                    type="submit"
+                    style={{ fontSize: '0.78rem', color: '#999', background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem 0.4rem' }}
+                  >
+                    Remove
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Join a venue */}
       {joinable.length > 0 && (
         <section style={{ padding: '1rem', border: '1px solid #ccc' }}>
-          <h2 style={{ marginTop: 0 }}>Join a Club</h2>
+          <h2 style={{ marginTop: 0 }}>Join a Venue</h2>
           <ClubJoinForm
             clubs={joinable}
             defaultHandle={profile.display_name ?? ''}

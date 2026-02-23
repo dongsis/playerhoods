@@ -34,6 +34,83 @@ export function formatMatchTime(
   return 'TBD'
 }
 
+/** Format start–end time window: "Mon, Jan 5, 14:00–15:30". Falls back to formatMatchTime. */
+export function formatTimeWindow(
+  startAtUtc: string | null,
+  matchDate: string | null,
+  startTime: string | null,
+  durationMinutes: number | null,
+  timezone: string | null,
+): string {
+  const start = formatMatchTime(startAtUtc, matchDate, startTime, timezone)
+  if (!durationMinutes) return start
+
+  if (startAtUtc && timezone) {
+    try {
+      const endDate = new Date(new Date(startAtUtc).getTime() + durationMinutes * 60_000)
+      const endHHMM = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(endDate)
+      return `${start}–${endHHMM}`
+    } catch {
+      // fall through
+    }
+  }
+
+  if (startTime) {
+    const [h, m] = startTime.split(':').map(Number)
+    const totalMins = h * 60 + m + durationMinutes
+    const endH = Math.floor(totalMins / 60) % 24
+    const endM = totalMins % 60
+    const endHHMM = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
+    return `${start}–${endHHMM}`
+  }
+
+  return start
+}
+
+/** Returns YYYY-MM-DD in club-local timezone for date-grouping in history. */
+export function clubDateKey(
+  startAtUtc: string | null,
+  matchDate: string | null,
+  timezone: string | null,
+): string {
+  if (startAtUtc && timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date(startAtUtc))
+      const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+      return `${get('year')}-${get('month')}-${get('day')}`
+    } catch {
+      // fall through
+    }
+  }
+  if (matchDate) return matchDate.slice(0, 10)
+  return 'undated'
+}
+
+const MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+]
+
+/** Human-readable date heading from a YYYY-MM-DD dateKey. E.g. "January 5". */
+export function formatDateHeading(dateKey: string): string {
+  if (dateKey === 'undated') return 'Date TBD'
+  const [, mm, dd] = dateKey.split('-')
+  const m = parseInt(mm, 10)
+  const d = parseInt(dd, 10)
+  if (isNaN(m) || isNaN(d)) return dateKey
+  return `${MONTH_NAMES[m - 1]} ${d}`
+}
+
 /** Human-readable relative time: "3m ago", "2h ago", "4d ago". */
 export function formatRelativeTime(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime()
@@ -49,15 +126,30 @@ export function formatRelativeTime(isoString: string): string {
 /** Human-readable action_type string for activity feed. */
 export function formatActionType(type: string): string {
   const MAP: Record<string, string> = {
-    invited:       'invited',
-    nominated:     'nominated',
-    requested:     'requested to join',
-    accepted:      'accepted invite for',
-    approved:      'approved',
-    withdrawn:     'withdrew',
-    removed:       'removed',
-    guest_added:   'added guest',
-    declined:      'declined invite for',
+    // v1.3 verb-form values (actual DB values)
+    invite:                'invited',
+    nominate:              'nominated',
+    request_join:          'requested to join',
+    accept:                'accepted invite for',
+    approve:               'approved',
+    withdraw:              'withdrew',
+    decline:               'declined invite for',
+    remove:                'removed',
+    add_guest_org:         'added guest',
+    add_guest_participant: 'added guest',
+    // v1.3 past-tense aliases (legacy)
+    invited:               'invited',
+    nominated:             'nominated',
+    requested:             'requested to join',
+    accepted:              'accepted invite for',
+    approved:              'approved',
+    withdrawn:             'withdrew',
+    removed:               'removed',
+    guest_added:           'added guest',
+    declined:              'declined invite for',
+    // v1.5 new values
+    reenter:               're-entered match for',
+    manual_confirm:        'manually confirmed',
   }
   return MAP[type] ?? type
 }

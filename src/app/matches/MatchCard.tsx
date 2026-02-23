@@ -40,13 +40,17 @@ export function MatchCard({ item, userId }: Props) {
   const router = useRouter()
   const supabase = createSupabaseBrowserClient()
 
+  // v1.5: check participant_accepted_at (primary) with user_accepted_at as legacy fallback
   const pendingApprovals = participants.filter(
-    p => p.status === 'pending' && p.user_accepted_at !== null && p.org_approved_at === null,
+    p => p.status === 'pending' &&
+         (p.participant_accepted_at ?? p.user_accepted_at) !== null &&
+         p.org_approved_at === null,
   )
 
   const cta = computeCardCTA({
     matchStatus: match.status,
-    admissionMode: match.admission_mode,
+    // v1.5: use invitation_scope_group_ids instead of deprecated admissionMode
+    hasScope: (match.invitation_scope_group_ids ?? []).length > 0,
     myParticipant,
     isOrganizer,
     pendingApprovals,

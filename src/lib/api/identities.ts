@@ -133,3 +133,77 @@ export async function getJoinableClubs(
   if (error) throw error
   return (data ?? []) as Club[]
 }
+
+// ============================================================================
+// Venue preferences (secondary_club_ids — lightweight "save" without a handle)
+// ============================================================================
+
+/** Return the clubs stored in profiles.secondary_club_ids for the user. */
+export async function getMyVenuePreferences(
+  supabase: Client,
+  userId: string,
+): Promise<Club[]> {
+  const { data: profile, error: profErr } = await supabase
+    .from('profiles')
+    .select('secondary_club_ids')
+    .eq('id', userId)
+    .single()
+  if (profErr) throw profErr
+
+  const ids: string[] = profile?.secondary_club_ids ?? []
+  if (ids.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('clubs')
+    .select('*')
+    .in('id', ids)
+    .order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Club[]
+}
+
+/** Add a venue to profiles.secondary_club_ids (idempotent). */
+export async function addVenuePreference(
+  supabase: Client,
+  userId: string,
+  venueId: string,
+): Promise<void> {
+  const { data, error: fetchErr } = await supabase
+    .from('profiles')
+    .select('secondary_club_ids')
+    .eq('id', userId)
+    .single()
+  if (fetchErr) throw fetchErr
+
+  const current: string[] = data?.secondary_club_ids ?? []
+  if (current.includes(venueId)) return
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ secondary_club_ids: [...current, venueId] })
+    .eq('id', userId)
+  if (error) throw error
+}
+
+/** Remove a venue from profiles.secondary_club_ids (idempotent). */
+export async function removeVenuePreference(
+  supabase: Client,
+  userId: string,
+  venueId: string,
+): Promise<void> {
+  const { data, error: fetchErr } = await supabase
+    .from('profiles')
+    .select('secondary_club_ids')
+    .eq('id', userId)
+    .single()
+  if (fetchErr) throw fetchErr
+
+  const current: string[] = data?.secondary_club_ids ?? []
+  const updated = current.filter(id => id !== venueId)
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ secondary_club_ids: updated })
+    .eq('id', userId)
+  if (error) throw error
+}

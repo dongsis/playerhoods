@@ -10,7 +10,7 @@ export type ClubWithMembers = {
   members: ClubMember[]
 }
 
-export type GroupMemberRow = { userId: string; displayName: string }
+export type GroupMemberRow = { userId: string; displayName: string; status: 'active' | 'pending' }
 
 export type GroupWithMembers = {
   group: Group
@@ -51,8 +51,8 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
       .order('name', { ascending: true }),
     supabase
       .from('group_members')
-      .select('group_id, user_id')
-      .eq('status', 'active'),
+      .select('group_id, user_id, status')
+      .in('status', ['active', 'pending']),
     // group_members_select_self RLS auto-filters to auth.uid() rows only
     supabase
       .from('group_members')
@@ -68,7 +68,7 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
   const clubs = (clubsRes.data ?? []) as Club[]
   const profiles = (profilesRes.data ?? []) as { id: string; display_name: string }[]
   const groups = (groupsRes.data ?? []) as Group[]
-  const groupMembers = (groupMembersRes.data ?? []) as { group_id: string; user_id: string }[]
+  const groupMembers = (groupMembersRes.data ?? []) as { group_id: string; user_id: string; status: 'active' | 'pending' }[]
 
   // Build club map
   const clubMap = new Map(clubs.map(c => [c.id, c]))
@@ -106,6 +106,7 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
     list.push({
       userId: row.user_id,
       displayName: profileMap.get(row.user_id) ?? '',
+      status: row.status,
     })
     membersByGroup.set(row.group_id, list)
   }

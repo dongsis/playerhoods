@@ -3,9 +3,8 @@ import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getMatchListData, cancelMatch } from '@/lib/api/matches'
 import { getAllPlayersGroupedByClub } from '@/lib/api/players'
-import { getMyClubIdentities, getJoinableClubs, updateProfile } from '@/lib/api/identities'
+import { getMyClubIdentities, getJoinableClubs, updateProfile, getMyVenuePreferences } from '@/lib/api/identities'
 import { isSuperAdmin, getMyAdminClubs } from '@/lib/api/clubs'
-import { inviteUserToGroup } from '@/lib/api/groups'
 import type { Profile } from '@/lib/types/database'
 import { DashboardShell } from './DashboardShell'
 
@@ -15,7 +14,7 @@ export default async function DashboardPage() {
 
   const supabase = await createSupabaseServerClient()
 
-  const [items, playersData, myIdentities, joinableClubs, superAdmin, myAdminClubs, profileRes] =
+  const [items, playersData, myIdentities, joinableClubs, superAdmin, myAdminClubs, profileRes, myVenuePrefs] =
     await Promise.all([
       getMatchListData(supabase, user.id),
       getAllPlayersGroupedByClub(supabase),
@@ -28,6 +27,7 @@ export default async function DashboardPage() {
         .select('display_name, first_name, last_name, primary_club_id')
         .eq('id', user.id)
         .single(),
+      getMyVenuePreferences(supabase, user.id).catch(() => []),
     ])
 
   const profile = (profileRes.data as Pick<
@@ -44,13 +44,6 @@ export default async function DashboardPage() {
     'use server'
     const supabaseSrv = await createSupabaseServerClient()
     await cancelMatch(supabaseSrv, matchId)
-    revalidatePath('/dashboard')
-  }
-
-  async function handleInviteToGroup(groupId: string, inviteeId: string) {
-    'use server'
-    const supabaseSrv = await createSupabaseServerClient()
-    await inviteUserToGroup(supabaseSrv, groupId, inviteeId)
     revalidatePath('/dashboard')
   }
 
@@ -71,12 +64,12 @@ export default async function DashboardPage() {
       playersData={playersData}
       profile={profile}
       myIdentities={myIdentities}
+      myVenuePrefs={myVenuePrefs}
       joinableCount={joinableClubs.length}
       myAdminClubs={myAdminClubs}
       isSuperAdmin={superAdmin}
       onUpdateProfile={handleUpdateProfile}
       onCancelMatch={handleCancelMatch}
-      onInviteToGroup={handleInviteToGroup}
     />
   )
 }

@@ -43,7 +43,7 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
       setGuestNotes('')
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add player')
+      setError((err as { message?: string })?.message ?? 'Failed to add player')
     } finally {
       setLoading(false)
     }

@@ -54,8 +54,10 @@ export type MatchDetailData = {
   myParticipant: MatchParticipantEnriched | null
   isOrganizer: boolean
   confirmedCount: number
+  pendingCount: number
   activities: ActivityItem[]
   organizerName: string
+  scopeGroups: { id: string; name: string }[]
 }
 
 // Read operations (respect RLS)
@@ -240,10 +242,10 @@ export async function getMatchParticipants(supabase: Client, matchId: string): P
   return result
 }
 
-export async function isUserInMatchScope(supabase: Client, matchId: string, userId: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc('is_user_in_match_scope', {
+/** v1.5: Self-only scope check. Uses is_caller_in_match_scope (safe, granted to authenticated). */
+export async function isCallerInMatchScope(supabase: Client, matchId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_caller_in_match_scope', {
     p_match_id: matchId,
-    p_user_id: userId,
   })
   if (error) throw error
   return data as boolean
@@ -375,89 +377,83 @@ export async function setMatchSingleCourt(
 // v1.3 Write operations (via RPC only)
 // ============================================================================
 
-/** Request to join a match. v1.3: Must be in scope groups. */
-export async function requestJoinMatch(supabase: Client, matchId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_request_join', {
-    p_match_id: matchId,
-    ...(note ? { p_note: note } : {}),
-  })
+/** v1.5: Request to join a match. Requester must be in scope groups. Empty scope → rejected. */
+export async function requestJoinMatch(supabase: Client, matchId: string) {
+  const { error } = await supabase.rpc('rpc_match_request_join', { p_match_id: matchId })
   if (error) throw error
 }
 
-/** Invite a user. v1.3: NOT restricted by scope. */
-export async function inviteUserToMatch(supabase: Client, matchId: string, userId: string, note?: string) {
+/** v1.5: ORG-only invite. Invited user must be in scope groups. */
+export async function inviteUserToMatch(supabase: Client, matchId: string, userId: string) {
   const { error } = await supabase.rpc('rpc_match_invite_user', {
     p_match_id: matchId,
     p_user_id: userId,
-    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
-/** Nominate a user (participant action). v1.3: NOT restricted by scope. */
-export async function nominateUser(supabase: Client, matchId: string, userId: string, note?: string) {
+/** v1.5: Nominate a user. join_method=nominated. Scope enforced. ORG or non-removed participant. */
+export async function nominateUser(supabase: Client, matchId: string, userId: string) {
   const { error } = await supabase.rpc('rpc_match_nominate_user', {
     p_match_id: matchId,
     p_user_id: userId,
-    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
-/** Accept a pending invitation. v1.3: Sets user_accepted_at. */
-export async function acceptMatchInvite(supabase: Client, matchId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_accept_invite', {
-    p_match_id: matchId,
-    ...(note ? { p_note: note } : {}),
-  })
+/** v1.5: Accept a pending invitation or nomination. Writes participant_accepted_at + via=in_app. */
+export async function acceptMatchInvite(supabase: Client, matchId: string) {
+  const { error } = await supabase.rpc('rpc_match_accept_invite', { p_match_id: matchId })
   if (error) throw error
 }
 
-/** ORG approves a pending participant. v1.3: ORG ONLY. */
-export async function orgApproveParticipant(supabase: Client, participantId: string, note?: string) {
+/** v1.5: ORG approves a pending participant. Writes org_approved_at. */
+export async function orgApproveParticipant(supabase: Client, participantId: string) {
   const { error } = await supabase.rpc('rpc_match_org_approve_participant', {
     p_match_participant_id: participantId,
-    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
-/** User withdraws (decline invite or leave). v1.3: Unified. */
-export async function userWithdraw(supabase: Client, matchId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_user_withdraw', {
-    p_match_id: matchId,
-    ...(note ? { p_note: note } : {}),
-  })
-  if (error) throw error
-}
-
-/** ORG/manager removes participant. */
-export async function removeParticipant(supabase: Client, participantId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_remove_participant', {
+/** v1.5: ORG manually confirms a user participant (sets participant_accepted_at via=manual + org_approved_at). */
+export async function manualConfirmParticipant(supabase: Client, participantId: string, note?: string) {
+  const { error } = await supabase.rpc('rpc_match_manual_confirm', {
     p_match_participant_id: participantId,
     ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
-/** ORG adds guest (immediately confirmed). */
-export async function addGuestOrg(supabase: Client, matchId: string, displayName: string, guestNotes?: string, note?: string) {
+/** v1.5: User withdraws (decline invite or leave). Sets removed_at. */
+export async function userWithdraw(supabase: Client, matchId: string) {
+  const { error } = await supabase.rpc('rpc_match_user_withdraw', { p_match_id: matchId })
+  if (error) throw error
+}
+
+/** v1.5: ORG/manager removes participant. Sets removed_at. */
+export async function removeParticipant(supabase: Client, participantId: string) {
+  const { error } = await supabase.rpc('rpc_match_remove_participant', {
+    p_match_participant_id: participantId,
+  })
+  if (error) throw error
+}
+
+/** v1.5: ORG adds guest (join_method=manual, confirmed immediately). */
+export async function addGuestOrg(supabase: Client, matchId: string, displayName: string, guestNotes?: string) {
   const { error } = await supabase.rpc('rpc_match_add_guest_org', {
     p_match_id: matchId,
     p_guest_display_name: displayName,
     p_guest_notes: guestNotes ?? '',
-    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
-/** Participant adds guest (pending, needs ORG approval). */
-export async function addGuestParticipant(supabase: Client, matchId: string, displayName: string, guestNotes?: string, note?: string) {
+/** v1.5b: Non-removed participant adds guest (join_method=manual, pending ORG approval). */
+export async function addGuestParticipant(supabase: Client, matchId: string, displayName: string, guestNotes?: string) {
   const { error } = await supabase.rpc('rpc_match_add_guest_participant', {
     p_match_id: matchId,
     p_guest_display_name: displayName,
     p_guest_notes: guestNotes ?? '',
-    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
@@ -753,6 +749,11 @@ export async function getMatchDetailData(
     ((guestsRes.data ?? []) as { id: string; display_name: string }[]).map(g => [g.id, g.display_name])
   )
 
+  const scopeGroupIds = match.invitation_scope_group_ids ?? []
+  const scopeGroupsRes = scopeGroupIds.length > 0
+    ? await supabase.from('groups').select('id, name').in('id', scopeGroupIds)
+    : { data: [] }
+
   const resolve = (uid: string | null, gid: string | null) =>
     resolveNameFromMaps(uid, gid, match.club_id, identityMap, profileMap, guestMap)
 
@@ -776,6 +777,7 @@ export async function getMatchDetailData(
 
   const confirmed = enriched.filter(p => p.status === 'confirmed')
   const myParticipant = userId ? (enriched.find(p => p.user_id === userId) ?? null) : null
+  const scopeGroups = ((scopeGroupsRes.data ?? []) as { id: string; name: string }[])
 
   return {
     match,
@@ -785,8 +787,10 @@ export async function getMatchDetailData(
     myParticipant,
     isOrganizer: userId === match.organizer_id,
     confirmedCount: formedRes.data?.confirmed_count ?? confirmed.length,
+    pendingCount: formedRes.data?.pending_count ?? 0,
     activities,
     organizerName: resolve(match.organizer_id, null),
+    scopeGroups,
   }
 }
 
@@ -796,49 +800,16 @@ export async function getMatchDetailData(
 
 export type ScopeUser = { id: string; display_name: string }
 
-/**
- * Returns all active members of the match's invitation scope groups,
- * with display names resolved, excluding any user already in the match
- * (non-removed status). Sorted alphabetically.
- */
-export async function getMatchScopeUsers(
+/** Internal: resolve active scope group members into ScopeUser[]. No fallback — v1.5 scope is absolute. */
+async function resolveScopeGroupUsers(
   supabase: Client,
   match: Match,
   excludeUserIds: string[],
 ): Promise<ScopeUser[]> {
-  let groupIds: string[] | null = match.invitation_scope_group_ids ?? null
+  const groupIds = match.invitation_scope_group_ids ?? []
 
-  // Fallback: if no scope groups set on the match, use the organizer's active group memberships
-  // visible to the current caller via RLS:
-  //   - organizer themselves: group_members_select_self (user_id = auth.uid())
-  //   - confirmed participant in a shared group: group_members_select_active_roster_for_active_members
-  if (!groupIds || groupIds.length === 0) {
-    const { data: orgMemberships } = await supabase
-      .from('group_members')
-      .select('group_id')
-      .eq('user_id', match.organizer_id)
-      .eq('status', 'active')
-    groupIds = (orgMemberships ?? []).map(m => m.group_id as string)
-  }
-
-  // Final fallback: organizer not in any group → show all platform users via club_identities
-  // (open RLS USING(true): no access restriction). Covers "Invite is NOT scope-restricted" per v1.4.
-  if (!groupIds || groupIds.length === 0) {
-    const excludeSet = new Set(excludeUserIds)
-    const { data: allIdentities } = await supabase
-      .from('club_identities')
-      .select('user_id, club_handle')
-      .order('club_handle', { ascending: true })
-    const seen = new Set<string>()
-    const result: ScopeUser[] = []
-    for (const row of allIdentities ?? []) {
-      const uid = row.user_id as string | null
-      if (!uid || excludeSet.has(uid) || seen.has(uid)) continue
-      seen.add(uid)
-      result.push({ id: uid, display_name: row.club_handle as string })
-    }
-    return result
-  }
+  // v1.5: scope is absolute. Empty scope = no eligible users.
+  if (groupIds.length === 0) return []
 
   const { data: members, error } = await supabase
     .from('group_members')
@@ -871,4 +842,28 @@ export async function getMatchScopeUsers(
       display_name: resolveNameFromMaps(uid, null, match.club_id, identityMap, profileMap, new Map()),
     }))
     .sort((a, b) => a.display_name.localeCompare(b.display_name))
+}
+
+/**
+ * v1.5: Users the organizer can invite. Must be in invitation_scope_group_ids.
+ * Empty scope → []. No fallback.
+ */
+export async function getOrganizerGroupUsers(
+  supabase: Client,
+  match: Match,
+  excludeUserIds: string[],
+): Promise<ScopeUser[]> {
+  return resolveScopeGroupUsers(supabase, match, excludeUserIds)
+}
+
+/**
+ * v1.5: Users a participant can nominate. Must be in invitation_scope_group_ids.
+ * Empty scope → []. No fallback.
+ */
+export async function getNominatorGroupUsers(
+  supabase: Client,
+  match: Match,
+  excludeUserIds: string[],
+): Promise<ScopeUser[]> {
+  return resolveScopeGroupUsers(supabase, match, excludeUserIds)
 }

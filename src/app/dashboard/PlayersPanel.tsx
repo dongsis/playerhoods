@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { PlayersData, PendingGroupInvite } from '@/lib/api/players'
-import { acceptGroupInvite } from '@/lib/api/groups'
+import { acceptGroupInvite, inviteUserToGroup } from '@/lib/api/groups'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Group } from '@/lib/types/database'
 
@@ -12,7 +12,6 @@ type InvitableUser = { id: string; display_name: string }
 interface Props {
   data: PlayersData
   userId?: string
-  onInviteToGroup?: (groupId: string, userId: string) => Promise<void>
 }
 
 /** Compute invitable users for a group from already-loaded PlayersData.
@@ -47,35 +46,31 @@ type View = 'club' | 'group' | 'all'
 function GroupInvitePanel({
   group,
   initialUsers,
-  onInvite,
   onClose,
 }: {
   group: Group
   initialUsers: InvitableUser[]
-  onInvite: (groupId: string, userId: string) => Promise<void>
   onClose: () => void
 }) {
   const router = useRouter()
   const [users] = useState<InvitableUser[]>(initialUsers)
   const [inviting, setInviting] = useState<string | null>(null)
   const [sentIds, setSentIds] = useState<Set<string>>(new Set())
-  const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
-  const handleInvite = (userId: string) => {
+  const handleInvite = async (userId: string) => {
     setInviting(userId)
     setError(null)
-    startTransition(async () => {
-      try {
-        await onInvite(group.id, userId)
-        setSentIds(prev => new Set([...prev, userId]))
-        router.refresh()
-      } catch (err: unknown) {
-        setError((err as { message?: string })?.message || 'Invite failed')
-      } finally {
-        setInviting(null)
-      }
-    })
+    try {
+      const supabase = createSupabaseBrowserClient()
+      await inviteUserToGroup(supabase, group.id, userId)
+      setSentIds(prev => new Set([...prev, userId]))
+      router.refresh()
+    } catch (err: unknown) {
+      setError((err as { message?: string })?.message || 'Invite failed')
+    } finally {
+      setInviting(null)
+    }
   }
 
   return (
@@ -113,7 +108,7 @@ function GroupInvitePanel({
                 ) : (
                   <button
                     onClick={() => handleInvite(u.id)}
-                    disabled={isPending || inviting === u.id}
+                    disabled={inviting !== null}
                     className="px-2.5 py-0.5 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors whitespace-nowrap"
                   >
                     {inviting === u.id ? '…' : 'Invite'}
@@ -176,7 +171,7 @@ function GroupInviteBanner({
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export function PlayersPanel({ data, userId, onInviteToGroup }: Props) {
+export function PlayersPanel({ data, userId }: Props) {
   const [view, setView] = useState<View>('all')
   const [search, setSearch] = useState('')
   const [openInviteGroupId, setOpenInviteGroupId] = useState<string | null>(null)
@@ -338,7 +333,7 @@ export function PlayersPanel({ data, userId, onInviteToGroup }: Props) {
                     {group.name}
                   </h3>
                   <span className="text-xs text-gray-300 font-normal">{members.length}</span>
-                  {isOrganizer && onInviteToGroup && (
+                  {isOrganizer && (
                     <button
                       onClick={() =>
                         setOpenInviteGroupId(inviteOpen ? null : group.id)
@@ -355,11 +350,10 @@ export function PlayersPanel({ data, userId, onInviteToGroup }: Props) {
                 </div>
 
                 {/* Invite panel */}
-                {inviteOpen && onInviteToGroup && (
+                {inviteOpen && (
                   <GroupInvitePanel
                     group={group}
                     initialUsers={getInvitableForGroup(data, group.id)}
-                    onInvite={onInviteToGroup}
                     onClose={() => setOpenInviteGroupId(null)}
                   />
                 )}

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
-export type DashTab = 'matches' | 'players' | 'profile' | 'admin'
+export type DashTab = 'matches' | 'players' | 'venues' | 'profile' | 'admin'
 
 interface Props {
   active: DashTab
@@ -15,8 +15,9 @@ interface Props {
 const tabs: { key: DashTab; label: string; icon: string }[] = [
   { key: 'matches', label: 'Matches', icon: '🎾' },
   { key: 'players', label: 'Players', icon: '👥' },
+  { key: 'venues', label: 'Venues', icon: '🏟️' },
   { key: 'profile', label: 'My Profile', icon: '👤' },
-  { key: 'admin', label: 'Club Management', icon: '⚙️' },
+  { key: 'admin', label: 'Venue Admin', icon: '⚙️' },
 ]
 
 export function LeftNav({ active, onTab, isAdmin, badges }: Props) {

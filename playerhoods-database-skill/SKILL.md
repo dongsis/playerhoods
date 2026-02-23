@@ -1,9 +1,9 @@
 ---
 name: playerhoods-database
-description: Authoritative database governance, schema, and RPC invariant model for playerhoods.com (docs v1.4 aligned). Enforces club identity system and RPC-only write posture.
+description: Authoritative database governance, schema, and RPC invariant model for playerhoods.com (docs v1.5 aligned). Enforces dual-confirmation model, scope integrity, club identity system, and RPC-only write posture.
 license: Proprietary
 metadata:
-  version: "1.4"
+  version: "1.5"
   domain: "playerhoods.com"
 ---
 

@@ -9,6 +9,7 @@ import { MatchesPanel } from './MatchesPanel'
 import { PlayersPanel } from './PlayersPanel'
 import { ProfilePanel } from './ProfilePanel'
 import { ClubManagementPanel } from './ClubManagementPanel'
+import { VenuesPanel } from './VenuesPanel'
 
 interface Props {
   userId: string
@@ -16,12 +17,12 @@ interface Props {
   playersData: PlayersData
   profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id'>
   myIdentities: (ClubIdentity & { club: Club })[]
+  myVenuePrefs: Club[]
   joinableCount: number
   myAdminClubs: (ClubAdmin & { club: Club })[]
   isSuperAdmin: boolean
   onUpdateProfile: (formData: FormData) => Promise<void>
   onCancelMatch: (matchId: string) => Promise<void>
-  onInviteToGroup: (groupId: string, userId: string) => Promise<void>
 }
 
 export function DashboardShell({
@@ -30,12 +31,12 @@ export function DashboardShell({
   playersData,
   profile,
   myIdentities,
+  myVenuePrefs,
   joinableCount,
   myAdminClubs,
   isSuperAdmin,
   onUpdateProfile,
   onCancelMatch,
-  onInviteToGroup,
 }: Props) {
   const isAdmin = isSuperAdmin || myAdminClubs.length > 0
   const [activeTab, setActiveTab] = useState<DashTab>('matches')
@@ -77,7 +78,6 @@ export function DashboardShell({
           <PlayersPanel
             data={playersData}
             userId={userId}
-            onInviteToGroup={onInviteToGroup}
           />
         )}
         {activeTab === 'profile' && (
@@ -86,6 +86,13 @@ export function DashboardShell({
             myIdentities={myIdentities}
             joinableCount={joinableCount}
             onUpdateProfile={onUpdateProfile}
+          />
+        )}
+        {activeTab === 'venues' && (
+          <VenuesPanel
+            myIdentities={myIdentities}
+            myVenuePrefs={myVenuePrefs}
+            isAdmin={isAdmin}
           />
         )}
         {activeTab === 'admin' && isAdmin && (

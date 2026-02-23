@@ -16,35 +16,35 @@ import {
   revokeClubAdmin,
   searchUsersForAdmin,
 } from '@/lib/api/clubs'
-import { ClubDetailShell } from './ClubDetailShell'
+import { ClubDetailShell } from '../../clubs/[clubId]/ClubDetailShell'
 
 interface Props {
-  params: Promise<{ clubId: string }>
+  params: Promise<{ venueId: string }>
 }
 
-export default async function ClubAdminPage({ params }: Props) {
-  const { clubId } = await params
+export default async function VenueAdminDetailPage({ params }: Props) {
+  const { venueId } = await params
   const user = await getUser()
   if (!user) redirect('/login')
 
   const supabase = await createSupabaseServerClient()
-  const [superAdmin, clubAdminRole] = await Promise.all([
+  const [superAdmin, venueAdminRole] = await Promise.all([
     isSuperAdmin(supabase),
-    isClubAdmin(supabase, clubId),
+    isClubAdmin(supabase, venueId),
   ])
 
-  if (!superAdmin && !clubAdminRole) redirect('/dashboard')
+  if (!superAdmin && !venueAdminRole) redirect('/dashboard')
 
-  let club
+  let venue
   try {
-    club = await getClub(supabase, clubId)
+    venue = await getClub(supabase, venueId)
   } catch {
     notFound()
   }
 
   const [courts, admins] = await Promise.all([
-    getClubCourts(supabase, clubId),
-    superAdmin ? getClubAdmins(supabase, clubId) : Promise.resolve([]),
+    getClubCourts(supabase, venueId),
+    superAdmin ? getClubAdmins(supabase, venueId) : Promise.resolve([]),
   ])
 
   // ---- Server actions ----
@@ -52,24 +52,24 @@ export default async function ClubAdminPage({ params }: Props) {
   async function handleUpdateClub(formData: FormData) {
     'use server'
     const supabase = await createSupabaseServerClient()
-    await updateClub(supabase, clubId, {
+    await updateClub(supabase, venueId, {
       name: (formData.get('name') as string)?.trim() || undefined,
       location_text: (formData.get('location_text') as string)?.trim() || undefined,
       timezone: (formData.get('timezone') as string)?.trim() || undefined,
       notes: (formData.get('notes') as string)?.trim() || undefined,
     })
-    revalidatePath(`/admin/clubs/${clubId}`)
+    revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleCreateCourt(formData: FormData) {
     'use server'
     const supabase = await createSupabaseServerClient()
-    await createCourt(supabase, clubId, {
+    await createCourt(supabase, venueId, {
       court_code: (formData.get('court_code') as string).trim(),
       surface: (formData.get('surface') as string)?.trim() || undefined,
       notes: (formData.get('notes') as string)?.trim() || undefined,
     })
-    revalidatePath(`/admin/clubs/${clubId}`)
+    revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleUpdateCourt(courtId: string, formData: FormData) {
@@ -80,28 +80,28 @@ export default async function ClubAdminPage({ params }: Props) {
       surface: (formData.get('surface') as string)?.trim() || undefined,
       notes: (formData.get('notes') as string)?.trim() || undefined,
     })
-    revalidatePath(`/admin/clubs/${clubId}`)
+    revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleDeleteCourt(courtId: string) {
     'use server'
     const supabase = await createSupabaseServerClient()
     await deleteCourt(supabase, courtId)
-    revalidatePath(`/admin/clubs/${clubId}`)
+    revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleGrantAdmin(userId: string) {
     'use server'
     const supabase = await createSupabaseServerClient()
-    await grantClubAdmin(supabase, userId, clubId)
-    revalidatePath(`/admin/clubs/${clubId}`)
+    await grantClubAdmin(supabase, userId, venueId)
+    revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleRevokeAdmin(userId: string) {
     'use server'
     const supabase = await createSupabaseServerClient()
-    await revokeClubAdmin(supabase, userId, clubId)
-    revalidatePath(`/admin/clubs/${clubId}`)
+    await revokeClubAdmin(supabase, userId, venueId)
+    revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleSearchUsers(query: string) {
@@ -112,36 +112,29 @@ export default async function ClubAdminPage({ params }: Props) {
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem' }}>
-      {/* Breadcrumb */}
       <nav style={{ fontSize: '0.82rem', color: '#888', marginBottom: '1.25rem' }}>
-        <Link href="/dashboard" style={{ color: '#888', textDecoration: 'none' }}>
-          Dashboard
-        </Link>
+        <Link href="/dashboard" style={{ color: '#888', textDecoration: 'none' }}>Dashboard</Link>
         <span style={{ margin: '0 0.4rem' }}>›</span>
         {superAdmin && (
           <>
-            <Link href="/admin/clubs" style={{ color: '#888', textDecoration: 'none' }}>
-              Venue Admin
-            </Link>
+            <Link href="/admin/venues" style={{ color: '#888', textDecoration: 'none' }}>Venue Admin</Link>
             <span style={{ margin: '0 0.4rem' }}>›</span>
           </>
         )}
-        <span>{club.name}</span>
+        <span>{venue.name}</span>
       </nav>
 
-      {/* Club header */}
       <header style={{ marginBottom: '1.75rem' }}>
-        <h1 style={{ margin: '0 0 0.2rem', fontSize: '1.5rem', fontWeight: 700 }}>{club.name}</h1>
-        {(club.location_text || club.timezone) && (
+        <h1 style={{ margin: '0 0 0.2rem', fontSize: '1.5rem', fontWeight: 700 }}>{venue.name}</h1>
+        {(venue.location_text || venue.timezone) && (
           <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
-            {[club.location_text, club.timezone].filter(Boolean).join(' · ')}
+            {[venue.location_text, venue.timezone].filter(Boolean).join(' · ')}
           </p>
         )}
       </header>
 
-      {/* Tabs shell */}
       <ClubDetailShell
-        club={club}
+        club={venue}
         courts={courts}
         admins={admins}
         isSuperAdmin={superAdmin}

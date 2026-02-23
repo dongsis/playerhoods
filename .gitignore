@@ -9,3 +9,4 @@ db_dump/
 *.zip
 tsconfig.tsbuildinfo
 tsconfig.tsbuildinfo
+nul

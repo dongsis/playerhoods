@@ -10,7 +10,7 @@ import {
 } from '@/lib/api/matches'
 import type { MatchParticipant } from '@/lib/types/database'
 
-// v1.3 state machine props (per Match_UI_State_Machine_v1.3.md)
+// v1.5 CTA state machine (§4 of Match Detail Blueprint)
 interface Props {
   matchId: string
   isOrganizer: boolean
@@ -21,7 +21,6 @@ interface Props {
 export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [note, setNote] = useState('')
   const router = useRouter()
 
   const handleAction = async (action: () => Promise<void>, redirectAfter?: string) => {
@@ -29,7 +28,6 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
     setLoading(true)
     try {
       await action()
-      setNote('')
       if (redirectAfter) {
         router.push(redirectAfter)
       } else {
@@ -46,51 +44,53 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
 
   const supabase = createSupabaseBrowserClient()
   const mp = myParticipation
-  const isPending = mp?.status === 'pending'
   const isRemoved = mp?.status === 'removed'
-  const isConfirmedDerived = mp && mp.status !== 'removed' && mp.user_accepted_at != null && mp.org_approved_at != null
+  const isPending = mp?.status === 'pending'
+  // v1.5: use status field (written by reconcile) as the authoritative confirmed signal
+  const isConfirmedDerived = mp?.status === 'confirmed'
 
-  const noteInput = (
-    <input
-      type="text"
-      placeholder="Add a note (optional)"
-      value={note}
-      onChange={(e) => setNote(e.target.value)}
-      style={{ padding: '0.4rem', marginBottom: '0.5rem', width: '100%', boxSizing: 'border-box' as const }}
-    />
-  )
+  // Organizer has no self-service CTA (admin actions are in the Organizer Admin section)
+  if (isOrganizer) return null
 
-  const getNoteValue = () => note || undefined
-
-  // ── 4) Removed — always show Request to Join ──
+  // ── §3.3 / §4.1 Removed ──────────────────────────────────────────────────
+  // Removed person sees notice + can request-to-join if still in scope
   if (isRemoved) {
     return (
       <div>
-        {noteInput}
-        <button
-          data-testid="request-join"
-          onClick={() => handleAction(() => requestJoinMatch(supabase, matchId, getNoteValue()))}
-          disabled={loading}
-        >
-          {loading ? 'Requesting...' : 'Request to Join'}
-        </button>
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
-          Your request will need organizer approval.
+        <p style={{ color: '#c00', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+          You have been removed from this match.
         </p>
+        {inScope ? (
+          <>
+            <button
+              data-testid="request-join"
+              onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
+              disabled={loading}
+            >
+              {loading ? 'Requesting...' : 'Request to Join'}
+            </button>
+            <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.4rem' }}>
+              Your request will need organizer approval.
+            </p>
+          </>
+        ) : (
+          <p style={{ fontSize: '0.9rem', color: '#666' }}>
+            Contact the organizer for a new invitation.
+          </p>
+        )}
+        {error && <p style={{ color: 'red' }}>{error}</p>}
       </div>
     )
   }
 
-  // ── 1) Non-participant (mp == null) ──
-  if (!mp && !isOrganizer) {
+  // ── §4.1 Non-participant ──────────────────────────────────────────────────
+  if (!mp) {
     if (inScope) {
       return (
         <div>
-          {noteInput}
           <button
             data-testid="request-join"
-            onClick={() => handleAction(() => requestJoinMatch(supabase, matchId, getNoteValue()))}
+            onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
             disabled={loading}
           >
             {loading ? 'Requesting...' : 'Request to Join'}
@@ -102,23 +102,23 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
         </div>
       )
     }
-    return <p style={{ fontSize: '0.9rem', color: '#666' }}>Not in scope. Need an invite from organizer.</p>
+    return <p style={{ fontSize: '0.9rem', color: '#666' }}>Not in scope. Need an invite from the organizer.</p>
   }
 
-  // ── 2) Pending participant ──
+  // ── §4.2 / §4.3 Pending participant ──────────────────────────────────────
   if (isPending) {
-    const hasUserAccepted = mp.user_accepted_at != null
+    // v1.5: participant_accepted_at is canonical; fall back to v1.3 user_accepted_at
+    const hasUserAccepted = (mp.participant_accepted_at ?? mp.user_accepted_at) != null
     const isInvited = mp.join_method === 'invited'
     const isNominated = mp.join_method === 'requested' && mp.nominated_by != null
     const isSelfRequested = mp.join_method === 'requested' && mp.nominated_by == null
 
     return (
       <div>
-        {noteInput}
-        {/* 2.1 Accept (invited or nominated, not yet accepted) */}
+        {/* §4.2: Accept — only for invited/nominated who have not yet accepted */}
         {!hasUserAccepted && (isInvited || isNominated) && (
           <button
-            onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId, getNoteValue()))}
+            onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
             disabled={loading}
             style={{ background: 'green', color: 'white', border: 'none', padding: '0.5rem 1rem', marginRight: '0.5rem' }}
           >
@@ -126,13 +126,13 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
           </button>
         )}
 
-        {/* 2.2 Withdraw */}
+        {/* §4.2: Decline (invited/nominated) / §4.3: Withdraw Request (self-requested) */}
         <button
-          onClick={() => handleAction(() => userWithdraw(supabase, matchId, getNoteValue()), '/matches')}
+          onClick={() => handleAction(() => userWithdraw(supabase, matchId), '/dashboard')}
           disabled={loading}
           style={{ background: '#666', color: 'white', border: 'none', padding: '0.5rem 1rem' }}
         >
-          {loading ? 'Withdrawing...' : 'Withdraw'}
+          {loading ? 'Withdrawing...' : isSelfRequested ? 'Withdraw Request' : 'Decline'}
         </button>
 
         {/* Status info */}
@@ -152,13 +152,12 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
     )
   }
 
-  // ── 3) Confirmed participant ──
-  if (isConfirmedDerived && !isOrganizer) {
+  // ── §4.4 Confirmed participant ────────────────────────────────────────────
+  if (isConfirmedDerived) {
     return (
       <div>
-        {noteInput}
         <button
-          onClick={() => handleAction(() => userWithdraw(supabase, matchId, getNoteValue()), '/matches')}
+          onClick={() => handleAction(() => userWithdraw(supabase, matchId), '/dashboard')}
           disabled={loading}
           style={{ background: '#666', color: 'white', border: 'none', padding: '0.5rem 1rem' }}
         >
@@ -169,7 +168,5 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
     )
   }
 
-  // Organizer or confirmed — no additional actions needed here
-  // (Organizer actions like approve/remove are in ParticipantsList)
   return null
 }

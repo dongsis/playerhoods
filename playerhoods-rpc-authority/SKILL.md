@@ -1,10 +1,10 @@
 ---
 name: playerhoods-rpc-authority
-description: RPC authority and SECURITY DEFINER enforcement rules for playerhoods.com v1.4. Ensures all identity and governance mutations occur via secure RPC.
+description: RPC authority and SECURITY DEFINER enforcement rules for playerhoods.com v1.5. Ensures all identity and governance mutations occur via secure RPC.
 license: Proprietary
 metadata:
   domain: playerhoods.com
-  version: "1.4"
+  version: "1.5"
   layer: rpc
 ---
 

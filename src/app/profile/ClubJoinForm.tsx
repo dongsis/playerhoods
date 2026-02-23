@@ -51,7 +51,7 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = handle.trim()
-    if (!selectedClub) { setError('Please select a club'); return }
+    if (!selectedClub) { setError('Please select a venue'); return }
     if (!trimmed) { setError('Handle is required'); return }
     setError(null)
     startTransition(async () => {
@@ -61,13 +61,13 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
         setSelectedClub('')
         setCheckResult(null)
       } catch (err: unknown) {
-        setError((err as { message?: string })?.message || 'Failed to join club')
+        setError((err as { message?: string })?.message || 'Failed to join venue')
       }
     })
   }
 
   if (clubs.length === 0) {
-    return <p style={{ color: '#888', fontSize: '0.9rem' }}>You have joined all available clubs.</p>
+    return <p style={{ color: '#888', fontSize: '0.9rem' }}>You have joined all available venues.</p>
   }
 
   return (
@@ -75,13 +75,13 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
       {error && <p style={{ width: '100%', color: 'red', margin: 0, fontSize: '0.85rem' }}>{error}</p>}
 
       <div>
-        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Club</label>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Venue</label>
         <select
           value={selectedClub}
           onChange={handleClubChange}
           style={{ padding: '0.4rem', minWidth: '180px' }}
         >
-          <option value="">Select a club...</option>
+          <option value="">Select a venue...</option>
           {clubs.map(c => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
@@ -127,7 +127,7 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
         disabled={isPending || !selectedClub || !handle.trim() || checkResult?.available === false}
         style={{ padding: '0.4rem 1rem', background: '#333', color: 'white', border: 'none', cursor: 'pointer' }}
       >
-        {isPending ? 'Joining...' : 'Join Club'}
+        {isPending ? 'Joining...' : 'Join Venue'}
       </button>
     </form>
   )

@@ -34,7 +34,7 @@ export default async function AdminClubsPage() {
           Dashboard
         </Link>
         <span style={{ margin: '0 0.4rem' }}>›</span>
-        <span>Club Admin</span>
+        <span>Venue Admin</span>
       </nav>
 
       {/* Header */}
@@ -47,9 +47,9 @@ export default async function AdminClubsPage() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Clubs</h1>
+          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Venues</h1>
           <p style={{ margin: '0.2rem 0 0', fontSize: '0.85rem', color: '#666' }}>
-            {clubs.length} club{clubs.length !== 1 ? 's' : ''}
+            {clubs.length} venue{clubs.length !== 1 ? 's' : ''}
           </p>
         </div>
         {superAdmin && <CreateClubDialog />}
@@ -57,7 +57,7 @@ export default async function AdminClubsPage() {
 
       {/* Club cards */}
       {clubsWithAdmins.length === 0 ? (
-        <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem 0' }}>No clubs yet.</p>
+        <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem 0' }}>No venues yet.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
           {clubsWithAdmins.map(({ club, admins }) => (

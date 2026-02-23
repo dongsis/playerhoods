@@ -1,10 +1,10 @@
 ---
 name: playerhoods-migrations
-description: Migration safety and schema evolution rules for playerhoods.com v1.4. Enforces append-only evolution, identity safety, and invariant preservation.
+description: Migration safety and schema evolution rules for playerhoods.com v1.5. Enforces append-only evolution, identity safety, and invariant preservation.
 license: Proprietary
 metadata:
   domain: playerhoods.com
-  version: "1.4"
+  version: "1.5"
   layer: migrations
 ---
 

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { getMatchDetailData, getMatchCourts, isUserInMatchScope, getMatchScopeUsers, getCourts, updateMatchDetails, setMatchSingleCourt } from '@/lib/api/matches'
+import { getMatchDetailData, getMatchCourts, isCallerInMatchScope, getOrganizerGroupUsers, getNominatorGroupUsers, getCourts, updateMatchDetails, setMatchSingleCourt } from '@/lib/api/matches'
 import { formatMatchTime } from '@/lib/utils/format-time'
 import { MatchActions } from './MatchActions'
 import { ParticipantGroups } from './ParticipantGroups'
@@ -28,19 +28,31 @@ export default async function MatchDetailPage({ params }: Props) {
     notFound()
   }
 
-  const { match, clubTimezone, clubName, participants, myParticipant, isOrganizer, confirmedCount, activities, organizerName } = detail
+  const { match, clubTimezone, clubName, participants, myParticipant, isOrganizer, confirmedCount, pendingCount, activities, organizerName } = detail
 
   // Active non-removed participant user IDs — exclude from invite/nominate dropdowns
   const activeParticipantIds = participants
     .filter(p => p.status !== 'removed' && p.user_id)
     .map(p => p.user_id as string)
 
+  // v1.5 permission gates
+  // Nominate: participant-only (active = not removed), not organizer, flag must be on
+  const canNominate =
+    !isOrganizer &&
+    myParticipant !== null &&
+    myParticipant.removed_at === null &&
+    match.can_participants_invite_users === true
+
   const [matchCourts, inScope, scopeUsers, clubCourts] = await Promise.all([
     getMatchCourts(supabase, matchId).catch(() => []),
-    user ? isUserInMatchScope(supabase, matchId, user.id).catch(() => false) : false,
-    (match.status === 'active' && (isOrganizer || myParticipant?.status === 'confirmed'))
-      ? getMatchScopeUsers(supabase, match, activeParticipantIds).catch(() => [])
-      : Promise.resolve([]),
+    user ? isCallerInMatchScope(supabase, matchId).catch(() => false) : false,
+    // Organizer gets invite scope; participant (canNominate) gets nominate scope.
+    // Both use invitation_scope_group_ids — same underlying list, semantically distinct.
+    match.status === 'active' && isOrganizer
+      ? getOrganizerGroupUsers(supabase, match, activeParticipantIds).catch(() => [])
+      : match.status === 'active' && canNominate
+        ? getNominatorGroupUsers(supabase, match, activeParticipantIds).catch(() => [])
+        : Promise.resolve([]),
     match.club_id ? getCourts(supabase, match.club_id).catch(() => []) : Promise.resolve([]),
   ])
 
@@ -65,13 +77,14 @@ export default async function MatchDetailPage({ params }: Props) {
     revalidatePath(`/matches/${matchId}`)
   }
 
-  const isConfirmed  = myParticipant?.status === 'confirmed'
-  const canInvite    = isOrganizer || (isConfirmed && match.can_participants_invite_users)
-  const canAddGuests = isOrganizer || (isConfirmed && match.can_participants_add_guests)
-  const canManage    = isOrganizer || (isConfirmed && match.can_participants_manage_participants)
-
   const time = formatMatchTime(match.start_at_utc, match.match_date, match.start_time, clubTimezone)
   const need = Math.max(match.required_count - confirmedCount, 0)
+
+  // v1.5: non-organizer clients only receive confirmed participants.
+  // Pending names are private (organizer-only). Removed are organizer-only.
+  const participantsForDisplay = isOrganizer
+    ? participants
+    : participants.filter(p => p.status === 'confirmed')
 
   return (
     <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1rem' }}>
@@ -79,7 +92,7 @@ export default async function MatchDetailPage({ params }: Props) {
         <Link href="/dashboard">← Matches</Link>
       </nav>
 
-      {/* Header */}
+      {/* ── 1. Header: Match Summary ─────────────────────────────────────── */}
       <header style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ margin: '0 0 0.4rem', fontSize: '1.3rem' }}>
           {match.game_type || 'Match'}
@@ -122,8 +135,8 @@ export default async function MatchDetailPage({ params }: Props) {
         </div>
       )}
 
-      {/* Self-actions (accept/withdraw/request) */}
-      {match.status === 'active' && (
+      {/* ── 2. CTA: My Actions (non-organizer only) ──────────────────────── */}
+      {match.status === 'active' && !isOrganizer && (
         <section style={{ marginBottom: '1.5rem', padding: '0.75rem 1rem', border: '1px solid #e0e0e0', borderRadius: '6px' }}>
           <MatchActions
             matchId={matchId}
@@ -134,48 +147,57 @@ export default async function MatchDetailPage({ params }: Props) {
         </section>
       )}
 
-      {/* Participant groups */}
+      {/* ── 3. Participants Overview ─────────────────────────────────────── */}
       <section style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1rem', margin: '0 0 0.75rem' }}>Participants</h2>
         <ParticipantGroups
           matchId={matchId}
           matchStatus={match.status}
-          participants={participants}
+          participants={participantsForDisplay}
           isOrganizer={isOrganizer}
-          canManage={canManage}
+          pendingCount={pendingCount}
           myUserId={user?.id ?? null}
         />
       </section>
 
-      {/* Add participants (organizer/allowed) */}
-      {match.status === 'active' && (canInvite || canAddGuests) && (
-        <section id="invite" style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
-          <h3 style={{ margin: '0 0 1rem', fontSize: '0.95rem' }}>Add Participants</h3>
-
-          {isOrganizer && (
-            <div style={{ marginBottom: '1.25rem' }}>
-              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite User</h4>
-              <InviteUserForm matchId={matchId} scopeUsers={scopeUsers} />
-            </div>
-          )}
-
-          {canInvite && !isOrganizer && (
-            <div style={{ marginBottom: '1.25rem' }}>
-              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Nominate User</h4>
-              <NominateUserForm matchId={matchId} scopeUsers={scopeUsers} />
-            </div>
-          )}
-
-          {canAddGuests && (
-            <div id="guest">
-              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Add Nonregistered Player</h4>
-              <AddGuestForm matchId={matchId} isOrganizer={isOrganizer} />
-            </div>
-          )}
+      {/* ── 4a. Nominate (participant-only, when flag enabled) ───────────── */}
+      {/* Organizer never sees Nominate. Participant sees it only when:        */}
+      {/*   - active (removed_at IS NULL) AND                                  */}
+      {/*   - match.can_participants_invite_users = true                        */}
+      {/* Nominate flow: nominee Accepts → organizer Approves → confirmed      */}
+      {match.status === 'active' && canNominate && (
+        <section style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
+          <h3 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem' }}>Nominate a Player</h3>
+          <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
+            They must accept, then the organizer approves to confirm.
+          </p>
+          <NominateUserForm matchId={matchId} scopeUsers={scopeUsers} />
         </section>
       )}
 
-      {/* Activity feed */}
+      {/* ── 4b. Organizer Admin ──────────────────────────────────────────── */}
+      {/* Organizer uses Invite (pre-approves; invitee just clicks Accept).    */}
+      {/* Organizer never uses Nominate — that is participant-only.            */}
+      {match.status === 'active' && isOrganizer && (
+        <section id="organizer-admin" style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
+          <h3 style={{ margin: '0 0 1rem', fontSize: '0.95rem' }}>Organizer Admin</h3>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite User</h4>
+            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
+              Pre-approves the user — they only need to Accept to confirm.
+            </p>
+            <InviteUserForm matchId={matchId} scopeUsers={scopeUsers} />
+          </div>
+
+          <div id="guest">
+            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Add Nonregistered Player</h4>
+            <AddGuestForm matchId={matchId} isOrganizer={true} />
+          </div>
+        </section>
+      )}
+
+      {/* ── 5. Audit Timeline ────────────────────────────────────────────── */}
       <section>
         <h2 style={{ fontSize: '1rem', margin: '0 0 0.75rem' }}>Activity</h2>
         <ActivityFeed activities={activities} />

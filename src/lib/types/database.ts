@@ -5,7 +5,7 @@ export type GroupMemberStatus = 'pending' | 'active' | 'removed'
 export type MatchStatus = 'active' | 'cancelled' | 'archived'
 export type MatchAdmissionMode = 'invite' | 'request'
 export type MatchParticipantStatus = 'pending' | 'confirmed' | 'removed'
-export type MatchJoinMethod = 'invited' | 'requested' | 'guest_add'
+export type MatchJoinMethod = 'invited' | 'requested' | 'nominated' | 'guest_add' | 'manual'
 
 // Use `type` instead of `interface` for DB row types.
 // TypeScript interfaces lack implicit index signatures required by
@@ -138,6 +138,10 @@ export type MatchParticipant = {
   nominated_by: string | null
   removed_by: string | null
   removal_note: string | null
+  // v1.5 participant-accepted fields
+  participant_accepted_at: string | null
+  participant_accepted_via: string | null  // 'in_app' | 'manual' | null
+  manual_confirmed_by: string | null
 }
 
 // View types
@@ -151,6 +155,7 @@ export type MatchFormed = {
   required_count: number
   confirmed_count: number
   is_formed: boolean
+  pending_count: number  // v1.5
 }
 
 export type MatchParticipantAction = {
@@ -301,8 +306,9 @@ export interface Database {
       }
     }
     Functions: {
-      is_user_in_match_scope: {
-        Args: { p_match_id: string; p_user_id: string }
+      // v1.5: self-only scope check (granted to authenticated, safe to call directly)
+      is_caller_in_match_scope: {
+        Args: { p_match_id: string }
         Returns: boolean
       }
       rpc_profile_init: {
@@ -392,42 +398,46 @@ export interface Database {
         }
         Returns: unknown
       }
-      // v1.3 RPCs
+      // v1.5 match participation RPCs
       rpc_match_request_join: {
-        Args: { p_match_id: string; p_note?: string }
-        Returns: void
+        Args: { p_match_id: string }
+        Returns: MatchParticipant
       }
       rpc_match_invite_user: {
-        Args: { p_match_id: string; p_user_id: string; p_note?: string }
-        Returns: void
+        Args: { p_match_id: string; p_user_id: string }
+        Returns: MatchParticipant
       }
       rpc_match_nominate_user: {
-        Args: { p_match_id: string; p_user_id: string; p_note?: string }
-        Returns: void
+        Args: { p_match_id: string; p_user_id: string }
+        Returns: MatchParticipant
       }
       rpc_match_accept_invite: {
-        Args: { p_match_id: string; p_note?: string }
-        Returns: void
+        Args: { p_match_id: string }
+        Returns: MatchParticipant
       }
       rpc_match_org_approve_participant: {
-        Args: { p_match_participant_id: string; p_note?: string }
-        Returns: void
+        Args: { p_match_participant_id: string }
+        Returns: MatchParticipant
       }
       rpc_match_user_withdraw: {
-        Args: { p_match_id: string; p_note?: string }
-        Returns: void
+        Args: { p_match_id: string }
+        Returns: MatchParticipant
       }
       rpc_match_remove_participant: {
+        Args: { p_match_participant_id: string }
+        Returns: MatchParticipant
+      }
+      rpc_match_manual_confirm: {
         Args: { p_match_participant_id: string; p_note?: string }
-        Returns: void
+        Returns: MatchParticipant
       }
       rpc_match_add_guest_org: {
-        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string; p_note?: string }
-        Returns: void
+        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string }
+        Returns: MatchParticipant
       }
       rpc_match_add_guest_participant: {
-        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string; p_note?: string }
-        Returns: void
+        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string }
+        Returns: MatchParticipant
       }
     }
     Enums: Record<string, never>
