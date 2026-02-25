@@ -97,29 +97,17 @@ export async function leaveGroup(supabase: Client, groupId: string) {
   if (error) throw error
 }
 
-// Group creation (direct insert, allowed by RLS for authenticated users)
+// Group creation via RPC (SECURITY DEFINER): creates group + adds creator as active member
+// Direct INSERT fails because the SELECT RLS policy (is_group_member_any) evaluates false
+// on the RETURNING clause before any group_members row exists.
 export async function createGroup(
   supabase: Client,
   data: { name: string; description?: string }
 ) {
-  const { data: authData, error: authErr } = await supabase.auth.getUser()
-  if (authErr) throw authErr
-
-  const user = authData?.user
-  if (!user) throw new Error('not_authenticated')
-
-  const payload = {
-    name: data.name.trim(),
-    description: (data.description ?? '').trim() || null,
-    boundary_keeper_id: user.id,
-    created_by: user.id,
-  }
-
-  const { data: group, error } = await supabase
-    .from('groups')
-    .insert(payload)
-    .select('id, name, description, boundary_keeper_id, created_by, created_at')
-    .single()
+  const { data: group, error } = await supabase.rpc('rpc_group_create', {
+    p_name: data.name.trim(),
+    p_description: (data.description ?? '').trim() || null,
+  })
 
   if (error) throw error
   return group as Group

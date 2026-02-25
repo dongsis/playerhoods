@@ -111,18 +111,13 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
     membersByGroup.set(row.group_id, list)
   }
 
-  // Build GroupWithMembers list in group name order (only groups with members)
-  const groupsResult: GroupWithMembers[] = []
-  for (const group of groups) {
-    const members = membersByGroup.get(group.id)
-    if (members && members.length > 0) {
-      groupsResult.push({ group, members })
-    }
-  }
-
-  // Resolve pending group invites: deduplicate by group_id and exclude already-active groups
+  // Resolve pending group invites: deduplicate by group_id and exclude groups where user is already active
   const groupMap = new Map(groups.map(g => [g.id, g.name]))
-  const activeGroupIds = new Set((groupMembersRes.data ?? []).map(row => row.group_id as string))
+  const activeGroupIds = new Set(
+    (groupMembersRes.data ?? [])
+      .filter(row => row.status === 'active')
+      .map(row => row.group_id as string)
+  )
   const seenGroupIds = new Set<string>()
   const pendingGroupInvites: PendingGroupInvite[] = []
   for (const row of (pendingInvitesRes.data ?? [])) {
@@ -130,6 +125,18 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
     if (!seenGroupIds.has(groupId) && !activeGroupIds.has(groupId)) {
       seenGroupIds.add(groupId)
       pendingGroupInvites.push({ groupId, groupName: groupMap.get(groupId) ?? groupId })
+    }
+  }
+
+  // Build GroupWithMembers list in group name order, excluding pending-invite groups
+  // (those are surfaced as banners via pendingGroupInvites, not in the roster list)
+  const pendingInviteGroupIds = new Set(pendingGroupInvites.map(inv => inv.groupId))
+  const groupsResult: GroupWithMembers[] = []
+  for (const group of groups) {
+    if (pendingInviteGroupIds.has(group.id)) continue
+    const members = membersByGroup.get(group.id)
+    if (members && members.length > 0) {
+      groupsResult.push({ group, members })
     }
   }
 

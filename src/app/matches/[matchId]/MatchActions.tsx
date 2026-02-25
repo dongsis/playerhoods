@@ -110,12 +110,16 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
     // v1.5: participant_accepted_at is canonical; fall back to v1.3 user_accepted_at
     const hasUserAccepted = (mp.participant_accepted_at ?? mp.user_accepted_at) != null
     const isInvited = mp.join_method === 'invited'
-    const isNominated = mp.join_method === 'requested' && mp.nominated_by != null
+    // v1.5: join_method='nominated' (new), or v1.3 legacy: 'requested' + nominated_by set
+    const isNominated = mp.join_method === 'nominated' ||
+      (mp.join_method === 'requested' && mp.nominated_by != null)
     const isSelfRequested = mp.join_method === 'requested' && mp.nominated_by == null
+    // Re-confirm after match edit: self-requested, not yet re-accepted, org already approved
+    const needsReconfirm = isSelfRequested && !hasUserAccepted && mp.org_approved_at != null
 
     return (
       <div>
-        {/* §4.2: Accept — only for invited/nominated who have not yet accepted */}
+        {/* §4.2: Accept — invited/nominated who haven't yet accepted */}
         {!hasUserAccepted && (isInvited || isNominated) && (
           <button
             onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
@@ -123,6 +127,17 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
             style={{ background: 'green', color: 'white', border: 'none', padding: '0.5rem 1rem', marginRight: '0.5rem' }}
           >
             {loading ? 'Accepting...' : isNominated ? 'Accept Nomination' : 'Accept Invite'}
+          </button>
+        )}
+
+        {/* Re-confirm after match edit: self-requested, org already approved, accepted_at cleared */}
+        {needsReconfirm && (
+          <button
+            onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
+            disabled={loading}
+            style={{ background: '#2d8a4e', color: 'white', border: 'none', padding: '0.5rem 1rem', marginRight: '0.5rem' }}
+          >
+            {loading ? 'Confirming...' : 'Confirm Attendance'}
           </button>
         )}
 
@@ -137,7 +152,10 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
 
         {/* Status info */}
         <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
-          {isSelfRequested && 'Waiting for organizer approval.'}
+          {isSelfRequested && (needsReconfirm
+            ? 'Match details have changed. Please confirm you can still attend.'
+            : 'Waiting for organizer approval.'
+          )}
           {isInvited && (hasUserAccepted
             ? (mp.org_approved_at ? 'Both confirmed — reconciling...' : 'Accepted. Waiting for organizer approval.')
             : (mp.org_approved_at ? 'Organizer approved. Accept to confirm.' : 'Waiting for your acceptance and organizer approval.')

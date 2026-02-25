@@ -112,9 +112,6 @@ export function CreateMatchInline({ defaultClubId }: { defaultClubId?: string })
   const [gameType, setGameType] = useState('doubles')
   const [clubId, setClubId] = useState(defaultClubId || '')
   const [courtIds, setCourtIds] = useState<string[]>([])
-  const [canInvite, setCanInvite] = useState(false)
-  const [canAddGuests, setCanAddGuests] = useState(false)
-  const [canManage, setCanManage] = useState(false)
   const [scopeGroupIds, setScopeGroupIds] = useState<string[]>([])
 
   const [groups, setGroups] = useState<Group[]>([])
@@ -159,9 +156,9 @@ export function CreateMatchInline({ defaultClubId }: { defaultClubId?: string })
             })
           : undefined,
         invitation_scope_group_ids: scopeGroupIds.length > 0 ? scopeGroupIds : undefined,
-        can_participants_invite_users: canInvite,
-        can_participants_add_guests: canAddGuests,
-        can_participants_manage_participants: canManage,
+        can_participants_invite_users: true,
+        can_participants_add_guests: false,
+        can_participants_manage_participants: false,
       })
       router.push(`/matches/${match.id}`)
     } catch (err: unknown) {
@@ -267,22 +264,6 @@ export function CreateMatchInline({ defaultClubId }: { defaultClubId?: string })
           </div>
         </div>
       )}
-
-      {/* Row 5: Participant capabilities */}
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Participants can:</label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <label style={{ fontSize: '0.85rem' }}>
-            <input type="checkbox" checked={canInvite} onChange={e => setCanInvite(e.target.checked)} /> Nominate
-          </label>
-          <label style={{ fontSize: '0.85rem' }}>
-            <input type="checkbox" checked={canAddGuests} onChange={e => setCanAddGuests(e.target.checked)} /> Add guests
-          </label>
-          <label style={{ fontSize: '0.85rem' }}>
-            <input type="checkbox" checked={canManage} onChange={e => setCanManage(e.target.checked)} /> Manage
-          </label>
-        </div>
-      </div>
 
       {error && <p style={{ color: 'red', marginBottom: '0.5rem' }}>{error}</p>}
 

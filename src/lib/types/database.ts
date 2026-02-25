@@ -76,6 +76,19 @@ export type GroupMember = {
   accepted_at: string | null
   removed_at: string | null
   removed_by: string | null
+  // v1.5 Identity: group-scoped alias (priority: personal_remark > group_display_name > display_name)
+  group_display_name: string | null
+}
+
+// v1.5 Identity: private remark the owner sets on a target user (owner-only via RLS)
+export type UserPersonalRemark = {
+  id: string
+  owner_id: string
+  target_user_id: string
+  group_id: string | null
+  remark: string
+  created_at: string
+  updated_at: string
 }
 
 export type Match = {
@@ -140,7 +153,7 @@ export type MatchParticipant = {
   removal_note: string | null
   // v1.5 participant-accepted fields
   participant_accepted_at: string | null
-  participant_accepted_via: string | null  // 'in_app' | 'manual' | null
+  participant_accepted_via: string | null  // 'in_app' | 'manual' | 'delegate_manual' | null
   manual_confirmed_by: string | null
 }
 
@@ -264,6 +277,12 @@ export interface Database {
         Update: Partial<GroupMember>
         Relationships: []
       }
+      user_personal_remarks: {
+        Row: UserPersonalRemark
+        Insert: Partial<UserPersonalRemark> & { owner_id: string; target_user_id: string; remark: string }
+        Update: Partial<UserPersonalRemark>
+        Relationships: []
+      }
       matches: {
         Row: Match
         Insert: Partial<Match> & { organizer_id: string }
@@ -304,6 +323,18 @@ export interface Database {
         Row: ProfileDisplay
         Relationships: []
       }
+      // v1.5 Identity: group-context display resolver
+      v_group_member_display: {
+        Row: {
+          group_id: string
+          member_user_id: string
+          effective_display_name: string
+          group_display_name: string | null
+          display_name: string
+          personal_remark: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       // v1.5: self-only scope check (granted to authenticated, safe to call directly)
@@ -317,6 +348,11 @@ export interface Database {
       }
       rpc_profile_update: {
         Args: { p_first_name?: string | null; p_last_name?: string | null }
+        Returns: void
+      }
+      // v1.5 Identity: direct display_name setter (club handle deprecated as sync path)
+      rpc_profile_set_display_name: {
+        Args: { p_display_name: string }
         Returns: void
       }
       rpc_club_handle_check: {
@@ -374,6 +410,15 @@ export interface Database {
       rpc_group_accept_invite: {
         Args: { p_group_id: string }
         Returns: void
+      }
+      // v1.5 Identity: set/clear group-scoped alias for the calling user
+      rpc_group_set_display_name: {
+        Args: { p_group_id: string; p_display_name: string }
+        Returns: void
+      }
+      rpc_group_create: {
+        Args: { p_name: string; p_description?: string | null }
+        Returns: Group
       }
       rpc_group_invite_user: {
         Args: { p_group_id: string; p_user_id: string }
@@ -438,6 +483,30 @@ export interface Database {
       rpc_match_add_guest_participant: {
         Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string }
         Returns: MatchParticipant
+      }
+      // v1.6.1: Organizer directly confirms a user (InScope OR ShareGroup).
+      rpc_match_manual_confirm_user: {
+        Args: { p_match_id: string; p_user_id: string }
+        Returns: MatchParticipant
+      }
+      // v1.6.1: Non-org delegate-confirms a user from shared groups (pending ORG approval).
+      rpc_match_delegate_confirm_user: {
+        Args: { p_match_id: string; p_user_id: string }
+        Returns: MatchParticipant
+      }
+      // v1.6.1: Role-specific roster RPCs (replace rpc_match_scope_users).
+      // All return (user_id, display_name). Frontend maps user_id -> id for ScopeUser.
+      rpc_match_invite_targets: {
+        Args: { p_match_id: string }
+        Returns: { user_id: string; display_name: string }[]
+      }
+      rpc_match_nominate_targets: {
+        Args: { p_match_id: string }
+        Returns: { user_id: string; display_name: string }[]
+      }
+      rpc_match_delegate_confirm_targets: {
+        Args: { p_match_id: string }
+        Returns: { user_id: string; display_name: string }[]
       }
     }
     Enums: Record<string, never>

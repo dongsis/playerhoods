@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import {
   updateProfile,
+  setDisplayName,
   setClubHandle,
   setPrimaryClub,
   checkClubHandle,
@@ -12,10 +13,14 @@ import {
   getJoinableClubs,
   getMyVenuePreferences,
   removeVenuePreference,
+  getMyGroupMemberships,
+  setGroupDisplayName,
 } from '@/lib/api/identities'
 import { ProfileEditForm } from './ProfileEditForm'
+import { DisplayNameEditForm } from './DisplayNameEditForm'
 import { ClubIdentityRow } from './ClubIdentityRow'
 import { ClubJoinForm } from './ClubJoinForm'
+import { GroupAliasRow } from './GroupAliasRow'
 
 export default async function ProfilePage() {
   const user = await getUser()
@@ -23,16 +28,24 @@ export default async function ProfilePage() {
 
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: profile }, identities, joinable, venuePrefs] = await Promise.all([
+  const [{ data: profile }, identities, joinable, venuePrefs, groupMemberships] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
     getMyClubIdentities(supabase, user.id),
     getJoinableClubs(supabase, user.id),
     getMyVenuePreferences(supabase, user.id).catch(() => []),
+    getMyGroupMemberships(supabase, user.id).catch(() => []),
   ])
 
   if (!profile) redirect('/onboarding/profile')
 
   // Server actions
+  async function handleSetDisplayName(newName: string) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await setDisplayName(supabase, newName)
+    revalidatePath('/profile')
+  }
+
   async function handleUpdateProfile(formData: FormData) {
     'use server'
     const supabase = await createSupabaseServerClient()
@@ -70,6 +83,13 @@ export default async function ProfilePage() {
     revalidatePath('/profile')
   }
 
+  async function handleSetGroupAlias(groupId: string, alias: string) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await setGroupDisplayName(supabase, groupId, alias)
+    revalidatePath('/profile')
+  }
+
   async function handleRemoveVenuePref(venueId: string) {
     'use server'
     const srv = await createSupabaseServerClient()
@@ -87,15 +107,42 @@ export default async function ProfilePage() {
 
       <h1>Your Profile</h1>
 
-      {/* Display name (read-only — set via primary venue handle or onboarding) */}
+      {/* v1.5 Identity: global display name (directly editable) */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
         <h2 style={{ marginTop: 0 }}>Identity</h2>
-        <p style={{ margin: '0 0 0.25rem' }}>
-          <strong>Display Name:</strong> {profile.display_name || <em style={{ color: '#888' }}>not set</em>}
+        <div style={{ marginBottom: '0.4rem' }}>
+          <span style={{ fontSize: '0.85rem', color: '#666', display: 'block', marginBottom: '0.3rem' }}>
+            Display Name — your global identity across playerhoods
+          </span>
+          {profile.display_name ? (
+            <DisplayNameEditForm
+              displayName={profile.display_name}
+              onSave={handleSetDisplayName}
+            />
+          ) : (
+            <em style={{ color: '#888' }}>Not set — complete onboarding to set your name.</em>
+          )}
+        </div>
+      </section>
+
+      {/* v1.5 Identity: group-scoped aliases */}
+      <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
+        <h2 style={{ marginTop: 0 }}>Group Aliases</h2>
+        <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#666' }}>
+          Set a contextual alias per group. Your alias takes priority over your display name within that group.
         </p>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
-          Your display name is your global identity on playerhoods.com. To change it, rename your handle in the primary venue below.
-        </p>
+        {groupMemberships.length === 0 ? (
+          <p style={{ color: '#888', fontSize: '0.85rem' }}>You are not an active member of any groups.</p>
+        ) : (
+          groupMemberships.map(m => (
+            <GroupAliasRow
+              key={m.id}
+              membership={m}
+              userDisplayName={profile.display_name ?? ''}
+              onSetAlias={handleSetGroupAlias}
+            />
+          ))
+        )}
       </section>
 
       {/* Non-identity fields */}
@@ -108,9 +155,12 @@ export default async function ProfilePage() {
         />
       </section>
 
-      {/* Venue memberships */}
+      {/* Venue memberships (legacy: club handles are deprecated in v1.5) */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
         <h2 style={{ marginTop: 0 }}>Venue Memberships</h2>
+        <p style={{ margin: '0 0 0.6rem', fontSize: '0.82rem', color: '#aaa' }}>
+          Per-venue handles are legacy. Your display name is now managed directly above.
+        </p>
         {identities.length === 0 ? (
           <p style={{ color: '#888' }}>You have not joined any venues yet.</p>
         ) : (

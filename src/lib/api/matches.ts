@@ -415,7 +415,20 @@ export async function orgApproveParticipant(supabase: Client, participantId: str
   if (error) throw error
 }
 
-/** v1.5: ORG manually confirms a user participant (sets participant_accepted_at via=manual + org_approved_at). */
+/**
+ * v1.5: ORG directly confirms a scope user who has not joined yet.
+ * join_method=manual; participant_accepted_at + org_approved_at set simultaneously → confirmed.
+ * Handles reenter (removed → manual confirm) and fresh insert.
+ */
+export async function manualConfirmUser(supabase: Client, matchId: string, userId: string) {
+  const { error } = await supabase.rpc('rpc_match_manual_confirm_user', {
+    p_match_id: matchId,
+    p_user_id: userId,
+  })
+  if (error) throw error
+}
+
+/** v1.5: ORG manually confirms an existing pending participant (sets participant_accepted_at via=manual + org_approved_at). */
 export async function manualConfirmParticipant(supabase: Client, participantId: string, note?: string) {
   const { error } = await supabase.rpc('rpc_match_manual_confirm', {
     p_match_participant_id: participantId,
@@ -602,21 +615,16 @@ export async function getMatchListData(
   supabase: Client,
   userId: string | null,
 ): Promise<MatchListItem[]> {
-  const [matchesRes, formedRes] = await Promise.all([
-    supabase
-      .from('matches')
-      .select('*')
-      .neq('status', 'cancelled')
-      .order('start_at_utc', { ascending: true }),
-    supabase.from('match_formed').select('*'),
-  ])
+  const matchesRes = await supabase
+    .from('matches')
+    .select('*')
+    .neq('status', 'cancelled')
+    .order('start_at_utc', { ascending: true })
   if (matchesRes.error) throw matchesRes.error
-  if (formedRes.error) throw formedRes.error
 
   const matches = matchesRes.data as Match[]
   if (matches.length === 0) return []
 
-  const formedMap = new Map((formedRes.data as MatchFormed[]).map(f => [f.match_id, f]))
   const matchIds = matches.map(m => m.id)
   const clubIds = [...new Set(matches.filter(m => m.club_id).map(m => m.club_id as string))]
 
@@ -663,7 +671,6 @@ export async function getMatchListData(
   }
 
   return matches.map(match => {
-    const formed = formedMap.get(match.id)
     const club = match.club_id ? (clubMap.get(match.club_id) ?? null) : null
     const mps = byMatch.get(match.id) ?? []
 
@@ -680,9 +687,11 @@ export async function getMatchListData(
       match,
       clubTimezone: club?.timezone ?? null,
       clubName: club?.name ?? null,
-      confirmedCount: formed?.confirmed_count ?? confirmed.length,
+      // Use status-based local counts — more reliable than confirmed_at-based view
+      // (old participants may have status='confirmed' but confirmed_at=NULL; view undercounts them).
+      confirmedCount: confirmed.length,
       pendingCount: pending.length,
-      isFormed: formed?.is_formed ?? false,
+      isFormed: confirmed.length >= match.required_count,
       participants: enriched,
       myParticipant,
     }
@@ -776,6 +785,8 @@ export async function getMatchDetailData(
   })
 
   const confirmed = enriched.filter(p => p.status === 'confirmed')
+  const pending = enriched.filter(p => p.status === 'pending' && p.removed_at === null)
+  const isOrganizer = userId === match.organizer_id
   const myParticipant = userId ? (enriched.find(p => p.user_id === userId) ?? null) : null
   const scopeGroups = ((scopeGroupsRes.data ?? []) as { id: string; name: string }[])
 
@@ -785,9 +796,13 @@ export async function getMatchDetailData(
     clubName: club?.name ?? null,
     participants: enriched,
     myParticipant,
-    isOrganizer: userId === match.organizer_id,
-    confirmedCount: formedRes.data?.confirmed_count ?? confirmed.length,
-    pendingCount: formedRes.data?.pending_count ?? 0,
+    isOrganizer,
+    // Use status-based local count for confirmedCount — more reliable than confirmed_at-based view
+    // (old participants may have status='confirmed' but confirmed_at=NULL; view undercounts them).
+    confirmedCount: confirmed.length,
+    // For organizer (sees all participants): use local count.
+    // For non-organizer (RLS hides other pending): use view aggregate to show total pending count.
+    pendingCount: isOrganizer ? pending.length : (formedRes.data?.pending_count ?? 0),
     activities,
     organizerName: resolve(match.organizer_id, null),
     scopeGroups,
@@ -795,75 +810,42 @@ export async function getMatchDetailData(
 }
 
 // ============================================================================
-// Scope user lookup (for invite / nominate dropdowns)
+// v1.6.1 Role-specific roster RPCs (replace rpc_match_scope_users)
 // ============================================================================
 
 export type ScopeUser = { id: string; display_name: string }
 
-/** Internal: resolve active scope group members into ScopeUser[]. No fallback — v1.5 scope is absolute. */
-async function resolveScopeGroupUsers(
-  supabase: Client,
-  match: Match,
-  excludeUserIds: string[],
-): Promise<ScopeUser[]> {
-  const groupIds = match.invitation_scope_group_ids ?? []
+/** Maps RPC result (user_id, display_name) -> ScopeUser (id, display_name). */
+function mapRosterResult(data: { user_id: string; display_name: string }[]): ScopeUser[] {
+  return data.map(r => ({ id: r.user_id, display_name: r.display_name }))
+}
 
-  // v1.5: scope is absolute. Empty scope = no eligible users.
-  if (groupIds.length === 0) return []
-
-  const { data: members, error } = await supabase
-    .from('group_members')
-    .select('user_id')
-    .in('group_id', groupIds)
-    .eq('status', 'active')
+/** v1.6.1: Invite targets for organizer (InScope UNION ShareGroup with org). */
+export async function getInviteTargets(supabase: Client, matchId: string): Promise<ScopeUser[]> {
+  const { data, error } = await supabase.rpc('rpc_match_invite_targets', { p_match_id: matchId })
   if (error) throw error
-
-  const excludeSet = new Set(excludeUserIds)
-  const userIds = [...new Set(
-    (members ?? [])
-      .map(m => m.user_id)
-      .filter((uid): uid is string => !!uid && !excludeSet.has(uid)),
-  )]
-  if (userIds.length === 0) return []
-
-  const clubIds = match.club_id ? [match.club_id] : []
-  const [profilesRes, identityMap] = await Promise.all([
-    supabase.from('profile_display').select('id, display_name').in('id', userIds),
-    fetchIdentityMap(supabase, clubIds, userIds),
-  ])
-
-  const profileMap = new Map(
-    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name]),
-  )
-
-  return userIds
-    .map(uid => ({
-      id: uid,
-      display_name: resolveNameFromMaps(uid, null, match.club_id, identityMap, profileMap, new Map()),
-    }))
-    .sort((a, b) => a.display_name.localeCompare(b.display_name))
+  return mapRosterResult((data ?? []) as { user_id: string; display_name: string }[])
 }
 
-/**
- * v1.5: Users the organizer can invite. Must be in invitation_scope_group_ids.
- * Empty scope → []. No fallback.
- */
-export async function getOrganizerGroupUsers(
-  supabase: Client,
-  match: Match,
-  excludeUserIds: string[],
-): Promise<ScopeUser[]> {
-  return resolveScopeGroupUsers(supabase, match, excludeUserIds)
+/** v1.6.1: Nominate targets for non-org (ShareGroup with caller). Returns [] on gate fail. */
+export async function getNominateTargets(supabase: Client, matchId: string): Promise<ScopeUser[]> {
+  const { data, error } = await supabase.rpc('rpc_match_nominate_targets', { p_match_id: matchId })
+  if (error) throw error
+  return mapRosterResult((data ?? []) as { user_id: string; display_name: string }[])
 }
 
-/**
- * v1.5: Users a participant can nominate. Must be in invitation_scope_group_ids.
- * Empty scope → []. No fallback.
- */
-export async function getNominatorGroupUsers(
-  supabase: Client,
-  match: Match,
-  excludeUserIds: string[],
-): Promise<ScopeUser[]> {
-  return resolveScopeGroupUsers(supabase, match, excludeUserIds)
+/** v1.6.1: Delegate-confirm targets for non-org (ShareGroup with caller). Returns [] on gate fail. */
+export async function getDelegateConfirmTargets(supabase: Client, matchId: string): Promise<ScopeUser[]> {
+  const { data, error } = await supabase.rpc('rpc_match_delegate_confirm_targets', { p_match_id: matchId })
+  if (error) throw error
+  return mapRosterResult((data ?? []) as { user_id: string; display_name: string }[])
+}
+
+/** v1.6.1: Non-org delegate-confirms a user from shared groups (pending ORG approval). */
+export async function delegateConfirmUser(supabase: Client, matchId: string, userId: string) {
+  const { error } = await supabase.rpc('rpc_match_delegate_confirm_user', {
+    p_match_id: matchId,
+    p_user_id: userId,
+  })
+  if (error) throw error
 }

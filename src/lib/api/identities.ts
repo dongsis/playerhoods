@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Club, ClubIdentity, ClubHandleCheckResult } from '@/lib/types/database'
+import type { Database, Club, ClubIdentity, ClubHandleCheckResult, Group, GroupMember } from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -28,6 +28,21 @@ export async function updateProfile(
   const { error } = await supabase.rpc('rpc_profile_update', {
     p_first_name: params.first_name ?? null,
     p_last_name: params.last_name ?? null,
+  })
+  if (error) throw error
+}
+
+/**
+ * v1.5 Identity: directly set the user's global display_name.
+ * Does not sync club_identities (club handle is legacy in v1.5).
+ * RPC: rpc_profile_set_display_name
+ */
+export async function setDisplayName(
+  supabase: Client,
+  displayName: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_profile_set_display_name', {
+    p_display_name: displayName,
   })
   if (error) throw error
 }
@@ -182,6 +197,46 @@ export async function addVenuePreference(
     .from('profiles')
     .update({ secondary_club_ids: [...current, venueId] })
     .eq('id', userId)
+  if (error) throw error
+}
+
+// ============================================================================
+// Group display name (v1.5 Identity)
+// ============================================================================
+
+/**
+ * Get all active group memberships for the user, with group info.
+ * Used to render the "Group Aliases" section on the identity/profile page.
+ */
+export async function getMyGroupMemberships(
+  supabase: Client,
+  userId: string,
+): Promise<(GroupMember & { group: Group })[]> {
+  const { data, error } = await supabase
+    .from('group_members')
+    .select('*, group:groups(*)')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .is('removed_at', null)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as unknown as (GroupMember & { group: Group })[]
+}
+
+/**
+ * Set (or clear) the calling user's group-scoped alias in a specific group.
+ * Pass empty string to clear (stored as NULL).
+ * RPC: rpc_group_set_display_name
+ */
+export async function setGroupDisplayName(
+  supabase: Client,
+  groupId: string,
+  displayName: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_group_set_display_name', {
+    p_group_id: groupId,
+    p_display_name: displayName,
+  })
   if (error) throw error
 }
 
