@@ -1,0 +1,93 @@
+﻿"public"."group_member_status"
+"public"."match_admission_mode"
+"public"."match_join_method"
+"public"."match_participant_status"
+"public"."match_status"
+"public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."can_invite_users"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."can_manage_participants"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."compute_match_start_at_utc"()
+"public"."do_users_share_group"("p_user_a" "uuid", "p_user_b" "uuid")
+"public"."fn_guard_participant_state"()
+"public"."fn_match_detail_change_reconfirm"()
+"public"."group_boundary_keeper_id"("p_group_id" "uuid")
+"public"."handle_new_user"()
+"public"."is_caller_in_match_scope"("p_match_id" "uuid")
+"public"."is_caller_match_associated"("p_match_id" "uuid")
+"public"."is_club_admin"("p_club_id" "uuid")
+"public"."is_group_active_member"("p_group_id" "uuid", "p_user_id" "uuid")
+"public"."is_group_active_member_any"("p_group_id" "uuid", "p_user_id" "uuid")
+"public"."is_group_member_any"("p_group_id" "uuid", "p_user_id" "uuid")
+"public"."is_guest_in_any_group_roster"("p_guest_id" "uuid")
+"public"."is_match_organizer"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."is_match_participant_active"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."is_match_participant_confirmed"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."is_user_in_match_scope"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."is_user_in_scope_groups"("p_scope_group_ids" "uuid"[], "p_user_id" "uuid")
+"public"."is_user_match_associated"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."log_participant_action"("p_match_participant_id" "uuid", "p_action_type" "text", "p_note" "text" DEFAULT NULL::"text", "p_created_by" "uuid" DEFAULT "auth"."uid"())
+"public"."match_participant_reconcile_status"("p_mp_id" "uuid")
+"public"."rpc_admin_user_search"("p_query" "text") RETURNS TABLE("user_id" "uuid", "display_name" "text", "email" "text")
+"public"."rpc_club_admin_grant"("p_user_id" "uuid", "p_club_id" "uuid")
+"public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid")
+IF
+"public"."rpc_club_create"("p_name" "text", "p_location_text" "text" DEFAULT NULL::"text", "p_timezone" "text" DEFAULT 'America/Toronto'::"text", "p_notes" "text" DEFAULT NULL::"text")
+"public"."rpc_club_handle_check"("p_club_id" "uuid", "p_handle" "text") RETURNS TABLE("available" boolean, "suggestions" "text"[])
+"public"."rpc_club_handle_set"("p_club_id" "uuid", "p_new_handle" "text")
+"public"."rpc_club_join"("p_club_id" "uuid", "p_handle" "text")
+"public"."rpc_club_update"("p_club_id" "uuid", "p_name" "text" DEFAULT NULL::"text", "p_location_text" "text" DEFAULT NULL::"text", "p_timezone" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text")
+IF
+"public"."rpc_court_create"("p_club_id" "uuid", "p_court_code" "text", "p_surface" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text")
+"public"."rpc_court_delete"("p_court_id" "uuid")
+"public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text" DEFAULT NULL::"text", "p_surface" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text")
+IF
+"public"."rpc_group_accept_invite"("p_group_id" "uuid")
+IF
+"public"."rpc_group_create"("p_name" "text", "p_description" "text" DEFAULT NULL::"text")
+"public"."rpc_group_invite_user"("p_group_id" "uuid", "p_user_id" "uuid")
+"public"."rpc_group_leave"("p_group_id" "uuid")
+"public"."rpc_group_set_display_name"("p_group_id" "uuid", "p_display_name" "text")
+IF
+"public"."rpc_match_accept_invite"("p_match_id" "uuid")
+"public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text")
+"public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text", "p_note" "text" DEFAULT NULL::"text")
+"public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text")
+"public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text", "p_note" "text" DEFAULT NULL::"text")
+IF
+"public"."rpc_match_create"("p_required_count" integer DEFAULT 4, "p_game_type" "text" DEFAULT 'doubles'::"text", "p_match_date" "date" DEFAULT NULL::"date", "p_start_time" time without time zone DEFAULT NULL::time without time zone, "p_duration_minutes" integer DEFAULT NULL::integer, "p_club_id" "uuid" DEFAULT NULL::"uuid", "p_court_ids" "uuid"[] DEFAULT NULL::"uuid"[], "p_invitation_scope_group_ids" "uuid"[] DEFAULT NULL::"uuid"[], "p_can_participants_invite_users" boolean DEFAULT false, "p_can_participants_add_guests" boolean DEFAULT false, "p_can_participants_manage_participants" boolean DEFAULT false)
+"public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") RETURNS TABLE("user_id" "uuid", "display_name" "text")
+"public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid")
+"public"."rpc_match_invite_targets"("p_match_id" "uuid") RETURNS TABLE("user_id" "uuid", "display_name" "text")
+"public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text" DEFAULT NULL::"text")
+"public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."rpc_match_nominate_targets"("p_match_id" "uuid") RETURNS TABLE("user_id" "uuid", "display_name" "text")
+"public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid")
+"public"."rpc_match_org_approve_participant"("p_match_participant_id" "uuid")
+"public"."rpc_match_remove_participant"("p_match_participant_id" "uuid")
+"public"."rpc_match_request_join"("p_match_id" "uuid")
+"public"."rpc_match_user_withdraw"("p_match_id" "uuid")
+"public"."rpc_profile_init"("p_display_name" "text", "p_first_name" "text" DEFAULT NULL::"text", "p_last_name" "text" DEFAULT NULL::"text")
+"public"."rpc_profile_set_display_name"("p_display_name" "text")
+"public"."rpc_profile_set_primary_club"("p_club_id" "uuid")
+"public"."rpc_profile_update"("p_first_name" "text" DEFAULT NULL::"text", "p_last_name" "text" DEFAULT NULL::"text")
+IF
+"public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text" DEFAULT NULL::"text", "p_phone" "text" DEFAULT NULL::"text")
+"public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text" DEFAULT NULL::"text", "p_phone" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text")
+"public"."rpc_roster_guest_list"()
+"public"."sharegroup_exists"("p_user_a" "uuid", "p_user_b" "uuid")
+"public"."test_runner_v161"() RETURNS TABLE("test_name" "text", "ok" boolean, "details" "text", "match_id" "uuid")
+"public"."test_runner_v161_cleanup"()
+"public"."test_runner_v161_cleanup"("p_run_suffix" "text")
+"public"."tg__set_updated_at"()
+"public"."trg_set_formed_at_once"()
+"public"."trg_set_removed_at_from_status"()
+"public"."validate_club_handle"("p_handle" "text")
+IF
+IF
+IF
+IF
+IF
+IF
+IF
