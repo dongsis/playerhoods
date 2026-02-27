@@ -42,15 +42,19 @@ export function ProfileForm({ userId: _userId, existing, next }: Props) {
       router.push(next)
       router.refresh()
     } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message || 'Failed to save profile'
+      const message = (err as { message?: string })?.message
+      const details = (err as { details?: string })?.details
+      const msg = message || details || 'Failed to save profile'
+      console.error('Profile onboarding save failed', err)
       // already_initialized means the user skipped back — treat as success
       if (msg.includes('already_initialized')) {
         router.push(next)
         router.refresh()
       } else {
         setError(msg)
-        setLoading(false)
       }
+    } finally {
+      setLoading(false)
     }
   }
 
