@@ -1,96 +1,55 @@
-# DB State Report (sports + prefs + RPC focus)
+# DB State Report (sports + RPC)
 
-## A) Dump identity & evidence (db_dump_public.sql)
-**Finding:** `db_dump_public.sql` is **stale / missing v1.6.3 sports objects**.
-- Evidence: **no matches** for
-  - `CREATE TABLE IF NOT EXISTS "public"."sports"`
-  - `CREATE TABLE IF NOT EXISTS "public"."user_sports"`
-  - `CREATE TABLE IF NOT EXISTS "public"."guest_sports"`
-  - `FUNCTION public.rpc_sports_list`
-  - `FUNCTION public.rpc_user_sports_set`
-  - `FUNCTION public.rpc_guest_sports_set`
-  - `FUNCTION public.rpc_match_delegate_confirm_targets`
-  - `schema_migrations` (no insert/entries in dump)
-- Dump **does** include other tables (e.g. `clubs`):
-  - `db_dump_public.sql:687` → `CREATE TABLE IF NOT EXISTS "public"."clubs" (...)`
+## A) Dump 证据（db_dump_public.sql）
+- **结论**：dump 明显滞后（或来自另一套 DB）。
+- **证据**（对 dump 的原始字节搜索）：
+  - 未找到 `public.sports` / `public.user_sports` / `public.guest_sports`
+  - 未找到 `rpc_sports_list` / `rpc_user_sports_set` / `rpc_guest_sports_set` / `rpc_match_delegate_confirm_targets`
+  - 未找到 `schema_migrations`
 
-**Conclusion:** `db_dump_public.sql` (and `db_dump_local.sql`, same search) are missing the sports tables + 3 sports RPCs, so the dump is **behind** the actual local DB schema.
+> 说明：我对 `db_dump_public.sql` 做了二进制字符串搜索（UTF-16/UTF-8 不敏感），以上关键字均未出现。
 
----
+## B) Local 真实 DB 事实清单（127.0.0.1:54322）
+**表**（public）：
+- sports ✅（RLS: **false**）
+- user_sports ✅（RLS: **true**）
+- guest_sports ✅（RLS: **true**）
 
-## B) Local DB (real query, not dump)
-**Local DB URL (from `supabase status --output json`):**
-- `postgresql://postgres:postgres@127.0.0.1:54322/postgres`
+**函数**（public）：
+- rpc_sports_list ✅
+- rpc_user_sports_set ✅
+- rpc_guest_sports_set ✅
+- rpc_match_delegate_confirm_targets ❌（未找到）
 
-**Tables exist (local):**
-- `public.sports` ✅
-- `public.user_sports` ✅
-- `public.guest_sports` ✅
+**迁移追踪表**：
+- supabase_migrations.schema_migrations ✅ 存在
+- 但未发现版本 `20260225221901` / `20260225221953` 的记录
 
-**Functions exist (local):**
-- `rpc_sports_list` ✅
-- `rpc_user_sports_set` ✅
-- `rpc_guest_sports_set` ✅
-- `rpc_match_delegate_confirm_targets` ❌ (missing)
-  - Note: **`rpc_match_delegate_manual_confirm_targets` exists** instead.
+## C) Remote 真实 DB 事实清单
+- **无法读取**：当前 CLI 未 link remote（缺少 `.supabase/config.json`），我无法用只读方式连接远端数据库。
 
-**RLS flags (local):**
-- `sports`: **RLS OFF**
-- `user_sports`: **RLS ON**
-- `guest_sports`: **RLS ON**
+## D) 迁移应用矩阵（sports 相关）
+| 环境 | 20260225221901_v1_6_3_sports_core | 20260225221953_sports_prefs_rpc |
+|---|---|---|
+| local | **是**（对象存在） | **部分**（3 个 RPC 存在，但缺 `rpc_match_delegate_confirm_targets`） |
+| remote | **未知**（未连接） | **未知**（未连接） |
 
----
+## E) 结论 & 最短修复路径（当前可执行）
+**唯一推荐路径**：先把 **remote 读出来对齐事实** → 再决定是否 apply。原因：现在的 dump 与 local 事实冲突，remote 真实状态未知。
 
-## C) Remote DB (read‑only)
-**Status:** Linked to project `mtkwqzzrejenaqujjfge` and dumped `db_dump_remote.sql`.
-**Remote dump evidence:**
-- No matches for:
-  - `CREATE TABLE IF NOT EXISTS "public"."sports"`
-  - `CREATE TABLE IF NOT EXISTS "public"."user_sports"`
-  - `CREATE TABLE IF NOT EXISTS "public"."guest_sports"`
-  - `FUNCTION public.rpc_sports_list`
-  - `FUNCTION public.rpc_user_sports_set`
-  - `FUNCTION public.rpc_guest_sports_set`
-  - `FUNCTION public.rpc_match_delegate_confirm_targets`
-  - `schema_migrations`
-- Remote dump **does** include other tables (e.g. `clubs`):
-  - `db_dump_remote.sql:687` → `CREATE TABLE IF NOT EXISTS "public"."clubs" (...)`
+**具体最短路径：**
+1) 先用 **只读** 方式连 remote，拿同样的“对象清单”。
+2) 如果 remote 缺：
+   - 先在 local 验证 migrations 完整性（补齐缺失 RPC）
+   - 再由你确认后 **apply remote**
+   - 重新生成 remote dump
 
-**Conclusion:** Remote schema appears to be **missing v1.6.3 sports objects** (or dump source is older).
+**为什么前端能调用这些 RPC，但 dump 里缺失？**
+- dump **不是**从当前 local DB 生成（local 有 sports + RPC，但 dump 没有）
+- 或 dump 来自 **另一套 DB/过旧 snapshot**
+- 或 migrations 没跑，但前端是连到另一个环境
 
 ---
 
-## D) Migration application matrix (v1.6.3 sports)
-Migrations of interest:
-- `20260225221901_v1_6_3_sports_core.sql.sql`
-- `20260225221953_sports_prefs_rpc.sql.sql`
-
-**Local evidence:**
-- Objects **exist** (sports + user_sports + guest_sports + 3 sports RPCs)
-- `supabase_migrations.schema_migrations` has only **4 rows**, **none** for v1.6.3 sports files
-
-### 2x2 Matrix
-|                | sports_core | sports_prefs_rpc |
-|----------------|-------------|------------------|
-| **local**      | **YES (objects exist)** / **NO tracking** | **YES (objects exist)** / **NO tracking** |
-| **remote**     | **NO (dump missing objects)** | **NO (dump missing objects)** |
-
----
-
-## E) Conclusion & shortest fix path (current evidence)
-**Most likely cause:**
-- Your **dump file(s) were generated from an older schema** or a different DB target, **not** from the running local DB that already has sports tables + RPCs.
-- Migration tracking table is **not reflecting** v1.6.3 sports migrations (only 4 rows), so even when objects exist, tracking is missing.
-
-**Recommended path (given current evidence):**
-1) **Remote is missing v1.6.3 sports objects** (from remote dump). Local has them.
-2) Therefore this matches **“local has / remote doesn’t”** → **apply migrations to remote** (after your explicit confirmation), then regenerate remote dump.
-3) Optional but recommended: **regenerate local dump** from current local DB to avoid stale artifacts.
-
----
-
-## Evidence (local queries run)
-- `docker exec -i supabase_db_playerhoods psql ... to_regclass('public.sports'...)` → all three exist
-- `docker exec -i supabase_db_playerhoods psql ... proname in (rpc_*...)` → 3 sports RPCs exist, delegate_confirm_targets missing
-- `docker exec -i supabase_db_playerhoods psql ... relrowsecurity` → sports RLS off, user_sports/guest_sports on
-- `docker exec -i supabase_db_playerhoods psql ... schema_migrations` → 4 rows only
+### 关键一句话结论（精简版）
+`db_dump_public.sql` 明显滞后：dump 中完全没有 sports/guest_sports/user_sports 和 4 个 RPC（甚至没有 schema_migrations），而 local 实际 DB 已存在这些表和 3 个 RPC ⇒ dump 来源不对或过旧。remote 状态未知，需要只读核对后再决定补跑/补 dump。

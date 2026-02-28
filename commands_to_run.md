@@ -1,45 +1,33 @@
-# Commands to Run (copy‑paste)
+# Commands To Run
 
-## Local‑only (read‑only)
-```powershell
-# Local DB URL
-supabase status --output json
+> 约定：**remote-apply 需要你明确说“apply”才会执行**。
 
-# Tables exist?
-docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select to_regclass('public.sports') as sports, to_regclass('public.user_sports') as user_sports, to_regclass('public.guest_sports') as guest_sports;"
+## Local-only（只读）
+```bash
+# 查 sports 表 + RLS
+docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select n.nspname as schema, c.relname as table, c.relrowsecurity as rls_enabled from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and c.relname in ('sports','user_sports','guest_sports');"
 
-# Functions exist?
-docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and proname in ('rpc_sports_list','rpc_user_sports_set','rpc_guest_sports_set','rpc_match_delegate_confirm_targets') order by proname;"
+# 查 sports RPC 是否存在
+docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select n.nspname as schema, p.proname as function, pg_get_function_identity_arguments(p.oid) as args from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('rpc_sports_list','rpc_user_sports_set','rpc_guest_sports_set','rpc_match_delegate_confirm_targets');"
 
-# RLS flags
- docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select relname, relrowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and relname in ('sports','user_sports','guest_sports') order by relname;"
-
-# Migration tracking rows
- docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select count(*) from supabase_migrations.schema_migrations;"
- docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select version, name from supabase_migrations.schema_migrations where name like '%sports%' or name like '%v1_6_3%' order by version;"
+# 查迁移追踪表是否有 sports 版本
+docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select version, name from supabase_migrations.schema_migrations where version in ('20260225221901','20260225221953');"
 ```
 
-## Local‑only (regenerate dump)
-```powershell
-# Generate a fresh local dump from the running local DB
-# (writes into repo root)
-docker exec -i supabase_db_playerhoods pg_dump -U postgres -d postgres --schema=public > db_dump_local.sql
+## Remote-readonly（只读）
+```bash
+# 先 link（只读核查不会写远端）
+supabase link --project-ref <your-project-ref>
+
+# 读取 remote schema（等你确认 ref 后我帮你填完整命令）
+# 然后用 supabase db pull / db dump / 或通过远端连接执行只读查询
 ```
 
-## Remote‑readonly (linked)
-```powershell
-supabase link --project-ref mtkwqzzrejenaqujjfge
-supabase db dump --schema public --file db_dump_remote.sql
+## Remote-apply（需要你明确“apply”）
+```bash
+# 例：推送 migrations 到 remote
+supabase db push
 
-# Check remote dump for sports + RPCs
-Select-String -Path db_dump_remote.sql -Encoding UTF8 -Pattern 'CREATE TABLE IF NOT EXISTS "public"."sports"|CREATE TABLE IF NOT EXISTS "public"."user_sports"|CREATE TABLE IF NOT EXISTS "public"."guest_sports"|FUNCTION public.rpc_sports_list|FUNCTION public.rpc_user_sports_set|FUNCTION public.rpc_guest_sports_set|FUNCTION public.rpc_match_delegate_confirm_targets|schema_migrations'
-```
-
-## Remote‑apply (requires your explicit confirmation)
-```powershell
-# Push migrations to remote
-# supabase db push
-
-# OR apply specific migrations (if using migration up flow)
-# supabase migration up
+# 生成 remote dump（示例）
+# supabase db dump --schema public --file db_dump_remote.sql
 ```
