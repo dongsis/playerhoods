@@ -42,8 +42,21 @@
 ---
 
 ## C) Remote DB (read‑only)
-**Status:** No Supabase remote link/config found in repo. Remote object state is **unknown**.
-- Need project ref or remote DB URL to run read‑only checks.
+**Status:** Linked to project `mtkwqzzrejenaqujjfge` and dumped `db_dump_remote.sql`.
+**Remote dump evidence:**
+- No matches for:
+  - `CREATE TABLE IF NOT EXISTS "public"."sports"`
+  - `CREATE TABLE IF NOT EXISTS "public"."user_sports"`
+  - `CREATE TABLE IF NOT EXISTS "public"."guest_sports"`
+  - `FUNCTION public.rpc_sports_list`
+  - `FUNCTION public.rpc_user_sports_set`
+  - `FUNCTION public.rpc_guest_sports_set`
+  - `FUNCTION public.rpc_match_delegate_confirm_targets`
+  - `schema_migrations`
+- Remote dump **does** include other tables (e.g. `clubs`):
+  - `db_dump_remote.sql:687` → `CREATE TABLE IF NOT EXISTS "public"."clubs" (...)`
+
+**Conclusion:** Remote schema appears to be **missing v1.6.3 sports objects** (or dump source is older).
 
 ---
 
@@ -60,7 +73,7 @@ Migrations of interest:
 |                | sports_core | sports_prefs_rpc |
 |----------------|-------------|------------------|
 | **local**      | **YES (objects exist)** / **NO tracking** | **YES (objects exist)** / **NO tracking** |
-| **remote**     | **UNKNOWN (not linked)** | **UNKNOWN (not linked)** |
+| **remote**     | **NO (dump missing objects)** | **NO (dump missing objects)** |
 
 ---
 
@@ -70,12 +83,9 @@ Migrations of interest:
 - Migration tracking table is **not reflecting** v1.6.3 sports migrations (only 4 rows), so even when objects exist, tracking is missing.
 
 **Recommended path (given current evidence):**
-1) **Regenerate a local dump from the actual local DB** and re-check sports + RPCs (fixes stale dump problem).
-2) **Confirm remote state** (read‑only) by linking or providing remote DB URL.
-3) Then choose:
-   - If **local has / remote doesn’t** → **apply migrations to remote** (after your explicit confirmation) + regenerate remote dump.
-   - If **remote has / local doesn’t** → **reset/push local** to latest migrations + regenerate local dump.
-   - If **neither has** → **apply locally first → verify → then push to remote** (after confirmation).
+1) **Remote is missing v1.6.3 sports objects** (from remote dump). Local has them.
+2) Therefore this matches **“local has / remote doesn’t”** → **apply migrations to remote** (after your explicit confirmation), then regenerate remote dump.
+3) Optional but recommended: **regenerate local dump** from current local DB to avoid stale artifacts.
 
 ---
 

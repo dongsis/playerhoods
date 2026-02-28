@@ -26,16 +26,13 @@ docker exec -i supabase_db_playerhoods psql -U postgres -d postgres -c "select p
 docker exec -i supabase_db_playerhoods pg_dump -U postgres -d postgres --schema=public > db_dump_local.sql
 ```
 
-## Remote‑readonly (requires link or DB URL)
+## Remote‑readonly (linked)
 ```powershell
-# If not linked yet:
-# supabase link --project-ref <YOUR_PROJECT_REF>
+supabase link --project-ref mtkwqzzrejenaqujjfge
+supabase db dump --schema public --file db_dump_remote.sql
 
-# Option A: If you have remote DB URL
-# supabase db dump --db-url <REMOTE_DB_URL> --schema public --file db_dump_remote.sql
-
-# Option B: If linked and CLI supports it in your env
-# supabase db dump --linked --schema public --file db_dump_remote.sql
+# Check remote dump for sports + RPCs
+Select-String -Path db_dump_remote.sql -Encoding UTF8 -Pattern 'CREATE TABLE IF NOT EXISTS "public"."sports"|CREATE TABLE IF NOT EXISTS "public"."user_sports"|CREATE TABLE IF NOT EXISTS "public"."guest_sports"|FUNCTION public.rpc_sports_list|FUNCTION public.rpc_user_sports_set|FUNCTION public.rpc_guest_sports_set|FUNCTION public.rpc_match_delegate_confirm_targets|schema_migrations'
 ```
 
 ## Remote‑apply (requires your explicit confirmation)
