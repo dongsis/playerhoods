@@ -75,19 +75,16 @@ export async function getMyGroupMembership(supabase: Client, groupId: string, us
 // Write operations (via RPC only)
 
 /**
- * Accept a pending group invite.
- * RPC: rpc_group_accept_invite
- * - Caller must have pending membership
- * - Transitions status: pending -> active
+ * Accept a pending group invite via RPC (SECURITY DEFINER),
+ * avoids coupling to client-side RLS update policies.
  */
 export async function acceptGroupInvite(supabase: Client, groupId: string) {
-  const { data, error } = await supabase.rpc('rpc_group_accept_invite', {
+  const { error } = await supabase.rpc('rpc_group_accept_invite', {
     p_group_id: groupId,
   })
-
-  console.log('acceptGroupInvite response:', { data, error })
   if (error) throw error
 }
+
 
 /** Leave a group. Boundary keeper cannot leave. */
 export async function leaveGroup(supabase: Client, groupId: string) {

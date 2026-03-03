@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { initProfile } from '@/lib/api/identities'
@@ -12,16 +12,33 @@ interface Props {
   next: string
 }
 
-export function ProfileForm({ userId: _userId, existing, next }: Props) {
-  const [displayName, setDisplayName] = useState(existing?.display_name || '')
-  const [firstName, setFirstName] = useState(existing?.first_name || '')
-  const [lastName, setLastName] = useState(existing?.last_name || '')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function ProfileForm({ userId, existing, next }: Props) {
   const router = useRouter()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // 初始化：如果已有值就回填
+  const initialDisplayName = useMemo(
+    () => (existing as any)?.display_name ?? '',
+    [existing]
+  )
+  const initialFirstName = useMemo(
+    () => (existing as any)?.first_name ?? '',
+    [existing]
+  )
+  const initialLastName = useMemo(
+    () => (existing as any)?.last_name ?? '',
+    [existing]
+  )
+
+  const [displayName, setDisplayName] = useState<string>(initialDisplayName)
+  const [firstName, setFirstName] = useState<string>(initialFirstName)
+  const [lastName, setLastName] = useState<string>(initialLastName)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleClick = async () => {
+    console.log('clicked') // 你用它来确认：handler 真的被触发了
+
+    // 先做同步校验（不要先 setLoading(true)）
     const trimmed = displayName.trim()
     if (!trimmed) {
       setError('Display name is required')
@@ -31,71 +48,73 @@ export function ProfileForm({ userId: _userId, existing, next }: Props) {
     setError(null)
     setLoading(true)
 
-    const supabase = createSupabaseBrowserClient()
-
     try {
+      const supabase = createSupabaseBrowserClient()
+
+      // 写库（成功后 middleware 才不会拦回 onboarding）
       await initProfile(supabase, {
+        // 如果你的 initProfile 需要 userId，就把它加进去：
+        // user_id: userId,
         display_name: trimmed,
         first_name: firstName.trim() || undefined,
         last_name: lastName.trim() || undefined,
-      })
-      router.push(next)
-      router.refresh()
-    } catch (err: unknown) {
-      const message = (err as { message?: string })?.message
-      const details = (err as { details?: string })?.details
-      const msg = message || details || 'Failed to save profile'
-      console.error('Profile onboarding save failed', err)
-      // already_initialized means the user skipped back — treat as success
-      if (msg.includes('already_initialized')) {
-        router.push(next)
-        router.refresh()
-      } else {
-        setError(msg)
-      }
+      } as any)
+
+      // 写库成功 → 真正跳转
+      router.replace(next)
+    } catch (e: unknown) {
+      // 把错误信息尽量“可读化”显示出来
+      const msg =
+        (e as any)?.message ||
+        (e as any)?.details ||
+        (e as any)?.error_description ||
+        'Failed to save profile'
+      console.error('initProfile failed:', e)
+      setError(String(msg))
+      // 不要在这里强制 push('/dashboard')，否则会被 middleware 拦回
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
-          Display Name *
-        </label>
-        <input
-          type="text"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          required
-          placeholder="How others will see you"
-          style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box', fontSize: '1rem' }}
-        />
-      </div>
+    // 关键：用 onSubmit 统一入口，回车也能提交；并 preventDefault
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        void handleClick()
+      }}
+      style={{ maxWidth: 520 }}
+    >
+      <label style={{ display: 'block', marginBottom: 6 }}>
+        Display Name <span style={{ color: 'crimson' }}>*</span>
+      </label>
+      <input
+        value={displayName}
+        onChange={(e) => setDisplayName(e.target.value)}
+        disabled={loading}
+        style={{ width: '100%', padding: 10, marginBottom: 16 }}
+      />
 
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.25rem' }}>First Name</label>
-        <input
-          type="text"
-          value={firstName}
-          onChange={(e) => setFirstName(e.target.value)}
-          placeholder="Optional"
-          style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
-        />
-      </div>
+      <label style={{ display: 'block', marginBottom: 6 }}>First Name</label>
+      <input
+        value={firstName}
+        onChange={(e) => setFirstName(e.target.value)}
+        disabled={loading}
+        style={{ width: '100%', padding: 10, marginBottom: 16 }}
+        placeholder="Optional"
+      />
 
-      <div style={{ marginBottom: '1.5rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.25rem' }}>Last Name</label>
-        <input
-          type="text"
-          value={lastName}
-          onChange={(e) => setLastName(e.target.value)}
-          placeholder="Optional"
-          style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
-        />
-      </div>
+      <label style={{ display: 'block', marginBottom: 6 }}>Last Name</label>
+      <input
+        value={lastName}
+        onChange={(e) => setLastName(e.target.value)}
+        disabled={loading}
+        style={{ width: '100%', padding: 10, marginBottom: 20 }}
+        placeholder="Optional"
+      />
 
+      {/* 用 submit：onSubmit 会走 handleClick；避免 button type/button 的混乱 */}
       <button
         type="submit"
         disabled={loading}
@@ -111,7 +130,9 @@ export function ProfileForm({ userId: _userId, existing, next }: Props) {
         {loading ? 'Saving...' : 'Continue'}
       </button>
 
-      {error && <p style={{ color: 'red', marginTop: '0.75rem' }}>{error}</p>}
+      {error && (
+        <p style={{ color: 'red', marginTop: '0.75rem' }}>{error}</p>
+      )}
     </form>
   )
 }

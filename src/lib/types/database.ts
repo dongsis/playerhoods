@@ -63,6 +63,7 @@ export type Group = {
   boundary_keeper_id: string
   created_by: string
   created_at: string
+  primary_sport_id: number | null  // v1.6.3: FK sports; NULL = multi-sport/unspecified
 }
 
 export type GroupMember = {
@@ -110,6 +111,7 @@ export type Match = {
   formed_at: string | null
   start_at_utc: string | null
   created_at: string
+  sport_id: number  // v1.6.3: FK sports; NOT NULL DEFAULT 1 (tennis)
 }
 
 export type MatchCourt = {
@@ -129,7 +131,41 @@ export type Guest = {
   id: string
   display_name: string
   notes: string | null
+  email: string | null
+  phone: string | null
+  status: 'active' | 'inactive'
   created_by: string
+  created_at: string
+}
+
+// v1.6.2-lite: Personal Roster bookmark (user-scoped favorites)
+export type UserRosterGuest = {
+  owner_user_id: string
+  guest_id: string
+  created_at: string
+  created_by: string
+}
+
+// v1.6.3: Sport dictionary
+export type Sport = {
+  id: number
+  code: string
+  display_name: string
+  is_active: boolean
+  created_at: string
+}
+
+// v1.6.3: User sport preferences
+export type UserSport = {
+  user_id: string
+  sport_id: number
+  created_at: string
+}
+
+// v1.6.3: Contact Player sport tags
+export type GuestSport = {
+  guest_id: string
+  sport_id: number
   created_at: string
 }
 
@@ -311,6 +347,34 @@ export interface Database {
         Row: MatchParticipantAction
         Insert: Partial<MatchParticipantAction> & { match_participant_id: string; action_type: string; created_by: string }
         Update: Partial<MatchParticipantAction>
+        Relationships: []
+      }
+      // v1.6.2-lite: Personal Roster (RPC-only writes; RLS blocks direct insert/update/delete)
+      user_roster_guests: {
+        Row: UserRosterGuest
+        Insert: Partial<UserRosterGuest> & { owner_user_id: string; guest_id: string }
+        Update: Partial<UserRosterGuest>
+        Relationships: []
+      }
+      // v1.6.3: Sports dictionary
+      sports: {
+        Row: Sport
+        Insert: Partial<Sport> & { id: number; code: string; display_name: string }
+        Update: Partial<Sport>
+        Relationships: []
+      }
+      // v1.6.3: User sport preferences
+      user_sports: {
+        Row: UserSport
+        Insert: Partial<UserSport> & { user_id: string; sport_id: number }
+        Update: Partial<UserSport>
+        Relationships: []
+      }
+      // v1.6.3: Contact Player sport tags
+      guest_sports: {
+        Row: GuestSport
+        Insert: Partial<GuestSport> & { guest_id: string; sport_id: number }
+        Update: Partial<GuestSport>
         Relationships: []
       }
     }
@@ -504,9 +568,36 @@ export interface Database {
         Args: { p_match_id: string }
         Returns: { user_id: string; display_name: string }[]
       }
-      rpc_match_delegate_confirm_targets: {
+      rpc_match_delegate_manual_confirm_targets: {
         Args: { p_match_id: string }
         Returns: { user_id: string; display_name: string }[]
+      }
+      // v1.6.2-lite: Roster guest RPCs
+      rpc_roster_guest_create: {
+        Args: { p_display_name: string; p_email?: string | null; p_phone?: string | null; p_notes?: string | null }
+        Returns: Guest
+      }
+      rpc_roster_guest_list: {
+        Args: Record<string, never>
+        Returns: Guest[]
+      }
+      // v1.6.2-lite: Organizer invites a Contact Player from personal roster
+      rpc_match_invite_guest_from_roster: {
+        Args: { p_match_id: string; p_guest_id: string }
+        Returns: MatchParticipant
+      }
+      // v1.6.3: Sports RPCs
+      rpc_sports_list: {
+        Args: Record<string, never>
+        Returns: Sport[]
+      }
+      rpc_user_sports_set: {
+        Args: { p_sport_codes: string[] }
+        Returns: void
+      }
+      rpc_guest_sports_set: {
+        Args: { p_guest_id: string; p_sport_codes: string[] }
+        Returns: void
       }
     }
     Enums: Record<string, never>

@@ -13,6 +13,7 @@ import { AddGuestForm } from './AddGuestForm'
 import { MatchEditForm } from './MatchEditForm'
 import { ManualConfirmUserForm } from './ManualConfirmUserForm'
 import { DelegateConfirmUserForm } from './DelegateConfirmUserForm'
+import { InviteGuestForm } from './InviteGuestForm'
 
 interface Props {
   params: Promise<{ matchId: string }>
@@ -26,11 +27,12 @@ export default async function MatchDetailPage({ params }: Props) {
   let detail
   try {
     detail = await getMatchDetailData(supabase, matchId, user?.id ?? null)
-  } catch {
+  } catch (err) {
+    console.error('[MatchDetail] getMatchDetailData failed for matchId:', matchId, err)
     notFound()
   }
 
-  const { match, clubTimezone, clubName, participants, myParticipant, isOrganizer, confirmedCount, pendingCount, activities, organizerName, scopeGroups } = detail
+  const { match, clubTimezone, clubName, participants, myParticipant, isOrganizer, confirmedCount, pendingCount, activities, organizerName, scopeGroups, sportName } = detail
 
   // v1.6.1: MatchAssociated = ANY row in match_participants (matches DB helper).
   // Even removed participants are "associated" — they had prior interaction with this match.
@@ -100,6 +102,9 @@ export default async function MatchDetailPage({ params }: Props) {
       {/* ── 1. Header: Match Summary ─────────────────────────────────────── */}
       <header style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ margin: '0 0 0.4rem', fontSize: '1.3rem' }}>
+          <span style={{ background: '#f0f9ff', color: '#0369a1', padding: '0.1rem 0.4rem', fontSize: '0.7rem', borderRadius: '4px', verticalAlign: 'middle', marginRight: '0.4rem' }}>
+            {sportName}
+          </span>
           {match.game_type || 'Match'}
           {' '}
           {confirmedCount >= match.required_count ? (
@@ -226,6 +231,14 @@ export default async function MatchDetailPage({ params }: Props) {
           <div id="guest">
             <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Add Nonregistered Player</h4>
             <AddGuestForm matchId={matchId} isOrganizer={true} />
+          </div>
+
+          <div style={{ marginTop: '1.25rem' }}>
+            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite Contact Player</h4>
+            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
+              Invite a contact from your favorites. Org-approved on invite.
+            </p>
+            <InviteGuestForm matchId={matchId} />
           </div>
         </section>
       )}

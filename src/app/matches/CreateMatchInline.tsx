@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { createMatch, getClubs, getCourts } from '@/lib/api/matches'
 import { getGroups } from '@/lib/api/groups'
-import type { Group, Club, Court } from '@/lib/types/database'
+import { listSports } from '@/lib/api/sports'
+import type { Group, Club, Court, Sport } from '@/lib/types/database'
 
 function buildTimeSlots(): { label: string; value: string }[] {
   const slots: { label: string; value: string }[] = []
@@ -114,6 +115,8 @@ export function CreateMatchInline({ defaultClubId }: { defaultClubId?: string })
   const [courtIds, setCourtIds] = useState<string[]>([])
   const [scopeGroupIds, setScopeGroupIds] = useState<string[]>([])
 
+  const [sportId, setSportId] = useState(1)  // default tennis
+  const [sports, setSports] = useState<Sport[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [clubs, setClubs] = useState<Club[]>([])
   const [courts, setCourts] = useState<Court[]>([])
@@ -125,6 +128,7 @@ export function CreateMatchInline({ defaultClubId }: { defaultClubId?: string })
     const supabase = createSupabaseBrowserClient()
     getGroups(supabase).then(setGroups).catch(console.error)
     getClubs(supabase).then(setClubs).catch(console.error)
+    listSports(supabase).then(setSports).catch(console.error)
   }, [])
 
   useEffect(() => {
@@ -149,6 +153,7 @@ export function CreateMatchInline({ defaultClubId }: { defaultClubId?: string })
         duration_minutes: durationMinutes || undefined,
         game_type: gameType || undefined,
         club_id: clubId || undefined,
+        sport_id: sportId,
         court_slots: courtIds.length > 0
           ? courtIds.map(cid => {
               const court = courts.find(c => c.id === cid)
@@ -170,8 +175,14 @@ export function CreateMatchInline({ defaultClubId }: { defaultClubId?: string })
 
   return (
     <form onSubmit={handleSubmit}>
-      {/* Row 1: Game type + Required count */}
+      {/* Row 1: Sport + Game type + Required count */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Sport</label>
+          <select value={sportId} onChange={e => setSportId(parseInt(e.target.value))} style={{ width: '100%', padding: '0.4rem' }}>
+            {sports.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}
+          </select>
+        </div>
         <div style={{ flex: 1 }}>
           <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Game Type</label>
           <select value={gameType} onChange={e => setGameType(e.target.value)} style={{ width: '100%', padding: '0.4rem' }}>

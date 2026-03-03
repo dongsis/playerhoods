@@ -10,6 +10,7 @@ import { PlayersPanel } from './PlayersPanel'
 import { ProfilePanel } from './ProfilePanel'
 import { ClubManagementPanel } from './ClubManagementPanel'
 import { VenuesPanel } from './VenuesPanel'
+import { ContactsPanel } from './ContactsPanel'
 
 interface Props {
   userId: string
@@ -79,6 +80,9 @@ export function DashboardShell({
             data={playersData}
             userId={userId}
           />
+        )}
+        {activeTab === 'contacts' && (
+          <ContactsPanel />
         )}
         {activeTab === 'profile' && (
           <ProfilePanel

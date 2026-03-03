@@ -16,11 +16,13 @@ import {
   getMyGroupMemberships,
   setGroupDisplayName,
 } from '@/lib/api/identities'
+import { listSports, getMySports, setUserSports } from '@/lib/api/sports'
 import { ProfileEditForm } from './ProfileEditForm'
 import { DisplayNameEditForm } from './DisplayNameEditForm'
 import { ClubIdentityRow } from './ClubIdentityRow'
 import { ClubJoinForm } from './ClubJoinForm'
 import { GroupAliasRow } from './GroupAliasRow'
+import { SportsPreferenceForm } from './SportsPreferenceForm'
 
 export default async function ProfilePage() {
   const user = await getUser()
@@ -28,12 +30,14 @@ export default async function ProfilePage() {
 
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: profile }, identities, joinable, venuePrefs, groupMemberships] = await Promise.all([
+  const [{ data: profile }, identities, joinable, venuePrefs, groupMemberships, sports, mySports] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
     getMyClubIdentities(supabase, user.id),
     getJoinableClubs(supabase, user.id),
     getMyVenuePreferences(supabase, user.id).catch(() => []),
     getMyGroupMemberships(supabase, user.id).catch(() => []),
+    listSports(supabase).catch(() => []),
+    getMySports(supabase).catch(() => []),
   ])
 
   if (!profile) redirect('/onboarding/profile')
@@ -99,6 +103,13 @@ export default async function ProfilePage() {
     revalidatePath('/profile')
   }
 
+  async function handleSetSports(codes: string[]) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await setUserSports(supabase, codes)
+    revalidatePath('/profile')
+  }
+
   return (
     <div style={{ maxWidth: '700px', margin: '0 auto', padding: '1.5rem' }}>
       <nav style={{ marginBottom: '1rem' }}>
@@ -124,6 +135,21 @@ export default async function ProfilePage() {
           )}
         </div>
       </section>
+
+      {/* v1.6.3: Sports I Play */}
+      {sports.length > 0 && (
+        <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
+          <h2 style={{ marginTop: 0 }}>Sports I Play</h2>
+          <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#666' }}>
+            Select the sports you play. This helps with filtering and discovery.
+          </p>
+          <SportsPreferenceForm
+            sports={sports}
+            initialSportIds={mySports.map(s => s.sport_id)}
+            onSave={handleSetSports}
+          />
+        </section>
+      )}
 
       {/* v1.5 Identity: group-scoped aliases */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>

@@ -458,6 +458,19 @@ export function PlayersPanel({ data, userId }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* Pending group invite banners — always visible regardless of view */}
+      {pendingInvites.length > 0 && (
+        <div className="space-y-2">
+          {pendingInvites.map(inv => (
+            <GroupInviteBanner
+              key={inv.groupId}
+              invite={inv}
+              onAccepted={() => setDismissedInvites(prev => new Set([...prev, inv.groupId]))}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Controls */}
       <div className="flex items-center gap-3 flex-wrap">
         <input
@@ -530,15 +543,6 @@ export function PlayersPanel({ data, userId }: Props) {
       {/* By Group */}
       {view === 'group' && (
         <div className="space-y-5">
-          {/* Pending group invite banners — always at the top */}
-          {pendingInvites.map(inv => (
-            <GroupInviteBanner
-              key={inv.groupId}
-              invite={inv}
-              onAccepted={() => setDismissedInvites(prev => new Set([...prev, inv.groupId]))}
-            />
-          ))}
-
           {/* Create group button / panel */}
           {userId && !showCreateGroup && (
             <div>

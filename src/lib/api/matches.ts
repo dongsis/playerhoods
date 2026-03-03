@@ -58,6 +58,7 @@ export type MatchDetailData = {
   activities: ActivityItem[]
   organizerName: string
   scopeGroups: { id: string; name: string }[]
+  sportName: string  // v1.6.3
 }
 
 // Read operations (respect RLS)
@@ -525,6 +526,7 @@ export async function createMatch(
     can_participants_invite_users?: boolean
     can_participants_add_guests?: boolean
     can_participants_manage_participants?: boolean
+    sport_id?: number  // v1.6.3: rpc_match_create doesn't accept p_sport_id; we update after create
   }
 ) {
   // Only pass explicitly-set values; omitted args use RPC/DB defaults as single source of truth
@@ -560,6 +562,16 @@ export async function createMatch(
         .insert(rows)
       if (courtError) throw courtError
     }
+  }
+
+  // v1.6.3: rpc_match_create doesn't accept p_sport_id; update after create if non-default
+  if (data.sport_id != null && data.sport_id !== 1) {
+    const { error: sportError } = await supabase
+      .from('matches')
+      .update({ sport_id: data.sport_id })
+      .eq('id', created.id)
+    if (sportError) throw sportError
+    created.sport_id = data.sport_id
   }
 
   return created
@@ -759,9 +771,12 @@ export async function getMatchDetailData(
   )
 
   const scopeGroupIds = match.invitation_scope_group_ids ?? []
-  const scopeGroupsRes = scopeGroupIds.length > 0
-    ? await supabase.from('groups').select('id, name').in('id', scopeGroupIds)
-    : { data: [] }
+  const [scopeGroupsRes, sportRes] = await Promise.all([
+    scopeGroupIds.length > 0
+      ? supabase.from('groups').select('id, name').in('id', scopeGroupIds)
+      : Promise.resolve({ data: [] }),
+    supabase.from('sports').select('display_name').eq('id', match.sport_id).single(),
+  ])
 
   const resolve = (uid: string | null, gid: string | null) =>
     resolveNameFromMaps(uid, gid, match.club_id, identityMap, profileMap, guestMap)
@@ -806,6 +821,7 @@ export async function getMatchDetailData(
     activities,
     organizerName: resolve(match.organizer_id, null),
     scopeGroups,
+    sportName: (sportRes.data as { display_name: string } | null)?.display_name ?? 'Unknown',
   }
 }
 
@@ -836,7 +852,7 @@ export async function getNominateTargets(supabase: Client, matchId: string): Pro
 
 /** v1.6.1: Delegate-confirm targets for non-org (ShareGroup with caller). Returns [] on gate fail. */
 export async function getDelegateConfirmTargets(supabase: Client, matchId: string): Promise<ScopeUser[]> {
-  const { data, error } = await supabase.rpc('rpc_match_delegate_confirm_targets', { p_match_id: matchId })
+  const { data, error } = await supabase.rpc('rpc_match_delegate_manual_confirm_targets', { p_match_id: matchId })
   if (error) throw error
   return mapRosterResult((data ?? []) as { user_id: string; display_name: string }[])
 }
@@ -846,6 +862,19 @@ export async function delegateConfirmUser(supabase: Client, matchId: string, use
   const { error } = await supabase.rpc('rpc_match_delegate_confirm_user', {
     p_match_id: matchId,
     p_user_id: userId,
+  })
+  if (error) throw error
+}
+
+// ============================================================================
+// v1.6.2-lite: Invite Contact Player from Personal Roster
+// ============================================================================
+
+/** Organizer invites a Contact Player from their personal roster into a match. */
+export async function inviteGuestFromRoster(supabase: Client, matchId: string, guestId: string) {
+  const { error } = await supabase.rpc('rpc_match_invite_guest_from_roster', {
+    p_match_id: matchId,
+    p_guest_id: guestId,
   })
   if (error) throw error
 }
