@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { Profile, ClubIdentity, Club, ClubAdmin } from '@/lib/types/database'
@@ -42,6 +42,22 @@ export function DashboardShell({
   const isAdmin = isSuperAdmin || myAdminClubs.length > 0
   const [activeTab, setActiveTab] = useState<DashTab>('matches')
   const [dismissedMatchIds, setDismissedMatchIds] = useState<Set<string>>(new Set())
+
+  // Once user has entered Matches tab, dismiss "removed" matches from badge (so number decreases)
+  useEffect(() => {
+    if (activeTab !== 'matches') return
+    setDismissedMatchIds(prev => {
+      let changed = false
+      const next = new Set(prev)
+      for (const item of items) {
+        if (item.myParticipant?.status === 'removed' && !next.has(item.match.id)) {
+          next.add(item.match.id)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [activeTab, items])
 
   // Compute nav badge counts
   const badges = useMemo(() => {

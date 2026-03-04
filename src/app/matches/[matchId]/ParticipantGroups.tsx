@@ -91,13 +91,12 @@ function ParticipantRow({
     participantAccepted !== null &&
     p.org_approved_at === null
 
-  // Manual Confirm: organizer only, pending user who has NOT yet accepted — bypasses Accept step
+  // Manual Confirm: organizer only, any pending user participant (invited/nominated not yet accepted, or request-joined needing re-confirm after match edit)
   const canManualConfirm =
     isOrganizer &&
     isActive &&
     p.status === 'pending' &&
-    participantAccepted === null &&
-    p.user_id !== null   // guests are confirmed differently (via org add guest)
+    p.user_id !== null   // guests use org approve
 
   // Remove: organizer only (v1.5: participants cannot remove anyone)
   const canRemove =
