@@ -640,10 +640,10 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Language:** `plpgsql`
 - **Security:** **SECURITY DEFINER**
 - **Volatility:** `—`
-- **Reads:** —
-- **Writes:** —
-- **Calls:** —
-- **Notes:** —
+- **Reads:** `public.groups`, `public.group_members`
+- **Writes:** `public.group_members`
+- **Calls:** `public.do_users_share_group`
+- **Notes:** Boundary keeper can invite any user. Active members (non–boundary keeper) can also invite, but only users who share at least one group with the caller (`do_users_share_group`). Handles re-invite of removed members.
 
 ### `public.rpc_group_leave`
 - **Kind:** RPC

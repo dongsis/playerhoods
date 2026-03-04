@@ -41,12 +41,14 @@ export function DashboardShell({
 }: Props) {
   const isAdmin = isSuperAdmin || myAdminClubs.length > 0
   const [activeTab, setActiveTab] = useState<DashTab>('matches')
+  const [dismissedMatchIds, setDismissedMatchIds] = useState<Set<string>>(new Set())
 
   // Compute nav badge counts
   const badges = useMemo(() => {
     const nowIso = new Date().toISOString()
     let matchesBadge = 0
     for (const item of items) {
+      if (dismissedMatchIds.has(item.match.id)) continue
       const mp = item.myParticipant
       if (!mp) continue
       const past = item.match.start_at_utc
@@ -54,14 +56,16 @@ export function DashboardShell({
         : item.match.match_date
           ? item.match.match_date < nowIso.slice(0, 10)
           : false
-      // Pending invite needing user action
-      if (mp.status === 'pending' && mp.join_method === 'invited' && !past) matchesBadge++
+      // Pending invite/nomination needing user action
+      if (mp.status === 'pending' && (mp.join_method === 'invited' || mp.join_method === 'nominated') && !past) {
+        matchesBadge++
+      }
       // Removed from upcoming active match
       if (mp.status === 'removed' && item.match.status === 'active' && !past) matchesBadge++
     }
     const playersBadge = playersData.pendingGroupInvites.length
     return { matches: matchesBadge || undefined, players: playersBadge || undefined }
-  }, [items, playersData.pendingGroupInvites.length])
+  }, [items, playersData.pendingGroupInvites.length, dismissedMatchIds])
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -73,7 +77,14 @@ export function DashboardShell({
       {/* Main content */}
       <main className="flex-1 max-w-3xl mx-auto px-6 py-8">
         {activeTab === 'matches' && (
-          <MatchesPanel items={items} userId={userId} onCancelMatch={onCancelMatch} />
+          <MatchesPanel
+            items={items}
+            userId={userId}
+            onCancelMatch={onCancelMatch}
+            onViewedMatch={matchId =>
+              setDismissedMatchIds(prev => new Set([...prev, matchId]))
+            }
+          />
         )}
         {activeTab === 'players' && (
           <PlayersPanel

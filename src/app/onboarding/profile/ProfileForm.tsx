@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { initProfile } from '@/lib/api/identities'
 import type { Profile } from '@/lib/types/database'
@@ -13,8 +12,6 @@ interface Props {
 }
 
 export function ProfileForm({ userId, existing, next }: Props) {
-  const router = useRouter()
-
   // 初始化：如果已有值就回填
   const initialDisplayName = useMemo(
     () => (existing as any)?.display_name ?? '',
@@ -36,9 +33,9 @@ export function ProfileForm({ userId, existing, next }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const handleClick = async () => {
-    console.log('clicked') // 你用它来确认：handler 真的被触发了
+    console.log('ProfileForm: Continue clicked')
 
-    // 先做同步校验（不要先 setLoading(true)）
+    // 1. Validate display_name before any async work
     const trimmed = displayName.trim()
     if (!trimmed) {
       setError('Display name is required')
@@ -51,27 +48,27 @@ export function ProfileForm({ userId, existing, next }: Props) {
     try {
       const supabase = createSupabaseBrowserClient()
 
-      // 写库（成功后 middleware 才不会拦回 onboarding）
+      // 2. Create/init profile in DB (RPC)
       await initProfile(supabase, {
-        // 如果你的 initProfile 需要 userId，就把它加进去：
-        // user_id: userId,
         display_name: trimmed,
         first_name: firstName.trim() || undefined,
         last_name: lastName.trim() || undefined,
       } as any)
 
-      // 写库成功 → 真正跳转
-      router.replace(next)
+      // 3. Navigate to "next" or dashboard (full load so middleware sees updated profile)
+      const target = next || '/dashboard'
+      console.log('ProfileForm: Profile saved, navigating to', target)
+      window.location.href = target
     } catch (e: unknown) {
-      // 把错误信息尽量“可读化”显示出来
       const msg =
-        (e as any)?.message ||
-        (e as any)?.details ||
-        (e as any)?.error_description ||
-        'Failed to save profile'
-      console.error('initProfile failed:', e)
-      setError(String(msg))
-      // 不要在这里强制 push('/dashboard')，否则会被 middleware 拦回
+        (e as any)?.message ??
+        (e as any)?.details ??
+        (e as any)?.hint ??
+        (e as any)?.error_description ??
+        (e instanceof Error ? e.message : 'Failed to save profile')
+      const displayMsg = typeof msg === 'string' ? msg : 'Failed to save profile'
+      console.error('ProfileForm: Save failed', e)
+      setError(displayMsg)
     } finally {
       setLoading(false)
     }
@@ -114,10 +111,10 @@ export function ProfileForm({ userId, existing, next }: Props) {
         placeholder="Optional"
       />
 
-      {/* 用 submit：onSubmit 会走 handleClick；避免 button type/button 的混乱 */}
       <button
-        type="submit"
+        type="button"
         disabled={loading}
+        onClick={() => void handleClick()}
         style={{
           padding: '0.75rem 2rem',
           fontSize: '1rem',

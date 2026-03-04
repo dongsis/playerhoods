@@ -29,7 +29,7 @@ export default async function DashboardPage() {
   ] =
     await Promise.all([
       getMatchListData(supabase, user.id).catch(() => [] as MatchListItem[]),
-      getAllPlayersGroupedByClub(supabase).catch(() => ({
+      getAllPlayersGroupedByClub(supabase, user.id).catch(() => ({
         clubs: [],
         groups: [],
         noClub: [],

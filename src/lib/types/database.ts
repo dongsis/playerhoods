@@ -492,6 +492,14 @@ export interface Database {
         Args: { p_group_id: string }
         Returns: void
       }
+      rpc_group_reject_invite: {
+        Args: { p_group_id: string }
+        Returns: void
+      }
+      rpc_group_update: {
+        Args: { p_group_id: string; p_name: string; p_description?: string | null }
+        Returns: void
+      }
       rpc_match_create: {
         Args: {
           p_required_count?: number

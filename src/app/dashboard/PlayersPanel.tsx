@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { PlayersData, PendingGroupInvite } from '@/lib/api/players'
-import { acceptGroupInvite, inviteUserToGroup, createGroup, leaveGroup } from '@/lib/api/groups'
+import { acceptGroupInvite, rejectGroupInvite, inviteUserToGroup, createGroup, leaveGroup, updateGroup } from '@/lib/api/groups'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Group } from '@/lib/types/database'
 
@@ -323,14 +323,91 @@ function GroupInvitePanel({
   )
 }
 
+// ─── Boundary keeper: edit group name ────────────────────────────────────────
+
+function GroupNameEdit({
+  group,
+  onSaved,
+  onCancel,
+}: {
+  group: Group
+  onSaved: () => void
+  onCancel: () => void
+}) {
+  const router = useRouter()
+  const [name, setName] = useState(group.name)
+  const [description, setDescription] = useState(group.description ?? '')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setError('Group name is required')
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      const supabase = createSupabaseBrowserClient()
+      await updateGroup(supabase, group.id, {
+        name: trimmed,
+        description: description.trim() || null,
+      })
+      router.refresh()
+      onSaved()
+    } catch (err: unknown) {
+      setError((err as { message?: string })?.message ?? 'Failed to update group')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="text"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Group name"
+        className="px-2 py-1 text-xs border border-gray-200 rounded-lg w-32 focus:outline-none focus:ring-1 focus:ring-gray-300"
+      />
+      <input
+        type="text"
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        placeholder="Description (optional)"
+        className="px-2 py-1 text-xs border border-gray-200 rounded-lg w-40 focus:outline-none focus:ring-1 focus:ring-gray-300"
+      />
+      <button
+        onClick={handleSave}
+        disabled={loading}
+        className="px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+      >
+        {loading ? '…' : 'Save'}
+      </button>
+      <button
+        onClick={onCancel}
+        disabled={loading}
+        className="px-2 py-1 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50"
+      >
+        Cancel
+      </button>
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </div>
+  )
+}
+
 // ─── Pending group invite banner ──────────────────────────────────────────────
 
 function GroupInviteBanner({
   invite,
   onAccepted,
+  onRejected,
 }: {
   invite: PendingGroupInvite
   onAccepted: () => void
+  onRejected: () => void
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -345,7 +422,31 @@ function GroupInviteBanner({
         onAccepted()
         router.refresh()
       } catch (err: unknown) {
-        setError((err as { message?: string })?.message ?? 'Failed to accept')
+        const raw = (err as { message?: string })?.message ?? 'Failed to accept'
+        const pretty =
+          typeof raw === 'string' && raw.includes('no_pending_invite')
+            ? 'This invite is no longer available.'
+            : raw
+        setError(pretty)
+      }
+    })
+  }
+
+  const handleReject = () => {
+    setError(null)
+    const supabase = createSupabaseBrowserClient()
+    startTransition(async () => {
+      try {
+        await rejectGroupInvite(supabase, invite.groupId)
+        onRejected()
+        router.refresh()
+      } catch (err: unknown) {
+        const raw = (err as { message?: string })?.message ?? 'Failed to reject'
+        const pretty =
+          typeof raw === 'string' && raw.includes('no_pending_invite')
+            ? 'This invite is no longer available.'
+            : raw
+        setError(pretty)
       }
     })
   }
@@ -355,16 +456,35 @@ function GroupInviteBanner({
       <div>
         <span className="text-sm font-medium text-blue-800">
           You&apos;re invited to <span className="font-semibold">{invite.groupName}</span>
+          {invite.invitedByName && (
+            <span className="ml-1 font-normal text-blue-800/90">
+              by <span className="font-semibold">{invite.invitedByName}</span>
+            </span>
+          )}
         </span>
+        {invite.createdAt && (
+          <p className="text-xs text-blue-800/80 mt-0.5">
+            Invited at {new Date(invite.createdAt).toLocaleString()}
+          </p>
+        )}
         {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
       </div>
-      <button
-        onClick={handleAccept}
-        disabled={isPending}
-        className="shrink-0 px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-      >
-        {isPending ? '…' : 'Join group'}
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={handleReject}
+          disabled={isPending}
+          className="px-3 py-1 text-xs font-medium border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 disabled:opacity-50 transition-colors"
+        >
+          {isPending ? '…' : 'Reject'}
+        </button>
+        <button
+          onClick={handleAccept}
+          disabled={isPending}
+          className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+        >
+          {isPending ? '…' : 'Join group'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -378,6 +498,7 @@ export function PlayersPanel({ data, userId }: Props) {
   const [dismissedInvites, setDismissedInvites] = useState<Set<string>>(new Set())
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [leftGroupIds, setLeftGroupIds] = useState<Set<string>>(new Set())
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
 
   const pendingInvites = data.pendingGroupInvites.filter(
     inv => !dismissedInvites.has(inv.groupId)
@@ -466,6 +587,7 @@ export function PlayersPanel({ data, userId }: Props) {
               key={inv.groupId}
               invite={inv}
               onAccepted={() => setDismissedInvites(prev => new Set([...prev, inv.groupId]))}
+              onRejected={() => setDismissedInvites(prev => new Set([...prev, inv.groupId]))}
             />
           ))}
         </div>
@@ -574,36 +696,60 @@ export function PlayersPanel({ data, userId }: Props) {
                 ? members.find(m => m.userId === userId && m.status === 'active')
                 : undefined
               const canLeave = !!myMembership && !isBoundaryKeeper
+              const isEditingName = editingGroupId === group.id
 
               return (
                 <section key={group.id}>
                   {/* Group header */}
                   <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      {group.name}
-                    </h3>
-                    <span className="text-xs text-gray-300 font-normal">{members.length}</span>
-                    {isBoundaryKeeper && (
-                      <button
-                        onClick={() =>
-                          setOpenInviteGroupId(inviteOpen ? null : group.id)
-                        }
-                        className={`ml-1 px-2 py-0.5 text-xs rounded-lg border transition-colors ${
-                          inviteOpen
-                            ? 'bg-gray-900 text-white border-gray-900'
-                            : 'border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700'
-                        }`}
-                      >
-                        + Add
-                      </button>
-                    )}
-                    {canLeave && (
-                      <LeaveGroupButton
-                        groupId={group.id}
-                        onLeft={() =>
-                          setLeftGroupIds(prev => new Set([...prev, group.id]))
-                        }
+                    {isEditingName ? (
+                      <GroupNameEdit
+                        group={group}
+                        onSaved={() => {
+                          setEditingGroupId(null)
+                          // refresh is done inside GroupNameEdit via router.refresh()
+                        }}
+                        onCancel={() => setEditingGroupId(null)}
                       />
+                    ) : (
+                      <>
+                        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                          {group.name}
+                        </h3>
+                        <span className="text-xs text-gray-300 font-normal">{members.length}</span>
+                        {isBoundaryKeeper && (
+                          <button
+                            onClick={() => setEditingGroupId(group.id)}
+                            className="ml-1 px-2 py-0.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
+                            title="Edit group name"
+                          >
+                            Edit name
+                          </button>
+                        )}
+                        {/* Any active member can invite; non-BK can only invite share-group users (enforced by RPC) */}
+                        {(isBoundaryKeeper || myMembership) && (
+                          <button
+                            onClick={() =>
+                              setOpenInviteGroupId(inviteOpen ? null : group.id)
+                            }
+                            className={`ml-1 px-2 py-0.5 text-xs rounded-lg border transition-colors ${
+                              inviteOpen
+                                ? 'bg-gray-900 text-white border-gray-900'
+                                : 'border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700'
+                            }`}
+                          >
+                            + Add
+                          </button>
+                        )}
+                        {canLeave && (
+                          <LeaveGroupButton
+                            groupId={group.id}
+                            onLeft={() =>
+                              setLeftGroupIds(prev => new Set([...prev, group.id]))
+                            }
+                          />
+                        )}
+                      </>
                     )}
                   </div>
 
