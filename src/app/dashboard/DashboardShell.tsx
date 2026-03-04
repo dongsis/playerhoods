@@ -57,11 +57,24 @@ export function DashboardShell({
           ? item.match.match_date < nowIso.slice(0, 10)
           : false
       // Pending invite/nomination needing user action
-      if (mp.status === 'pending' && (mp.join_method === 'invited' || mp.join_method === 'nominated') && !past) {
+      if (
+        mp.status === 'pending' &&
+        (mp.join_method === 'invited' || mp.join_method === 'nominated') &&
+        !past
+      ) {
         matchesBadge++
       }
-      // Removed from upcoming active match
-      if (mp.status === 'removed' && item.match.status === 'active' && !past) matchesBadge++
+      // Removed from upcoming active match (exclude self-declined cases)
+      const removalNote = (mp.removal_note as string | null)?.toLowerCase() ?? ''
+      const selfDeclined = removalNote.includes('declined')
+      if (
+        mp.status === 'removed' &&
+        item.match.status === 'active' &&
+        !past &&
+        !selfDeclined
+      ) {
+        matchesBadge++
+      }
     }
     const playersBadge = playersData.pendingGroupInvites.length
     return { matches: matchesBadge || undefined, players: playersBadge || undefined }

@@ -691,7 +691,10 @@ export async function getMatchListData(
       display_name: resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap),
     }))
 
-    const confirmed = enriched.filter(p => p.status === 'confirmed')
+    const confirmed = enriched.filter(p =>
+      p.status === 'confirmed' ||
+      (p.user_id === match.organizer_id && p.status !== 'removed')
+    )
     const pending = enriched.filter(p => p.status === 'pending')
     const myParticipant = userId ? (enriched.find(p => p.user_id === userId) ?? null) : null
 
@@ -799,7 +802,10 @@ export async function getMatchDetailData(
     }
   })
 
-  const confirmed = enriched.filter(p => p.status === 'confirmed')
+  const confirmed = enriched.filter(p =>
+    p.status === 'confirmed' ||
+    (p.user_id === match.organizer_id && p.status !== 'removed')
+  )
   const pending = enriched.filter(p => p.status === 'pending' && p.removed_at === null)
   const isOrganizer = userId === match.organizer_id
   const myParticipant = userId ? (enriched.find(p => p.user_id === userId) ?? null) : null

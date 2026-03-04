@@ -289,9 +289,9 @@ export function ParticipantGroups({
         </div>
       )}
 
-      {/* Removed — organizer only (§3.3) */}
+      {/* Removed — organizer only (§3.3). Always expanded for clarity. */}
       {isOrganizer && (
-        <Section title="Removed" badge={removed.length} badgeColor="#999" defaultOpen={false}>
+        <Section title="Removed" badge={removed.length} badgeColor="#999">
           {removed.length === 0
             ? <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None.</p>
             : removed.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)

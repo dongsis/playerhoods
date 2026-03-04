@@ -55,28 +55,35 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
   // ── §3.3 / §4.1 Removed ──────────────────────────────────────────────────
   // Removed person sees notice + can request-to-join if still in scope
   if (isRemoved) {
+    const note = mp.removal_note ?? ''
+    const isSelfDeclined = note.toLowerCase().includes('declined')
+
     return (
       <div>
         <p style={{ color: '#c00', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-          You have been removed from this match.
+          {isSelfDeclined
+            ? 'You declined this invitation.'
+            : 'You have been removed from this match.'}
         </p>
-        {inScope ? (
-          <>
-            <button
-              data-testid="request-join"
-              onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
-              disabled={loading}
-            >
-              {loading ? 'Requesting...' : 'Request to Join'}
-            </button>
-            <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.4rem' }}>
-              Your request will need organizer approval.
+        {!isSelfDeclined && (
+          inScope ? (
+            <>
+              <button
+                data-testid="request-join"
+                onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
+                disabled={loading}
+              >
+                {loading ? 'Requesting...' : 'Request to Join'}
+              </button>
+              <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.4rem' }}>
+                Your request will need organizer approval.
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: '0.9rem', color: '#666' }}>
+              Contact the organizer for a new invitation.
             </p>
-          </>
-        ) : (
-          <p style={{ fontSize: '0.9rem', color: '#666' }}>
-            Contact the organizer for a new invitation.
-          </p>
+          )
         )}
         {error && <p style={{ color: 'red' }}>{error}</p>}
       </div>
@@ -116,6 +123,8 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
     const isSelfRequested = mp.join_method === 'requested' && mp.nominated_by == null
     // Re-confirm after match edit: self-requested, not yet re-accepted, org already approved
     const needsReconfirm = isSelfRequested && !hasUserAccepted && mp.org_approved_at != null
+    const isReconfirmInviteOrNomination =
+      !hasUserAccepted && mp.org_approved_at != null && (isInvited || isNominated)
 
     return (
       <div>
@@ -152,17 +161,41 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
 
         {/* Status info */}
         <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
-          {isSelfRequested && (needsReconfirm
-            ? 'Match details have changed. Please confirm you can still attend.'
-            : 'Waiting for organizer approval.'
+          {(needsReconfirm || isReconfirmInviteOrNomination) && (
+            <span>Match details have changed. Please confirm you can still attend.</span>
           )}
-          {isInvited && (hasUserAccepted
-            ? (mp.org_approved_at ? 'Both confirmed — reconciling...' : 'Accepted. Waiting for organizer approval.')
-            : (mp.org_approved_at ? 'Organizer approved. Accept to confirm.' : 'Waiting for your acceptance and organizer approval.')
-          )}
-          {isNominated && (hasUserAccepted
-            ? (mp.org_approved_at ? 'Both confirmed — reconciling...' : 'You accepted. Waiting for organizer approval.')
-            : (mp.org_approved_at ? 'Organizer approved. Accept to confirm.' : 'You were nominated. Accept and wait for organizer approval.')
+          {!needsReconfirm && !isReconfirmInviteOrNomination && (
+            <>
+              {isSelfRequested && (
+                <span>
+                  {mp.org_approved_at
+                    ? 'Waiting for organizer approval.'
+                    : 'Waiting for organizer approval.'}
+                </span>
+              )}
+              {isInvited && (
+                <span>
+                  {hasUserAccepted
+                    ? (mp.org_approved_at
+                        ? 'Both confirmed — reconciling...'
+                        : 'Accepted. Waiting for organizer approval.')
+                    : (mp.org_approved_at
+                        ? 'Organizer approved. Accept to confirm.'
+                        : 'Waiting for your acceptance and organizer approval.')}
+                </span>
+              )}
+              {isNominated && (
+                <span>
+                  {hasUserAccepted
+                    ? (mp.org_approved_at
+                        ? 'Both confirmed — reconciling...'
+                        : 'You accepted. Waiting for organizer approval.')
+                    : (mp.org_approved_at
+                        ? 'Organizer approved. Accept to confirm.'
+                        : 'You were nominated. Accept and wait for organizer approval.')}
+                </span>
+              )}
+            </>
           )}
         </div>
         {error && <p style={{ color: 'red' }}>{error}</p>}

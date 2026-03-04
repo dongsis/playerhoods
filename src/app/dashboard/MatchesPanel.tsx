@@ -26,6 +26,22 @@ function isInboxItem(item: MatchListItem, nowIso: string): boolean {
   return !isPast(item, nowIso)
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function needsUserAction(item: MatchListItem): boolean {
+  const mp = item.myParticipant
+  if (!mp || mp.status !== 'pending') return false
+  const hasUserAccepted =
+    (mp.participant_accepted_at ?? mp.user_accepted_at) != null
+  const isInvited = mp.join_method === 'invited'
+  const isNominated = mp.join_method === 'nominated'
+  const isRequested = mp.join_method === 'requested'
+
+  if ((isInvited || isNominated) && !hasUserAccepted) return true
+  if (isRequested && mp.org_approved_at !== null && !hasUserAccepted) return true
+  return false
+}
+
 // ─── MatchRow ─────────────────────────────────────────────────────────────────
 
 function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId: string) => void }) {
@@ -34,12 +50,17 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
   const [isPending, startTransition] = useTransition()
   const [confirmError, setConfirmError] = useState<string | null>(null)
 
+  const hasUserAccepted =
+    myParticipant &&
+    (myParticipant.participant_accepted_at ?? myParticipant.user_accepted_at) != null
   const isInvited =
     myParticipant?.status === 'pending' && myParticipant?.join_method === 'invited'
   const isNominated =
     myParticipant?.status === 'pending' && myParticipant?.join_method === 'nominated'
   const isRequested =
     myParticipant?.status === 'pending' && myParticipant?.join_method === 'requested'
+  const needsReconfirmRequested =
+    isRequested && myParticipant?.org_approved_at !== null && !hasUserAccepted
   const isRemoved = myParticipant?.status === 'removed'
 
   const handleConfirm = () => {
@@ -92,10 +113,14 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
         )}
       </div>
       <div className="flex-1 text-sm text-gray-600 truncate">{roster}</div>
-      {(isInvited || isNominated) && (
+      {(isInvited || isNominated || needsReconfirmRequested) && (
         <div className="shrink-0 flex items-center gap-2">
           <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
-            {isNominated ? 'Nominated' : 'Invited'}
+            {isNominated
+              ? 'Nominated'
+              : isInvited
+                ? 'Invited'
+                : 'Needs confirm'}
           </span>
           <button
             onClick={handleConfirm}
@@ -107,7 +132,7 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
           {confirmError && <span className="text-xs text-red-500">{confirmError}</span>}
         </div>
       )}
-      {isRequested && (
+      {isRequested && !needsReconfirmRequested && (
         <span className="shrink-0 text-xs text-amber-600 font-medium whitespace-nowrap">
           Awaiting approval
         </span>
@@ -271,32 +296,20 @@ export function MatchesPanel({ items, userId, onCancelMatch, onViewedMatch }: Pr
 
       {subTab === 'upcoming' && (
         <>
-          {/* Notifications: pending invites/nominations + removed from match */}
-          {(removed.length > 0 ||
-            lookingFor.some(i => {
-              const mp = i.myParticipant
-              return mp?.status === 'pending' && (mp.join_method === 'invited' || mp.join_method === 'nominated')
-            })) && (
+          {/* Notifications: pending invites/nominations/re-confirms + removed from match */}
+          {(removed.length > 0 || lookingFor.some(needsUserAction)) && (
             <section>
               <SectionHeading
                 label="Notifications"
                 count={
                   removed.length +
-                  lookingFor.filter(i => {
-                    const mp = i.myParticipant
-                    return mp?.status === 'pending' && (mp.join_method === 'invited' || mp.join_method === 'nominated')
-                  }).length
+                  lookingFor.filter(needsUserAction).length
                 }
               />
               <div className="space-y-2">
-                {lookingFor
-                  .filter(i => {
-                    const mp = i.myParticipant
-                    return mp?.status === 'pending' && (mp.join_method === 'invited' || mp.join_method === 'nominated')
-                  })
-                  .map(item => (
-                    <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} />
-                  ))}
+                {lookingFor.filter(needsUserAction).map(item => (
+                  <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} />
+                ))}
                 {removed.map(item => (
                   <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} />
                 ))}
@@ -335,27 +348,16 @@ export function MatchesPanel({ items, userId, onCancelMatch, onViewedMatch }: Pr
             )}
           </section>
 
-          {lookingFor.filter(i => {
-            const mp = i.myParticipant
-            return !mp || (mp.join_method !== 'invited' && mp.join_method !== 'nominated')
-          }).length > 0 && (
+          {lookingFor.filter(i => !needsUserAction(i)).length > 0 && (
             <section>
               <SectionHeading
                 label="Looking for Players"
-                count={lookingFor.filter(i => {
-                  const mp = i.myParticipant
-                  return !mp || (mp.join_method !== 'invited' && mp.join_method !== 'nominated')
-                }).length}
+                count={lookingFor.filter(i => !needsUserAction(i)).length}
               />
               <div className="space-y-2">
-                {lookingFor
-                  .filter(i => {
-                    const mp = i.myParticipant
-                    return !mp || (mp.join_method !== 'invited' && mp.join_method !== 'nominated')
-                  })
-                  .map(item => (
-                    <MatchRow key={item.match.id} item={item} />
-                  ))}
+                {lookingFor.filter(i => !needsUserAction(i)).map(item => (
+                  <MatchRow key={item.match.id} item={item} />
+                ))}
               </div>
             </section>
           )}
