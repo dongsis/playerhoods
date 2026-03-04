@@ -40,10 +40,9 @@ export function MatchCard({ item, userId }: Props) {
   const router = useRouter()
   const supabase = createSupabaseBrowserClient()
 
-  // v1.5: check participant_accepted_at (primary) with user_accepted_at as legacy fallback
   const pendingApprovals = participants.filter(
     p => p.status === 'pending' &&
-         (p.participant_accepted_at ?? p.user_accepted_at) !== null &&
+         p.participant_accepted_at !== null &&
          p.org_approved_at === null,
   )
 

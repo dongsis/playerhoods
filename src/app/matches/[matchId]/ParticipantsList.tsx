@@ -107,7 +107,7 @@ export function ParticipantsList({
                     {p.join_method}
                     {p.status === 'pending' && (
                       <>
-                        {p.user_accepted_at ? ' | User: accepted' : ' | User: waiting'}
+                        {p.participant_accepted_at ? ' | User: accepted' : ' | User: waiting'}
                         {p.org_approved_at ? ' | ORG: approved' : ' | ORG: waiting'}
                       </>
                     )}

@@ -16,8 +16,6 @@ interface ParticipantSnapshot {
   join_method: string
   /** v1.5 primary field — set by rpc_match_accept_invite / rpc_match_manual_confirm */
   participant_accepted_at: string | null
-  /** Legacy field — kept for backward-compat with pre-v1.5 rows */
-  user_accepted_at: string | null
   org_approved_at: string | null
 }
 
@@ -43,8 +41,7 @@ export function computeCardCTA(params: {
   if (params.matchStatus !== 'active') return null
 
   const mp = params.myParticipant
-  // v1.5: prefer participant_accepted_at; fall back to user_accepted_at for legacy rows
-  const accepted = mp ? (mp.participant_accepted_at ?? mp.user_accepted_at) : null
+  const accepted = mp?.participant_accepted_at ?? null
 
   // 1. Uninvited invite — must accept
   if (

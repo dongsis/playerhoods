@@ -27,13 +27,11 @@ interface Props {
 // Dual-confirmation status tags (organizer view, not shown for guests)
 function ConfirmationTags({ p }: { p: MatchParticipantEnriched }) {
   if (p.status !== 'pending' || p.join_method === 'guest_add') return null
-  // v1.5: participant_accepted_at is canonical; fall back to user_accepted_at (v1.3).
   // 'requested' join_method: user accepted implicitly by requesting — treat as always accepted
-  // (defensive for old rows where participant_accepted_at/user_accepted_at may be NULL).
   const userAccepted =
     p.join_method === 'requested'
-      ? (p.participant_accepted_at ?? p.user_accepted_at ?? p.created_at)
-      : (p.participant_accepted_at ?? p.user_accepted_at)
+      ? (p.participant_accepted_at ?? p.created_at)
+      : p.participant_accepted_at
   return (
     <span style={{ fontSize: '0.72rem', marginLeft: '0.4rem' }}>
       <span style={{ color: userAccepted ? '#2d8a4e' : '#d97706' }}>
@@ -80,13 +78,12 @@ function ParticipantRow({
     })
   }
 
-  // Approve: organizer only, pending user who has accepted (either v1.5 or v1.3 field), not yet org-approved
-  // 'requested' join_method means the user accepted by initiating the request — treat as always accepted
-  // even if participant_accepted_at/user_accepted_at is NULL (old data before v1.5 backfill).
+  // Approve: organizer only, pending user who has accepted, not yet org-approved
+  // 'requested' join_method: user accepted implicitly by requesting
   const participantAccepted =
     p.join_method === 'requested'
-      ? (p.participant_accepted_at ?? p.user_accepted_at ?? p.created_at)
-      : (p.participant_accepted_at ?? p.user_accepted_at)
+      ? (p.participant_accepted_at ?? p.created_at)
+      : p.participant_accepted_at
   const canApprove =
     isOrganizer &&
     isActive &&

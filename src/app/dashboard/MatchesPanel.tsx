@@ -32,7 +32,7 @@ function needsUserAction(item: MatchListItem): boolean {
   const mp = item.myParticipant
   if (!mp || mp.status !== 'pending') return false
   const hasUserAccepted =
-    (mp.participant_accepted_at ?? mp.user_accepted_at) != null
+    mp.participant_accepted_at != null
   const isInvited = mp.join_method === 'invited'
   const isNominated = mp.join_method === 'nominated'
   const isRequested = mp.join_method === 'requested'
@@ -52,7 +52,7 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
 
   const hasUserAccepted =
     myParticipant &&
-    (myParticipant.participant_accepted_at ?? myParticipant.user_accepted_at) != null
+    myParticipant.participant_accepted_at != null
   const isInvited =
     myParticipant?.status === 'pending' && myParticipant?.join_method === 'invited'
   const isNominated =

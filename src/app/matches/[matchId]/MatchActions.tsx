@@ -114,8 +114,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, inScope }:
 
   // ── §4.2 / §4.3 Pending participant ──────────────────────────────────────
   if (isPending) {
-    // v1.5: participant_accepted_at is canonical; fall back to v1.3 user_accepted_at
-    const hasUserAccepted = (mp.participant_accepted_at ?? mp.user_accepted_at) != null
+    const hasUserAccepted = mp.participant_accepted_at != null
     const isInvited = mp.join_method === 'invited'
     // v1.5: join_method='nominated' (new), or v1.3 legacy: 'requested' + nominated_by set
     const isNominated = mp.join_method === 'nominated' ||

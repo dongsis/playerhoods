@@ -180,8 +180,7 @@ export type MatchParticipant = {
   created_at: string
   confirmed_at: string | null
   removed_at: string | null
-  // v1.3 dual confirmation fields
-  user_accepted_at: string | null
+  // v1.5+ dual confirmation (user_accepted_at removed in v1.6.3)
   org_approved_at: string | null
   org_approved_by: string | null
   nominated_by: string | null

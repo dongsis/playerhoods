@@ -52,7 +52,6 @@ BEGIN
       join_method = 'requested',
       participant_accepted_at = now(),
       participant_accepted_via = 'in_app',
-      user_accepted_at = NULL,
       org_approved_at = NULL,
       org_approved_by = NULL,
       nominated_by = NULL,
