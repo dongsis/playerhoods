@@ -28,6 +28,12 @@ export type Profile = {
   is_super_admin: boolean
   created_at: string
   updated_at: string
+  /** v1.7: Preferred contact channel */
+  contact_channel?: 'email' | 'sms'
+  /** v1.7: Override email. NULL = use auth.users.email */
+  contact_email?: string | null
+  /** v1.7: Phone for SMS */
+  contact_phone?: string | null
 }
 
 export type Club = {

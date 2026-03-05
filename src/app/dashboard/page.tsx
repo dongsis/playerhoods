@@ -44,7 +44,7 @@ export default async function DashboardPage() {
       getMyAdminClubs(supabase).catch(() => []),
       supabase
         .from('profiles')
-        .select('display_name, first_name, last_name, primary_club_id')
+        .select('display_name, first_name, last_name, primary_club_id, contact_channel, contact_email, contact_phone')
         .eq('id', user.id)
         .single(),
       getMyVenuePreferences(supabase, user.id).catch(() => []),
@@ -53,12 +53,15 @@ export default async function DashboardPage() {
   const profile =
     (profileRes.data as Pick<
       Profile,
-      'display_name' | 'first_name' | 'last_name' | 'primary_club_id'
+      'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone'
     > | null) ?? {
       display_name: user.email ?? '',
       first_name: null,
       last_name: null,
       primary_club_id: null,
+      contact_channel: 'email',
+      contact_email: null,
+      contact_phone: null,
     }
 
   async function handleCancelMatch(matchId: string) {
@@ -71,9 +74,13 @@ export default async function DashboardPage() {
   async function handleUpdateProfile(formData: FormData) {
     'use server'
     const supabaseSrv = await createSupabaseServerClient()
+    const ch = formData.get('contact_channel') as string | null
     await updateProfile(supabaseSrv, {
       first_name: (formData.get('first_name') as string) || undefined,
       last_name: (formData.get('last_name') as string) || undefined,
+      contact_channel: (ch === 'email' || ch === 'sms') ? ch : undefined,
+      contact_email: formData.has('contact_email') ? (formData.get('contact_email') as string) ?? '' : undefined,
+      contact_phone: formData.has('contact_phone') ? (formData.get('contact_phone') as string) ?? '' : undefined,
     })
     revalidatePath('/dashboard')
   }
@@ -87,6 +94,7 @@ export default async function DashboardPage() {
       <DashboardShell
         userId={user.id}
         items={items}
+        userEmail={user.email}
         inboxUnreadCount={inboxUnreadCount}
         playersData={playersData}
         profile={profile}

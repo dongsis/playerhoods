@@ -20,15 +20,25 @@ export async function initProfile(
   if (error) throw error
 }
 
-/** Update non-identity profile fields (first_name, last_name only). */
+/** Update profile fields (name, contact preferences). */
 export async function updateProfile(
   supabase: Client,
-  params: { first_name?: string; last_name?: string }
+  params: {
+    first_name?: string
+    last_name?: string
+    contact_channel?: 'email' | 'sms'
+    contact_email?: string | null
+    contact_phone?: string | null
+  }
 ): Promise<void> {
-  const { error } = await supabase.rpc('rpc_profile_update', {
+  const rpcParams: Record<string, unknown> = {
     p_first_name: params.first_name ?? null,
     p_last_name: params.last_name ?? null,
-  })
+    p_contact_channel: params.contact_channel ?? null,
+  }
+  if (params.contact_email !== undefined) rpcParams.p_contact_email = params.contact_email
+  if (params.contact_phone !== undefined) rpcParams.p_contact_phone = params.contact_phone
+  const { error } = await supabase.rpc('rpc_profile_update', rpcParams)
   if (error) throw error
 }
 

@@ -16,8 +16,9 @@ import { ContactsPanel } from './ContactsPanel'
 interface Props {
   userId: string
   items: MatchListItem[]
+  userEmail?: string | null
   playersData: PlayersData
-  profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id'>
+  profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone'>
   myIdentities: (ClubIdentity & { club: Club })[]
   myVenuePrefs: Club[]
   joinableCount: number
@@ -31,6 +32,7 @@ interface Props {
 export function DashboardShell({
   userId,
   items,
+  userEmail,
   inboxUnreadCount,
   playersData,
   profile,
@@ -143,6 +145,7 @@ export function DashboardShell({
         {activeTab === 'profile' && (
           <ProfilePanel
             profile={profile}
+            userEmail={userEmail}
             myIdentities={myIdentities}
             joinableCount={joinableCount}
             onUpdateProfile={onUpdateProfile}
