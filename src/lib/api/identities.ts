@@ -42,6 +42,14 @@ export async function updateProfile(
   if (error) throw error
 }
 
+/** v1.8: Set avatar URL (from storage upload). Pass null to clear. */
+export async function setAvatarUrl(supabase: Client, avatarUrl: string | null): Promise<void> {
+  const { error } = await supabase.rpc('rpc_profile_set_avatar_url', {
+    p_avatar_url: avatarUrl ?? '',
+  })
+  if (error) throw error
+}
+
 /**
  * v1.5 Identity: directly set the user's global display_name.
  * Does not sync club_identities (club handle is legacy in v1.5).

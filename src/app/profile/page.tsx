@@ -23,6 +23,7 @@ import { ClubIdentityRow } from './ClubIdentityRow'
 import { ClubJoinForm } from './ClubJoinForm'
 import { GroupAliasRow } from './GroupAliasRow'
 import { SportsPreferenceForm } from './SportsPreferenceForm'
+import { ProfileAvatarSection } from './ProfileAvatarSection'
 
 export default async function ProfilePage() {
   const user = await getUser()
@@ -43,6 +44,11 @@ export default async function ProfilePage() {
   if (!profile) redirect('/onboarding/profile')
 
   // Server actions
+  async function handleAvatarSaved() {
+    'use server'
+    revalidatePath('/profile')
+  }
+
   async function handleSetDisplayName(newName: string) {
     'use server'
     const supabase = await createSupabaseServerClient()
@@ -121,6 +127,13 @@ export default async function ProfilePage() {
       {/* v1.5 Identity: global display name (directly editable) */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
         <h2 style={{ marginTop: 0 }}>Identity</h2>
+        <div style={{ marginBottom: '1rem' }}>
+          <ProfileAvatarSection
+            userId={user.id}
+            currentAvatarUrl={profile.avatar_url ?? null}
+            onAvatarSaved={handleAvatarSaved}
+          />
+        </div>
         <div style={{ marginBottom: '0.4rem' }}>
           <span style={{ fontSize: '0.85rem', color: '#666', display: 'block', marginBottom: '0.3rem' }}>
             Display Name — your global identity across playerhoods

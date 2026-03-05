@@ -44,17 +44,17 @@ export default async function DashboardPage() {
       getMyAdminClubs(supabase).catch(() => []),
       supabase
         .from('profiles')
-        .select('display_name, first_name, last_name, primary_club_id, contact_channel, contact_email, contact_phone')
+        .select('*')
         .eq('id', user.id)
         .single(),
       getMyVenuePreferences(supabase, user.id).catch(() => []),
     ])
 
   const profile =
-    (profileRes.data as Pick<
+    (profileRes.error ? null : (profileRes.data as Pick<
       Profile,
-      'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone'
-    > | null) ?? {
+      'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone' | 'avatar_url'
+    > | null)) ?? {
       display_name: user.email ?? '',
       first_name: null,
       last_name: null,
@@ -62,12 +62,18 @@ export default async function DashboardPage() {
       contact_channel: 'email',
       contact_email: null,
       contact_phone: null,
+      avatar_url: null,
     }
 
   async function handleCancelMatch(matchId: string) {
     'use server'
     const supabaseSrv = await createSupabaseServerClient()
     await cancelMatch(supabaseSrv, matchId)
+    revalidatePath('/dashboard')
+  }
+
+  async function handleAvatarSaved() {
+    'use server'
     revalidatePath('/dashboard')
   }
 
@@ -104,6 +110,7 @@ export default async function DashboardPage() {
         myAdminClubs={myAdminClubs}
         isSuperAdmin={superAdmin}
         onUpdateProfile={handleUpdateProfile}
+        onAvatarSaved={handleAvatarSaved}
         onCancelMatch={handleCancelMatch}
       />
     </>

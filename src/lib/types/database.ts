@@ -202,6 +202,7 @@ export type MatchParticipant = {
 export type ProfileDisplay = {
   id: string
   display_name: string
+  avatar_url?: string | null
 }
 
 export type MatchFormed = {
@@ -422,6 +423,11 @@ export interface Database {
       // v1.5 Identity: direct display_name setter (club handle deprecated as sync path)
       rpc_profile_set_display_name: {
         Args: { p_display_name: string }
+        Returns: void
+      }
+      // v1.8: Set avatar URL from storage upload
+      rpc_profile_set_avatar_url: {
+        Args: { p_avatar_url: string }
         Returns: void
       }
       rpc_club_handle_check: {

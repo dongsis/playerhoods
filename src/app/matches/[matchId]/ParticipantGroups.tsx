@@ -12,6 +12,7 @@ import {
   delegateConfirmParticipant,
 } from '@/lib/api/matches'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
+import { Avatar } from '@/app/components/Avatar'
 import type { MatchStatus } from '@/lib/types/database'
 
 interface Props {
@@ -137,6 +138,12 @@ function ParticipantRow({
   return (
     <div style={{ padding: '0.5rem 0', borderBottom: '1px solid #f5f5f5' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+        <Avatar
+          src={p.avatar_url}
+          displayName={p.display_name}
+          size="md"
+          className="mt-0.5"
+        />
         <div style={{ flex: 1 }}>
           <span style={{ fontWeight: isMe ? 700 : 500, fontSize: '0.9rem' }}>
             {p.display_name}

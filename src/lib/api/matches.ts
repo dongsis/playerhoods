@@ -22,8 +22,11 @@ type Client = SupabaseClient<Database>
 // v1.4.1 enriched types
 // ============================================================================
 
-/** Participant with display_name resolved via club handle (or profile fallback). */
-export type MatchParticipantEnriched = MatchParticipant & { display_name: string }
+/** Participant with display_name and avatar_url resolved via club handle / profile. */
+export type MatchParticipantEnriched = MatchParticipant & {
+  display_name: string
+  avatar_url?: string | null
+}
 
 /** Flattened activity row for ActivityFeed — all names resolved server-side. */
 export type ActivityItem = {
@@ -681,7 +684,7 @@ export async function getMatchListData(
 
   const [profilesRes, identityMap, guestsRes] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('profile_display').select('id, display_name').in('id', userIds)
+      ? supabase.from('profile_display').select('*').in('id', userIds)
       : Promise.resolve({ data: [] }),
     fetchIdentityMap(supabase, clubIds, userIds),
     guestIds.length > 0
@@ -689,6 +692,9 @@ export async function getMatchListData(
       : Promise.resolve({ data: [] }),
   ])
 
+  const profileDisplayMap = new Map(
+    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p])
+  )
   const profileMap = new Map(
     ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name])
   )
@@ -707,10 +713,15 @@ export async function getMatchListData(
     const club = match.club_id ? (clubMap.get(match.club_id) ?? null) : null
     const mps = byMatch.get(match.id) ?? []
 
-    const enriched: MatchParticipantEnriched[] = mps.map(p => ({
-      ...p,
-      display_name: resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap),
-    }))
+    const enriched: MatchParticipantEnriched[] = mps.map(p => {
+      const displayName = resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap)
+      const profileDisplay = p.user_id ? profileDisplayMap.get(p.user_id) : null
+      return {
+        ...p,
+        display_name: displayName,
+        avatar_url: profileDisplay?.avatar_url ?? null,
+      }
+    })
 
     const confirmed = enriched.filter(p =>
       p.status === 'confirmed' ||
@@ -779,7 +790,7 @@ export async function getMatchDetailData(
 
   const [profilesRes, identityMap, guestsRes] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('profile_display').select('id, display_name').in('id', userIds)
+      ? supabase.from('profile_display').select('*').in('id', userIds)
       : Promise.resolve({ data: [] }),
     fetchIdentityMap(supabase, clubIds, userIds),
     guestIds.length > 0
@@ -787,6 +798,9 @@ export async function getMatchDetailData(
       : Promise.resolve({ data: [] }),
   ])
 
+  const profileDisplayMap = new Map(
+    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p])
+  )
   const profileMap = new Map(
     ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name])
   )
@@ -805,10 +819,14 @@ export async function getMatchDetailData(
   const resolve = (uid: string | null, gid: string | null) =>
     resolveNameFromMaps(uid, gid, match.club_id, identityMap, profileMap, guestMap)
 
-  const enriched: MatchParticipantEnriched[] = participants.map(p => ({
-    ...p,
-    display_name: resolve(p.user_id, p.guest_id),
-  }))
+  const enriched: MatchParticipantEnriched[] = participants.map(p => {
+    const profileDisplay = p.user_id ? profileDisplayMap.get(p.user_id) : null
+    return {
+      ...p,
+      display_name: resolve(p.user_id, p.guest_id),
+      avatar_url: profileDisplay?.avatar_url ?? null,
+    }
+  })
 
   const participantById = new Map(participants.map(p => [p.id, p]))
 

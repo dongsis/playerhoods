@@ -8,6 +8,7 @@ import { acceptMatchInvite } from '@/lib/api/matches'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
+import { Avatar } from '@/app/components/Avatar'
 
 // ─── inbox split ─────────────────────────────────────────────────────────────
 
@@ -112,7 +113,14 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
           </span>
         )}
       </div>
-      <div className="flex-1 text-sm text-gray-600 truncate">{roster}</div>
+      <div className="flex-1 flex items-center gap-2 min-w-0">
+        <div className="flex shrink-0 gap-0.5">
+          {confirmed.slice(0, 3).map(p => (
+            <Avatar key={p.id} src={p.avatar_url} displayName={p.display_name} size="sm" />
+          ))}
+        </div>
+        <span className="text-sm text-gray-600 truncate">{roster}</span>
+      </div>
       {/* Needs action: invited/nominated not yet accepted, or requested needing re-confirm */}
       {(isInvited || (isNominated && !hasUserAccepted) || needsReconfirmRequested) && (
         <div className="shrink-0 flex items-center gap-2">

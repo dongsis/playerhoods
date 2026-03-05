@@ -2,17 +2,22 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Profile, ClubIdentity, Club } from '@/lib/types/database'
+import { AvatarUpload } from './AvatarUpload'
 
 interface Props {
-  profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone'>
+  userId: string
+  profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone' | 'avatar_url'>
   userEmail?: string | null
   myIdentities: (ClubIdentity & { club: Club })[]
   joinableCount: number
   onUpdateProfile: (formData: FormData) => Promise<void>
+  onAvatarSaved: () => Promise<void>
 }
 
-export function ProfilePanel({ profile, userEmail, myIdentities, joinableCount, onUpdateProfile }: Props) {
+export function ProfilePanel({ userId, profile, userEmail, myIdentities, joinableCount, onUpdateProfile, onAvatarSaved }: Props) {
+  const router = useRouter()
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -33,8 +38,22 @@ export function ProfilePanel({ profile, userEmail, myIdentities, joinableCount, 
     })
   }
 
+  const handleAvatarSaved = async () => {
+    await onAvatarSaved()
+    router.refresh()
+  }
+
   return (
     <div className="space-y-8 max-w-md">
+      {/* Avatar */}
+      <section>
+        <AvatarUpload
+          userId={userId}
+          currentAvatarUrl={profile.avatar_url ?? null}
+          onSaved={handleAvatarSaved}
+        />
+      </section>
+
       {/* Identity */}
       <section>
         <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">

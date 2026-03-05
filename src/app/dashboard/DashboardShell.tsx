@@ -18,13 +18,14 @@ interface Props {
   items: MatchListItem[]
   userEmail?: string | null
   playersData: PlayersData
-  profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone'>
+  profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone' | 'avatar_url'>
   myIdentities: (ClubIdentity & { club: Club })[]
   myVenuePrefs: Club[]
   joinableCount: number
   myAdminClubs: (ClubAdmin & { club: Club })[]
   isSuperAdmin: boolean
   onUpdateProfile: (formData: FormData) => Promise<void>
+  onAvatarSaved: () => Promise<void>
   onCancelMatch: (matchId: string) => Promise<void>
   inboxUnreadCount?: number
 }
@@ -42,6 +43,7 @@ export function DashboardShell({
   myAdminClubs,
   isSuperAdmin,
   onUpdateProfile,
+  onAvatarSaved,
   onCancelMatch,
 }: Props) {
   const isAdmin = isSuperAdmin || myAdminClubs.length > 0
@@ -144,11 +146,13 @@ export function DashboardShell({
         )}
         {activeTab === 'profile' && (
           <ProfilePanel
+            userId={userId}
             profile={profile}
             userEmail={userEmail}
             myIdentities={myIdentities}
             joinableCount={joinableCount}
             onUpdateProfile={onUpdateProfile}
+            onAvatarSaved={onAvatarSaved}
           />
         )}
         {activeTab === 'venues' && (
