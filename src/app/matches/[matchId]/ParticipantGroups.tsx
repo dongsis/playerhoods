@@ -115,13 +115,13 @@ function ParticipantRow({
     p.status === 'pending' &&
     viewerIsParticipant
 
-  // v1.7: User delegate confirm: non-org can confirm nominated user (participant_accepted_at null)
-  const canConfirmNominatedUser =
+  // v1.7: User delegate confirm: non-org can confirm invited or nominated user (participant_accepted_at null, share group enforced by RPC)
+  const canDelegateConfirmUser =
     !isGuest &&
     p.user_id !== null &&
     isActive &&
     p.status === 'pending' &&
-    p.join_method === 'nominated' &&
+    (p.join_method === 'invited' || p.join_method === 'nominated') &&
     !p.participant_accepted_at &&
     canDelegateConfirmUserParticipants &&
     viewerIsParticipant
@@ -149,6 +149,9 @@ function ParticipantRow({
             </span>
           ) : (
             <>
+              {p.join_method === 'invited' && (
+                <span style={{ fontSize: '0.72rem', color: '#888', marginLeft: '0.4rem' }}>invited</span>
+              )}
               {p.nominated_by && (
                 <span style={{ fontSize: '0.72rem', color: '#888', marginLeft: '0.4rem' }}>nominated</span>
               )}
@@ -170,7 +173,7 @@ function ParticipantRow({
         </div>
 
         {/* Organizer / participant action controls */}
-        {(canApprove || canManualConfirm || canConfirmGuest || canRemove || canInviteBack) && (
+        {(canApprove || canManualConfirm || canConfirmGuest || canDelegateConfirmUser || canRemove || canInviteBack) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
             {canApprove && (
               <button
@@ -202,7 +205,7 @@ function ParticipantRow({
               </button>
             )}
 
-            {canConfirmNominatedUser && (
+            {canDelegateConfirmUser && (
               <button
                 onClick={() => act(() => delegateConfirmParticipant(supabase, p.id))}
                 disabled={isPending}

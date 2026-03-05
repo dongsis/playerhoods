@@ -369,7 +369,7 @@ export async function setMatchSingleCourt(
   if (courtLabel) {
     const { error: insErr } = await supabase
       .from('match_courts')
-      .insert({ match_id: matchId, slot_index: 0, court_label: courtLabel, created_by: userId })
+      .insert({ match_id: matchId, slot_index: 1, court_label: courtLabel, created_by: userId })
     if (insErr) throw insErr
   }
 }

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { getMatchDetailData, getMatchCourts, isCallerInMatchScope, getInviteTargets, getNominateTargets, getDelegateConfirmTargets, getCourts, updateMatchDetails, setMatchSingleCourt, type ScopeUser } from '@/lib/api/matches'
+import { getMatchDetailData, getMatchCourts, isCallerInMatchScope, getInviteTargets, getNominateTargets, getCourts, updateMatchDetails, setMatchSingleCourt, type ScopeUser } from '@/lib/api/matches'
 import { formatMatchTime } from '@/lib/utils/format-time'
 import { MatchActions } from './MatchActions'
 import { ParticipantGroups } from './ParticipantGroups'
@@ -11,8 +11,6 @@ import { InviteUserForm } from './InviteUserForm'
 import { NominateUserForm } from './NominateUserForm'
 import { AddGuestForm } from './AddGuestForm'
 import { MatchEditForm } from './MatchEditForm'
-import { ManualConfirmUserForm } from './ManualConfirmUserForm'
-import { DelegateConfirmUserForm } from './DelegateConfirmUserForm'
 import { InviteGuestForm } from './InviteGuestForm'
 
 interface Props {
@@ -48,20 +46,18 @@ export default async function MatchDetailPage({ params }: Props) {
   // v1.6.1: canNominate requires can_participants_invite_users
   const canNominate = !isOrganizer && match.can_participants_invite_users && (inScope || isMatchAssociated)
   // v1.6.1: canDelegateConfirm — no can_participants_invite_users requirement
+  // v1.7: RLS restricts visibility of pending invited/guests to confirmed only; nominated uses share-group policy
   const canDelegateConfirm = !isOrganizer && (inScope || isMatchAssociated)
   // v1.7: organizer or match-associated can nominate Contact Player (RPC requires is_match_organizer OR is_user_match_associated)
   const canNominateGuest = isOrganizer || isMatchAssociated
 
   // v1.6.1: 3 parallel roster fetches (each RPC enforces its own caller gate)
-  const [inviteTargets, nominateTargets, delegateConfirmTargets] = await Promise.all([
+  const [inviteTargets, nominateTargets] = await Promise.all([
     match.status === 'active' && isOrganizer
       ? getInviteTargets(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] inviteTargets:', e); return [] as ScopeUser[] })
       : Promise.resolve([] as ScopeUser[]),
     match.status === 'active' && canNominate
       ? getNominateTargets(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] nominateTargets:', e); return [] as ScopeUser[] })
-      : Promise.resolve([] as ScopeUser[]),
-    match.status === 'active' && canDelegateConfirm
-      ? getDelegateConfirmTargets(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] delegateConfirmTargets:', e); return [] as ScopeUser[] })
       : Promise.resolve([] as ScopeUser[]),
   ])
 
@@ -89,13 +85,13 @@ export default async function MatchDetailPage({ params }: Props) {
   const time = formatMatchTime(match.start_at_utc, match.match_date, match.start_time, clubTimezone)
   const need = Math.max(match.required_count - confirmedCount, 0)
 
-  // v1.7: non-organizer clients see confirmed + pending guests + pending nominated users (for delegate confirm).
+  // v1.7: non-organizer clients see confirmed + pending guests + pending invited/nominated users (for delegate confirm).
   const participantsForDisplay = isOrganizer
     ? participants
     : participants.filter(p =>
         p.status === 'confirmed' ||
         (p.guest_id !== null && p.status === 'pending') ||
-        (p.user_id !== null && p.status === 'pending' && p.join_method === 'nominated' && !p.participant_accepted_at)
+        (p.user_id !== null && p.status === 'pending' && (p.join_method === 'invited' || p.join_method === 'nominated') && !p.participant_accepted_at)
       )
 
   return (
@@ -200,20 +196,7 @@ export default async function MatchDetailPage({ params }: Props) {
         </section>
       )}
 
-      {/* ── 4a2. Delegate Confirm (non-org with shared groups) ───────────── */}
-      {/* Delegate flow: participant confirms on behalf → pending ORG approval  */}
-      {/* Show section when canDelegateConfirm even if targets empty (form shows empty state) */}
-      {match.status === 'active' && canDelegateConfirm && (
-        <section style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
-          <h3 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem' }}>Confirm for a Friend</h3>
-          <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
-            Confirms on their behalf. Organizer approval still required.
-          </p>
-          <DelegateConfirmUserForm matchId={matchId} scopeUsers={delegateConfirmTargets} />
-        </section>
-      )}
-
-      {/* ── 4a3. Nominate Contact Player (in-scope participants, not in organizer admin) ─ */}
+      {/* ── 4a2. Nominate Contact Player (in-scope participants, not in organizer admin) ─ */}
       {/* Per NOMINATE model: anyone in match scope can nominate Contact Player. Organizer has it in admin. */}
       {match.status === 'active' && canNominateGuest && !isOrganizer && (
         <section style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
@@ -247,14 +230,6 @@ export default async function MatchDetailPage({ params }: Props) {
               Pre-approves the user — they only need to Accept to confirm.
             </p>
             <InviteUserForm matchId={matchId} scopeUsers={inviteTargets} />
-          </div>
-
-          <div style={{ marginBottom: '1.25rem' }}>
-            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Manual Confirm</h4>
-            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
-              Directly confirms participation — no Accept step required.
-            </p>
-            <ManualConfirmUserForm matchId={matchId} scopeUsers={inviteTargets} />
           </div>
 
           <div id="guest">

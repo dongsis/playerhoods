@@ -113,7 +113,8 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
         )}
       </div>
       <div className="flex-1 text-sm text-gray-600 truncate">{roster}</div>
-      {(isInvited || isNominated || needsReconfirmRequested) && (
+      {/* Needs action: invited/nominated not yet accepted, or requested needing re-confirm */}
+      {(isInvited || (isNominated && !hasUserAccepted) || needsReconfirmRequested) && (
         <div className="shrink-0 flex items-center gap-2">
           <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
             {isNominated
@@ -131,6 +132,12 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
           </button>
           {confirmError && <span className="text-xs text-red-500">{confirmError}</span>}
         </div>
+      )}
+      {/* Nominated, already accepted — waiting for organizer approval */}
+      {isNominated && hasUserAccepted && (
+        <span className="shrink-0 text-xs text-blue-600 font-medium whitespace-nowrap">
+          Nominated ✓ · Awaiting approval
+        </span>
       )}
       {isRequested && !needsReconfirmRequested && (
         <span className="shrink-0 text-xs text-amber-600 font-medium whitespace-nowrap">
