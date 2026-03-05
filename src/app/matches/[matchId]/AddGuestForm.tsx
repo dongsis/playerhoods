@@ -12,9 +12,8 @@ interface Props {
 
 /**
  * Add a nonregistered player to a match.
- * v1.3: Split into two RPCs based on caller role:
- * - ORG: rpc_match_add_guest_org (immediately confirmed)
- * - Participant: rpc_match_add_guest_participant (pending, needs ORG approval)
+ * v1.7: Uses rpc_match_nominate_guest (create roster guest + nominate).
+ *       Old rpc_match_add_guest_org / add_guest_participant / invite_guest_from_roster are deprecated.
  */
 export function AddGuestForm({ matchId }: Props) {
   const [displayName, setDisplayName] = useState('')
