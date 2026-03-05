@@ -482,6 +482,17 @@ export async function delegateConfirmGuest(
   if (error) throw error
 }
 
+/** v1.7: Delegate-confirm an existing nominated user participant (sets participant_accepted_at). */
+export async function delegateConfirmParticipant(
+  supabase: Client,
+  matchParticipantId: string,
+) {
+  const { error } = await supabase.rpc('rpc_match_delegate_confirm_participant', {
+    p_match_participant_id: matchParticipantId,
+  })
+  if (error) throw error
+}
+
 /** Fetch all action logs for a match, grouped by participant. */
 export async function getMatchActions(
   supabase: Client,
@@ -800,14 +811,33 @@ export async function getMatchDetailData(
   }))
 
   const participantById = new Map(participants.map(p => [p.id, p]))
+
+  // v1.7: For actions whose subject we don't have (RLS may hide), fetch display names via RPC
+  const missingParticipantIds = actions
+    .map(a => a.match_participant_id)
+    .filter((id): id is string => !!id && !participantById.has(id))
+  const participantDisplayNames = new Map<string, string>()
+  if (missingParticipantIds.length > 0) {
+    const { data: namesData } = await supabase.rpc('rpc_match_participant_display_names', {
+      p_match_id: matchId,
+      p_participant_ids: missingParticipantIds,
+    })
+    for (const row of (namesData ?? []) as { participant_id: string; display_name: string }[]) {
+      participantDisplayNames.set(row.participant_id, row.display_name)
+    }
+  }
+
   const activities: ActivityItem[] = actions.map(a => {
     const subject = participantById.get(a.match_participant_id)
+    const subjectName = subject
+      ? resolve(subject.user_id, subject.guest_id)
+      : (participantDisplayNames.get(a.match_participant_id) ?? 'Unknown')
     return {
       id: a.id,
       action_type: a.action_type,
       note: a.note,
       actor_name: resolve(a.created_by, null),
-      subject_name: subject ? resolve(subject.user_id, subject.guest_id) : 'Unknown',
+      subject_name: subjectName,
       created_at: a.created_at,
     }
   })

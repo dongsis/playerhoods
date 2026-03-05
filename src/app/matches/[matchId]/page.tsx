@@ -49,6 +49,8 @@ export default async function MatchDetailPage({ params }: Props) {
   const canNominate = !isOrganizer && match.can_participants_invite_users && (inScope || isMatchAssociated)
   // v1.6.1: canDelegateConfirm — no can_participants_invite_users requirement
   const canDelegateConfirm = !isOrganizer && (inScope || isMatchAssociated)
+  // v1.7: organizer or match-associated can nominate Contact Player (RPC requires is_match_organizer OR is_user_match_associated)
+  const canNominateGuest = isOrganizer || isMatchAssociated
 
   // v1.6.1: 3 parallel roster fetches (each RPC enforces its own caller gate)
   const [inviteTargets, nominateTargets, delegateConfirmTargets] = await Promise.all([
@@ -87,13 +89,13 @@ export default async function MatchDetailPage({ params }: Props) {
   const time = formatMatchTime(match.start_at_utc, match.match_date, match.start_time, clubTimezone)
   const need = Math.max(match.required_count - confirmedCount, 0)
 
-  // v1.7: non-organizer clients see confirmed participants plus pending guests.
-  // Pending user participants and removed rows remain organizer-only.
+  // v1.7: non-organizer clients see confirmed + pending guests + pending nominated users (for delegate confirm).
   const participantsForDisplay = isOrganizer
     ? participants
     : participants.filter(p =>
         p.status === 'confirmed' ||
-        (p.guest_id !== null && p.status === 'pending')
+        (p.guest_id !== null && p.status === 'pending') ||
+        (p.user_id !== null && p.status === 'pending' && p.join_method === 'nominated' && !p.participant_accepted_at)
       )
 
   return (
@@ -181,12 +183,14 @@ export default async function MatchDetailPage({ params }: Props) {
           isOrganizer={isOrganizer}
           pendingCount={pendingCount}
           myUserId={user?.id ?? null}
+          canDelegateConfirmUserParticipants={canDelegateConfirm}
         />
       </section>
 
       {/* ── 4a. Nominate (non-org with shared groups, not organizer) ────── */}
       {/* Nominate flow: nominee Accepts → organizer Approves → confirmed      */}
-      {match.status === 'active' && canNominate && nominateTargets.length > 0 && (
+      {/* Show section when canNominate even if targets empty (form shows empty state) */}
+      {match.status === 'active' && canNominate && (
         <section style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
           <h3 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem' }}>Nominate a Player</h3>
           <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
@@ -198,13 +202,35 @@ export default async function MatchDetailPage({ params }: Props) {
 
       {/* ── 4a2. Delegate Confirm (non-org with shared groups) ───────────── */}
       {/* Delegate flow: participant confirms on behalf → pending ORG approval  */}
-      {match.status === 'active' && canDelegateConfirm && delegateConfirmTargets.length > 0 && (
+      {/* Show section when canDelegateConfirm even if targets empty (form shows empty state) */}
+      {match.status === 'active' && canDelegateConfirm && (
         <section style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
           <h3 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem' }}>Confirm for a Friend</h3>
           <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
             Confirms on their behalf. Organizer approval still required.
           </p>
           <DelegateConfirmUserForm matchId={matchId} scopeUsers={delegateConfirmTargets} />
+        </section>
+      )}
+
+      {/* ── 4a3. Nominate Contact Player (in-scope participants, not in organizer admin) ─ */}
+      {/* Per NOMINATE model: anyone in match scope can nominate Contact Player. Organizer has it in admin. */}
+      {match.status === 'active' && canNominateGuest && !isOrganizer && (
+        <section style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
+          <h3 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem' }}>Nominate Contact Player</h3>
+          <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
+            Nominate a Contact Player into this match. Confirmation requires both participant accept and organizer approval.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div>
+              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>From my roster</h4>
+              <InviteGuestForm matchId={matchId} />
+            </div>
+            <div>
+              <h4 style={{ margin: '0.75rem 0 0.3rem', fontSize: '0.85rem' }}>Create new Contact Player</h4>
+              <AddGuestForm matchId={matchId} />
+            </div>
+          </div>
         </section>
       )}
 

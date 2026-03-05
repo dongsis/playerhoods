@@ -150,6 +150,8 @@ export function formatActionType(type: string): string {
     // v1.5 new values
     reenter:               're-entered match for',
     manual_confirm:        'manually confirmed',
+    delegate_manual_confirm: 'confirmed for',
+    nominate_guest:       'nominated Contact Player',
   }
   return MAP[type] ?? type
 }

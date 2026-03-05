@@ -9,6 +9,7 @@ import {
   removeParticipant,
   inviteUserToMatch,
   delegateConfirmGuest,
+  delegateConfirmParticipant,
 } from '@/lib/api/matches'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
 import type { MatchStatus } from '@/lib/types/database'
@@ -23,6 +24,8 @@ interface Props {
   // Count from match_formed view — used to display "Pending (N)" for non-organizer
   pendingCount: number
   myUserId: string | null
+  /** v1.7: non-org can delegate confirm nominated user participants */
+  canDelegateConfirmUserParticipants?: boolean
 }
 
 // Dual-confirmation status tags (organizer view, not shown for guests)
@@ -54,6 +57,7 @@ function ParticipantRow({
   isMe,
   adderName,
   viewerIsParticipant,
+  canDelegateConfirmUserParticipants,
 }: {
   p: MatchParticipantEnriched
   matchId: string
@@ -62,6 +66,7 @@ function ParticipantRow({
   isMe: boolean
   adderName?: string
   viewerIsParticipant: boolean
+  canDelegateConfirmUserParticipants?: boolean
 }) {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -108,6 +113,17 @@ function ParticipantRow({
     isGuest &&
     isActive &&
     p.status === 'pending' &&
+    viewerIsParticipant
+
+  // v1.7: User delegate confirm: non-org can confirm nominated user (participant_accepted_at null)
+  const canConfirmNominatedUser =
+    !isGuest &&
+    p.user_id !== null &&
+    isActive &&
+    p.status === 'pending' &&
+    p.join_method === 'nominated' &&
+    !p.participant_accepted_at &&
+    canDelegateConfirmUserParticipants &&
     viewerIsParticipant
 
   // Remove: organizer only (v1.5: participants cannot remove anyone)
@@ -186,6 +202,16 @@ function ParticipantRow({
               </button>
             )}
 
+            {canConfirmNominatedUser && (
+              <button
+                onClick={() => act(() => delegateConfirmParticipant(supabase, p.id))}
+                disabled={isPending}
+                style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
+              >
+                Confirm can come
+              </button>
+            )}
+
             {canRemove && (
               <button
                 onClick={() => act(() => removeParticipant(supabase, p.id))}
@@ -255,6 +281,7 @@ export function ParticipantGroups({
   isOrganizer,
   pendingCount,
   myUserId,
+  canDelegateConfirmUserParticipants,
 }: Props) {
   // Build name map: user_id → display_name (for resolving guest adders)
   const nameMap = new Map(
@@ -284,6 +311,7 @@ export function ParticipantGroups({
     isMe: p.user_id === myUserId,
     adderName: p.join_method === 'guest_add' ? (nameMap.get(p.created_by ?? '') ?? undefined) : undefined,
     viewerIsParticipant,
+    canDelegateConfirmUserParticipants,
   })
 
   return (
@@ -296,13 +324,17 @@ export function ParticipantGroups({
         }
       </Section>
 
-      {/* Pending — organizer sees full list; others see count only (§3.2) */}
+      {/* Pending — organizer sees full list; non-org sees pending nominated users (for delegate confirm) or count only */}
       {isOrganizer ? (
         <Section title="Pending" badge={pending.length} badgeColor="#d97706">
           {pending.length === 0
             ? <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None.</p>
             : pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)
-          }
+        }
+      </Section>
+      ) : pending.length > 0 ? (
+        <Section title="Pending" badge={pending.length} badgeColor="#d97706">
+          {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
         </Section>
       ) : (
         <div style={{ marginBottom: '1.25rem' }}>

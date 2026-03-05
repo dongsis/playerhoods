@@ -556,6 +556,16 @@ export interface Database {
         Args: { p_match_participant_id: string }
         Returns: MatchParticipant
       }
+      // v1.7: Resolve participant display names for activity feed.
+      rpc_match_participant_display_names: {
+        Args: { p_match_id: string; p_participant_ids: string[] }
+        Returns: { participant_id: string; display_name: string }[]
+      }
+      // v1.7: Non-org delegate-confirms an existing nominated user participant.
+      rpc_match_delegate_confirm_participant: {
+        Args: { p_match_participant_id: string }
+        Returns: MatchParticipant
+      }
       // v1.6.1: Organizer directly confirms a user (InScope OR ShareGroup).
       rpc_match_manual_confirm_user: {
         Args: { p_match_id: string; p_user_id: string }
