@@ -8,6 +8,7 @@ import {
   manualConfirmParticipant,
   removeParticipant,
   inviteUserToMatch,
+  delegateConfirmGuest,
 } from '@/lib/api/matches'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
 import type { MatchStatus } from '@/lib/types/database'
@@ -26,7 +27,7 @@ interface Props {
 
 // Dual-confirmation status tags (organizer view, not shown for guests)
 function ConfirmationTags({ p }: { p: MatchParticipantEnriched }) {
-  if (p.status !== 'pending' || p.join_method === 'guest_add') return null
+  if (p.status !== 'pending' || p.guest_id !== null) return null
   // 'requested' join_method: user accepted implicitly by requesting — treat as always accepted
   const userAccepted =
     p.join_method === 'requested'
@@ -52,6 +53,7 @@ function ParticipantRow({
   isOrganizer,
   isMe,
   adderName,
+  viewerIsParticipant,
 }: {
   p: MatchParticipantEnriched
   matchId: string
@@ -59,6 +61,7 @@ function ParticipantRow({
   isOrganizer: boolean
   isMe: boolean
   adderName?: string
+  viewerIsParticipant: boolean
 }) {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -78,8 +81,9 @@ function ParticipantRow({
     })
   }
 
-  // Approve: organizer only, pending user who has accepted, not yet org-approved
-  // 'requested' join_method: user accepted implicitly by requesting
+  const isGuest = p.guest_id !== null
+  // Approve: organizer only, pending participant. For users, require they have accepted;
+  // for guests, ORG may approve before or after delegate confirm.
   const participantAccepted =
     p.join_method === 'requested'
       ? (p.participant_accepted_at ?? p.created_at)
@@ -88,15 +92,23 @@ function ParticipantRow({
     isOrganizer &&
     isActive &&
     p.status === 'pending' &&
-    participantAccepted !== null &&
+    (isGuest || participantAccepted !== null) &&
     p.org_approved_at === null
 
-  // Manual Confirm: organizer only, any pending user participant (invited/nominated not yet accepted, or request-joined needing re-confirm after match edit)
+  // Manual Confirm (users only): organizer only, any pending user participant
+  // (invited/nominated not yet accepted, or request-joined needing re-confirm after match edit)
   const canManualConfirm =
     isOrganizer &&
     isActive &&
     p.status === 'pending' &&
-    p.user_id !== null   // guests use org approve
+    p.user_id !== null   // guests use delegate-confirm flow
+
+  // Guest delegate confirm: any active participant (including organizer) can confirm a guest can come.
+  const canConfirmGuest =
+    isGuest &&
+    isActive &&
+    p.status === 'pending' &&
+    viewerIsParticipant
 
   // Remove: organizer only (v1.5: participants cannot remove anyone)
   const canRemove =
@@ -115,9 +127,9 @@ function ParticipantRow({
             {isMe && <span style={{ fontWeight: 400, color: '#888', fontSize: '0.75rem', marginLeft: '0.3rem' }}>(you)</span>}
           </span>
 
-          {p.join_method === 'guest_add' ? (
+          {p.guest_id !== null ? (
             <span style={{ fontSize: '0.72rem', color: '#555', marginLeft: '0.4rem' }}>
-              (confirmed attendance by {adderName ?? 'unknown'})
+              (Contact Player)
             </span>
           ) : (
             <>
@@ -141,8 +153,8 @@ function ParticipantRow({
           </div>
         </div>
 
-        {/* Organizer action controls */}
-        {(canApprove || canManualConfirm || canRemove || canInviteBack) && (
+        {/* Organizer / participant action controls */}
+        {(canApprove || canManualConfirm || canConfirmGuest || canRemove || canInviteBack) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
             {canApprove && (
               <button
@@ -161,6 +173,16 @@ function ParticipantRow({
                 style={{ background: '#6d28d9', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
               >
                 Manual Confirm
+              </button>
+            )}
+
+            {canConfirmGuest && (
+              <button
+                onClick={() => act(() => delegateConfirmGuest(supabase, p.id))}
+                disabled={isPending}
+                style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
+              >
+                Confirm can come
               </button>
             )}
 
@@ -241,6 +263,10 @@ export function ParticipantGroups({
       .map(p => [p.user_id!, p.display_name])
   )
 
+  const viewerIsParticipant = participants.some(
+    p => p.user_id === myUserId && p.status !== 'removed'
+  )
+
   // Confirmed participants (guests with status confirmed count too)
   const confirmed = participants.filter(p =>
     p.status === 'confirmed' || (p.join_method === 'guest_add' && p.status !== 'removed')
@@ -257,6 +283,7 @@ export function ParticipantGroups({
     isOrganizer,
     isMe: p.user_id === myUserId,
     adderName: p.join_method === 'guest_add' ? (nameMap.get(p.created_by ?? '') ?? undefined) : undefined,
+    viewerIsParticipant,
   })
 
   return (

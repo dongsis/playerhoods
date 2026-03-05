@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { inviteGuestFromRoster } from '@/lib/api/matches'
+import { nominateGuest } from '@/lib/api/matches'
 import { listRosterGuests } from '@/lib/api/roster'
 import type { Guest } from '@/lib/types/database'
 
@@ -36,7 +36,7 @@ export function InviteGuestForm({ matchId }: Props) {
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
     try {
-      await inviteGuestFromRoster(supabase, matchId, guestId)
+      await nominateGuest(supabase, matchId, guestId)
       setSuccess(true)
       setGuestId('')
       router.refresh()
@@ -74,11 +74,11 @@ export function InviteGuestForm({ matchId }: Props) {
           ))}
         </select>
         <button type="submit" disabled={loading || !guestId} style={{ padding: '0.4rem 0.8rem', background: '#0e7490', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          {loading ? 'Inviting...' : 'Invite'}
+          {loading ? 'Nominating...' : 'Nominate'}
         </button>
       </div>
       {error   && <p style={{ color: 'red',   fontSize: '0.8rem', margin: '0.3rem 0 0' }}>{error}</p>}
-      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Contact Player invited!</p>}
+      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Contact Player nominated!</p>}
     </form>
   )
 }

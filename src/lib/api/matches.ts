@@ -453,21 +453,31 @@ export async function removeParticipant(supabase: Client, participantId: string)
 }
 
 /** v1.5: ORG adds guest (join_method=manual, confirmed immediately). */
-export async function addGuestOrg(supabase: Client, matchId: string, displayName: string, guestNotes?: string) {
-  const { error } = await supabase.rpc('rpc_match_add_guest_org', {
+// Deprecated addGuestOrg/addGuestParticipant paths have been replaced by the
+// unified nominate-guest model. New RPCs:
+// - rpc_match_nominate_guest(p_match_id, p_guest_id)
+// - rpc_match_delegate_confirm_guest(p_match_participant_id)
+
+/** Nominate an existing Contact Player (guest) into a match. */
+export async function nominateGuest(
+  supabase: Client,
+  matchId: string,
+  guestId: string,
+) {
+  const { error } = await supabase.rpc('rpc_match_nominate_guest', {
     p_match_id: matchId,
-    p_guest_display_name: displayName,
-    p_guest_notes: guestNotes ?? '',
+    p_guest_id: guestId,
   })
   if (error) throw error
 }
 
-/** v1.5b: Non-removed participant adds guest (join_method=manual, pending ORG approval). */
-export async function addGuestParticipant(supabase: Client, matchId: string, displayName: string, guestNotes?: string) {
-  const { error } = await supabase.rpc('rpc_match_add_guest_participant', {
-    p_match_id: matchId,
-    p_guest_display_name: displayName,
-    p_guest_notes: guestNotes ?? '',
+/** Delegate-confirm that a guest can attend (any active participant, including org). */
+export async function delegateConfirmGuest(
+  supabase: Client,
+  matchParticipantId: string,
+) {
+  const { error } = await supabase.rpc('rpc_match_delegate_confirm_guest', {
+    p_match_participant_id: matchParticipantId,
   })
   if (error) throw error
 }
@@ -872,15 +882,4 @@ export async function delegateConfirmUser(supabase: Client, matchId: string, use
   if (error) throw error
 }
 
-// ============================================================================
-// v1.6.2-lite: Invite Contact Player from Personal Roster
-// ============================================================================
-
-/** Organizer invites a Contact Player from their personal roster into a match. */
-export async function inviteGuestFromRoster(supabase: Client, matchId: string, guestId: string) {
-  const { error } = await supabase.rpc('rpc_match_invite_guest_from_roster', {
-    p_match_id: matchId,
-    p_guest_id: guestId,
-  })
-  if (error) throw error
-}
+// (Old rpc_match_invite_guest_from_roster path is deprecated in favour of rpc_match_nominate_guest.)

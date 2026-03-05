@@ -705,9 +705,33 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Calls:** `public.is_match_organizer`, `public.match_participant_reconcile_status`
 - **Notes:** —
 
-### `public.rpc_match_add_guest_org`
+### `public.rpc_match_nominate_guest`
 - **Kind:** RPC
-- **Signature:** `public.rpc_match_add_guest_org("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text", "p_note" "text" DEFAULT NULL::"text")`
+- **Signature:** `public.rpc_match_nominate_guest("p_match_id" "uuid", "p_guest_id" "uuid")`
+- **Returns:** `"public"."match_participants"`
+- **Language:** `plpgsql`
+- **Security:** **SECURITY DEFINER**
+- **Volatility:** `—`
+- **Reads:** `public.matches`, `public.user_roster_guests`, `public.guests`, `public.match_participants`
+- **Writes:** `public.match_participants`
+- **Calls:** `public.is_match_organizer`, `public.is_user_match_associated`, `public.match_participant_reconcile_status`
+- **Notes:** Unified **Contact Player / guest** entry point. Caller must be **organizer or active participant** *and* must own the guest in `user_roster_guests`. Inserts a single `match_participants` row with `guest_id`, `join_method='nominated'`, `status='pending'`, `nominated_by=auth.uid()`. For organizer callers, `org_approved_at/By` is written immediately; for others it stays `NULL`. `participant_accepted_at` is always `NULL` at insert — must be set by `rpc_match_delegate_confirm_guest`. Invariant: `confirmed ⇔ participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL` (enforced by `match_participant_reconcile_status`). Rejects duplicate active rows for the same `(match_id, guest_id)` with `guest_already_active`.
+
+### `public.rpc_match_delegate_confirm_guest`
+- **Kind:** RPC
+- **Signature:** `public.rpc_match_delegate_confirm_guest("p_match_participant_id" "uuid")`
+- **Returns:** `"public"."match_participants"`
+- **Language:** `plpgsql`
+- **Security:** **SECURITY DEFINER**
+- **Volatility:** `—`
+- **Reads:** `public.match_participants`
+- **Writes:** `public.match_participants`, `public.match_participant_actions`
+- **Calls:** `public.is_user_match_associated`, `public.match_participant_reconcile_status`
+- **Notes:** Any **active participant** in the match (including the organizer) can confirm that a guest (Contact Player) can attend. Only valid for `guest_id IS NOT NULL` and `removed_at IS NULL`. Writes `participant_accepted_at = now()` and `participant_accepted_via = 'delegate_manual'` **only** — never touches `org_approved_at`. Adds `match_participant_actions` row with `action_type='delegate_manual_confirm'`. Combined with `rpc_match_org_approve_participant` this yields `confirmed` when both timestamps are present.
+
+### `public.rpc_match_add_guest_org` *(deprecated)*
+- **Kind:** RPC
+- **Signature:** `public.rpc_match_add_guest_org(...)`
 - **Returns:** `"public"."match_participants"`
 - **Language:** `plpgsql`
 - **Security:** **SECURITY DEFINER**
@@ -715,23 +739,11 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Reads:** —
 - **Writes:** —
 - **Calls:** —
-- **Notes:** —
+- **Notes:** **Deprecated.** Old “add guest and auto-confirm” path (wrote `participant_accepted_at` + `org_approved_at` in one step). Now implemented as a thin wrapper that always raises `deprecated_use_rpc_match_nominate_guest`. Frontend must use `rpc_match_nominate_guest` + `rpc_match_delegate_confirm_guest` + `rpc_match_org_approve_participant` instead.
 
-### `public.rpc_match_add_guest_participant`
+### `public.rpc_match_add_guest_participant` *(deprecated)*
 - **Kind:** RPC
-- **Signature:** `public.rpc_match_add_guest_participant("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text")`
-- **Returns:** `"public"."match_participants"`
-- **Language:** `plpgsql`
-- **Security:** **SECURITY DEFINER**
-- **Volatility:** `—`
-- **Reads:** `public.guests`, `public.match_participants`, `public.matches`
-- **Writes:** `public.guests`, `public.match_participants`
-- **Calls:** `public.match_participant_reconcile_status`
-- **Notes:** —
-
-### `public.rpc_match_add_guest_participant`
-- **Kind:** RPC
-- **Signature:** `public.rpc_match_add_guest_participant("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text", "p_note" "text" DEFAULT NULL::"text")`
+- **Signature:** `public.rpc_match_add_guest_participant(...)`
 - **Returns:** `"public"."match_participants"`
 - **Language:** `plpgsql`
 - **Security:** **SECURITY DEFINER**
@@ -739,7 +751,7 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Reads:** —
 - **Writes:** —
 - **Calls:** —
-- **Notes:** —
+- **Notes:** **Deprecated.** Old “participant adds guest” shortcut. Function body now raises `deprecated_use_rpc_match_nominate_guest`. Replaced by `rpc_roster_guest_create` (to create Contact Player + add to roster) followed by `rpc_match_nominate_guest`.
 
 ### `public.rpc_match_create`
 - **Kind:** RPC
@@ -777,7 +789,7 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Calls:** `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.is_user_match_associated`
 - **Notes:** —
 
-### `public.rpc_match_invite_guest_from_roster`
+### `public.rpc_match_invite_guest_from_roster` *(deprecated)*
 - **Kind:** RPC
 - **Signature:** `public.rpc_match_invite_guest_from_roster("p_match_id" "uuid", "p_guest_id" "uuid")`
 - **Returns:** `"public"."match_participants"`
@@ -787,7 +799,7 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Reads:** `public.guests`, `public.match_participants`, `public.matches`, `public.user_roster_guests`
 - **Writes:** `public.match_participants`
 - **Calls:** `public.match_participant_reconcile_status`
-- **Notes:** ⚠️ **Direct `match_participants.status` write detected** (check against reconciliation invariant).
+- **Notes:** **Deprecated.** Previously let organizers invite a Contact Player from personal roster with mixed semantics. Now implemented as a stub that raises `deprecated_use_rpc_match_nominate_guest`. All guest flows must go through the nominate / delegate-confirm / org-approve pipeline.
 
 ### `public.rpc_match_invite_targets`
 - **Kind:** RPC

@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { addGuestOrg, addGuestParticipant } from '@/lib/api/matches'
+import { createRosterGuest } from '@/lib/api/roster'
+import { nominateGuest } from '@/lib/api/matches'
 
 interface Props {
   matchId: string
-  isOrganizer: boolean
 }
 
 /**
@@ -16,7 +16,7 @@ interface Props {
  * - ORG: rpc_match_add_guest_org (immediately confirmed)
  * - Participant: rpc_match_add_guest_participant (pending, needs ORG approval)
  */
-export function AddGuestForm({ matchId, isOrganizer }: Props) {
+export function AddGuestForm({ matchId }: Props) {
   const [displayName, setDisplayName] = useState('')
   const [guestNotes, setGuestNotes] = useState('')
   const [loading, setLoading] = useState(false)
@@ -30,14 +30,15 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
     setSuccess(false)
     setLoading(true)
 
-    const supabase = createSupabaseBrowserClient()
-
     try {
-      if (isOrganizer) {
-        await addGuestOrg(supabase, matchId, displayName, guestNotes || undefined)
-      } else {
-        await addGuestParticipant(supabase, matchId, displayName, guestNotes || undefined)
-      }
+      const supabase = createSupabaseBrowserClient()
+      // 1) Create Contact Player in caller's roster
+      const guest = await createRosterGuest(supabase, {
+        display_name: displayName,
+        notes: guestNotes || null,
+      })
+      // 2) Nominate that Contact Player into this match
+      await nominateGuest(supabase, matchId, guest.id)
       setSuccess(true)
       setDisplayName('')
       setGuestNotes('')
@@ -71,7 +72,7 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
         />
       </div>
       <button type="submit" disabled={loading}>
-        {loading ? 'Adding...' : 'Add Nonregistered Player'}
+        {loading ? 'Creating...' : 'Create & Nominate'}
       </button>
       {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
       {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Player added!</p>}

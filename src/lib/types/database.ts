@@ -547,12 +547,13 @@ export interface Database {
         Args: { p_match_participant_id: string; p_note?: string }
         Returns: MatchParticipant
       }
-      rpc_match_add_guest_org: {
-        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string }
+      // v1.7: Guest / Contact Player flows
+      rpc_match_nominate_guest: {
+        Args: { p_match_id: string; p_guest_id: string }
         Returns: MatchParticipant
       }
-      rpc_match_add_guest_participant: {
-        Args: { p_match_id: string; p_guest_display_name: string; p_guest_notes: string }
+      rpc_match_delegate_confirm_guest: {
+        Args: { p_match_participant_id: string }
         Returns: MatchParticipant
       }
       // v1.6.1: Organizer directly confirms a user (InScope OR ShareGroup).
@@ -587,11 +588,6 @@ export interface Database {
       rpc_roster_guest_list: {
         Args: Record<string, never>
         Returns: Guest[]
-      }
-      // v1.6.2-lite: Organizer invites a Contact Player from personal roster
-      rpc_match_invite_guest_from_roster: {
-        Args: { p_match_id: string; p_guest_id: string }
-        Returns: MatchParticipant
       }
       // v1.6.3: Sports RPCs
       rpc_sports_list: {

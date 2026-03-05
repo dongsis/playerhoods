@@ -87,11 +87,14 @@ export default async function MatchDetailPage({ params }: Props) {
   const time = formatMatchTime(match.start_at_utc, match.match_date, match.start_time, clubTimezone)
   const need = Math.max(match.required_count - confirmedCount, 0)
 
-  // v1.5: non-organizer clients only receive confirmed participants.
-  // Pending names are private (organizer-only). Removed are organizer-only.
+  // v1.7: non-organizer clients see confirmed participants plus pending guests.
+  // Pending user participants and removed rows remain organizer-only.
   const participantsForDisplay = isOrganizer
     ? participants
-    : participants.filter(p => p.status === 'confirmed')
+    : participants.filter(p =>
+        p.status === 'confirmed' ||
+        (p.guest_id !== null && p.status === 'pending')
+      )
 
   return (
     <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1rem' }}>
@@ -229,16 +232,20 @@ export default async function MatchDetailPage({ params }: Props) {
           </div>
 
           <div id="guest">
-            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Add Nonregistered Player</h4>
-            <AddGuestForm matchId={matchId} isOrganizer={true} />
-          </div>
-
-          <div style={{ marginTop: '1.25rem' }}>
-            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite Contact Player</h4>
-            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
-              Invite a contact from your favorites. Org-approved on invite.
+            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Nominate Contact Player</h4>
+            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
+              Nominate a Contact Player into this match. Confirmation requires both participant accept and organizer approval.
             </p>
-            <InviteGuestForm matchId={matchId} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div>
+                <h5 style={{ margin: '0 0 0.3rem', fontSize: '0.8rem' }}>From my roster</h5>
+                <InviteGuestForm matchId={matchId} />
+              </div>
+              <div>
+                <h5 style={{ margin: '0.75rem 0 0.3rem', fontSize: '0.8rem' }}>Create new Contact Player</h5>
+                <AddGuestForm matchId={matchId} />
+              </div>
+            </div>
           </div>
         </section>
       )}
