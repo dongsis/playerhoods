@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getMatchListData, cancelMatch, type MatchListItem } from '@/lib/api/matches'
+import { getUnreadNotificationCount } from '@/lib/api/notifications'
 import { getAllPlayersGroupedByClub, type PlayersData } from '@/lib/api/players'
 import { getMyClubIdentities, getJoinableClubs, updateProfile, getMyVenuePreferences } from '@/lib/api/identities'
 import { isSuperAdmin, getMyAdminClubs } from '@/lib/api/clubs'
@@ -19,6 +20,7 @@ export default async function DashboardPage() {
 
   const [
     items,
+    inboxUnreadCount,
     playersData,
     myIdentities,
     joinableClubs,
@@ -29,6 +31,7 @@ export default async function DashboardPage() {
   ] =
     await Promise.all([
       getMatchListData(supabase, user.id).catch(() => [] as MatchListItem[]),
+      getUnreadNotificationCount(supabase).catch(() => 0),
       getAllPlayersGroupedByClub(supabase, user.id).catch(() => ({
         clubs: [],
         groups: [],
@@ -84,6 +87,7 @@ export default async function DashboardPage() {
       <DashboardShell
         userId={user.id}
         items={items}
+        inboxUnreadCount={inboxUnreadCount}
         playersData={playersData}
         profile={profile}
         myIdentities={myIdentities}

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
-export type DashTab = 'matches' | 'players' | 'contacts' | 'venues' | 'profile' | 'admin'
+export type DashTab = 'inbox' | 'matches' | 'players' | 'contacts' | 'venues' | 'profile' | 'admin'
 
 interface Props {
   active: DashTab
@@ -13,6 +13,7 @@ interface Props {
 }
 
 const tabs: { key: DashTab; label: string; icon: string }[] = [
+  { key: 'inbox', label: 'Inbox', icon: '📬' },
   { key: 'matches', label: 'Matches', icon: '🎾' },
   { key: 'players', label: 'Players', icon: '👥' },
   { key: 'contacts', label: 'Contacts', icon: '📇' },

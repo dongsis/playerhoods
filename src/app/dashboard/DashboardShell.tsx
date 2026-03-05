@@ -5,6 +5,7 @@ import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { Profile, ClubIdentity, Club, ClubAdmin } from '@/lib/types/database'
 import { LeftNav, type DashTab } from './LeftNav'
+import { InboxPanel } from './InboxPanel'
 import { MatchesPanel } from './MatchesPanel'
 import { PlayersPanel } from './PlayersPanel'
 import { ProfilePanel } from './ProfilePanel'
@@ -24,11 +25,13 @@ interface Props {
   isSuperAdmin: boolean
   onUpdateProfile: (formData: FormData) => Promise<void>
   onCancelMatch: (matchId: string) => Promise<void>
+  inboxUnreadCount?: number
 }
 
 export function DashboardShell({
   userId,
   items,
+  inboxUnreadCount,
   playersData,
   profile,
   myIdentities,
@@ -42,6 +45,7 @@ export function DashboardShell({
   const isAdmin = isSuperAdmin || myAdminClubs.length > 0
   const [activeTab, setActiveTab] = useState<DashTab>('matches')
   const [dismissedMatchIds, setDismissedMatchIds] = useState<Set<string>>(new Set())
+  const [inboxBadge, setInboxBadge] = useState(inboxUnreadCount ?? 0)
 
   // Once user has entered Matches tab, dismiss "removed" matches from badge (so number decreases)
   useEffect(() => {
@@ -93,18 +97,30 @@ export function DashboardShell({
       }
     }
     const playersBadge = playersData.pendingGroupInvites.length
-    return { matches: matchesBadge || undefined, players: playersBadge || undefined }
-  }, [items, playersData.pendingGroupInvites.length, dismissedMatchIds])
+    return {
+      inbox: inboxBadge || undefined,
+      matches: matchesBadge || undefined,
+      players: playersBadge || undefined,
+    }
+  }, [items, playersData.pendingGroupInvites.length, dismissedMatchIds, inboxBadge])
 
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Left nav — sticky sidebar */}
       <aside className="w-56 shrink-0 border-r border-gray-100 bg-white sticky top-0 h-screen">
-        <LeftNav active={activeTab} onTab={setActiveTab} isAdmin={isAdmin} badges={badges} />
+        <LeftNav
+          active={activeTab}
+          onTab={setActiveTab}
+          isAdmin={isAdmin}
+          badges={{ ...badges, inbox: badges.inbox ?? inboxBadge }}
+        />
       </aside>
 
       {/* Main content */}
       <main className="flex-1 max-w-3xl mx-auto px-6 py-8">
+        {activeTab === 'inbox' && (
+          <InboxPanel onUnreadChange={setInboxBadge} />
+        )}
         {activeTab === 'matches' && (
           <MatchesPanel
             items={items}
