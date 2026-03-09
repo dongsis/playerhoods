@@ -38,8 +38,11 @@ export async function middleware(request: NextRequest) {
 
   // Protected routes - redirect to login if not authenticated
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login')
+  const isAuthCallback = request.nextUrl.pathname.startsWith('/auth/callback')
+  const isInvitationPage = request.nextUrl.pathname.startsWith('/invitations/')
   const isOnboarding = request.nextUrl.pathname.startsWith('/onboarding')
-  const isProtectedRoute = !isAuthRoute && !isOnboarding && request.nextUrl.pathname !== '/'
+  const isPublicRoute = request.nextUrl.pathname === '/' || isAuthRoute || isAuthCallback || isInvitationPage
+  const isProtectedRoute = !isPublicRoute && !isOnboarding
 
   if (!user && isProtectedRoute) {
     return NextResponse.redirect(new URL('/login', request.url))
@@ -50,8 +53,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
-  // Profile onboarding: redirect if display_name not set
-  if (user && isProtectedRoute) {
+  // Profile onboarding: redirect if display_name not set (skip for invitation page - let them Accept/Decline first)
+  if (user && isProtectedRoute && !isInvitationPage) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('display_name')

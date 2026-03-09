@@ -1,6 +1,17 @@
 // Database types for playerhoods
 // Based on Slice 1-3 migrations + v1.3 dual confirmation model
 
+export type IdentityLink = {
+  id: string
+  provider: string
+  verified_email: string
+  user_id: string
+  linked_type: string
+  linked_id: string
+  linked_by_user_id: string | null
+  created_at: string
+}
+
 export type GroupMemberStatus = 'pending' | 'active' | 'removed'
 export type MatchStatus = 'active' | 'cancelled' | 'archived'
 export type MatchAdmissionMode = 'invite' | 'request'
@@ -381,6 +392,13 @@ export interface Database {
         Row: GuestSport
         Insert: Partial<GuestSport> & { guest_id: string; sport_id: number }
         Update: Partial<GuestSport>
+        Relationships: []
+      }
+      // v1.7: Identity links (verified email -> user + legacy rows)
+      identity_links: {
+        Row: IdentityLink
+        Insert: Partial<IdentityLink> & { provider: string; verified_email: string; user_id: string; linked_type: string; linked_id: string }
+        Update: Partial<IdentityLink>
         Relationships: []
       }
     }

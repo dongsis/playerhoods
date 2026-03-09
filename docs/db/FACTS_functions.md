@@ -1,6 +1,8 @@
 Database Facts: Functions — Index (public)
 ## Match / Participants RPCs
 
+**Flows & scope (invite, nominate, confirm, accept, remove):** see `docs/specs/Match_Participation_Flows_and_Scope.md`.
+
 public.rpc_match_create(p_required_count integer, p_game_type text, p_match_date date, p_start_time time without time zone, p_duration_minutes integer, p_club_id uuid, p_court_ids uuid[], p_invitation_scope_group_ids uuid[], p_can_participants_invite_users boolean, p_can_participants_add_guests boolean, p_can_participants_manage_participants boolean) -> returns matches | SECURITY DEFINER | plpgsql
 
 public.rpc_match_accept_invite(p_match_id uuid) -> returns match_participants | SECURITY DEFINER | plpgsql

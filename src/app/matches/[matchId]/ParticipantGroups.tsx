@@ -11,6 +11,7 @@ import {
   delegateConfirmGuest,
   delegateConfirmParticipant,
 } from '@/lib/api/matches'
+import { processDeliveriesAction } from './process-deliveries-action'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
 import { Avatar } from '@/app/components/Avatar'
 import type { MatchStatus } from '@/lib/types/database'
@@ -80,6 +81,7 @@ function ParticipantRow({
     startTransition(async () => {
       try {
         await fn()
+        await processDeliveriesAction()
         router.refresh()
       } catch (err: unknown) {
         setError((err as { message?: string })?.message ?? 'Action failed')
@@ -88,26 +90,21 @@ function ParticipantRow({
   }
 
   const isGuest = p.guest_id !== null
-  // Approve: organizer only, pending participant. For users, require they have accepted;
-  // for guests, ORG may approve before or after delegate confirm.
-  const participantAccepted =
-    p.join_method === 'requested'
-      ? (p.participant_accepted_at ?? p.created_at)
-      : p.participant_accepted_at
+  // Approve: organizer only, pending, org not yet approved. Org and user confirm can happen in any order.
   const canApprove =
     isOrganizer &&
     isActive &&
     p.status === 'pending' &&
-    (isGuest || participantAccepted !== null) &&
     p.org_approved_at === null
 
-  // Manual Confirm (users only): organizer only, any pending user participant
-  // (invited/nominated not yet accepted, or request-joined needing re-confirm after match edit)
+  // Manual Confirm (users only): organizer only, pending user whose participant side not yet confirmed.
+  // Hide when participant_accepted_at is set (T2 accepted or T1 delegate-confirmed for T2) — then only Approve is needed.
   const canManualConfirm =
     isOrganizer &&
     isActive &&
     p.status === 'pending' &&
-    p.user_id !== null   // guests use delegate-confirm flow
+    p.user_id !== null &&
+    p.participant_accepted_at == null   // guests use delegate-confirm flow
 
   // Guest delegate confirm: any active participant (including organizer) can confirm a guest can come.
   const canConfirmGuest =

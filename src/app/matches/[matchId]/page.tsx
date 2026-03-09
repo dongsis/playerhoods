@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { getMatchDetailData, getMatchCourts, isCallerInMatchScope, getInviteTargets, getNominateTargets, getCourts, updateMatchDetails, setMatchSingleCourt, type ScopeUser } from '@/lib/api/matches'
+import { getMatchDetailData, getMatchCourts, isCallerInMatchScope, getInviteTargets, getNominateTargets, getCourts, updateMatchDetails, setMatchCourts, type ScopeUser } from '@/lib/api/matches'
 import { formatMatchTime } from '@/lib/utils/format-time'
 import { MatchActions } from './MatchActions'
 import { ParticipantGroups } from './ParticipantGroups'
@@ -12,6 +12,7 @@ import { NominateUserForm } from './NominateUserForm'
 import { AddGuestForm } from './AddGuestForm'
 import { MatchEditForm } from './MatchEditForm'
 import { InviteGuestForm } from './InviteGuestForm'
+import { InviteByEmailForm } from './InviteByEmailForm'
 
 interface Props {
   params: Promise<{ matchId: string }>
@@ -70,15 +71,18 @@ export default async function MatchDetailPage({ params }: Props) {
     'use server'
     const srv = await createSupabaseServerClient()
     await updateMatchDetails(srv, matchId, data)
+    const updatedMatch = { ...match, ...data }
+    const { sendMatchTimeChangeEmails } = await import('@/lib/email/send-participant-notifications')
+    await sendMatchTimeChangeEmails(srv, updatedMatch, clubName)
     revalidatePath(`/matches/${matchId}`)
   }
 
-  async function handleSetCourt(courtLabel: string | null) {
+  async function handleSetCourts(courtLabels: string[]) {
     'use server'
     const srv = await createSupabaseServerClient()
     const u = await getUser()
     if (!u) throw new Error('not_authenticated')
-    await setMatchSingleCourt(srv, matchId, courtLabel, u.id)
+    await setMatchCourts(srv, matchId, courtLabels, u.id)
     revalidatePath(`/matches/${matchId}`)
   }
 
@@ -152,7 +156,7 @@ export default async function MatchDetailPage({ params }: Props) {
             currentCourts={matchCourts}
             clubCourts={clubCourts}
             onSave={handleUpdateMatchDetails}
-            onSetCourt={handleSetCourt}
+            onSetCourts={handleSetCourts}
           />
         </div>
       )}
@@ -230,6 +234,14 @@ export default async function MatchDetailPage({ params }: Props) {
               Pre-approves the user — they only need to Accept to confirm.
             </p>
             <InviteUserForm matchId={matchId} scopeUsers={inviteTargets} />
+          </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite by Email</h4>
+            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
+              Send an email invitation. Recipient verifies email and accepts on the invitation page.
+            </p>
+            <InviteByEmailForm matchId={matchId} />
           </div>
 
           <div id="guest">

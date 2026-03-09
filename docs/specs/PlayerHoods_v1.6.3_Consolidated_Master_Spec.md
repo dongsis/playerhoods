@@ -89,19 +89,24 @@ Scope required only for first-entry request (mp == NULL).
 
 ------------------------------------------------------------------------
 
-# 6. Nominate Logic (v1.6.1 Refactor)
+# 6. Nominate Logic (v1.6.1 Refactor, v1.7 Re-entry)
 
 Caller gate: - caller != organizer - match.status = 'active' -
 match.can_participants_invite_users = true - (InScope OR
 MatchAssociated)
 
 Target gate: - ShareGroup(target, caller) - target != caller - not
-already active participant
+already active participant (is_user_match_associated = false; removed
+users are not associated, so re-entry via nominate is allowed)
 
 Nominate result: - join_method = 'nominated' - participant_accepted_at =
-NULL - org_approved_at = NULL - status = pending
+NULL - org_approved_at = NULL - status = pending (or re-entry: clear
+removed_at, same fields)
 
-Requires both user accept and org approval.
+Requires both user accept and org approval (order arbitrary).
+
+For full flows (invite, nominate, confirm, accept, remove) and scope
+definitions, see **Match_Participation_Flows_and_Scope.md**.
 
 ------------------------------------------------------------------------
 

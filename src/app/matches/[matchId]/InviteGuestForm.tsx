@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { nominateGuest } from '@/lib/api/matches'
+import { processDeliveriesAction } from './process-deliveries-action'
 import { listRosterGuests } from '@/lib/api/roster'
 import type { Guest } from '@/lib/types/database'
 
@@ -37,6 +38,7 @@ export function InviteGuestForm({ matchId }: Props) {
     const supabase = createSupabaseBrowserClient()
     try {
       await nominateGuest(supabase, matchId, guestId)
+      await processDeliveriesAction()
       setSuccess(true)
       setGuestId('')
       router.refresh()

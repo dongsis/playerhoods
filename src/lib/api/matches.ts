@@ -363,16 +363,34 @@ export async function setMatchSingleCourt(
   courtLabel: string | null,
   userId: string
 ): Promise<void> {
+  return setMatchCourts(supabase, matchId, courtLabel ? [courtLabel] : [], userId)
+}
+
+/**
+ * Replace all court slots with the given list of court labels (slot_index 1, 2, 3…).
+ * Organizer only — match_courts RLS allows organizer to insert/delete.
+ */
+export async function setMatchCourts(
+  supabase: Client,
+  matchId: string,
+  courtLabels: string[],
+  userId: string
+): Promise<void> {
   const { error: delErr } = await supabase
     .from('match_courts')
     .delete()
     .eq('match_id', matchId)
   if (delErr) throw delErr
 
-  if (courtLabel) {
-    const { error: insErr } = await supabase
-      .from('match_courts')
-      .insert({ match_id: matchId, slot_index: 1, court_label: courtLabel, created_by: userId })
+  const labels = courtLabels.map(l => l?.trim()).filter(Boolean)
+  if (labels.length > 0) {
+    const rows = labels.map((court_label, i) => ({
+      match_id: matchId,
+      slot_index: i + 1,
+      court_label,
+      created_by: userId,
+    }))
+    const { error: insErr } = await supabase.from('match_courts').insert(rows)
     if (insErr) throw insErr
   }
 }
@@ -779,22 +797,30 @@ export async function getMatchDetailData(
     club = data as unknown as ClubRow | null
   }
 
-  // Collect IDs needed for name resolution (include organizer even if not a participant)
+  // Collect IDs needed for name resolution (include organizer, participants, linked users for identity display)
   const userIds = [...new Set([
     match.organizer_id,
     ...participants.filter(p => p.user_id).map(p => p.user_id as string),
     ...actions.map(a => a.created_by),
+    ...(userId ? [userId] : []),
   ])]
   const guestIds = [...new Set(participants.filter(p => p.guest_id).map(p => p.guest_id as string))]
+  const guestParticipantIds = participants.filter(p => p.guest_id).map(p => p.id)
   const clubIds = match.club_id ? [match.club_id] : []
 
-  const [profilesRes, identityMap, guestsRes] = await Promise.all([
+  const [profilesRes, identityMap, guestsRes, identityLinksRes] = await Promise.all([
     userIds.length > 0
       ? supabase.from('profile_display').select('*').in('id', userIds)
       : Promise.resolve({ data: [] }),
     fetchIdentityMap(supabase, clubIds, userIds),
     guestIds.length > 0
       ? supabase.from('guests').select('id, display_name').in('id', guestIds)
+      : Promise.resolve({ data: [] }),
+    userId && guestParticipantIds.length > 0
+      ? (async () => {
+          const r = await supabase.from('identity_links').select('linked_id, user_id').eq('user_id', userId).eq('linked_type', 'guest_participant').in('linked_id', guestParticipantIds)
+          return r.error ? { data: [] } : r
+        })()
       : Promise.resolve({ data: [] }),
   ])
 
@@ -806,6 +832,10 @@ export async function getMatchDetailData(
   )
   const guestMap = new Map(
     ((guestsRes.data ?? []) as { id: string; display_name: string }[]).map(g => [g.id, g.display_name])
+  )
+
+  const participantLinkedToUser = new Map(
+    ((identityLinksRes.data ?? []) as { linked_id: string; user_id: string }[]).map((r) => [r.linked_id, r.user_id])
   )
 
   const scopeGroupIds = match.invitation_scope_group_ids ?? []
@@ -820,10 +850,15 @@ export async function getMatchDetailData(
     resolveNameFromMaps(uid, gid, match.club_id, identityMap, profileMap, guestMap)
 
   const enriched: MatchParticipantEnriched[] = participants.map(p => {
-    const profileDisplay = p.user_id ? profileDisplayMap.get(p.user_id) : null
+    const linkedUserId = p.guest_id ? participantLinkedToUser.get(p.id) : null
+    const effectiveUserId = p.user_id ?? linkedUserId
+    const profileDisplay = effectiveUserId ? profileDisplayMap.get(effectiveUserId) : null
+    const displayName = effectiveUserId
+      ? (profileDisplay?.display_name ?? profileMap.get(effectiveUserId) ?? 'Unknown')
+      : resolve(p.user_id, p.guest_id)
     return {
       ...p,
-      display_name: resolve(p.user_id, p.guest_id),
+      display_name: displayName,
       avatar_url: profileDisplay?.avatar_url ?? null,
     }
   })

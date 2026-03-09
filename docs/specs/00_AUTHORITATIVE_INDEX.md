@@ -40,11 +40,12 @@ They may exist for backward compatibility but:
 
 2.4 Restart Doctrine
 
-- Re-entry is permitted ONLY through:
-  - rpc_match_request_join (user restart)
+- Re-entry is permitted through:
+  - rpc_match_request_join (user restart; caller in scope)
   - rpc_match_invite_user (organizer restart)
-- Nominate or delegate-confirm MUST NOT reactivate removed participants.
-- No other reactivation RPCs are permitted.
+  - rpc_match_nominate_user (non-organizer, same ShareGroup; re-activates removed user as nominated)
+- Delegate-confirm does not itself re-entry; rpc_match_delegate_confirm_user can re-entry a removed user (then they Accept, org Approves).
+- Full flows and scope: see **Match_Participation_Flows_and_Scope.md**.
 
 2.5 ShareGroup Boundary
 

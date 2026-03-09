@@ -248,24 +248,31 @@ CREATE OR REPLACE FUNCTION "public"."fn_match_detail_change_reconfirm"() RETURNS
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+DECLARE
+  v_id uuid;
 BEGIN
   IF (
     OLD.match_date          IS DISTINCT FROM NEW.match_date
     OR OLD.start_time       IS DISTINCT FROM NEW.start_time
     OR OLD.duration_minutes IS DISTINCT FROM NEW.duration_minutes
+    OR OLD.club_id          IS DISTINCT FROM NEW.club_id
+    OR OLD.court_ids        IS DISTINCT FROM NEW.court_ids
   ) THEN
-    UPDATE public.match_participants
-    SET
-      status               = 'pending',
-      participant_accepted_at  = NULL,
-      participant_accepted_via = NULL,
-      manual_confirmed_by      = NULL,
-      confirmed_at             = NULL
-    WHERE
-      match_id   = NEW.id
-      AND removed_at IS NULL
-      AND user_id IS NOT NULL
-      AND user_id IS DISTINCT FROM NEW.organizer_id;
+    FOR v_id IN
+      UPDATE public.match_participants mp
+      SET
+        participant_accepted_at  = NULL,
+        participant_accepted_via = NULL,
+        manual_confirmed_by     = NULL,
+        confirmed_at            = NULL
+      WHERE mp.match_id = NEW.id
+        AND mp.removed_at IS NULL
+        AND mp.confirmed_at IS NOT NULL
+        AND (mp.user_id IS NULL OR mp.user_id IS DISTINCT FROM NEW.organizer_id)
+      RETURNING mp.id
+    LOOP
+      PERFORM public.match_participant_reconcile_status(v_id);
+    END LOOP;
   END IF;
 
   RETURN NEW;
@@ -276,7 +283,7 @@ $$;
 ALTER FUNCTION "public"."fn_match_detail_change_reconfirm"() OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."fn_match_detail_change_reconfirm"() IS 'v1.6.3: On match schedule/location change, reset confirmed participants (user and guest): clear participant_accepted_at/confirmed_at (org_approved_at preserved). Status is derived by match_participant_reconcile_status; no direct status writes.';
+COMMENT ON FUNCTION "public"."fn_match_detail_change_reconfirm"() IS 'v1.7: On match schedule/location change, reset all confirmed participants (users and contact players/guests) to pending. Organizer row excluded. org_approved_at preserved; reconcile derives status.';
 
 
 
@@ -629,10 +636,9 @@ BEGIN
     RAISE EXCEPTION 'Participant % not found', p_mp_id;
   END IF;
 
-  -- 1) Removed: canonical removal path (user + guest 一致)
-  IF v_mp.removed_at IS NOT NULL
-     OR v_mp.status = 'removed'::public.match_participant_status
-  THEN
+  -- 1) Removed: only when removed_at IS NOT NULL (canonical). Re-entry clears removed_at
+  --    so we must not treat status='removed' alone as removed here.
+  IF v_mp.removed_at IS NOT NULL THEN
     UPDATE public.match_participants
     SET status       = 'removed'::public.match_participant_status,
         confirmed_at = NULL,
@@ -666,7 +672,7 @@ BEGIN
     RETURN;
   END IF;
 
-  -- 3) Pending fallback（只要还没 removed 且不满足 confirmed，就一律 pending）
+  -- 3) Pending: not removed (removed_at NULL) and not both accepted+approved
   UPDATE public.match_participants
   SET status       = 'pending'::public.match_participant_status,
       confirmed_at = NULL
@@ -684,7 +690,7 @@ $$;
 ALTER FUNCTION "public"."match_participant_reconcile_status"("p_mp_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."match_participant_reconcile_status"("p_mp_id" "uuid") IS 'v1.7: Unified confirmation invariant for users and guests. removed_at ⇒ status=removed; confirmed ⇔ participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL; else status=pending. confirmed_at is derived from timestamps, never written directly by callers.';
+COMMENT ON FUNCTION "public"."match_participant_reconcile_status"("p_mp_id" "uuid") IS 'v1.7: removed_at is canonical for removed; status=removed alone is not (allows re-entry to set pending). confirmed ⇔ participant_accepted_at AND org_approved_at.';
 
 
 
@@ -1599,29 +1605,12 @@ COMMENT ON FUNCTION "public"."rpc_match_accept_invite"("p_match_id" "uuid") IS '
 
 
 
-CREATE OR REPLACE FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-BEGIN
-  RAISE EXCEPTION 'deprecated_use_nominate_guest_model';
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") IS 'v1.5: ORG adds a guest. join_method=manual. participant_accepted_at=now() + via=manual + org_approved_at=now(). Reconcile confirms guest immediately (both sides satisfied).';
-
-
-
 CREATE OR REPLACE FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text", "p_note" "text" DEFAULT NULL::"text") RETURNS "public"."match_participants"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
 BEGIN
-  RAISE EXCEPTION 'deprecated_use_nominate_guest_model';
+  RAISE EXCEPTION 'deprecated_use_nominate_guest_model: use rpc_match_nominate_guest instead';
 END;
 $$;
 
@@ -1629,20 +1618,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-BEGIN
-  RAISE EXCEPTION 'deprecated_use_nominate_guest_model';
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") IS 'v1.5: Non-removed participant adds a guest. join_method=manual. participant_accepted_at=now() + via=manual. org_approved_at=NULL (pending ORG approval). Permission: non-removed participant (pending or confirmed) + can_participants_add_guests.';
+COMMENT ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") IS 'DEPRECATED. Use rpc_match_nominate_guest. Old direct-confirmed path conflicted with nominate flow.';
 
 
 
@@ -1651,7 +1627,7 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_add_guest_participant"("p_match_i
     SET "search_path" TO 'public'
     AS $$
 BEGIN
-  RAISE EXCEPTION 'deprecated_use_nominate_guest_model';
+  RAISE EXCEPTION 'deprecated_use_nominate_guest_model: use rpc_match_nominate_guest instead';
 END;
 $$;
 
@@ -1659,7 +1635,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") IS 'v1.6.3: Participant adds a guest. No direct status writes; reconcile derives status from timestamps.';
+COMMENT ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") IS 'DEPRECATED. Use rpc_match_nominate_guest. Old direct-confirmed path conflicted with nominate flow.';
 
 
 
@@ -2114,12 +2090,16 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_matc
     SET "search_path" TO 'public'
     AS $$
 BEGIN
-  RAISE EXCEPTION 'deprecated_use_nominate_guest_model';
+  RAISE EXCEPTION 'deprecated_use_nominate_guest_model: use rpc_match_nominate_guest instead';
 END;
 $$;
 
 
 ALTER FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid") IS 'DEPRECATED. Use rpc_match_nominate_guest. Old path conflicted with nominate flow.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."rpc_match_invite_targets"("p_match_id" "uuid") RETURNS TABLE("user_id" "uuid", "display_name" "text")
@@ -3154,6 +3134,30 @@ $$;
 ALTER FUNCTION "public"."rpc_profile_init"("p_display_name" "text", "p_first_name" "text", "p_last_name" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."rpc_profile_set_avatar_url"("p_avatar_url" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  UPDATE public.profiles
+  SET avatar_url = NULLIF(trim(p_avatar_url), ''),
+      updated_at = now()
+  WHERE id = auth.uid();
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_profile_set_avatar_url"("p_avatar_url" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_profile_set_avatar_url"("p_avatar_url" "text") IS 'v1.8: Set the current user avatar URL (from storage). NULL to clear.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."rpc_profile_set_display_name"("p_display_name" "text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -3238,6 +3242,35 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_profile_update"("p_first_name" "text" DEFAULT NULL::"text", "p_last_name" "text" DEFAULT NULL::"text", "p_contact_channel" "text" DEFAULT NULL::"text", "p_contact_email" "text" DEFAULT NULL::"text", "p_contact_phone" "text" DEFAULT NULL::"text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  UPDATE public.profiles
+  SET
+    first_name      = CASE WHEN p_first_name IS NOT NULL THEN NULLIF(trim(p_first_name), '') ELSE first_name END,
+    last_name       = CASE WHEN p_last_name IS NOT NULL THEN NULLIF(trim(p_last_name), '') ELSE last_name END,
+    contact_channel = CASE WHEN p_contact_channel IN ('email','sms') THEN p_contact_channel ELSE contact_channel END,
+    contact_email   = CASE WHEN p_contact_email IS NOT NULL THEN NULLIF(trim(p_contact_email), '') ELSE contact_email END,
+    contact_phone   = CASE WHEN p_contact_phone IS NOT NULL THEN NULLIF(trim(p_contact_phone), '') ELSE contact_phone END,
+    updated_at      = now()
+  WHERE id = auth.uid();
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") IS 'v1.7: Update profile. contact_channel: email|sms. contact_email: override or NULL to use auth email. contact_phone for SMS.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."guests" (
@@ -4274,16 +4307,33 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "secondary_club_ids" "uuid"[] DEFAULT '{}'::"uuid"[] NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "is_super_admin" boolean DEFAULT false NOT NULL
+    "is_super_admin" boolean DEFAULT false NOT NULL,
+    "contact_channel" "text" DEFAULT 'email'::"text" NOT NULL,
+    "contact_email" "text",
+    "contact_phone" "text",
+    CONSTRAINT "profiles_contact_channel_check" CHECK (("contact_channel" = ANY (ARRAY['email'::"text", 'sms'::"text"])))
 );
 
 
 ALTER TABLE "public"."profiles" OWNER TO "postgres";
 
 
+COMMENT ON COLUMN "public"."profiles"."contact_channel" IS 'Preferred contact channel: email or sms';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."contact_email" IS 'Contact email. NULL = use auth.users.email. User can override in profile.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."contact_phone" IS 'Contact phone for SMS. Used when contact_channel=sms';
+
+
+
 CREATE OR REPLACE VIEW "public"."profile_display" AS
  SELECT "id",
-    "display_name"
+    "display_name",
+    "avatar_url"
    FROM "public"."profiles";
 
 
@@ -5566,21 +5616,9 @@ GRANT ALL ON FUNCTION "public"."rpc_match_accept_invite"("p_match_id" "uuid") TO
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text") TO "service_role";
 
 
 
@@ -5710,6 +5748,12 @@ GRANT ALL ON FUNCTION "public"."rpc_profile_init"("p_display_name" "text", "p_fi
 
 
 
+GRANT ALL ON FUNCTION "public"."rpc_profile_set_avatar_url"("p_avatar_url" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_profile_set_avatar_url"("p_avatar_url" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_profile_set_avatar_url"("p_avatar_url" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."rpc_profile_set_display_name"("p_display_name" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_profile_set_display_name"("p_display_name" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_profile_set_display_name"("p_display_name" "text") TO "service_role";
@@ -5725,6 +5769,12 @@ GRANT ALL ON FUNCTION "public"."rpc_profile_set_primary_club"("p_club_id" "uuid"
 GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") TO "service_role";
 
 
 

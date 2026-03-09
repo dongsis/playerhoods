@@ -66,10 +66,18 @@ export function ContactsPanel() {
     const supabase = createSupabaseBrowserClient()
     try {
       // Step 1: Create guest + auto-bookmark
+      const emailVal = email.trim() || null
+      const phoneVal = phone.trim() || null
+      if (!emailVal && !phoneVal) {
+        setError('Please enter either email or phone number.')
+        setCreating(false)
+        return
+      }
+
       const newGuest = await createRosterGuest(supabase, {
         display_name: displayName.trim(),
-        email: email.trim() || null,
-        phone: phone.trim() || null,
+        email: emailVal,
+        phone: phoneVal,
         notes: notes.trim() || null,
       })
 
@@ -151,7 +159,7 @@ export function ContactsPanel() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="Optional"
+                placeholder="Email or phone required"
                 style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
               />
             </div>
@@ -161,11 +169,12 @@ export function ContactsPanel() {
                 type="tel"
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
-                placeholder="Optional"
+                placeholder="Email or phone required"
                 style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
               />
             </div>
           </div>
+          <p style={{ fontSize: '0.75rem', color: '#666', margin: '-0.25rem 0 0.5rem' }}>At least one of email or phone is required.</p>
           <div style={{ marginBottom: '0.5rem' }}>
             <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.2rem', color: '#555' }}>Notes</label>
             <input
@@ -194,7 +203,7 @@ export function ContactsPanel() {
             </div>
           )}
           {error && <p style={{ color: 'red', fontSize: '0.8rem', margin: '0 0 0.5rem' }}>{error}</p>}
-          <button type="submit" disabled={creating || !displayName.trim()} style={{ padding: '0.4rem 1rem' }}>
+          <button type="submit" disabled={creating || !displayName.trim() || (!email.trim() && !phone.trim())} style={{ padding: '0.4rem 1rem' }}>
             {creating ? 'Creating...' : 'Create Contact Player'}
           </button>
         </form>

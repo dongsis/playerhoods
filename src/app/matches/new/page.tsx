@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { createMatch } from '@/lib/api/matches'
+import { createMatch, nominateGuest } from '@/lib/api/matches'
+import { createRosterGuest } from '@/lib/api/roster'
 import { getGroups } from '@/lib/api/groups'
 import type { Group } from '@/lib/types/database'
+
+type GuestDraft = { displayName: string; email: string; phone: string }
 
 export default function NewMatchPage() {
   const [requiredCount, setRequiredCount] = useState(4)
@@ -21,12 +24,31 @@ export default function NewMatchPage() {
   const [groups, setGroups] = useState<Group[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [contactPlayers, setContactPlayers] = useState<GuestDraft[]>([])
+  const [newGuestName, setNewGuestName] = useState('')
+  const [newGuestEmail, setNewGuestEmail] = useState('')
+  const [newGuestPhone, setNewGuestPhone] = useState('')
   const router = useRouter()
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient()
     getGroups(supabase).then(setGroups).catch(console.error)
   }, [])
+
+  const addContactPlayer = () => {
+    const name = newGuestName.trim()
+    const email = newGuestEmail.trim()
+    const phone = newGuestPhone.trim()
+    if (!name || (!email && !phone)) return
+    setContactPlayers(prev => [...prev, { displayName: name, email, phone }])
+    setNewGuestName('')
+    setNewGuestEmail('')
+    setNewGuestPhone('')
+  }
+
+  const removeContactPlayer = (i: number) => {
+    setContactPlayers(prev => prev.filter((_, j) => j !== i))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,6 +69,16 @@ export default function NewMatchPage() {
         can_participants_add_guests: canAddGuests,
         can_participants_manage_participants: canManage,
       })
+
+      for (const g of contactPlayers) {
+        const guest = await createRosterGuest(supabase, {
+          display_name: g.displayName,
+          email: g.email || null,
+          phone: g.phone || null,
+        })
+        await nominateGuest(supabase, match.id, guest.id)
+      }
+
       router.push(`/matches/${match.id}`)
     } catch (err: unknown) {
       const message = (err as { message?: string })?.message || 'Failed to create match'
@@ -174,6 +206,54 @@ export default function NewMatchPage() {
               {g.name}
             </label>
           ))}
+        </fieldset>
+
+        <fieldset style={{ marginBottom: '1.5rem', padding: '1rem' }}>
+          <legend>Add Contact Players</legend>
+          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: 0 }}>
+            Add non-registered players. Each needs at least email or phone.
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              placeholder="Name *"
+              value={newGuestName}
+              onChange={e => setNewGuestName(e.target.value)}
+              style={{ width: '120px', padding: '0.5rem', boxSizing: 'border-box' }}
+            />
+            <input
+              type="email"
+              placeholder="Email"
+              value={newGuestEmail}
+              onChange={e => setNewGuestEmail(e.target.value)}
+              style={{ width: '140px', padding: '0.5rem', boxSizing: 'border-box' }}
+            />
+            <input
+              type="tel"
+              placeholder="Phone"
+              value={newGuestPhone}
+              onChange={e => setNewGuestPhone(e.target.value)}
+              style={{ width: '120px', padding: '0.5rem', boxSizing: 'border-box' }}
+            />
+            <button
+              type="button"
+              onClick={addContactPlayer}
+              disabled={!newGuestName.trim() || (!newGuestEmail.trim() && !newGuestPhone.trim())}
+              style={{ padding: '0.5rem 0.8rem' }}
+            >
+              Add
+            </button>
+          </div>
+          {contactPlayers.length > 0 && (
+            <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem', fontSize: '0.9rem' }}>
+              {contactPlayers.map((g, i) => (
+                <li key={i} style={{ marginBottom: '0.25rem' }}>
+                  {g.displayName} — {g.email || g.phone || ''}
+                  <button type="button" onClick={() => removeContactPlayer(i)} style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </fieldset>
 
         <fieldset style={{ marginBottom: '1.5rem', padding: '1rem' }}>
