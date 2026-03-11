@@ -4461,7 +4461,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status, admission_mode,
+      organizer_id, status,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -4469,7 +4469,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active', 'invite',
+      ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '10:00'::time, 90,
       'v161_test_nominate', 4,
@@ -4530,7 +4530,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status, admission_mode,
+      organizer_id, status,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -4538,7 +4538,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active', 'invite',
+      ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '11:00'::time, 90,
       'v161_test_org_manual_confirm', 4,
@@ -4602,7 +4602,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status, admission_mode,
+      organizer_id, status,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -4610,7 +4610,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active', 'invite',
+      ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '12:00'::time, 90,
       'v161_test_delegate_manual_confirm', 4,
@@ -4705,7 +4705,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status, admission_mode,
+      organizer_id, status,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -4713,7 +4713,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active', 'invite',
+      ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '13:00'::time, 90,
       'v161_test_match_associated_any_row', 4,
