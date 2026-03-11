@@ -63,7 +63,8 @@
 
 | RPC | Caller Gate（谓词） | Target Gate（如适用） |
 |-----|---------------------|------------------------|
-| `rpc_match_invite_user` | `can_invite_user(match_id, auth.uid())` | `can_invite_target(match_id, target_user_id)` |
+| `rpc_match_invite_user` | Organizer wrapper → delegates to `rpc_match_admit_user` | — |
+| `rpc_match_admit_user` | `can_admit_user_to_match(match_id, auth.uid(), target)` | — |
 | `rpc_match_request_join` | `is_user_in_match_scope(match_id, auth.uid())` | — |
 | `rpc_match_nominate_user` | `can_nominate_user(match_id, auth.uid())` | `do_users_share_group(auth.uid(), target)` AND target 非 match_associated |
 | `rpc_match_nominate_guest` | `can_nominate_guest(match_id, auth.uid())` | guest in roster |
@@ -71,13 +72,10 @@
 | `rpc_match_org_approve_participant` | `is_match_organizer(match_id, auth.uid())` | — |
 | `rpc_match_manual_confirm` | `is_match_organizer(match_id, auth.uid())` | — |
 | `rpc_match_manual_confirm_user` | `is_match_organizer(match_id, auth.uid())` | `can_invite_target(match_id, target)` |
-| `rpc_match_delegate_confirm_participant` | `can_delegate_confirm_user(match_id, auth.uid())` | `do_users_share_group(auth.uid(), participant)` |
-| `rpc_match_delegate_confirm_guest` | `is_user_match_associated(match_id, auth.uid())`（任意参与者） | — |
-| `rpc_match_delegate_confirm_user` (re-entry) | `can_delegate_confirm_user` | `do_users_share_group` |
+| `rpc_match_delegate_confirm_participant` | **User:** `can_delegate_confirm_user`; **Guest:** `is_user_match_associated` | User: `do_users_share_group`; Guest: — |
 | `rpc_match_remove_participant` | `is_match_organizer` OR `can_manage_participants` | — |
 | `rpc_match_user_withdraw` | 自己是参与者 | — |
 | `rpc_match_admission_targets` | organizer OR (can_participants_invite + InScope/MatchAssociated) | — |
-| `rpc_match_delegate_manual_confirm_targets` | `can_delegate_confirm_user` | — |
 
 ### Group RPCs
 

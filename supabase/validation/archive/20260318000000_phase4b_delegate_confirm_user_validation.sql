@@ -1,5 +1,8 @@
 -- =============================================================================
 -- Phase 4B validation: delegate confirm user helpers and RPC behavior
+-- ARCHIVED 2026-03-21: Phase4B helpers and rpc_match_delegate_confirm_user,
+-- rpc_match_delegate_manual_confirm_targets dropped in delegate simplify.
+-- See 20260321000000_delegate_simplify_validation.sql for current checks.
 -- =============================================================================
 
 -- 1) can_delegate_confirm_user_caller exists

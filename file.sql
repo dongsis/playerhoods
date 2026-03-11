@@ -109,169 +109,6 @@ CREATE TYPE "public"."match_status" AS ENUM (
 
 ALTER TYPE "public"."match_status" OWNER TO "postgres";
 
-SET default_tablespace = '';
-
-SET default_table_access_method = "heap";
-
-
-CREATE TABLE IF NOT EXISTS "public"."match_participants" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "match_id" "uuid" NOT NULL,
-    "status" "public"."match_participant_status" DEFAULT 'pending'::"public"."match_participant_status" NOT NULL,
-    "join_method" "public"."match_join_method" NOT NULL,
-    "user_id" "uuid",
-    "guest_id" "uuid",
-    "created_by" "uuid" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "confirmed_at" timestamp with time zone,
-    "removed_at" timestamp with time zone,
-    "org_approved_at" timestamp with time zone,
-    "org_approved_by" "uuid",
-    "nominated_by" "uuid",
-    "removed_by" "uuid",
-    "removal_note" "text",
-    "participant_accepted_at" timestamp with time zone,
-    "participant_accepted_via" "text",
-    "manual_confirmed_by" "uuid",
-    CONSTRAINT "chk_participant_accepted_via" CHECK ((("participant_accepted_via" IS NULL) OR ("participant_accepted_via" = ANY (ARRAY['in_app'::"text", 'manual'::"text", 'delegate_manual'::"text", 'email_invitation'::"text"])))),
-    CONSTRAINT "match_participants_exactly_one_identity" CHECK (((("user_id" IS NOT NULL) AND ("guest_id" IS NULL)) OR (("user_id" IS NULL) AND ("guest_id" IS NOT NULL))))
-);
-
-
-ALTER TABLE "public"."match_participants" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."match_participants"."org_approved_at" IS 'v1.3: Timestamp when organizer approved this participant. NULL = not yet approved. Required for all participants to become confirmed.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."org_approved_by" IS 'v1.3: User ID of the organizer who approved this participant. NULL if not yet approved.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."nominated_by" IS 'v1.3: User ID of the participant who nominated this user (for join_method=requested with nomination). NULL if not nominated or if direct request/invite.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."removed_by" IS 'v1.3 CRITICAL: User ID who removed this participant. Must be set when status=removed. Used to distinguish user-withdrawal vs org-removal for reactivation logic.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."removal_note" IS 'v1.3: Optional note explaining why participant was removed (e.g., "declined", "rejected", "capacity reached").';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."participant_accepted_at" IS 'v1.5: Participant-side confirmation timestamp. Replaces user_accepted_at. Written by: rpc_match_accept_invite (in_app), rpc_match_manual_confirm (manual). Never written directly by UI or non-RPC code.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."participant_accepted_via" IS 'v1.5: How participant confirmed. in_app = user clicked Accept; manual = organizer confirmed on their behalf. Must be set whenever participant_accepted_at is set. Cleared on reconfirm.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."manual_confirmed_by" IS 'v1.5: User ID of organizer who manually confirmed this participant. Set only when participant_accepted_via = ''manual''. Cleared on reconfirm.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_state   text;
-  v_existing public.match_participants%rowtype;
-  v_new_mp   public.match_participants%rowtype;
-  v_constraint text;
-BEGIN
-  v_state := public.get_delegate_user_target_state(p_match_id, p_target_user_id);
-
-  IF v_state = 'active_present' THEN
-    RAISE EXCEPTION 'User is already a participant in this match';
-  END IF;
-
-  IF v_state = 'removed_present' THEN
-    SELECT * INTO v_existing
-    FROM public.match_participants
-    WHERE match_id = p_match_id AND user_id = p_target_user_id AND status = 'removed'
-    ORDER BY created_at DESC
-    LIMIT 1
-    FOR UPDATE;
-
-    IF NOT FOUND THEN
-      RAISE EXCEPTION 'removed_participant_not_found';
-    END IF;
-
-    UPDATE public.match_participants
-    SET
-      removed_at               = NULL,
-      removed_by               = NULL,
-      removal_note             = NULL,
-      confirmed_at             = NULL,
-      join_method              = 'nominated',
-      participant_accepted_at  = now(),
-      participant_accepted_via = 'delegate_manual',
-      org_approved_at          = NULL,
-      org_approved_by          = NULL,
-      nominated_by             = p_actor_id,
-      manual_confirmed_by      = p_actor_id
-    WHERE id = v_existing.id;
-
-    PERFORM public.match_participant_reconcile_status(v_existing.id);
-
-    INSERT INTO public.match_participant_actions
-      (match_id, match_participant_id, action_type, note, created_by)
-    VALUES
-      (p_match_id, v_existing.id, 'reenter',                 NULL, p_actor_id),
-      (p_match_id, v_existing.id, 'delegate_manual_confirm', NULL, p_actor_id);
-
-    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
-    RETURN v_new_mp;
-  END IF;
-
-  -- v_state = 'absent' → fresh insert
-  BEGIN
-    INSERT INTO public.match_participants (
-      match_id, user_id, join_method,
-      participant_accepted_at, participant_accepted_via,
-      org_approved_at, org_approved_by,
-      nominated_by, manual_confirmed_by,
-      created_by
-    ) VALUES (
-      p_match_id, p_target_user_id, 'nominated',
-      now(), 'delegate_manual',
-      NULL, NULL,
-      p_actor_id, p_actor_id,
-      p_actor_id
-    )
-    RETURNING * INTO v_new_mp;
-  EXCEPTION
-    WHEN unique_violation THEN
-      GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
-      IF v_constraint = 'uq_match_participants_active_user' THEN
-        RAISE EXCEPTION 'User is already a participant in this match';
-      ELSE
-        RAISE;
-      END IF;
-  END;
-
-  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
-
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (p_match_id, v_new_mp.id, 'delegate_manual_confirm', NULL, p_actor_id);
-
-  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
-  RETURN v_new_mp;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 4B: Write helper for delegate confirm user. active_present→reject; removed_present→re-entry; absent→fresh insert.';
-
-
 
 CREATE OR REPLACE FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -390,126 +227,6 @@ COMMENT ON FUNCTION "public"."can_admit_user_to_match"("p_match_id" "uuid", "p_a
 
 
 
-CREATE OR REPLACE FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") RETURNS boolean
-    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_match public.matches%rowtype;
-BEGIN
-  IF p_actor_id IS NULL THEN
-    RETURN false;
-  END IF;
-
-  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN
-    RETURN false;
-  END IF;
-
-  IF v_match.status <> 'active' THEN
-    RETURN false;
-  END IF;
-
-  IF public.is_match_organizer(p_match_id, p_actor_id) THEN
-    RETURN false;
-  END IF;
-
-  IF NOT public.is_user_in_scope_groups(
-    COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]),
-    p_actor_id
-  )
-  AND NOT public.is_user_match_associated(p_match_id, p_actor_id) THEN
-    RETURN false;
-  END IF;
-
-  RETURN true;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") IS 'Phase 4B: Caller gate for delegate confirm user. Non-org + (InScope OR MatchAssociated) + match active.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") RETURNS boolean
-    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-BEGIN
-  IF p_actor_id IS NULL OR p_target_user_id IS NULL THEN
-    RETURN false;
-  END IF;
-  IF NOT public.can_delegate_confirm_user_caller(p_match_id, p_actor_id) THEN
-    RETURN false;
-  END IF;
-  IF p_target_user_id = p_actor_id THEN
-    RETURN false;
-  END IF;
-  IF public.is_user_match_associated(p_match_id, p_target_user_id) THEN
-    RETURN false;
-  END IF;
-  IF NOT public.do_users_share_group(p_target_user_id, p_actor_id) THEN
-    RETURN false;
-  END IF;
-  RETURN true;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 4B: Boolean gate for delegate confirm user target. Use check_delegate_confirm_user_target when you need specific exceptions.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."can_invite_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") RETURNS boolean
-    LANGUAGE "sql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.matches m
-    JOIN public.profiles p_target ON p_target.id = p_target_user_id
-    WHERE m.id = p_match_id
-      AND m.status = 'active'
-      AND p_target_user_id <> m.organizer_id
-      AND p_actor_id = m.organizer_id
-      AND NOT public.is_user_match_associated(p_match_id, p_target_user_id)
-      AND (
-        -- Re-entry: target has removed row → allow
-        EXISTS (
-          SELECT 1 FROM public.match_participants mp
-          WHERE mp.match_id = p_match_id AND mp.user_id = p_target_user_id
-            AND mp.status = 'removed'
-        )
-        OR
-        -- Path A: group-based (InScope OR ShareGroup)
-        (
-          public.is_user_in_scope_groups(
-            COALESCE(m.invitation_scope_group_ids, '{}'::uuid[]),
-            p_target_user_id
-          )
-          OR public.do_users_share_group(p_target_user_id, m.organizer_id)
-        )
-        OR
-        -- Path B: non-group direct (Club Members / Invite Circle)
-        (p_target.allow_non_group_invites = true)
-      )
-  );
-$$;
-
-
-ALTER FUNCTION "public"."can_invite_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."can_invite_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 1: Authoritative predicate for direct match invite. Path A: InScope OR ShareGroup. Path B: allow_non_group_invites (Club Members / Invite Circle). Re-entry always allowed. SECURITY DEFINER. Internal RPC use only.';
-
-
-
 CREATE OR REPLACE FUNCTION "public"."can_invite_users"("p_match_id" "uuid", "p_user_id" "uuid") RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -540,60 +257,6 @@ $$;
 
 
 ALTER FUNCTION "public"."can_manage_participants"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") RETURNS "void"
-    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_match public.matches%rowtype;
-BEGIN
-  IF p_actor_id IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
-
-  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Match not found';
-  END IF;
-
-  IF v_match.status <> 'active' THEN
-    RAISE EXCEPTION 'Match is not active (status: %)', v_match.status;
-  END IF;
-
-  IF public.is_match_organizer(p_match_id, p_actor_id) THEN
-    RAISE EXCEPTION 'You are not authorized to delegate-confirm for this match';
-  END IF;
-
-  IF NOT public.is_user_in_scope_groups(
-    COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]),
-    p_actor_id
-  )
-  AND NOT public.is_user_match_associated(p_match_id, p_actor_id) THEN
-    RAISE EXCEPTION 'You are not authorized to delegate-confirm for this match';
-  END IF;
-
-  IF p_target_user_id = p_actor_id THEN
-    RAISE EXCEPTION 'Cannot delegate-confirm yourself';
-  END IF;
-
-  IF public.is_user_match_associated(p_match_id, p_target_user_id) THEN
-    RAISE EXCEPTION 'User is already a participant in this match';
-  END IF;
-
-  IF NOT public.do_users_share_group(p_target_user_id, p_actor_id) THEN
-    RAISE EXCEPTION 'Target user is not in your shared groups';
-  END IF;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 4B: Full gate for delegate confirm user target. Raises on failure. Includes caller gate + no self + target not active + ShareGroup.';
-
 
 
 CREATE OR REPLACE FUNCTION "public"."compute_match_start_at_utc"() RETURNS "trigger"
@@ -755,36 +418,6 @@ ALTER FUNCTION "public"."fn_match_detail_change_reconfirm"() OWNER TO "postgres"
 
 
 COMMENT ON FUNCTION "public"."fn_match_detail_change_reconfirm"() IS 'v1.7: On match schedule/location change, reset all confirmed participants (users and contact players/guests) to pending. Organizer row excluded. org_approved_at preserved; reconcile derives status.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") RETURNS "text"
-    LANGUAGE "sql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-  SELECT
-    CASE
-      WHEN EXISTS (
-        SELECT 1 FROM public.match_participants mp
-        WHERE mp.match_id = p_match_id
-          AND mp.user_id = p_target_user_id
-          AND mp.status IN ('pending', 'confirmed')
-      ) THEN 'active_present'
-      WHEN EXISTS (
-        SELECT 1 FROM public.match_participants mp
-        WHERE mp.match_id = p_match_id
-          AND mp.user_id = p_target_user_id
-          AND mp.status = 'removed'
-      ) THEN 'removed_present'
-      ELSE 'absent'
-    END;
-$$;
-
-
-ALTER FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 4B: Target state for delegate confirm. active_present | removed_present | absent.';
 
 
 
@@ -1271,6 +904,10 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") OWNER TO "postgres";
+
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
 
 
 CREATE TABLE IF NOT EXISTS "public"."clubs" (
@@ -2547,6 +2184,65 @@ COMMENT ON FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" "u
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."match_participants" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "match_id" "uuid" NOT NULL,
+    "status" "public"."match_participant_status" DEFAULT 'pending'::"public"."match_participant_status" NOT NULL,
+    "join_method" "public"."match_join_method" NOT NULL,
+    "user_id" "uuid",
+    "guest_id" "uuid",
+    "created_by" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "confirmed_at" timestamp with time zone,
+    "removed_at" timestamp with time zone,
+    "org_approved_at" timestamp with time zone,
+    "org_approved_by" "uuid",
+    "nominated_by" "uuid",
+    "removed_by" "uuid",
+    "removal_note" "text",
+    "participant_accepted_at" timestamp with time zone,
+    "participant_accepted_via" "text",
+    "manual_confirmed_by" "uuid",
+    CONSTRAINT "chk_participant_accepted_via" CHECK ((("participant_accepted_via" IS NULL) OR ("participant_accepted_via" = ANY (ARRAY['in_app'::"text", 'manual'::"text", 'delegate_manual'::"text", 'email_invitation'::"text"])))),
+    CONSTRAINT "match_participants_exactly_one_identity" CHECK (((("user_id" IS NOT NULL) AND ("guest_id" IS NULL)) OR (("user_id" IS NULL) AND ("guest_id" IS NOT NULL))))
+);
+
+
+ALTER TABLE "public"."match_participants" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."match_participants"."org_approved_at" IS 'v1.3: Timestamp when organizer approved this participant. NULL = not yet approved. Required for all participants to become confirmed.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."org_approved_by" IS 'v1.3: User ID of the organizer who approved this participant. NULL if not yet approved.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."nominated_by" IS 'v1.3: User ID of the participant who nominated this user (for join_method=requested with nomination). NULL if not nominated or if direct request/invite.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."removed_by" IS 'v1.3 CRITICAL: User ID who removed this participant. Must be set when status=removed. Used to distinguish user-withdrawal vs org-removal for reactivation logic.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."removal_note" IS 'v1.3: Optional note explaining why participant was removed (e.g., "declined", "rejected", "capacity reached").';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."participant_accepted_at" IS 'v1.5: Participant-side confirmation timestamp. Replaces user_accepted_at. Written by: rpc_match_accept_invite (in_app), rpc_match_manual_confirm (manual). Never written directly by UI or non-RPC code.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."participant_accepted_via" IS 'v1.5: How participant confirmed. in_app = user clicked Accept; manual = organizer confirmed on their behalf. Must be set whenever participant_accepted_at is set. Cleared on reconfirm.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."manual_confirmed_by" IS 'v1.5: User ID of organizer who manually confirmed this participant. Set only when participant_accepted_via = ''manual''. Cleared on reconfirm.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") RETURNS "public"."match_participants"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -3166,60 +2862,6 @@ COMMENT ON FUNCTION "public"."rpc_match_create"("p_required_count" integer, "p_g
 
 
 
-CREATE OR REPLACE FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_uid uuid := auth.uid();
-  v_mp  public.match_participants%rowtype;
-  v_match public.matches%rowtype;
-  v_guest_email text;
-  v_evt_id uuid;
-BEGIN
-  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
-
-  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Participant not found'; END IF;
-  IF v_mp.guest_id IS NULL THEN RAISE EXCEPTION 'not_guest_participant'; END IF;
-  IF v_mp.removed_at IS NOT NULL THEN RAISE EXCEPTION 'Cannot confirm a removed participant'; END IF;
-  IF NOT public.is_user_match_associated(v_mp.match_id, v_uid) THEN
-    RAISE EXCEPTION 'You are not a participant in this match';
-  END IF;
-  IF v_mp.participant_accepted_at IS NOT NULL THEN RETURN v_mp; END IF;
-
-  PERFORM public.apply_participant_acceptance(p_match_participant_id, v_uid, false, 'delegate_manual_confirm');
-
-  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
-
-  v_guest_email := public.rpc_match_participant_email(v_mp.id);
-  IF v_guest_email IS NOT NULL THEN
-    SELECT * INTO v_match FROM public.matches WHERE id = v_mp.match_id;
-    INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
-    VALUES (
-      'match.guest_delegate_confirmed', 'match_participant', v_mp.id, v_uid,
-      jsonb_build_object(
-        'match_participant_id', v_mp.id, 'match_id', v_mp.match_id, 'target_email', v_guest_email,
-        'game_type', v_match.game_type, 'match_date', v_match.match_date,
-        'club_name', (SELECT c.name FROM public.clubs c WHERE c.id = v_match.club_id)
-      )
-    )
-    RETURNING id INTO v_evt_id;
-    PERFORM public.rpc_process_domain_event(v_evt_id);
-  END IF;
-
-  RETURN v_mp;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") IS 'v1.7: Any active participant (including organizer) confirms a guest can come. Only touches participant_accepted_at/participant_accepted_via; never writes org_approved_at. Works with rpc_match_org_approve_participant to enforce confirmed ⇔ participant_accepted_at AND org_approved_at.';
-
-
-
 CREATE OR REPLACE FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") RETURNS "public"."match_participants"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -3228,6 +2870,8 @@ DECLARE
   v_mp    public.match_participants%rowtype;
   v_match public.matches%rowtype;
   v_uid   uuid := auth.uid();
+  v_guest_email text;
+  v_evt_id uuid;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
@@ -3240,15 +2884,8 @@ BEGIN
 
   SELECT * INTO v_match FROM public.matches WHERE id = v_mp.match_id;
 
-  IF v_mp.user_id IS NULL THEN
-    RAISE EXCEPTION 'use_rpc_match_delegate_confirm_guest_for_guests';
-  END IF;
-
   IF v_mp.status <> 'pending' THEN
     RAISE EXCEPTION 'participant_not_pending_or_already_confirmed';
-  END IF;
-  IF v_mp.join_method NOT IN ('invited', 'nominated') THEN
-    RAISE EXCEPTION 'participant_not_invited_or_nominated';
   END IF;
   IF v_mp.participant_accepted_at IS NOT NULL THEN
     RETURN v_mp;
@@ -3257,11 +2894,45 @@ BEGIN
     RAISE EXCEPTION 'participant_removed';
   END IF;
 
+  IF v_mp.guest_id IS NOT NULL THEN
+    -- Guest branch: any active participant (including organizer)
+    IF NOT public.is_user_match_associated(v_mp.match_id, v_uid) THEN
+      RAISE EXCEPTION 'You are not a participant in this match';
+    END IF;
+
+    PERFORM public.apply_participant_acceptance(p_match_participant_id, v_uid, false, 'delegate_manual_confirm');
+
+    SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
+
+    -- Guest-only event emission: strictly inside guest branch
+    v_guest_email := public.rpc_match_participant_email(v_mp.id);
+    IF v_guest_email IS NOT NULL THEN
+      INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
+      VALUES (
+        'match.guest_delegate_confirmed', 'match_participant', v_mp.id, v_uid,
+        jsonb_build_object(
+          'match_participant_id', v_mp.id, 'match_id', v_mp.match_id, 'target_email', v_guest_email,
+          'game_type', v_match.game_type, 'match_date', v_match.match_date,
+          'club_name', (SELECT c.name FROM public.clubs c WHERE c.id = v_match.club_id)
+        )
+      )
+      RETURNING id INTO v_evt_id;
+      PERFORM public.rpc_process_domain_event(v_evt_id);
+    END IF;
+
+    RETURN v_mp;
+  END IF;
+
+  -- User branch: non-org, InScope OR MatchAssociated, ShareGroup
+  IF v_mp.join_method NOT IN ('invited', 'nominated') THEN
+    RAISE EXCEPTION 'participant_not_invited_or_nominated';
+  END IF;
+
   IF public.is_match_organizer(v_mp.match_id, v_uid) THEN
     RAISE EXCEPTION 'organizer_use_manual_confirm_or_approve';
   END IF;
   IF NOT (
-    public.is_user_in_scope_groups(v_match.invitation_scope_group_ids, v_uid)
+    public.is_user_in_scope_groups(COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]), v_uid)
     OR public.is_user_match_associated(v_mp.match_id, v_uid)
   ) THEN
     RAISE EXCEPTION 'not_authorized_to_delegate_confirm';
@@ -3282,83 +2953,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") IS 'v1.7: Non-org delegate-confirms an invited or nominated user participant. Sets participant_accepted_at. Caller must share group with participant and be in scope or match-associated.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_uid uuid := auth.uid();
-BEGIN
-  PERFORM public.check_delegate_confirm_user_target(p_match_id, v_uid, p_user_id);
-
-  RETURN public.apply_delegate_confirm_user_target(p_match_id, v_uid, p_user_id);
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'v1.6.3: Non-org delegate-confirms a user from friend-share groups. Fresh insert or re-entry. Sets participant_accepted_at via delegate_manual; organizer approval still required.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") RETURNS TABLE("user_id" "uuid", "display_name" "text")
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_uid uuid := auth.uid();
-BEGIN
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
-
-  IF NOT public.can_delegate_confirm_user_caller(p_match_id, v_uid) THEN
-    RETURN;
-  END IF;
-
-  RETURN QUERY
-  WITH already_active AS (
-    SELECT mp.user_id
-    FROM public.match_participants mp
-    WHERE mp.match_id = p_match_id
-      AND mp.user_id IS NOT NULL
-      AND mp.status IN ('pending', 'confirmed')
-  ),
-  shared_group_members AS (
-    SELECT DISTINCT gm_other.user_id
-    FROM public.group_members gm_caller
-    JOIN public.group_members gm_other
-      ON gm_caller.group_id = gm_other.group_id
-    JOIN public.groups g
-      ON g.id = gm_caller.group_id
-    WHERE gm_caller.user_id = v_uid
-      AND gm_caller.status = 'active'
-      AND gm_other.status = 'active'
-      AND gm_other.user_id IS NOT NULL
-      AND gm_other.user_id <> v_uid
-      AND g.group_kind = 'friend'
-  )
-  SELECT
-    sgm.user_id,
-    pd.display_name
-  FROM shared_group_members sgm
-  JOIN public.profile_display pd ON pd.id = sgm.user_id
-  WHERE sgm.user_id NOT IN (SELECT user_id FROM already_active)
-  ORDER BY pd.display_name;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") IS 'v1.6.3: Friend-group-only targets for delegate manual confirm. Caller: non-org + (InScope OR MatchAssociated). Returns empty when ineligible.';
+COMMENT ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") IS 'v1.7: Delegate-confirm an existing pending participant (user or guest). User: non-org, InScope/MatchAssociated, ShareGroup. Guest: any active participant. Sets participant_accepted_at only. Guest branch emits match.guest_delegate_confirmed.';
 
 
 
@@ -4816,7 +4411,7 @@ ALTER FUNCTION "public"."sharegroup_exists"("p_user_a" "uuid", "p_user_b" "uuid"
 CREATE OR REPLACE FUNCTION "public"."test_runner_v161"() RETURNS TABLE("test_name" "text", "ok" boolean, "details" "text", "match_id" "uuid")
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
-    AS $_$
+    AS $$
 DECLARE
   -- Fixed identities from your dataset
   ORG_UID  uuid := '1bb09aac-908c-4746-b904-81c5ff302872'; -- OldChai
@@ -4831,8 +4426,6 @@ DECLARE
 
   v_mid uuid;
   v_mp  public.match_participants%rowtype;
-
-  fn_delegate_exists boolean;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _v161_results(
     test_name text,
@@ -5005,7 +4598,7 @@ BEGIN
 
   -- ===========================================================================
   -- T03: Delegated manual confirm keeps pending (no org_approved_at)
-  -- - supports either rpc_match_delegate_confirm_user OR rpc_match_delegate_manual_confirm_user
+  -- Flow: nominate user, then delegate-confirm via rpc_match_delegate_confirm_participant
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
@@ -5027,44 +4620,26 @@ BEGIN
     )
     RETURNING public.matches.id INTO v_mid;
 
-    -- simulate caller = U3 (non-org)
+    -- U3 nominates Real
     PERFORM set_config(
       'request.jwt.claims',
       json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
       true
     );
+    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
 
-    SELECT EXISTS (
-      SELECT 1
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname='public'
-        AND p.proname IN ('rpc_match_delegate_confirm_user','rpc_match_delegate_manual_confirm_user')
-    )
-    INTO fn_delegate_exists;
+    -- U3 delegate-confirms the nominated participant
+    SELECT mp.* INTO v_mp
+    FROM public.match_participants mp
+    WHERE mp.match_id = v_mid AND mp.user_id = REAL_UID
+    ORDER BY mp.created_at DESC
+    LIMIT 1;
 
-    IF NOT fn_delegate_exists THEN
+    IF NOT FOUND THEN
       INSERT INTO _v161_results(test_name, ok, details, match_id)
-      VALUES (
-        'T03 Delegate confirm keeps pending',
-        false,
-        'missing function: public.rpc_match_delegate_confirm_user(uuid,uuid) OR public.rpc_match_delegate_manual_confirm_user(uuid,uuid)',
-        v_mid
-      );
+      VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row after nominate', v_mid);
     ELSE
-      -- Prefer canonical name if exists
-      IF EXISTS (
-        SELECT 1
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname='public' AND p.proname='rpc_match_delegate_manual_confirm_user'
-      ) THEN
-        EXECUTE 'SELECT public.rpc_match_delegate_manual_confirm_user($1,$2)'
-          USING v_mid, REAL_UID;
-      ELSE
-        EXECUTE 'SELECT public.rpc_match_delegate_confirm_user($1,$2)'
-          USING v_mid, REAL_UID;
-      END IF;
+      PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
 
       SELECT mp.* INTO v_mp
       FROM public.match_participants mp
@@ -5074,27 +4649,25 @@ BEGIN
 
       IF NOT FOUND THEN
         INSERT INTO _v161_results(test_name, ok, details, match_id)
-        VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row created', v_mid);
-      ELSE
-        IF v_mp.participant_accepted_at IS NOT NULL
+        VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row after delegate confirm', v_mid);
+      ELSIF v_mp.participant_accepted_at IS NOT NULL
            AND v_mp.participant_accepted_via::text = 'delegate_manual'
            AND v_mp.org_approved_at IS NULL
            AND v_mp.status::text = 'pending'
-        THEN
-          INSERT INTO _v161_results(test_name, ok, details, match_id)
-          VALUES ('T03 Delegate confirm keeps pending', true, 'ok', v_mid);
-        ELSE
-          INSERT INTO _v161_results(test_name, ok, details, match_id)
-          VALUES (
-            'T03 Delegate confirm keeps pending',
-            false,
-            'got status='||coalesce(v_mp.status::text,'NULL')
-            ||', participant_accepted_at='||coalesce(v_mp.participant_accepted_at::text,'NULL')
-            ||', participant_accepted_via='||coalesce(v_mp.participant_accepted_via::text,'NULL')
-            ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
-            v_mid
-          );
-        END IF;
+      THEN
+        INSERT INTO _v161_results(test_name, ok, details, match_id)
+        VALUES ('T03 Delegate confirm keeps pending', true, 'ok', v_mid);
+      ELSE
+        INSERT INTO _v161_results(test_name, ok, details, match_id)
+        VALUES (
+          'T03 Delegate confirm keeps pending',
+          false,
+          'got status='||coalesce(v_mp.status::text,'NULL')
+          ||', participant_accepted_at='||coalesce(v_mp.participant_accepted_at::text,'NULL')
+          ||', participant_accepted_via='||coalesce(v_mp.participant_accepted_via::text,'NULL')
+          ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
+          v_mid
+        );
       END IF;
     END IF;
   EXCEPTION WHEN OTHERS THEN
@@ -5181,7 +4754,7 @@ BEGIN
     ORDER BY r.test_name;
 
 END;
-$_$;
+$$;
 
 
 ALTER FUNCTION "public"."test_runner_v161"() OWNER TO "postgres";
@@ -6972,18 +6545,6 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."match_participants" TO "anon";
-GRANT ALL ON TABLE "public"."match_participants" TO "authenticated";
-GRANT ALL ON TABLE "public"."match_participants" TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") TO "service_role";
@@ -7002,24 +6563,6 @@ GRANT ALL ON FUNCTION "public"."can_admit_user_to_match"("p_match_id" "uuid", "p
 
 
 
-GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."can_invite_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."can_invite_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."can_invite_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."can_invite_users"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."can_invite_users"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."can_invite_users"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
@@ -7029,12 +6572,6 @@ GRANT ALL ON FUNCTION "public"."can_invite_users"("p_match_id" "uuid", "p_user_i
 GRANT ALL ON FUNCTION "public"."can_manage_participants"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."can_manage_participants"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."can_manage_participants"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
 
 
 
@@ -7065,12 +6602,6 @@ GRANT ALL ON FUNCTION "public"."fn_guard_participant_state"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."fn_match_detail_change_reconfirm"() TO "anon";
 GRANT ALL ON FUNCTION "public"."fn_match_detail_change_reconfirm"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."fn_match_detail_change_reconfirm"() TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
 
 
 
@@ -7194,13 +6725,11 @@ GRANT ALL ON FUNCTION "public"."rpc_admin_user_search"("p_query" "text") TO "ser
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_club_admin_grant"("p_user_id" "uuid", "p_club_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_club_admin_grant"("p_user_id" "uuid", "p_club_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_club_admin_grant"("p_user_id" "uuid", "p_club_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") TO "service_role";
 
@@ -7224,7 +6753,6 @@ GRANT ALL ON FUNCTION "public"."rpc_club_handle_check"("p_club_id" "uuid", "p_ha
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_club_handle_set"("p_club_id" "uuid", "p_new_handle" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_club_handle_set"("p_club_id" "uuid", "p_new_handle" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_club_handle_set"("p_club_id" "uuid", "p_new_handle" "text") TO "service_role";
 
@@ -7368,7 +6896,6 @@ GRANT ALL ON FUNCTION "public"."rpc_group_reject_invite"("p_group_id" "uuid") TO
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_group_set_display_name"("p_group_id" "uuid", "p_display_name" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_group_set_display_name"("p_group_id" "uuid", "p_display_name" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_group_set_display_name"("p_group_id" "uuid", "p_display_name" "text") TO "service_role";
 
@@ -7410,6 +6937,12 @@ GRANT ALL ON FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" 
 
 
 
+GRANT ALL ON TABLE "public"."match_participants" TO "anon";
+GRANT ALL ON TABLE "public"."match_participants" TO "authenticated";
+GRANT ALL ON TABLE "public"."match_participants" TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "service_role";
@@ -7428,7 +6961,6 @@ GRANT ALL ON FUNCTION "public"."rpc_match_admission_targets"("p_match_id" "uuid"
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
 
@@ -7446,67 +6978,41 @@ GRANT ALL ON TABLE "public"."matches" TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_create"("p_required_count" integer, "p_game_type" "text", "p_match_date" "date", "p_start_time" time without time zone, "p_duration_minutes" integer, "p_club_id" "uuid", "p_court_ids" "uuid"[], "p_invitation_scope_group_ids" "uuid"[], "p_can_participants_invite_users" boolean, "p_can_participants_add_guests" boolean, "p_can_participants_manage_participants" boolean) TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_create"("p_required_count" integer, "p_game_type" "text", "p_match_date" "date", "p_start_time" time without time zone, "p_duration_minutes" integer, "p_club_id" "uuid", "p_court_ids" "uuid"[], "p_invitation_scope_group_ids" "uuid"[], "p_can_participants_invite_users" boolean, "p_can_participants_add_guests" boolean, "p_can_participants_manage_participants" boolean) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_create"("p_required_count" integer, "p_game_type" "text", "p_match_date" "date", "p_start_time" time without time zone, "p_duration_minutes" integer, "p_club_id" "uuid", "p_court_ids" "uuid"[], "p_invitation_scope_group_ids" "uuid"[], "p_can_participants_invite_users" boolean, "p_can_participants_add_guests" boolean, "p_can_participants_manage_participants" boolean) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_org_approve_participant"("p_match_participant_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_org_approve_participant"("p_match_participant_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_org_approve_participant"("p_match_participant_id" "uuid") TO "service_role";
 
@@ -7530,19 +7036,16 @@ GRANT ALL ON FUNCTION "public"."rpc_match_participant_emails_for_notification"("
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_remove_participant"("p_match_participant_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_remove_participant"("p_match_participant_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_remove_participant"("p_match_participant_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_user_withdraw"("p_match_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_user_withdraw"("p_match_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_user_withdraw"("p_match_id" "uuid") TO "service_role";
 
@@ -7620,13 +7123,11 @@ GRANT ALL ON TABLE "public"."guests" TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text", "p_notes" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text", "p_notes" "text") TO "service_role";
 

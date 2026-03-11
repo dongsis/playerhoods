@@ -53,18 +53,7 @@ BEGIN
 END;
 $$;
 
--- 5) rpc_match_delegate_confirm_guest still exists
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public' AND p.proname = 'rpc_match_delegate_confirm_guest'
-  ) THEN
-    RAISE EXCEPTION 'rpc_match_delegate_confirm_guest does not exist';
-  END IF;
-  RAISE NOTICE 'PASS: rpc_match_delegate_confirm_guest exists';
-END;
-$$;
+-- 5) rpc_match_delegate_confirm_guest: dropped in 20260321000000 (unified into rpc_match_delegate_confirm_participant)
 
 -- 6) Self vs delegate semantics: participant_accepted_via and manual_confirmed_by
 --    Manual: create a pending user participant, call accept_invite → participant_accepted_via = 'in_app', manual_confirmed_by IS NULL
@@ -94,10 +83,10 @@ BEGIN
 END;
 $$;
 
--- 8) Guest event: rpc_match_delegate_confirm_guest still emits match.guest_delegate_confirmed when guest has email
---    Manual: nominate guest with email, delegate_confirm_guest, check domain_events for match.guest_delegate_confirmed
+-- 8) Guest event: rpc_match_delegate_confirm_participant guest branch emits match.guest_delegate_confirmed when guest has email
+--    Manual: nominate guest with email, delegate_confirm_participant, check domain_events for match.guest_delegate_confirmed
 DO $$
 BEGIN
-  RAISE NOTICE 'PASS: validation complete. Manual tests for 6,7,8: self accept, delegate confirm user, delegate confirm guest + event.';
+  RAISE NOTICE 'PASS: validation complete. Manual tests for 6,7,8: self accept, delegate confirm participant (user + guest).';
 END;
 $$;

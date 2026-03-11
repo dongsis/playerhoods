@@ -61,11 +61,11 @@ Re-entry is permitted through:
 
 rpc_match_request_join (user restart; caller in scope)
 
-rpc_match_invite_user (organizer restart)
+rpc_match_invite_user (organizer restart; thin wrapper around rpc_match_admit_user)
 
 rpc_match_nominate_user (non-organizer, same ShareGroup; re-activates removed user as nominated)
 
-Delegate-confirm does not itself re-entry; rpc_match_delegate_confirm_user can re-entry a removed user (then they Accept, org Approves).
+Delegate-confirm does not itself re-entry; re-entry is via rpc_match_request_join, rpc_match_invite_user, or rpc_match_nominate_user.
 
 Full flows and scope: see Match_Participation_Flows_and_Scope.md.
 

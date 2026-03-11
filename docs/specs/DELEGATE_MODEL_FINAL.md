@@ -1,0 +1,70 @@
+# Delegate Model — Final (Post-Simplification)
+
+**Status:** Authoritative summary of the delegate-confirm flow after 2026-03-21 simplification.  
+**Migration:** `20260321000000_delegate_simplify_unify_confirm_only.sql`
+
+---
+
+## 1. Single Public Entry Point
+
+| RPC | Signature | Purpose |
+|-----|-----------|---------|
+| **rpc_match_delegate_confirm_participant** | `(p_match_participant_id uuid)` | Delegate-confirm a **pending** participant (user or guest). Sets `participant_accepted_at` only; never touches `org_approved_at`. |
+
+**Dropped RPCs:**
+- `rpc_match_delegate_confirm_guest` — merged into `rpc_match_delegate_confirm_participant`
+- `rpc_match_delegate_confirm_user` — removed (re-entry/fresh path no longer supported; use `rpc_match_nominate_user` for re-entry)
+- `rpc_match_delegate_manual_confirm_targets` — removed (no "add user and delegate-confirm" flow)
+
+---
+
+## 2. Caller Gates (Who Can Delegate-Confirm)
+
+| Participant type | Caller gate | Target gate |
+|------------------|-------------|-------------|
+| **User** (invited/nominated) | Non-organizer, (InScope OR MatchAssociated), match active | ShareGroup(caller, participant) |
+| **Guest** | Any active participant (incl. organizer) | — |
+
+- **User:** Organizer must use `rpc_match_manual_confirm` or `rpc_match_org_approve_participant` instead.
+- **Guest:** Organizer can delegate-confirm a guest (same as any participant).
+
+---
+
+## 3. Effect
+
+- Sets `participant_accepted_at = now()`, `participant_accepted_via = 'delegate_manual'`, `manual_confirmed_by = actor`.
+- Reconciles status via `match_participant_reconcile_status`.
+- Inserts `match_participant_actions` row with `action_type = 'delegate_manual_confirm'`.
+- **Guest branch only:** Emits `match.guest_delegate_confirmed` domain event when guest has email (for notifications).
+
+---
+
+## 4. Confirmation Invariant
+
+**confirmed ⇔ participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL**
+
+Delegate-confirm sets only the participant side. Org must still Approve (`rpc_match_org_approve_participant`) for the participant to become confirmed.
+
+---
+
+## 5. Frontend / API
+
+- **API:** `delegateConfirmParticipant(supabase, matchParticipantId)` — single function.
+- **UI:** ParticipantGroups shows "Confirm can come" for both pending users (when `canDelegateConfirmUserParticipants`) and pending guests (when `viewerIsParticipant`).
+
+---
+
+## 6. Re-entry
+
+Re-entry of removed participants is **not** done by delegate-confirm. Use:
+- `rpc_match_request_join` (user in scope)
+- `rpc_match_invite_user` (organizer)
+- `rpc_match_nominate_user` (non-org, ShareGroup)
+
+---
+
+## 7. Related Docs
+
+- **Flows & scope:** `Match_Participation_Flows_and_Scope.md`
+- **Permissions:** `PERMISSION_ARCHITECTURE_v1.md`
+- **Phase 4 plan (archived):** `Phase4_Delegate_Confirm_Cleanup_Plan.md`

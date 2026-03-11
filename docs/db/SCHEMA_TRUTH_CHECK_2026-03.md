@@ -1,8 +1,9 @@
 # Schema Truth-Check Report
 
-**Date:** 2026-03-11  
-**Source:** `supabase db dump --schema public` (remote database)  
-**Note:** The dumped database appears to be **behind** migrations. It lacks `rpc_match_admission_targets`, `rpc_match_nominate_guest`, `rpc_match_delegate_confirm_guest`, `rpc_match_delegate_confirm_participant`, and `can_invite_user_to_match`. The app code expects `rpc_match_admission_targets` — ensure all migrations through Phase 5 are applied before deployment.
+**Date:** 2026-03-11 (superseded by 2026-03-20 cleanup)  
+**Source:** `supabase db dump --schema public` (remote database)
+
+**2026-03-20 update:** Phase 1 + Phase 5 + canonicalization (20260320000000, 20260320010000) applied. `can_invite_user_to_match` dropped; `rpc_match_invite_user` is thin wrapper around `rpc_match_admit_user`. Legacy target/guest RPCs gone. See `docs/db/CLEANUP_20260320_DELIVERABLES.md` for current state.
 
 ---
 
@@ -17,8 +18,7 @@
 | `rpc_match_invite_guest_from_roster` | `(uuid, uuid)` | Present — **Phase 5 migration intends DROP** |
 | `rpc_match_manual_confirm` | `(p_match_participant_id uuid, p_note text)` | Present |
 | `rpc_match_manual_confirm_user` | `(p_match_id uuid, p_user_id uuid)` | Present |
-| `rpc_match_delegate_manual_confirm_targets` | `(p_match_id uuid)` | Present |
-| `rpc_match_delegate_confirm_user` | `(p_match_id uuid, p_user_id uuid)` | Present |
+| `rpc_match_delegate_confirm_participant` | `(p_match_participant_id uuid)` | Present — single entry for user + guest |
 
 ---
 
@@ -30,8 +30,6 @@ These are **not** in the dump — either never applied or already dropped:
 |----------|-------------------------|
 | `rpc_match_admission_targets` | `20260312060000`, `20260316000000` — **app uses this** |
 | `rpc_match_nominate_guest` | `20260305180000`, `20260309100000` |
-| `rpc_match_delegate_confirm_guest` | `20260311113000` |
-| `rpc_match_delegate_confirm_participant` | `20260305190000` |
 | `can_invite_user_to_match` | `20260312030000` |
 | `can_admit_user_to_match` | Phase 2/3 |
 
@@ -45,7 +43,7 @@ Per migration plan (once Phase 1 & 5 are applied):
 |----------|-----------|-------------|
 | `rpc_match_invite_targets` | `20260314000000_phase1_remove_legacy_target_rpcs.sql` | `rpc_match_admission_targets` |
 | `rpc_match_nominate_targets` | Same | `rpc_match_admission_targets` |
-| `rpc_match_add_guest_org` | `20260319000000_phase5_drop_deprecated_guest_rpcs.sql` | `rpc_match_nominate_guest` + `rpc_match_delegate_confirm_guest` + `rpc_match_org_approve_participant` |
+| `rpc_match_add_guest_org` | `20260319000000_phase5_drop_deprecated_guest_rpcs.sql` | `rpc_match_nominate_guest` + `rpc_match_delegate_confirm_participant` + `rpc_match_org_approve_participant` |
 | `rpc_match_add_guest_participant` | Same | Same |
 | `rpc_match_invite_guest_from_roster` | Same | Same |
 
@@ -108,8 +106,7 @@ Per migration plan (once Phase 1 & 5 are applied):
 ### RPCs already correctly restricted (no anon)
 
 - `rpc_match_accept_invite` — REVOKE FROM PUBLIC, GRANT TO authenticated
-- `rpc_match_delegate_confirm_user` — Same
-- `rpc_match_delegate_manual_confirm_targets` — Same
+- `rpc_match_delegate_confirm_participant` — single entry (user + guest)
 - `rpc_match_invite_targets` — Same
 - `rpc_match_invite_user` — Same
 - `rpc_match_manual_confirm_user` — Same

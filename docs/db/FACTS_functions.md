@@ -715,19 +715,19 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Reads:** `public.matches`, `public.user_roster_guests`, `public.guests`, `public.match_participants`
 - **Writes:** `public.match_participants`
 - **Calls:** `public.is_match_organizer`, `public.is_user_match_associated`, `public.match_participant_reconcile_status`
-- **Notes:** Unified **Contact Player / guest** entry point. Caller must be **organizer or active participant** *and* must own the guest in `user_roster_guests`. Inserts a single `match_participants` row with `guest_id`, `join_method='nominated'`, `status='pending'`, `nominated_by=auth.uid()`. For organizer callers, `org_approved_at/By` is written immediately; for others it stays `NULL`. `participant_accepted_at` is always `NULL` at insert — must be set by `rpc_match_delegate_confirm_guest`. Invariant: `confirmed ⇔ participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL` (enforced by `match_participant_reconcile_status`). Rejects duplicate active rows for the same `(match_id, guest_id)` with `guest_already_active`.
+- **Notes:** Unified **Contact Player / guest** entry point. Caller must be **organizer or active participant** *and* must own the guest in `user_roster_guests`. Inserts a single `match_participants` row with `guest_id`, `join_method='nominated'`, `status='pending'`, `nominated_by=auth.uid()`. For organizer callers, `org_approved_at/By` is written immediately; for others it stays `NULL`. `participant_accepted_at` is always `NULL` at insert — must be set by `rpc_match_delegate_confirm_participant`. Invariant: `confirmed ⇔ participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL` (enforced by `match_participant_reconcile_status`). Rejects duplicate active rows for the same `(match_id, guest_id)` with `guest_already_active`.
 
-### `public.rpc_match_delegate_confirm_guest`
+### `public.rpc_match_delegate_confirm_participant`
 - **Kind:** RPC
-- **Signature:** `public.rpc_match_delegate_confirm_guest("p_match_participant_id" "uuid")`
+- **Signature:** `public.rpc_match_delegate_confirm_participant("p_match_participant_id" "uuid")`
 - **Returns:** `"public"."match_participants"`
 - **Language:** `plpgsql`
 - **Security:** **SECURITY DEFINER**
 - **Volatility:** `—`
-- **Reads:** `public.match_participants`
-- **Writes:** `public.match_participants`, `public.match_participant_actions`
-- **Calls:** `public.is_user_match_associated`, `public.match_participant_reconcile_status`
-- **Notes:** Any **active participant** in the match (including the organizer) can confirm that a guest (Contact Player) can attend. Only valid for `guest_id IS NOT NULL` and `removed_at IS NULL`. Writes `participant_accepted_at = now()` and `participant_accepted_via = 'delegate_manual'` **only** — never touches `org_approved_at`. Adds `match_participant_actions` row with `action_type='delegate_manual_confirm'`. Combined with `rpc_match_org_approve_participant` this yields `confirmed` when both timestamps are present.
+- **Reads:** `public.match_participants`, `public.matches`
+- **Writes:** `public.match_participants`, `public.match_participant_actions`, `public.domain_events` (guest branch only)
+- **Calls:** `public.apply_participant_acceptance`, `public.is_user_match_associated`, `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.do_users_share_group`, `public.rpc_match_participant_email`, `public.rpc_process_domain_event`
+- **Notes:** Single entry point for delegate-confirming a **pending** participant (user or guest). **User:** Caller must be non-organizer, (InScope OR MatchAssociated), ShareGroup with participant; sets participant_accepted_at only. **Guest:** Any active participant (incl. organizer); sets participant_accepted_at; guest branch emits `match.guest_delegate_confirmed` when guest has email. Never touches org_approved_at.
 
 ### `public.rpc_match_add_guest_org` *(deprecated)*
 - **Kind:** RPC
@@ -739,7 +739,7 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Reads:** —
 - **Writes:** —
 - **Calls:** —
-- **Notes:** **Deprecated.** Old “add guest and auto-confirm” path (wrote `participant_accepted_at` + `org_approved_at` in one step). Now implemented as a thin wrapper that always raises `deprecated_use_rpc_match_nominate_guest`. Frontend must use `rpc_match_nominate_guest` + `rpc_match_delegate_confirm_guest` + `rpc_match_org_approve_participant` instead.
+- **Notes:** **Deprecated.** Old “add guest and auto-confirm” path (wrote `participant_accepted_at` + `org_approved_at` in one step). Now implemented as a thin wrapper that always raises `deprecated_use_rpc_match_nominate_guest`. Frontend must use `rpc_match_nominate_guest` + `rpc_match_delegate_confirm_participant` + `rpc_match_org_approve_participant` instead.
 
 ### `public.rpc_match_add_guest_participant` *(deprecated)*
 - **Kind:** RPC
@@ -765,30 +765,6 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Calls:** `public.match_participant_reconcile_status`
 - **Notes:** —
 
-### `public.rpc_match_delegate_confirm_user`
-- **Kind:** RPC
-- **Signature:** `public.rpc_match_delegate_confirm_user("p_match_id" "uuid", "p_user_id" "uuid")`
-- **Returns:** `"public"."match_participants"`
-- **Language:** `plpgsql`
-- **Security:** **SECURITY DEFINER**
-- **Volatility:** `—`
-- **Reads:** `public.match_participant_actions`, `public.match_participants`, `public.matches`
-- **Writes:** `public.match_participant_actions`, `public.match_participants`
-- **Calls:** `public.do_users_share_group`, `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.is_user_match_associated`, `public.match_participant_reconcile_status`
-- **Notes:** ⚠️ **Re-entry / removed_* mutation detected** (check against restart-channel doctrine).
-
-### `public.rpc_match_delegate_manual_confirm_targets`
-- **Kind:** RPC
-- **Signature:** `public.rpc_match_delegate_manual_confirm_targets("p_match_id" "uuid")`
-- **Returns:** `TABLE("user_id" "uuid", "display_name" "text")`
-- **Language:** `plpgsql`
-- **Security:** **SECURITY DEFINER**
-- **Volatility:** `—`
-- **Reads:** `public.group_members`, `public.match_participants`, `public.matches`
-- **Writes:** —
-- **Calls:** `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.is_user_match_associated`
-- **Notes:** —
-
 ### `public.rpc_match_invite_guest_from_roster` *(deprecated)*
 - **Kind:** RPC
 - **Signature:** `public.rpc_match_invite_guest_from_roster("p_match_id" "uuid", "p_guest_id" "uuid")`
@@ -802,16 +778,13 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Notes:** **Deprecated.** Previously let organizers invite a Contact Player from personal roster with mixed semantics. Now implemented as a stub that raises `deprecated_use_rpc_match_nominate_guest`. All guest flows must go through the nominate / delegate-confirm / org-approve pipeline.
 
 ### `public.rpc_match_invite_user`
-- **Kind:** RPC
+- **Kind:** RPC (organizer wrapper)
 - **Signature:** `public.rpc_match_invite_user("p_match_id" "uuid", "p_user_id" "uuid")`
 - **Returns:** `"public"."match_participants"`
 - **Language:** `plpgsql`
 - **Security:** **SECURITY DEFINER**
-- **Volatility:** `—`
-- **Reads:** `public.match_participant_actions`, `public.match_participants`, `public.matches`
-- **Writes:** `public.match_participant_actions`, `public.match_participants`
-- **Calls:** `public.do_users_share_group`, `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.is_user_match_associated`, `public.match_participant_reconcile_status`
-- **Notes:** ⚠️ **Re-entry / removed_* mutation detected** (check against restart-channel doctrine). ℹ️ Mentions `user_accepted_at` (deprecated in your v1.6.3 spec).
+- **Calls:** `public.rpc_match_admit_user`
+- **Notes:** Thin organizer-only wrapper around `rpc_match_admit_user`. Legacy API surface preserved; canonical write is `rpc_match_admit_user`.
 
 ### `public.rpc_match_manual_confirm`
 - **Kind:** RPC

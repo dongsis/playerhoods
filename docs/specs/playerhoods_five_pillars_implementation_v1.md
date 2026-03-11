@@ -184,6 +184,12 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 - [ ] 让 Match invite 可以直接从 Club Members / Invite Circle 发起，而不是只能依赖 Group。
 - [ ] 验证 end-to-end：发现 → 保存 → 邀请 → 接受 → 成局。
 
+Phase 1 non-group direct invite rule:
+At the DB permission layer, non-group direct invite is currently permitted when the target user has profiles.allow_non_group_invites = true.
+The DB does not currently enforce that the target must be selected via Club Members discovery or Invite Circle.
+Those are currently treated as product/UI entry paths, not DB authorization prerequisites.
+This is an intentional Phase 1 simplification and may be tightened in a later phase.
+
 ### Phase 2：Journey + Showcase + Memory（平台开始变厚）
 
 - [ ] 为 `profiles` 增加 `headline`、`bio_short` 等最小展示字段。

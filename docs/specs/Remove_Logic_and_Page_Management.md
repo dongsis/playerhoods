@@ -74,9 +74,8 @@ userWithdraw(supabase, matchId)             // → rpc_match_user_withdraw
 Remove 后可通过以下方式重新加入：
 
 - `rpc_match_request_join`（若在 scope）
-- `rpc_match_invite_user`（Organizer 邀请）
+- `rpc_match_invite_user`（Organizer 邀请；wrapper → rpc_match_admit_user）
 - `rpc_match_nominate_user`（同组非 Organizer 提名）
-- `rpc_match_delegate_confirm_user`（非 Organizer 对 removed 用户 delegate confirm）
 
 ---
 

@@ -13,49 +13,13 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 
-CREATE EXTENSION IF NOT EXISTS "pg_net" WITH SCHEMA "extensions";
+CREATE SCHEMA IF NOT EXISTS "public";
 
 
-
-
+ALTER SCHEMA "public" OWNER TO "pg_database_owner";
 
 
 COMMENT ON SCHEMA "public" IS 'standard public schema';
-
-
-
-CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
-
-
-
 
 
 
@@ -109,6 +73,199 @@ CREATE TYPE "public"."match_status" AS ENUM (
 
 ALTER TYPE "public"."match_status" OWNER TO "postgres";
 
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."match_participants" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "match_id" "uuid" NOT NULL,
+    "status" "public"."match_participant_status" DEFAULT 'pending'::"public"."match_participant_status" NOT NULL,
+    "join_method" "public"."match_join_method" NOT NULL,
+    "user_id" "uuid",
+    "guest_id" "uuid",
+    "created_by" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "confirmed_at" timestamp with time zone,
+    "removed_at" timestamp with time zone,
+    "org_approved_at" timestamp with time zone,
+    "org_approved_by" "uuid",
+    "nominated_by" "uuid",
+    "removed_by" "uuid",
+    "removal_note" "text",
+    "participant_accepted_at" timestamp with time zone,
+    "participant_accepted_via" "text",
+    "manual_confirmed_by" "uuid",
+    CONSTRAINT "chk_participant_accepted_via" CHECK ((("participant_accepted_via" IS NULL) OR ("participant_accepted_via" = ANY (ARRAY['in_app'::"text", 'manual'::"text", 'delegate_manual'::"text", 'email_invitation'::"text"])))),
+    CONSTRAINT "match_participants_exactly_one_identity" CHECK (((("user_id" IS NOT NULL) AND ("guest_id" IS NULL)) OR (("user_id" IS NULL) AND ("guest_id" IS NOT NULL))))
+);
+
+
+ALTER TABLE "public"."match_participants" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."match_participants"."org_approved_at" IS 'v1.3: Timestamp when organizer approved this participant. NULL = not yet approved. Required for all participants to become confirmed.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."org_approved_by" IS 'v1.3: User ID of the organizer who approved this participant. NULL if not yet approved.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."nominated_by" IS 'v1.3: User ID of the participant who nominated this user (for join_method=requested with nomination). NULL if not nominated or if direct request/invite.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."removed_by" IS 'v1.3 CRITICAL: User ID who removed this participant. Must be set when status=removed. Used to distinguish user-withdrawal vs org-removal for reactivation logic.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."removal_note" IS 'v1.3: Optional note explaining why participant was removed (e.g., "declined", "rejected", "capacity reached").';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."participant_accepted_at" IS 'v1.5: Participant-side confirmation timestamp. Replaces user_accepted_at. Written by: rpc_match_accept_invite (in_app), rpc_match_manual_confirm (manual). Never written directly by UI or non-RPC code.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."participant_accepted_via" IS 'v1.5: How participant confirmed. in_app = user clicked Accept; manual = organizer confirmed on their behalf. Must be set whenever participant_accepted_at is set. Cleared on reconfirm.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."manual_confirmed_by" IS 'v1.5: User ID of organizer who manually confirmed this participant. Set only when participant_accepted_via = ''manual''. Cleared on reconfirm.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") RETURNS "public"."match_participants"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_state   text;
+  v_existing public.match_participants%rowtype;
+  v_new_mp   public.match_participants%rowtype;
+  v_constraint text;
+BEGIN
+  v_state := public.get_delegate_user_target_state(p_match_id, p_target_user_id);
+
+  IF v_state = 'active_present' THEN
+    RAISE EXCEPTION 'User is already a participant in this match';
+  END IF;
+
+  IF v_state = 'removed_present' THEN
+    SELECT * INTO v_existing
+    FROM public.match_participants
+    WHERE match_id = p_match_id AND user_id = p_target_user_id AND status = 'removed'
+    ORDER BY created_at DESC
+    LIMIT 1
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'removed_participant_not_found';
+    END IF;
+
+    UPDATE public.match_participants
+    SET
+      removed_at               = NULL,
+      removed_by               = NULL,
+      removal_note             = NULL,
+      confirmed_at             = NULL,
+      join_method              = 'nominated',
+      participant_accepted_at  = now(),
+      participant_accepted_via = 'delegate_manual',
+      org_approved_at          = NULL,
+      org_approved_by          = NULL,
+      nominated_by             = p_actor_id,
+      manual_confirmed_by      = p_actor_id
+    WHERE id = v_existing.id;
+
+    PERFORM public.match_participant_reconcile_status(v_existing.id);
+
+    INSERT INTO public.match_participant_actions
+      (match_id, match_participant_id, action_type, note, created_by)
+    VALUES
+      (p_match_id, v_existing.id, 'reenter',                 NULL, p_actor_id),
+      (p_match_id, v_existing.id, 'delegate_manual_confirm', NULL, p_actor_id);
+
+    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
+    RETURN v_new_mp;
+  END IF;
+
+  -- v_state = 'absent' → fresh insert
+  BEGIN
+    INSERT INTO public.match_participants (
+      match_id, user_id, join_method,
+      participant_accepted_at, participant_accepted_via,
+      org_approved_at, org_approved_by,
+      nominated_by, manual_confirmed_by,
+      created_by
+    ) VALUES (
+      p_match_id, p_target_user_id, 'nominated',
+      now(), 'delegate_manual',
+      NULL, NULL,
+      p_actor_id, p_actor_id,
+      p_actor_id
+    )
+    RETURNING * INTO v_new_mp;
+  EXCEPTION
+    WHEN unique_violation THEN
+      GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+      IF v_constraint = 'uq_match_participants_active_user' THEN
+        RAISE EXCEPTION 'User is already a participant in this match';
+      ELSE
+        RAISE;
+      END IF;
+  END;
+
+  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
+
+  INSERT INTO public.match_participant_actions
+    (match_id, match_participant_id, action_type, note, created_by)
+  VALUES (p_match_id, v_new_mp.id, 'delegate_manual_confirm', NULL, p_actor_id);
+
+  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
+  RETURN v_new_mp;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 4B: Write helper for delegate confirm user. active_present→reject; removed_present→re-entry; absent→fresh insert.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  UPDATE public.match_participants
+  SET
+    participant_accepted_at  = now(),
+    participant_accepted_via = CASE WHEN p_is_self THEN 'in_app' ELSE 'delegate_manual' END,
+    manual_confirmed_by     = CASE WHEN p_is_self THEN NULL ELSE p_actor_id END
+  WHERE id = p_mp_id;
+
+  PERFORM public.match_participant_reconcile_status(p_mp_id);
+
+  INSERT INTO public.match_participant_actions
+    (match_id, match_participant_id, action_type, note, created_by)
+  SELECT mp.match_id, p_mp_id, p_action_type, NULL, p_actor_id
+  FROM public.match_participants mp
+  WHERE mp.id = p_mp_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") IS 'Phase 4A: Internal write core for participant-side acceptance. Self: in_app, manual_confirmed_by=NULL. Delegate: delegate_manual, manual_confirmed_by=actor.';
+
+
 
 CREATE OR REPLACE FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
@@ -124,6 +281,153 @@ $$;
 
 
 ALTER FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."can_admit_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.matches m
+    JOIN public.profiles p_target ON p_target.id = p_target_user_id
+    WHERE m.id = p_match_id
+      AND m.status = 'active'
+      AND p_target_user_id <> p_actor_id
+      AND NOT public.is_user_match_associated(p_match_id, p_target_user_id)
+      -- Caller gate: organizer OR (can_participants_invite + InScope/MatchAssociated)
+      AND (
+        p_actor_id = m.organizer_id
+        OR (
+          m.can_participants_invite_users = true
+          AND (
+            public.is_user_in_scope_groups(
+              COALESCE(m.invitation_scope_group_ids, '{}'::uuid[]),
+              p_actor_id
+            )
+            OR public.is_user_match_associated(p_match_id, p_actor_id)
+          )
+        )
+      )
+      -- Target eligibility: same for organizer and participant
+      AND (
+        -- Re-entry
+        EXISTS (
+          SELECT 1 FROM public.match_participants mp
+          WHERE mp.match_id = p_match_id AND mp.user_id = p_target_user_id
+            AND mp.status = 'removed'
+        )
+        OR
+        -- Path A: group-based (InScope OR ShareGroup with actor)
+        (
+          public.is_user_in_scope_groups(
+            COALESCE(m.invitation_scope_group_ids, '{}'::uuid[]),
+            p_target_user_id
+          )
+          OR public.do_users_share_group(p_target_user_id, p_actor_id)
+        )
+        OR
+        -- Path B: non-group direct. Two-layer: global AND club override.
+        -- Club context: COALESCE(match.club_id, organizer.primary_club_id).
+        -- No club context: continuity fallback to global only.
+        (
+          p_target.allow_non_group_invites = true
+          AND (
+            COALESCE(m.club_id, (SELECT primary_club_id FROM public.profiles WHERE id = m.organizer_id)) IS NULL
+            OR NOT EXISTS (
+              SELECT 1 FROM public.club_identities ci
+              WHERE ci.user_id = p_target_user_id
+                AND ci.club_id = COALESCE(m.club_id, (SELECT primary_club_id FROM public.profiles WHERE id = m.organizer_id))
+                AND ci.accept_non_group_invites_in_club = false
+            )
+          )
+        )
+      )
+  );
+$$;
+
+
+ALTER FUNCTION "public"."can_admit_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."can_admit_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 1: Unified predicate for match admission. Path B (non-group): two-layer — profiles.allow_non_group_invites AND COALESCE(club_identities.accept_non_group_invites_in_club, true). Club context: match.club_id or organizer.primary_club_id. No sport-scoped permission. Tennis/racket/pickleball share same model.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") RETURNS boolean
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_match public.matches%rowtype;
+BEGIN
+  IF p_actor_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  IF v_match.status <> 'active' THEN
+    RETURN false;
+  END IF;
+
+  IF public.is_match_organizer(p_match_id, p_actor_id) THEN
+    RETURN false;
+  END IF;
+
+  IF NOT public.is_user_in_scope_groups(
+    COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]),
+    p_actor_id
+  )
+  AND NOT public.is_user_match_associated(p_match_id, p_actor_id) THEN
+    RETURN false;
+  END IF;
+
+  RETURN true;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") IS 'Phase 4B: Caller gate for delegate confirm user. Non-org + (InScope OR MatchAssociated) + match active.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") RETURNS boolean
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF p_actor_id IS NULL OR p_target_user_id IS NULL THEN
+    RETURN false;
+  END IF;
+  IF NOT public.can_delegate_confirm_user_caller(p_match_id, p_actor_id) THEN
+    RETURN false;
+  END IF;
+  IF p_target_user_id = p_actor_id THEN
+    RETURN false;
+  END IF;
+  IF public.is_user_match_associated(p_match_id, p_target_user_id) THEN
+    RETURN false;
+  END IF;
+  IF NOT public.do_users_share_group(p_target_user_id, p_actor_id) THEN
+    RETURN false;
+  END IF;
+  RETURN true;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 4B: Boolean gate for delegate confirm user target. Use check_delegate_confirm_user_target when you need specific exceptions.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."can_invite_users"("p_match_id" "uuid", "p_user_id" "uuid") RETURNS boolean
@@ -156,6 +460,60 @@ $$;
 
 
 ALTER FUNCTION "public"."can_manage_participants"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_match public.matches%rowtype;
+BEGIN
+  IF p_actor_id IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Match not found';
+  END IF;
+
+  IF v_match.status <> 'active' THEN
+    RAISE EXCEPTION 'Match is not active (status: %)', v_match.status;
+  END IF;
+
+  IF public.is_match_organizer(p_match_id, p_actor_id) THEN
+    RAISE EXCEPTION 'You are not authorized to delegate-confirm for this match';
+  END IF;
+
+  IF NOT public.is_user_in_scope_groups(
+    COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]),
+    p_actor_id
+  )
+  AND NOT public.is_user_match_associated(p_match_id, p_actor_id) THEN
+    RAISE EXCEPTION 'You are not authorized to delegate-confirm for this match';
+  END IF;
+
+  IF p_target_user_id = p_actor_id THEN
+    RAISE EXCEPTION 'Cannot delegate-confirm yourself';
+  END IF;
+
+  IF public.is_user_match_associated(p_match_id, p_target_user_id) THEN
+    RAISE EXCEPTION 'User is already a participant in this match';
+  END IF;
+
+  IF NOT public.do_users_share_group(p_target_user_id, p_actor_id) THEN
+    RAISE EXCEPTION 'Target user is not in your shared groups';
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 4B: Full gate for delegate confirm user target. Raises on failure. Includes caller gate + no self + target not active + ShareGroup.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."compute_match_start_at_utc"() RETURNS "trigger"
@@ -210,6 +568,39 @@ ALTER FUNCTION "public"."do_users_share_group"("p_user_a" "uuid", "p_user_b" "uu
 
 COMMENT ON FUNCTION "public"."do_users_share_group"("p_user_a" "uuid", "p_user_b" "uuid") IS 'v1.6.3: Returns true if both users are active members of at least one common friend group (group_kind=friend). SECURITY DEFINER. Not granted to authenticated directly.';
 
+
+
+CREATE OR REPLACE FUNCTION "public"."fn_emit_match_formed_on_formed_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_evt_id uuid;
+BEGIN
+  IF OLD.formed_at IS NULL AND NEW.formed_at IS NOT NULL THEN
+    INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
+    VALUES (
+      'match.formed',
+      'match',
+      NEW.id,
+      NULL,
+      jsonb_build_object(
+        'match_id', NEW.id,
+        'game_type', NEW.game_type,
+        'match_date', NEW.match_date,
+        'club_name', (SELECT c.name FROM public.clubs c WHERE c.id = NEW.club_id),
+        'required_count', NEW.required_count
+      )
+    )
+    RETURNING id INTO v_evt_id;
+    PERFORM public.rpc_process_domain_event(v_evt_id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."fn_emit_match_formed_on_formed_at"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."fn_guard_participant_state"() RETURNS "trigger"
@@ -284,6 +675,36 @@ ALTER FUNCTION "public"."fn_match_detail_change_reconfirm"() OWNER TO "postgres"
 
 
 COMMENT ON FUNCTION "public"."fn_match_detail_change_reconfirm"() IS 'v1.7: On match schedule/location change, reset all confirmed participants (users and contact players/guests) to pending. Organizer row excluded. org_approved_at preserved; reconcile derives status.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") RETURNS "text"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT
+    CASE
+      WHEN EXISTS (
+        SELECT 1 FROM public.match_participants mp
+        WHERE mp.match_id = p_match_id
+          AND mp.user_id = p_target_user_id
+          AND mp.status IN ('pending', 'confirmed')
+      ) THEN 'active_present'
+      WHEN EXISTS (
+        SELECT 1 FROM public.match_participants mp
+        WHERE mp.match_id = p_match_id
+          AND mp.user_id = p_target_user_id
+          AND mp.status = 'removed'
+      ) THEN 'removed_present'
+      ELSE 'absent'
+    END;
+$$;
+
+
+ALTER FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 4B: Target state for delegate confirm. active_present | removed_present | absent.';
 
 
 
@@ -553,8 +974,14 @@ CREATE OR REPLACE FUNCTION "public"."is_user_match_associated"("p_match_id" "uui
     SELECT 1
     FROM public.match_participants mp
     WHERE mp.match_id = p_match_id
-      AND mp.user_id  = p_user_id
-      AND mp.status  <> 'removed'
+      AND mp.user_id = p_user_id
+      AND mp.status <> 'removed'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM public.match_participants mp
+    JOIN public.identity_links il ON il.linked_type = 'guest_participant' AND il.linked_id = mp.id AND il.user_id = p_user_id
+    WHERE mp.match_id = p_match_id
   );
 $$;
 
@@ -562,7 +989,7 @@ $$;
 ALTER FUNCTION "public"."is_user_match_associated"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."is_user_match_associated"("p_match_id" "uuid", "p_user_id" "uuid") IS 'v1.6.3: Returns true if user has a non-removed participant row (pending/confirmed). Removed participants are NOT match-associated. SECURITY DEFINER. Not granted to authenticated — internal RPC use only.';
+COMMENT ON FUNCTION "public"."is_user_match_associated"("p_match_id" "uuid", "p_user_id" "uuid") IS 'v1.6.3: Returns true if user has participant row (direct or via identity_links).';
 
 
 
@@ -616,18 +1043,13 @@ CREATE OR REPLACE FUNCTION "public"."match_participant_reconcile_status"("p_mp_i
     SET "search_path" TO 'public'
     AS $$
 DECLARE
-  v_mp          record;
+  v_mp record;
   v_accepted_at timestamptz;
 BEGIN
   SELECT
-    id,
-    status,
-    user_id,
-    guest_id,
+    id, status, user_id, guest_id,
     participant_accepted_at,
-    org_approved_at,
-    removed_at,
-    confirmed_at
+    org_approved_at, removed_at, confirmed_at
   INTO v_mp
   FROM public.match_participants
   WHERE id = p_mp_id;
@@ -636,53 +1058,52 @@ BEGIN
     RAISE EXCEPTION 'Participant % not found', p_mp_id;
   END IF;
 
-  -- 1) Removed: only when removed_at IS NOT NULL (canonical). Re-entry clears removed_at
-  --    so we must not treat status='removed' alone as removed here.
-  IF v_mp.removed_at IS NOT NULL THEN
-    UPDATE public.match_participants
-    SET status       = 'removed'::public.match_participant_status,
-        confirmed_at = NULL,
-        removed_at   = COALESCE(removed_at, now())
-    WHERE id = p_mp_id
-      AND (
-        status    <> 'removed'::public.match_participant_status
-        OR confirmed_at IS NOT NULL
-        OR removed_at   IS NULL
-      );
-    RETURN;
-  END IF;
-
-  -- 2) Confirmed ⇔ participant_accepted_at AND org_approved_at
   v_accepted_at := v_mp.participant_accepted_at;
 
-  IF v_accepted_at IS NOT NULL
-     AND v_mp.org_approved_at IS NOT NULL
-  THEN
+  IF v_mp.status = 'removed'::public.match_participant_status THEN
     UPDATE public.match_participants
-    SET status       = 'confirmed'::public.match_participant_status,
-        confirmed_at = COALESCE(
-          confirmed_at,
-          GREATEST(v_accepted_at, v_mp.org_approved_at)
-        )
+    SET confirmed_at = NULL,
+        removed_at   = COALESCE(removed_at, now())
     WHERE id = p_mp_id
-      AND (
-        status <> 'confirmed'::public.match_participant_status
-        OR confirmed_at IS NULL
-      );
+      AND (confirmed_at IS NOT NULL OR removed_at IS NULL);
     RETURN;
   END IF;
 
-  -- 3) Pending: not removed (removed_at NULL) and not both accepted+approved
-  UPDATE public.match_participants
-  SET status       = 'pending'::public.match_participant_status,
-      confirmed_at = NULL
-  WHERE id = p_mp_id
-    AND (
-      status <> 'pending'::public.match_participant_status
-      OR confirmed_at IS NOT NULL
-    );
+  IF v_mp.guest_id IS NOT NULL THEN
+    IF v_mp.org_approved_at IS NOT NULL THEN
+      UPDATE public.match_participants
+      SET status = 'confirmed'::public.match_participant_status,
+          confirmed_at = COALESCE(confirmed_at, now())
+      WHERE id = p_mp_id
+        AND (status != 'confirmed'::public.match_participant_status OR confirmed_at IS NULL);
+    ELSE
+      UPDATE public.match_participants
+      SET status = 'pending'::public.match_participant_status,
+          confirmed_at = NULL
+      WHERE id = p_mp_id
+        AND (status != 'pending'::public.match_participant_status OR confirmed_at IS NOT NULL);
+    END IF;
+    RETURN;
+  END IF;
 
-  RETURN;
+  IF v_mp.user_id IS NOT NULL THEN
+    IF v_accepted_at IS NOT NULL AND v_mp.org_approved_at IS NOT NULL THEN
+      UPDATE public.match_participants
+      SET status = 'confirmed'::public.match_participant_status,
+          confirmed_at = COALESCE(confirmed_at, now())
+      WHERE id = p_mp_id
+        AND (status != 'confirmed'::public.match_participant_status OR confirmed_at IS NULL);
+    ELSE
+      UPDATE public.match_participants
+      SET status = 'pending'::public.match_participant_status,
+          confirmed_at = NULL
+      WHERE id = p_mp_id
+        AND (status != 'pending'::public.match_participant_status OR confirmed_at IS NOT NULL);
+    END IF;
+    RETURN;
+  END IF;
+
+  RAISE EXCEPTION 'Invalid participant: neither user_id nor guest_id set for %', p_mp_id;
 END;
 $$;
 
@@ -770,10 +1191,6 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") OWNER TO "postgres";
-
-SET default_tablespace = '';
-
-SET default_table_access_method = "heap";
 
 
 CREATE TABLE IF NOT EXISTS "public"."clubs" (
@@ -929,6 +1346,41 @@ COMMENT ON FUNCTION "public"."rpc_club_handle_set"("p_club_id" "uuid", "p_new_ha
 
 
 
+CREATE OR REPLACE FUNCTION "public"."rpc_club_identity_set_preferences"("p_club_id" "uuid", "p_visible_in_club_member_discovery" "text" DEFAULT NULL::"text", "p_accept_non_group_invites_in_club" "text" DEFAULT NULL::"text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  UPDATE public.club_identities
+  SET
+    visible_in_club_member_discovery = CASE
+      WHEN p_visible_in_club_member_discovery = 'inherit' THEN NULL
+      WHEN p_visible_in_club_member_discovery = 'true' THEN true
+      WHEN p_visible_in_club_member_discovery = 'false' THEN false
+      ELSE visible_in_club_member_discovery
+    END,
+    accept_non_group_invites_in_club = CASE
+      WHEN p_accept_non_group_invites_in_club = 'inherit' THEN NULL
+      WHEN p_accept_non_group_invites_in_club = 'true' THEN true
+      WHEN p_accept_non_group_invites_in_club = 'false' THEN false
+      ELSE accept_non_group_invites_in_club
+    END
+  WHERE club_id = p_club_id AND user_id = auth.uid();
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_club_identity_set_preferences"("p_club_id" "uuid", "p_visible_in_club_member_discovery" "text", "p_accept_non_group_invites_in_club" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_club_identity_set_preferences"("p_club_id" "uuid", "p_visible_in_club_member_discovery" "text", "p_accept_non_group_invites_in_club" "text") IS 'Phase 1: Set club-scoped preference overrides. Values: true|false|inherit. inherit = use global (NULL). Only updates own row.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."rpc_club_join"("p_club_id" "uuid", "p_handle" "text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -988,6 +1440,56 @@ $$;
 ALTER FUNCTION "public"."rpc_club_join"("p_club_id" "uuid", "p_handle" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."rpc_club_members_discovery"("p_club_id" "uuid", "p_search" "text" DEFAULT NULL::"text") RETURNS TABLE("user_id" "uuid", "display_name" "text", "avatar_url" "text", "club_handle" "text")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.club_identities
+    WHERE club_id = p_club_id AND user_id = v_uid
+  ) THEN
+    RAISE EXCEPTION 'not_club_member';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    ci.user_id,
+    p.display_name,
+    p.avatar_url,
+    ci.club_handle
+  FROM public.club_identities ci
+  JOIN public.profiles p ON p.id = ci.user_id
+  WHERE ci.club_id = p_club_id
+    AND ci.user_id <> v_uid
+    AND p.show_in_club_member_discovery = true
+    AND COALESCE(ci.visible_in_club_member_discovery, true) = true
+    AND (
+      p_search IS NULL
+      OR p_search = ''
+      OR p.display_name ILIKE '%' || trim(p_search) || '%'
+      OR ci.club_handle ILIKE '%' || trim(p_search) || '%'
+    )
+  ORDER BY LOWER(COALESCE(NULLIF(trim(p.display_name), ''), ci.club_handle)) NULLS LAST,
+           LOWER(ci.club_handle) NULLS LAST,
+           ci.user_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_club_members_discovery"("p_club_id" "uuid", "p_search" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_club_members_discovery"("p_club_id" "uuid", "p_search" "text") IS 'Phase 1: Club Members discovery. Two-layer: profiles.show_in_club_member_discovery AND COALESCE(club_identities.visible_in_club_member_discovery, true). Caller must be club member.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."rpc_club_update"("p_club_id" "uuid", "p_name" "text" DEFAULT NULL::"text", "p_location_text" "text" DEFAULT NULL::"text", "p_timezone" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1013,6 +1515,41 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_club_update"("p_club_id" "uuid", "p_name" "text", "p_location_text" "text", "p_timezone" "text", "p_notes" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_contact_player_resolution"() RETURNS TABLE("guest_id" "uuid", "display_name" "text", "email" "text", "phone" "text", "notes" "text", "linked_user_id" "uuid", "resolution_state" "text")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    g.id AS guest_id,
+    g.display_name,
+    g.email,
+    g.phone,
+    g.notes,
+    il.user_id AS linked_user_id,
+    CASE WHEN il.user_id IS NOT NULL THEN 'linked_user'::text ELSE 'contact_only'::text END AS resolution_state
+  FROM public.user_roster_guests urg
+  JOIN public.guests g ON g.id = urg.guest_id
+  LEFT JOIN public.identity_links il
+    ON il.linked_type = 'contact' AND il.linked_id = g.id
+  WHERE urg.owner_user_id = auth.uid()
+  ORDER BY g.display_name, g.id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_contact_player_resolution"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_contact_player_resolution"() IS 'Phase 2: Contact Player resolution. Returns caller roster guests with linked_user_id (nullable) and resolution_state (contact_only | linked_user). Single source for guest vs registered-user logic.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."courts" (
@@ -1106,6 +1643,313 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."email_invitations" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "inviter_user_id" "uuid" NOT NULL,
+    "target_email" "text" NOT NULL,
+    "target_name" "text",
+    "related_type" "text" NOT NULL,
+    "related_id" "uuid" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "magic_link_flow_status" "text" DEFAULT 'not_opened'::"text" NOT NULL,
+    "accepted_by_user_id" "uuid",
+    "accepted_at" timestamp with time zone,
+    "declined_at" timestamp with time zone,
+    "expires_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "email_invitations_magic_link_flow_status_check" CHECK (("magic_link_flow_status" = ANY (ARRAY['not_opened'::"text", 'opened'::"text", 'verified_email'::"text", 'landed'::"text"]))),
+    CONSTRAINT "email_invitations_status_check" CHECK (("status" = ANY (ARRAY['pending'::"text", 'accepted'::"text", 'declined'::"text", 'expired'::"text", 'canceled'::"text"])))
+);
+
+
+ALTER TABLE "public"."email_invitations" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."email_invitations" IS 'Email-based invitations. related_type=match for v1. Magic link verifies email; Accept/Decline on invitation page.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_email_invitation_accept"("p_invitation_id" "uuid") RETURNS "public"."email_invitations"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_inv public.email_invitations%rowtype;
+  v_user_email text;
+  v_existing_mp uuid;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'invitation_not_found';
+  END IF;
+
+  IF v_inv.status <> 'pending' THEN
+    RETURN v_inv;
+  END IF;
+
+  IF v_inv.expires_at IS NOT NULL AND v_inv.expires_at < now() THEN
+    RAISE EXCEPTION 'invitation_expired';
+  END IF;
+
+  SELECT email INTO v_user_email FROM auth.users WHERE id = v_uid;
+  IF lower(trim(v_user_email)) <> lower(trim(v_inv.target_email)) THEN
+    RAISE EXCEPTION 'email_mismatch';
+  END IF;
+
+  IF v_inv.related_type = 'match' THEN
+    SELECT mp.id INTO v_existing_mp
+    FROM public.match_participants mp
+    WHERE mp.match_id = v_inv.related_id AND mp.user_id = v_uid AND mp.removed_at IS NULL
+    LIMIT 1;
+    IF FOUND THEN
+      UPDATE public.email_invitations SET status = 'accepted', accepted_by_user_id = v_uid, accepted_at = now(), updated_at = now()
+      WHERE id = p_invitation_id AND status = 'pending';
+      SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
+      IF v_inv.status = 'accepted' THEN
+        INSERT INTO public.email_invitation_events (invitation_id, event_type, actor_user_id)
+        VALUES (v_inv.id, 'invitation_accepted', v_uid);
+      END IF;
+      PERFORM public.rpc_reconcile_identity_after_magic_link(v_uid, v_user_email, p_invitation_id);
+      RETURN v_inv;
+    END IF;
+    PERFORM public.rpc_match_accept_email_invitation(v_inv.related_id, v_uid, p_invitation_id);
+  END IF;
+
+  UPDATE public.email_invitations
+  SET status = 'accepted', accepted_by_user_id = v_uid, accepted_at = now(), updated_at = now()
+  WHERE id = p_invitation_id AND status = 'pending';
+
+  SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
+  IF v_inv.status = 'accepted' THEN
+    INSERT INTO public.email_invitation_events (invitation_id, event_type, actor_user_id)
+    VALUES (v_inv.id, 'invitation_accepted', v_uid);
+    INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
+    VALUES ('invitation.accepted', 'email_invitation', v_inv.id, v_uid, jsonb_build_object('invitation_id', v_inv.id, 'accepted_by_user_id', v_uid));
+    PERFORM public.rpc_reconcile_identity_after_magic_link(v_uid, v_user_email, p_invitation_id);
+  END IF;
+  RETURN v_inv;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_email_invitation_accept"("p_invitation_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_email_invitation_create"("p_target_email" "text", "p_target_name" "text", "p_related_type" "text", "p_related_id" "uuid", "p_expires_at" timestamp with time zone DEFAULT NULL::timestamp with time zone) RETURNS "public"."email_invitations"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_inv public.email_invitations%rowtype;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  IF p_related_type <> 'match' THEN
+    RAISE EXCEPTION 'related_type_not_supported';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM public.matches m WHERE m.id = p_related_id AND m.organizer_id = v_uid) THEN
+    RAISE EXCEPTION 'not_match_organizer';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM public.matches m WHERE m.id = p_related_id AND m.status = 'active') THEN
+    RAISE EXCEPTION 'match_not_active';
+  END IF;
+
+  INSERT INTO public.email_invitations (
+    inviter_user_id, target_email, target_name, related_type, related_id, expires_at
+  ) VALUES (
+    v_uid, trim(lower(p_target_email)), NULLIF(trim(p_target_name), ''), p_related_type, p_related_id, p_expires_at
+  )
+  RETURNING * INTO v_inv;
+
+  INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
+  VALUES (
+    'invitation.email_invitation_created',
+    'email_invitation',
+    v_inv.id,
+    v_uid,
+    jsonb_build_object(
+      'invitation_id', v_inv.id,
+      'related_type', v_inv.related_type,
+      'related_id', v_inv.related_id,
+      'target_email', v_inv.target_email,
+      'target_name', v_inv.target_name,
+      'inviter_user_id', v_inv.inviter_user_id,
+      'inviter_display_name', (SELECT display_name FROM public.profiles WHERE id = v_uid)
+    )
+  );
+
+  PERFORM public.rpc_process_domain_event((SELECT id FROM public.domain_events WHERE aggregate_id = v_inv.id AND event_type = 'invitation.email_invitation_created' ORDER BY created_at DESC LIMIT 1));
+
+  RETURN v_inv;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_email_invitation_create"("p_target_email" "text", "p_target_name" "text", "p_related_type" "text", "p_related_id" "uuid", "p_expires_at" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_email_invitation_decline"("p_invitation_id" "uuid") RETURNS "public"."email_invitations"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_inv public.email_invitations%rowtype;
+  v_user_email text;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'invitation_not_found';
+  END IF;
+
+  IF v_inv.status <> 'pending' THEN
+    RETURN v_inv;
+  END IF;
+
+  SELECT email INTO v_user_email FROM auth.users WHERE id = v_uid;
+  IF lower(trim(v_user_email)) <> lower(trim(v_inv.target_email)) THEN
+    RAISE EXCEPTION 'email_mismatch';
+  END IF;
+
+  UPDATE public.email_invitations
+  SET status = 'declined', declined_at = now(), updated_at = now()
+  WHERE id = p_invitation_id AND status = 'pending';
+
+  SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
+  IF v_inv.status = 'declined' THEN
+    INSERT INTO public.email_invitation_events (invitation_id, event_type, actor_user_id)
+    VALUES (v_inv.id, 'invitation_declined', v_uid);
+    INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
+    VALUES ('invitation.declined', 'email_invitation', v_inv.id, v_uid, jsonb_build_object('invitation_id', v_inv.id));
+  END IF;
+  RETURN v_inv;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_email_invitation_decline"("p_invitation_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_email_invitation_get"("p_invitation_id" "uuid") RETURNS TABLE("id" "uuid", "inviter_user_id" "uuid", "inviter_display_name" "text", "target_email" "text", "target_name" "text", "related_type" "text", "related_id" "uuid", "status" "text", "magic_link_flow_status" "text", "accepted_by_user_id" "uuid", "accepted_at" timestamp with time zone, "declined_at" timestamp with time zone, "expires_at" timestamp with time zone, "created_at" timestamp with time zone, "match_summary" "jsonb", "caller_email_matches" boolean)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_inv public.email_invitations%rowtype;
+  v_inviter_name text;
+  v_match jsonb;
+  v_caller_email text;
+BEGIN
+  SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  SELECT p.display_name INTO v_inviter_name
+  FROM public.profiles p WHERE p.id = v_inv.inviter_user_id;
+
+  v_match := NULL;
+  IF v_inv.related_type = 'match' THEN
+    SELECT jsonb_build_object(
+      'match_id', m.id,
+      'game_type', m.game_type,
+      'match_date', m.match_date,
+      'start_time', m.start_time,
+      'club_name', c.name
+    ) INTO v_match
+    FROM public.matches m
+    LEFT JOIN public.clubs c ON c.id = m.club_id
+    WHERE m.id = v_inv.related_id;
+  END IF;
+
+  v_caller_email := NULL;
+  IF auth.uid() IS NOT NULL THEN
+    SELECT u.email INTO v_caller_email FROM auth.users u WHERE u.id = auth.uid();
+  END IF;
+
+  RETURN QUERY SELECT
+    v_inv.id,
+    v_inv.inviter_user_id,
+    COALESCE(v_inviter_name, 'Someone'),
+    v_inv.target_email,
+    v_inv.target_name,
+    v_inv.related_type,
+    v_inv.related_id,
+    v_inv.status,
+    v_inv.magic_link_flow_status,
+    v_inv.accepted_by_user_id,
+    v_inv.accepted_at,
+    v_inv.declined_at,
+    v_inv.expires_at,
+    v_inv.created_at,
+    v_match,
+    (lower(trim(v_caller_email)) = lower(trim(v_inv.target_email)));
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_email_invitation_get"("p_invitation_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_email_invitation_update_flow_status"("p_invitation_id" "uuid", "p_status" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  UPDATE public.email_invitations
+  SET magic_link_flow_status = p_status, updated_at = now()
+  WHERE id = p_invitation_id
+    AND (CASE p_status
+      WHEN 'opened' THEN magic_link_flow_status = 'not_opened'
+      WHEN 'verified_email' THEN magic_link_flow_status IN ('not_opened', 'opened')
+      WHEN 'landed' THEN magic_link_flow_status IN ('not_opened', 'opened', 'verified_email')
+      ELSE false
+    END);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_email_invitation_update_flow_status"("p_invitation_id" "uuid", "p_status" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_get_queued_deliveries"("p_limit" integer DEFAULT 10) RETURNS TABLE("id" "uuid", "destination" "text", "payload" "jsonb", "attempt_count" integer)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  RETURN QUERY
+  UPDATE public.notification_deliveries d
+  SET delivery_status = 'sending', attempt_count = d.attempt_count + 1, last_attempt_at = now()
+  WHERE d.id IN (
+    SELECT nd.id FROM public.notification_deliveries nd
+    WHERE nd.delivery_status = 'queued'
+    ORDER BY nd.created_at ASC
+    LIMIT p_limit
+    FOR UPDATE SKIP LOCKED
+  )
+  RETURNING d.id, d.destination, d.payload, d.attempt_count;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_get_queued_deliveries"("p_limit" integer) OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."group_members" (
@@ -1490,63 +2334,193 @@ $$;
 ALTER FUNCTION "public"."rpc_guest_sports_set"("p_guest_id" "uuid", "p_sport_codes" "text"[]) OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."match_participants" (
+CREATE OR REPLACE FUNCTION "public"."rpc_invite_circle_list"() RETURNS TABLE("id" "uuid", "owner_user_id" "uuid", "target_user_id" "uuid", "source" "text", "created_at" timestamp with time zone, "target_display_name" "text", "target_avatar_url" "text")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    uic.id,
+    uic.owner_user_id,
+    uic.target_user_id,
+    uic.source,
+    uic.created_at,
+    p.display_name AS target_display_name,   -- profiles.display_name
+    p.avatar_url AS target_avatar_url       -- profiles.avatar_url
+  FROM public.user_invite_circle uic
+  LEFT JOIN public.profiles p ON p.id = uic.target_user_id
+  WHERE uic.owner_user_id = v_uid
+  ORDER BY uic.created_at DESC;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_invite_circle_list"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_invite_circle_list"() IS 'Phase 1: List caller Invite Circle. Owner-only. Ordered by created_at desc.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_invite_circle_remove_user"("p_target_user_id" "uuid") RETURNS TABLE("removed" boolean)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_del int;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  DELETE FROM public.user_invite_circle
+  WHERE owner_user_id = v_uid AND target_user_id = p_target_user_id;
+
+  GET DIAGNOSTICS v_del = ROW_COUNT;
+
+  RETURN QUERY SELECT (v_del > 0);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_invite_circle_remove_user"("p_target_user_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_invite_circle_remove_user"("p_target_user_id" "uuid") IS 'Phase 1: Remove target from caller Invite Circle. Idempotent (no error if not present).';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."user_invite_circle" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "match_id" "uuid" NOT NULL,
-    "status" "public"."match_participant_status" DEFAULT 'pending'::"public"."match_participant_status" NOT NULL,
-    "join_method" "public"."match_join_method" NOT NULL,
-    "user_id" "uuid",
-    "guest_id" "uuid",
-    "created_by" "uuid" NOT NULL,
+    "owner_user_id" "uuid" NOT NULL,
+    "target_user_id" "uuid" NOT NULL,
+    "source" "text" DEFAULT 'manual'::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "confirmed_at" timestamp with time zone,
-    "removed_at" timestamp with time zone,
-    "org_approved_at" timestamp with time zone,
-    "org_approved_by" "uuid",
-    "nominated_by" "uuid",
-    "removed_by" "uuid",
-    "removal_note" "text",
-    "participant_accepted_at" timestamp with time zone,
-    "participant_accepted_via" "text",
-    "manual_confirmed_by" "uuid",
-    CONSTRAINT "chk_participant_accepted_via" CHECK ((("participant_accepted_via" IS NULL) OR ("participant_accepted_via" = ANY (ARRAY['in_app'::"text", 'manual'::"text", 'delegate_manual'::"text"])))),
-    CONSTRAINT "match_participants_exactly_one_identity" CHECK (((("user_id" IS NOT NULL) AND ("guest_id" IS NULL)) OR (("user_id" IS NULL) AND ("guest_id" IS NOT NULL))))
+    CONSTRAINT "user_invite_circle_owner_ne_target" CHECK (("owner_user_id" <> "target_user_id")),
+    CONSTRAINT "user_invite_circle_source_check" CHECK (("source" = ANY (ARRAY['manual'::"text", 'played_with_auto'::"text"])))
 );
 
 
-ALTER TABLE "public"."match_participants" OWNER TO "postgres";
+ALTER TABLE "public"."user_invite_circle" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."match_participants"."org_approved_at" IS 'v1.3: Timestamp when organizer approved this participant. NULL = not yet approved. Required for all participants to become confirmed.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."org_approved_by" IS 'v1.3: User ID of the organizer who approved this participant. NULL if not yet approved.';
+COMMENT ON TABLE "public"."user_invite_circle" IS 'Phase 1 Play Network Core: Private one-way list. Owner convenience only. Silent (no notification). Not trust/membership/approval.';
 
 
 
-COMMENT ON COLUMN "public"."match_participants"."nominated_by" IS 'v1.3: User ID of the participant who nominated this user (for join_method=requested with nomination). NULL if not nominated or if direct request/invite.';
+COMMENT ON COLUMN "public"."user_invite_circle"."source" IS 'manual = user saved; played_with_auto = future auto-add from played-with (not implemented yet).';
 
 
 
-COMMENT ON COLUMN "public"."match_participants"."removed_by" IS 'v1.3 CRITICAL: User ID who removed this participant. Must be set when status=removed. Used to distinguish user-withdrawal vs org-removal for reactivation logic.';
+CREATE OR REPLACE FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" "uuid", "p_source" "text" DEFAULT 'manual'::"text") RETURNS "public"."user_invite_circle"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_uid   uuid := auth.uid();
+  v_row   public.user_invite_circle;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  IF p_target_user_id IS NULL THEN
+    RAISE EXCEPTION 'invalid_target';
+  END IF;
+
+  IF p_target_user_id = v_uid THEN
+    RAISE EXCEPTION 'cannot_save_self';
+  END IF;
+
+  IF p_source IS NULL OR p_source NOT IN ('manual', 'played_with_auto') THEN
+    RAISE EXCEPTION 'invalid_source';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_target_user_id) THEN
+    RAISE EXCEPTION 'target_not_found';
+  END IF;
+
+  -- Idempotent + race-safe: ON CONFLICT DO UPDATE with no-op returns existing row
+  INSERT INTO public.user_invite_circle (owner_user_id, target_user_id, source)
+  VALUES (v_uid, p_target_user_id, p_source)
+  ON CONFLICT (owner_user_id, target_user_id)
+  DO UPDATE SET source = user_invite_circle.source  -- no-op: keep existing
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" "uuid", "p_source" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" "uuid", "p_source" "text") IS 'Phase 1: Save target to caller Invite Circle. Idempotent. Private, silent, no notification.';
 
 
 
-COMMENT ON COLUMN "public"."match_participants"."removal_note" IS 'v1.3: Optional note explaining why participant was removed (e.g., "declined", "rejected", "capacity reached").';
+CREATE OR REPLACE FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") RETURNS "public"."match_participants"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_inv public.email_invitations%rowtype;
+  v_match public.matches%rowtype;
+  v_user_email text;
+  v_new_mp public.match_participants%rowtype;
+BEGIN
+  SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
+  IF NOT FOUND OR v_inv.related_type <> 'match' OR v_inv.related_id <> p_match_id THEN
+    RAISE EXCEPTION 'invitation_invalid';
+  END IF;
+
+  IF p_user_id <> auth.uid() THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+
+  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
+  IF NOT FOUND OR v_match.status <> 'active' THEN
+    RAISE EXCEPTION 'match_not_active';
+  END IF;
+
+  SELECT email INTO v_user_email FROM auth.users WHERE id = p_user_id;
+  IF lower(trim(v_user_email)) <> lower(trim(v_inv.target_email)) THEN
+    RAISE EXCEPTION 'email_mismatch';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.match_participants WHERE match_id = p_match_id AND user_id = p_user_id AND removed_at IS NULL) THEN
+    RETURN (SELECT * FROM public.match_participants WHERE match_id = p_match_id AND user_id = p_user_id AND removed_at IS NULL LIMIT 1);
+  END IF;
+
+  INSERT INTO public.match_participants (
+    match_id, user_id, join_method,
+    participant_accepted_at, participant_accepted_via,
+    org_approved_at, org_approved_by, created_by
+  ) VALUES (
+    p_match_id, p_user_id, 'invited',
+    now(), 'email_invitation',
+    now(), v_inv.inviter_user_id, v_inv.inviter_user_id
+  )
+  RETURNING * INTO v_new_mp;
+
+  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
+  INSERT INTO public.match_participant_actions (match_id, match_participant_id, action_type, note, created_by)
+  VALUES (p_match_id, v_new_mp.id, 'invite', 'email_invitation', v_inv.inviter_user_id);
+
+  RETURN (SELECT * FROM public.match_participants WHERE id = v_new_mp.id);
+END;
+$$;
 
 
-
-COMMENT ON COLUMN "public"."match_participants"."participant_accepted_at" IS 'v1.5: Participant-side confirmation timestamp. Replaces user_accepted_at. Written by: rpc_match_accept_invite (in_app), rpc_match_manual_confirm (manual). Never written directly by UI or non-RPC code.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."participant_accepted_via" IS 'v1.5: How participant confirmed. in_app = user clicked Accept; manual = organizer confirmed on their behalf. Must be set whenever participant_accepted_at is set. Cleared on reconfirm.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."manual_confirmed_by" IS 'v1.5: User ID of organizer who manually confirmed this participant. Set only when participant_accepted_via = ''manual''. Cleared on reconfirm.';
-
+ALTER FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."rpc_match_accept_invite"("p_match_id" "uuid") RETURNS "public"."match_participants"
@@ -1578,19 +2552,7 @@ BEGIN
     RETURN v_mp;
   END IF;
 
-  UPDATE public.match_participants
-  SET
-    participant_accepted_at  = now(),
-    participant_accepted_via = 'in_app'
-  WHERE id = v_mp.id;
-
-  PERFORM public.match_participant_reconcile_status(v_mp.id);
-
-  INSERT INTO public.match_participant_actions (
-    match_id, match_participant_id, action_type, note, created_by
-  ) VALUES (
-    p_match_id, v_mp.id, 'accept', NULL, auth.uid()
-  );
+  PERFORM public.apply_participant_acceptance(v_mp.id, auth.uid(), true, 'accept');
 
   SELECT * INTO v_mp FROM public.match_participants WHERE id = v_mp.id;
   RETURN v_mp;
@@ -1605,37 +2567,425 @@ COMMENT ON FUNCTION "public"."rpc_match_accept_invite"("p_match_id" "uuid") IS '
 
 
 
-CREATE OR REPLACE FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text", "p_note" "text" DEFAULT NULL::"text") RETURNS "public"."match_participants"
+CREATE OR REPLACE FUNCTION "public"."rpc_match_admission_targets"("p_match_id" "uuid", "p_search" "text" DEFAULT NULL::"text") RETURNS TABLE("target_kind" "text", "target_id" "uuid", "display_name" "text", "avatar_url" "text", "club_handle" "text", "source" "text", "action_kind" "text", "can_admit" boolean, "eligible_via" "text", "sort_name" "text", "contact_email" "text")
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+#variable_conflict use_column
+DECLARE
+  v_match        public.matches%rowtype;
+  v_uid          uuid := auth.uid();
+  v_scope_ids    uuid[] := '{}'::uuid[];
+  v_club_context uuid;
+  v_can_call     boolean;
+  v_search       text := NULLIF(trim(p_search), '');
 BEGIN
-  RAISE EXCEPTION 'deprecated_use_nominate_guest_model: use rpc_match_nominate_guest instead';
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Match not found';
+  END IF;
+
+  v_can_call := public.is_match_organizer(p_match_id, v_uid)
+    OR (
+      v_match.can_participants_invite_users = true
+      AND (
+        public.is_user_in_scope_groups(
+          COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]),
+          v_uid
+        )
+        OR public.is_user_match_associated(p_match_id, v_uid)
+      )
+    );
+
+  IF NOT v_can_call THEN
+    RETURN;
+  END IF;
+
+  v_scope_ids := COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]);
+  v_club_context := COALESCE(
+    v_match.club_id,
+    (SELECT primary_club_id FROM public.profiles WHERE id = v_match.organizer_id)
+  );
+
+  RETURN QUERY
+  WITH already_active_users AS (
+    SELECT mp.user_id
+    FROM public.match_participants mp
+    WHERE mp.match_id = p_match_id
+      AND mp.status IN ('pending', 'confirmed')
+      AND mp.user_id IS NOT NULL
+  ),
+  already_active_guests AS (
+    SELECT mp.guest_id
+    FROM public.match_participants mp
+    WHERE mp.match_id = p_match_id
+      AND mp.status IN ('pending', 'confirmed')
+      AND mp.removed_at IS NULL
+      AND mp.guest_id IS NOT NULL
+  ),
+  reentry_src AS (
+    SELECT DISTINCT mp.user_id, 'reentry'::text AS src
+    FROM public.match_participants mp
+    WHERE mp.match_id = p_match_id
+      AND mp.user_id IS NOT NULL
+      AND mp.status = 'removed'
+      AND mp.user_id <> v_match.organizer_id
+      AND mp.user_id <> v_uid
+      AND mp.user_id NOT IN (SELECT user_id FROM already_active_users)
+  ),
+  invite_circle_src AS (
+    SELECT uic.target_user_id AS user_id, 'invite_circle'::text AS src
+    FROM public.user_invite_circle uic
+    WHERE uic.owner_user_id = v_uid
+      AND uic.target_user_id <> v_match.organizer_id
+      AND uic.target_user_id <> v_uid
+      AND uic.target_user_id NOT IN (SELECT user_id FROM already_active_users)
+  ),
+  club_members_src AS (
+    SELECT ci.user_id, 'club_members'::text AS src
+    FROM public.club_identities ci
+    JOIN public.profiles p ON p.id = ci.user_id
+    WHERE v_club_context IS NOT NULL
+      AND ci.club_id = v_club_context
+      AND ci.user_id <> v_match.organizer_id
+      AND ci.user_id <> v_uid
+      AND p.show_in_club_member_discovery = true
+      AND COALESCE(ci.visible_in_club_member_discovery, true) = true
+      AND ci.user_id NOT IN (SELECT user_id FROM already_active_users)
+      AND EXISTS (
+        SELECT 1 FROM public.club_identities ci_caller
+        WHERE ci_caller.club_id = v_club_context AND ci_caller.user_id = v_uid
+      )
+  ),
+  scope_members AS (
+    SELECT DISTINCT gm.user_id
+    FROM public.group_members gm
+    WHERE gm.group_id = ANY(v_scope_ids)
+      AND gm.status = 'active'
+      AND gm.user_id IS NOT NULL
+  ),
+  shared_group_members AS (
+    SELECT DISTINCT gm_other.user_id
+    FROM public.group_members gm_caller
+    JOIN public.group_members gm_other ON gm_caller.group_id = gm_other.group_id
+    JOIN public.groups g ON g.id = gm_caller.group_id
+    WHERE gm_caller.user_id = v_uid
+      AND gm_caller.status = 'active'
+      AND gm_other.status = 'active'
+      AND gm_other.user_id IS NOT NULL
+      AND gm_other.user_id <> v_uid
+      AND gm_other.user_id <> v_match.organizer_id
+      AND g.group_kind = 'friend'
+  ),
+  groups_src AS (
+    SELECT sm.user_id, 'groups'::text AS src FROM scope_members sm
+    UNION
+    SELECT sg.user_id, 'groups'::text AS src FROM shared_group_members sg
+  ),
+  all_user_sources AS (
+    SELECT user_id, src, 1 AS pri FROM reentry_src
+    UNION ALL
+    SELECT user_id, src, 2 AS pri FROM invite_circle_src
+    UNION ALL
+    SELECT user_id, src, 3 AS pri FROM club_members_src
+    UNION ALL
+    SELECT user_id, src, 4 AS pri FROM groups_src
+  ),
+  deduped_users AS (
+    SELECT DISTINCT ON (user_id) user_id, src
+    FROM all_user_sources
+    WHERE user_id <> v_uid
+    ORDER BY user_id, pri
+  ),
+  user_rows AS (
+    SELECT
+      'user'::text AS target_kind,
+      c.user_id AS target_id,
+      p.display_name,
+      p.avatar_url,
+      ci.club_handle,
+      c.src AS source,
+      'admit_user'::text AS action_kind,
+      public.can_admit_user_to_match(p_match_id, v_uid, c.user_id) AS can_admit,
+      CASE
+        WHEN public.can_admit_user_to_match(p_match_id, v_uid, c.user_id) THEN 'admit_allowed'
+        ELSE 'admit_forbidden'
+      END AS eligible_via,
+      LOWER(COALESCE(NULLIF(trim(p.display_name), ''), ci.club_handle, c.user_id::text)) AS sort_name,
+      NULL::text AS contact_email
+    FROM deduped_users c
+    JOIN public.profiles p ON p.id = c.user_id
+    LEFT JOIN public.club_identities ci
+      ON ci.user_id = c.user_id AND ci.club_id = v_club_context
+    WHERE (
+      v_search IS NULL
+      OR p.display_name ILIKE '%' || v_search || '%'
+      OR ci.club_handle ILIKE '%' || v_search || '%'
+    )
+  ),
+  roster_contacts_src AS (
+    SELECT g.id AS guest_id, g.display_name, g.email, g.phone
+    FROM public.user_roster_guests urg
+    JOIN public.guests g ON g.id = urg.guest_id
+    LEFT JOIN public.identity_links il
+      ON il.linked_type = 'contact' AND il.linked_id = g.id
+    WHERE urg.owner_user_id = v_uid
+      AND g.status = 'active'
+      AND il.user_id IS NULL
+      AND g.id NOT IN (SELECT guest_id FROM already_active_guests)
+  ),
+  contact_player_rows AS (
+    SELECT
+      'contact_player'::text AS target_kind,
+      r.guest_id AS target_id,
+      r.display_name,
+      NULL::text AS avatar_url,
+      NULL::text AS club_handle,
+      'roster_contacts'::text AS source,
+      'nominate_contact_player'::text AS action_kind,
+      (
+        public.is_match_organizer(p_match_id, v_uid)
+        OR public.is_user_match_associated(p_match_id, v_uid)
+      ) AS can_admit,
+      CASE
+        WHEN (
+          public.is_match_organizer(p_match_id, v_uid)
+          OR public.is_user_match_associated(p_match_id, v_uid)
+        ) THEN 'nominate_allowed'
+        ELSE 'nominate_forbidden'
+      END AS eligible_via,
+      LOWER(COALESCE(NULLIF(trim(r.display_name), ''), r.guest_id::text)) AS sort_name,
+      r.email AS contact_email
+    FROM roster_contacts_src r
+    WHERE (
+      v_search IS NULL
+      OR r.display_name ILIKE '%' || v_search || '%'
+      OR r.email ILIKE '%' || v_search || '%'
+      OR r.phone ILIKE '%' || v_search || '%'
+    )
+  ),
+  combined AS (
+    SELECT * FROM user_rows
+    UNION ALL
+    SELECT * FROM contact_player_rows
+  )
+  SELECT
+    c.target_kind,
+    c.target_id,
+    c.display_name,
+    c.avatar_url,
+    c.club_handle,
+    c.source,
+    c.action_kind,
+    c.can_admit,
+    c.eligible_via,
+    c.sort_name,
+    c.contact_email
+  FROM combined c
+  ORDER BY c.sort_name NULLS LAST, c.target_kind, c.target_id;
 END;
 $$;
 
 
-ALTER FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."rpc_match_admission_targets"("p_match_id" "uuid", "p_search" "text") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") IS 'DEPRECATED. Use rpc_match_nominate_guest. Old direct-confirmed path conflicted with nominate flow.';
+COMMENT ON FUNCTION "public"."rpc_match_admission_targets"("p_match_id" "uuid", "p_search" "text") IS 'Phase 3: Mixed admission targets. Returns users (admit_user) and Contact Players (nominate_contact_player). target_kind, target_id, action_kind tell frontend which write path to use.';
 
 
 
-CREATE OR REPLACE FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text" DEFAULT NULL::"text", "p_note" "text" DEFAULT NULL::"text") RETURNS "public"."match_participants"
+CREATE OR REPLACE FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", "p_target_user_id" "uuid") RETURNS "public"."match_participants"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+DECLARE
+  v_match    public.matches%rowtype;
+  v_uid      uuid := auth.uid();
+  v_existing public.match_participants%rowtype;
+  v_new_mp   public.match_participants%rowtype;
+  v_is_org   boolean;
 BEGIN
-  RAISE EXCEPTION 'deprecated_use_nominate_guest_model: use rpc_match_nominate_guest instead';
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Match not found';
+  END IF;
+
+  IF v_match.status <> 'active' THEN
+    RAISE EXCEPTION 'Match is not active (status: %)', v_match.status;
+  END IF;
+
+  IF p_target_user_id = v_uid THEN
+    RAISE EXCEPTION 'cannot_admit_self';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_target_user_id) THEN
+    RAISE EXCEPTION 'target_not_found';
+  END IF;
+
+  IF public.is_user_match_associated(p_match_id, p_target_user_id) THEN
+    RAISE EXCEPTION 'User is already a participant in this match';
+  END IF;
+
+  IF NOT public.can_admit_user_to_match(p_match_id, v_uid, p_target_user_id) THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+
+  v_is_org := public.is_match_organizer(p_match_id, v_uid);
+
+  -- Re-entry: find most recent removed row
+  SELECT * INTO v_existing
+  FROM public.match_participants
+  WHERE match_id = p_match_id AND user_id = p_target_user_id AND status = 'removed'
+  ORDER BY created_at DESC
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    IF v_is_org THEN
+      UPDATE public.match_participants
+      SET
+        removed_at               = NULL,
+        removed_by               = NULL,
+        removal_note             = NULL,
+        confirmed_at             = NULL,
+        join_method              = 'invited',
+        participant_accepted_at  = NULL,
+        participant_accepted_via = NULL,
+        org_approved_at          = now(),
+        org_approved_by          = v_uid,
+        nominated_by             = NULL,
+        manual_confirmed_by      = NULL
+      WHERE id = v_existing.id;
+    ELSE
+      UPDATE public.match_participants
+      SET
+        removed_at               = NULL,
+        removed_by               = NULL,
+        removal_note             = NULL,
+        confirmed_at             = NULL,
+        join_method              = 'nominated',
+        participant_accepted_at  = NULL,
+        participant_accepted_via = NULL,
+        org_approved_at          = NULL,
+        org_approved_by          = NULL,
+        nominated_by             = v_uid,
+        manual_confirmed_by      = NULL
+      WHERE id = v_existing.id;
+    END IF;
+
+    PERFORM public.match_participant_reconcile_status(v_existing.id);
+
+    INSERT INTO public.match_participant_actions
+      (match_id, match_participant_id, action_type, note, created_by)
+    VALUES
+      (p_match_id, v_existing.id, 'reenter', NULL, v_uid),
+      (p_match_id, v_existing.id, CASE WHEN v_is_org THEN 'invite' ELSE 'nominate' END, NULL, v_uid);
+
+    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
+    RETURN v_new_mp;
+  END IF;
+
+  -- Fresh admission
+  IF v_is_org THEN
+    INSERT INTO public.match_participants (
+      match_id, user_id, join_method,
+      participant_accepted_at, participant_accepted_via,
+      org_approved_at, org_approved_by, nominated_by, created_by
+    ) VALUES (
+      p_match_id, p_target_user_id, 'invited',
+      NULL, NULL,
+      now(), v_uid, NULL, v_uid
+    )
+    RETURNING * INTO v_new_mp;
+  ELSE
+    INSERT INTO public.match_participants (
+      match_id, user_id, join_method,
+      participant_accepted_at, participant_accepted_via,
+      org_approved_at, nominated_by, created_by
+    ) VALUES (
+      p_match_id, p_target_user_id, 'nominated',
+      NULL, NULL,
+      NULL, v_uid, v_uid
+    )
+    RETURNING * INTO v_new_mp;
+  END IF;
+
+  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
+
+  INSERT INTO public.match_participant_actions
+    (match_id, match_participant_id, action_type, note, created_by)
+  VALUES (p_match_id, v_new_mp.id, CASE WHEN v_is_org THEN 'invite' ELSE 'nominate' END, NULL, v_uid);
+
+  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
+  RETURN v_new_mp;
 END;
 $$;
 
 
-ALTER FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", "p_target_user_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") IS 'DEPRECATED. Use rpc_match_nominate_guest. Old direct-confirmed path conflicted with nominate flow.';
+COMMENT ON FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", "p_target_user_id" "uuid") IS 'Phase 1: Unified admission write. Organizer → invite (org_approved_at set). Non-org → nominate (org_approved_at NULL). Uses can_admit_user_to_match.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_match_confirmed_participant_emails"("p_match_id" "uuid") RETURNS TABLE("participant_id" "uuid", "email" "text", "contact_channel" "text")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_org_id uuid;
+BEGIN
+  SELECT organizer_id INTO v_org_id FROM public.matches WHERE id = p_match_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  -- User participants
+  RETURN QUERY
+  SELECT
+    mp.id,
+    COALESCE(NULLIF(trim(p.contact_email), ''), u.email::text),
+    COALESCE(NULLIF(trim(p.contact_channel), ''), 'email')
+  FROM public.match_participants mp
+  JOIN public.profiles p ON p.id = mp.user_id
+  JOIN auth.users u ON u.id = mp.user_id
+  WHERE mp.match_id = p_match_id
+    AND mp.user_id IS NOT NULL
+    AND mp.user_id != v_org_id
+    AND mp.removed_at IS NULL
+    AND mp.status = 'confirmed'
+    AND COALESCE(NULLIF(trim(p.contact_email), ''), u.email::text) IS NOT NULL;
+
+  -- Guest participants
+  RETURN QUERY
+  SELECT
+    mp.id,
+    NULLIF(trim(g.email), ''),
+    'email'::text
+  FROM public.match_participants mp
+  JOIN public.guests g ON g.id = mp.guest_id
+  WHERE mp.match_id = p_match_id
+    AND mp.guest_id IS NOT NULL
+    AND mp.removed_at IS NULL
+    AND mp.status = 'confirmed'
+    AND NULLIF(trim(g.email), '') IS NOT NULL;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_match_confirmed_participant_emails"("p_match_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_match_confirmed_participant_emails"("p_match_id" "uuid") IS 'Returns email for all confirmed participants (users + guests), excl. organizer. For match_formed notifications.';
 
 
 
@@ -1743,61 +3093,40 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_
 DECLARE
   v_uid uuid := auth.uid();
   v_mp  public.match_participants%rowtype;
+  v_match public.matches%rowtype;
+  v_guest_email text;
+  v_evt_id uuid;
 BEGIN
-  -- Auth
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
 
-  -- Load participant (must be guest, not removed)
   SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'participant_not_found';
-  END IF;
-
-  IF v_mp.guest_id IS NULL THEN
-    RAISE EXCEPTION 'not_guest_participant';
-  END IF;
-
-  IF v_mp.removed_at IS NOT NULL THEN
-    RAISE EXCEPTION 'cannot_confirm_removed_participant';
-  END IF;
-
-  -- Caller must be active participant in this match (user-side)
+  IF NOT FOUND THEN RAISE EXCEPTION 'Participant not found'; END IF;
+  IF v_mp.guest_id IS NULL THEN RAISE EXCEPTION 'not_guest_participant'; END IF;
+  IF v_mp.removed_at IS NOT NULL THEN RAISE EXCEPTION 'Cannot confirm a removed participant'; END IF;
   IF NOT public.is_user_match_associated(v_mp.match_id, v_uid) THEN
-    RAISE EXCEPTION 'caller_not_match_associated';
+    RAISE EXCEPTION 'You are not a participant in this match';
   END IF;
+  IF v_mp.participant_accepted_at IS NOT NULL THEN RETURN v_mp; END IF;
 
-  -- Idempotent: if already accepted, just reconcile and return
-  IF v_mp.participant_accepted_at IS NOT NULL THEN
-    PERFORM public.match_participant_reconcile_status(v_mp.id);
-    SELECT * INTO v_mp FROM public.match_participants WHERE id = v_mp.id;
-    RETURN v_mp;
+  PERFORM public.apply_participant_acceptance(p_match_participant_id, v_uid, false, 'delegate_manual_confirm');
+
+  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
+
+  v_guest_email := public.rpc_match_participant_email(v_mp.id);
+  IF v_guest_email IS NOT NULL THEN
+    SELECT * INTO v_match FROM public.matches WHERE id = v_mp.match_id;
+    INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
+    VALUES (
+      'match.guest_delegate_confirmed', 'match_participant', v_mp.id, v_uid,
+      jsonb_build_object(
+        'match_participant_id', v_mp.id, 'match_id', v_mp.match_id, 'target_email', v_guest_email,
+        'game_type', v_match.game_type, 'match_date', v_match.match_date,
+        'club_name', (SELECT c.name FROM public.clubs c WHERE c.id = v_match.club_id)
+      )
+    )
+    RETURNING id INTO v_evt_id;
+    PERFORM public.rpc_process_domain_event(v_evt_id);
   END IF;
-
-  -- Write participant-side confirmation ONLY
-  UPDATE public.match_participants
-  SET
-    participant_accepted_at  = COALESCE(participant_accepted_at, now()),
-    participant_accepted_via = 'delegate_manual'
-  WHERE id = v_mp.id;
-
-  PERFORM public.match_participant_reconcile_status(v_mp.id);
-  SELECT * INTO v_mp FROM public.match_participants WHERE id = v_mp.id;
-
-  INSERT INTO public.match_participant_actions (
-    match_id,
-    match_participant_id,
-    action_type,
-    note,
-    created_by
-  ) VALUES (
-    v_mp.match_id,
-    v_mp.id,
-    'delegate_confirm_guest',
-    NULL,
-    v_uid
-  );
 
   RETURN v_mp;
 END;
@@ -1831,12 +3160,10 @@ BEGIN
 
   SELECT * INTO v_match FROM public.matches WHERE id = v_mp.match_id;
 
-  -- User participant only (guests use rpc_match_delegate_confirm_guest)
   IF v_mp.user_id IS NULL THEN
     RAISE EXCEPTION 'use_rpc_match_delegate_confirm_guest_for_guests';
   END IF;
 
-  -- Must be pending, invited or nominated, not yet accepted
   IF v_mp.status <> 'pending' THEN
     RAISE EXCEPTION 'participant_not_pending_or_already_confirmed';
   END IF;
@@ -1844,13 +3171,12 @@ BEGIN
     RAISE EXCEPTION 'participant_not_invited_or_nominated';
   END IF;
   IF v_mp.participant_accepted_at IS NOT NULL THEN
-    RETURN v_mp; -- idempotent
+    RETURN v_mp;
   END IF;
   IF v_mp.removed_at IS NOT NULL THEN
     RAISE EXCEPTION 'participant_removed';
   END IF;
 
-  -- Caller: non-org + (InScope OR MatchAssociated)
   IF public.is_match_organizer(v_mp.match_id, v_uid) THEN
     RAISE EXCEPTION 'organizer_use_manual_confirm_or_approve';
   END IF;
@@ -1861,23 +3187,11 @@ BEGIN
     RAISE EXCEPTION 'not_authorized_to_delegate_confirm';
   END IF;
 
-  -- Caller must share group with participant (same for invited and nominated)
   IF NOT public.do_users_share_group(v_mp.user_id, v_uid) THEN
     RAISE EXCEPTION 'target_not_in_shared_groups';
   END IF;
 
-  -- Update participant_accepted_at
-  UPDATE public.match_participants
-  SET
-    participant_accepted_at  = now(),
-    participant_accepted_via = 'delegate_manual'
-  WHERE id = p_match_participant_id;
-
-  PERFORM public.match_participant_reconcile_status(p_match_participant_id);
-
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (v_mp.match_id, p_match_participant_id, 'delegate_manual_confirm', NULL, v_uid);
+  PERFORM public.apply_participant_acceptance(p_match_participant_id, v_uid, false, 'delegate_manual_confirm');
 
   SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
   RETURN v_mp;
@@ -1897,117 +3211,11 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_i
     SET "search_path" TO 'public'
     AS $$
 DECLARE
-  v_match      public.matches%rowtype;
-  v_uid        uuid := auth.uid();
-  v_existing   match_participants;
-  v_new_mp     match_participants;
-  v_constraint text;
-  v_scope_ids  uuid[] := '{}'::uuid[];
+  v_uid uuid := auth.uid();
 BEGIN
-  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
+  PERFORM public.check_delegate_confirm_user_target(p_match_id, v_uid, p_user_id);
 
-  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Match not found'; END IF;
-
-  v_scope_ids := COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]);
-
-  IF v_match.status <> 'active' THEN
-    RAISE EXCEPTION 'Match is not active (status: %)', v_match.status;
-  END IF;
-
-  IF public.is_match_organizer(p_match_id, v_uid) THEN
-    RAISE EXCEPTION 'You are not authorized to delegate-confirm for this match';
-  END IF;
-
-  IF NOT (
-    public.is_user_in_scope_groups(v_scope_ids, v_uid)
-    OR public.is_user_match_associated(p_match_id, v_uid)
-  ) THEN
-    RAISE EXCEPTION 'You are not authorized to delegate-confirm for this match';
-  END IF;
-
-  IF p_user_id = v_uid THEN RAISE EXCEPTION 'Cannot delegate-confirm yourself'; END IF;
-
-  IF public.is_user_match_associated(p_match_id, p_user_id) THEN
-    RAISE EXCEPTION 'User is already a participant in this match';
-  END IF;
-
-  IF NOT public.do_users_share_group(p_user_id, v_uid) THEN
-    RAISE EXCEPTION 'Target user is not in your shared groups';
-  END IF;
-
-  -- Re-entry: find most recent removed row
-  SELECT * INTO v_existing
-  FROM public.match_participants
-  WHERE match_id = p_match_id AND user_id = p_user_id AND status = 'removed'
-  ORDER BY created_at DESC
-  LIMIT 1
-  FOR UPDATE;
-
-  IF FOUND THEN
-    -- Re-entry: clear removed, set nominated, but leave participant_accepted_at NULL
-    -- so A2 can accept themselves. Status becomes pending.
-    UPDATE public.match_participants
-    SET
-      removed_at               = NULL,
-      removed_by               = NULL,
-      removal_note             = NULL,
-      confirmed_at             = NULL,
-      join_method              = 'nominated',
-      participant_accepted_at  = NULL,
-      participant_accepted_via = NULL,
-      org_approved_at          = NULL,
-      org_approved_by          = NULL,
-      nominated_by             = v_uid,
-      manual_confirmed_by      = NULL
-    WHERE id = v_existing.id;
-
-    PERFORM public.match_participant_reconcile_status(v_existing.id);
-
-    INSERT INTO public.match_participant_actions
-      (match_id, match_participant_id, action_type, note, created_by)
-    VALUES
-      (p_match_id, v_existing.id, 'reenter',                 NULL, v_uid),
-      (p_match_id, v_existing.id, 'delegate_manual_confirm', NULL, v_uid);
-
-    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
-    RETURN v_new_mp;
-  END IF;
-
-  -- Fresh delegate confirm (user not in match)
-  BEGIN
-    INSERT INTO public.match_participants (
-      match_id, user_id, join_method,
-      participant_accepted_at, participant_accepted_via,
-      org_approved_at, org_approved_by,
-      nominated_by, manual_confirmed_by,
-      created_by
-    ) VALUES (
-      p_match_id, p_user_id, 'nominated',
-      now(), 'delegate_manual',
-      NULL, NULL,
-      v_uid, v_uid,
-      v_uid
-    )
-    RETURNING * INTO v_new_mp;
-  EXCEPTION
-    WHEN unique_violation THEN
-      GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
-      IF v_constraint = 'uq_match_participants_active_user' THEN
-        RAISE EXCEPTION 'User is already a participant in this match';
-      ELSE
-        RAISE;
-      END IF;
-  END;
-
-  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
-
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (p_match_id, v_new_mp.id, 'delegate_manual_confirm', NULL, v_uid);
-
-  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
-  RETURN v_new_mp;
+  RETURN public.apply_delegate_confirm_user_target(p_match_id, v_uid, p_user_id);
 END;
 $$;
 
@@ -2015,7 +3223,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'v1.7: Non-org delegate-confirms user from shared groups. Re-entry (removed user): clears removed, sets nominated, leaves participant_accepted_at NULL so target can accept. Fresh: sets participant_accepted_at.';
+COMMENT ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'v1.6.3: Non-org delegate-confirms a user from friend-share groups. Fresh insert or re-entry. Sets participant_accepted_at via delegate_manual; organizer approval still required.';
 
 
 
@@ -2024,37 +3232,26 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"(
     SET "search_path" TO 'public'
     AS $$
 DECLARE
-  v_match public.matches%rowtype;
-  v_uid   uuid := auth.uid();
+  v_uid uuid := auth.uid();
 BEGIN
-  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
-
-  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Match not found'; END IF;
-
-  IF v_match.status <> 'active' THEN
-    RETURN;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
   END IF;
 
-  IF public.is_match_organizer(p_match_id, v_uid) THEN
-    RETURN;
-  END IF;
-
-  IF NOT public.is_user_in_scope_groups(v_match.invitation_scope_group_ids, v_uid)
-     AND NOT public.is_user_match_associated(p_match_id, v_uid) THEN
+  IF NOT public.can_delegate_confirm_user_caller(p_match_id, v_uid) THEN
     RETURN;
   END IF;
 
   RETURN QUERY
   WITH already_active AS (
-    SELECT mp.user_id AS uid
+    SELECT mp.user_id
     FROM public.match_participants mp
     WHERE mp.match_id = p_match_id
       AND mp.user_id IS NOT NULL
-      AND mp.status IN ('pending','confirmed')
+      AND mp.status IN ('pending', 'confirmed')
   ),
   shared_group_members AS (
-    SELECT DISTINCT gm_other.user_id AS uid
+    SELECT DISTINCT gm_other.user_id
     FROM public.group_members gm_caller
     JOIN public.group_members gm_other
       ON gm_caller.group_id = gm_other.group_id
@@ -2068,11 +3265,11 @@ BEGIN
       AND g.group_kind = 'friend'
   )
   SELECT
-    sgm.uid AS user_id,
+    sgm.user_id,
     pd.display_name
   FROM shared_group_members sgm
-  JOIN public.profile_display pd ON pd.id = sgm.uid
-  WHERE sgm.uid NOT IN (SELECT aa.uid FROM already_active aa)
+  JOIN public.profile_display pd ON pd.id = sgm.user_id
+  WHERE sgm.user_id NOT IN (SELECT user_id FROM already_active)
   ORDER BY pd.display_name;
 END;
 $$;
@@ -2081,101 +3278,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") IS 'v1.6.3: Friend-group-only targets for delegate manual confirm. Fixed ambiguous user_id.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-BEGIN
-  RAISE EXCEPTION 'deprecated_use_nominate_guest_model: use rpc_match_nominate_guest instead';
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid") IS 'DEPRECATED. Use rpc_match_nominate_guest. Old path conflicted with nominate flow.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_match_invite_targets"("p_match_id" "uuid") RETURNS TABLE("user_id" "uuid", "display_name" "text")
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-#variable_conflict use_column
-DECLARE
-  v_match public.matches%rowtype;
-  v_uid   uuid := auth.uid();
-  v_scope_ids uuid[] := '{}'::uuid[];
-BEGIN
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
-
-  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Match not found';
-  END IF;
-
-  v_scope_ids := COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]);
-
-  -- Caller gate: organizer only (RAISE on failure — debug-friendly admin entry point)
-  IF NOT public.is_match_organizer(p_match_id, v_uid) THEN
-    RAISE EXCEPTION 'Only the match organizer can perform this action';
-  END IF;
-
-  RETURN QUERY
-  WITH already_active AS (
-    SELECT mp.user_id
-    FROM public.match_participants mp
-    WHERE mp.match_id = p_match_id
-      AND mp.status IN ('pending', 'confirmed')
-      AND mp.user_id IS NOT NULL
-  ),
-  scope_members AS (
-    SELECT DISTINCT gm.user_id
-    FROM public.group_members gm
-    WHERE gm.group_id = ANY(v_scope_ids)
-      AND gm.status = 'active'
-      AND gm.user_id IS NOT NULL
-  ),
-  shared_group_members AS (
-    SELECT DISTINCT gm_other.user_id
-    FROM public.group_members gm_org
-    JOIN public.group_members gm_other
-      ON gm_org.group_id = gm_other.group_id
-    JOIN public.groups g
-      ON g.id = gm_org.group_id
-    WHERE gm_org.user_id = v_match.organizer_id
-      AND gm_org.status  = 'active'
-      AND gm_other.status = 'active'
-      AND gm_other.user_id IS NOT NULL
-      AND gm_other.user_id <> v_match.organizer_id
-      AND g.group_kind = 'friend'
-  ),
-  eligible AS (
-    SELECT sm.user_id FROM scope_members sm
-    UNION
-    SELECT sg.user_id FROM shared_group_members sg
-  )
-  SELECT e.user_id, pd.display_name
-  FROM eligible e
-  JOIN public.profile_display pd ON pd.id = e.user_id
-  WHERE e.user_id NOT IN (SELECT aa.user_id FROM already_active aa)
-    AND e.user_id <> v_uid
-  ORDER BY pd.display_name NULLS LAST, e.user_id;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_invite_targets"("p_match_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_invite_targets"("p_match_id" "uuid") IS 'v1.6.3: Eligible invite targets for organizer. Target set: InScope UNION ShareGroup(friend-only, organizer). Excludes self and already-active. RAISE on unauthorized caller.';
+COMMENT ON FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_match_id" "uuid") IS 'v1.6.3: Friend-group-only targets for delegate manual confirm. Caller: non-org + (InScope OR MatchAssociated). Returns empty when ineligible.';
 
 
 
@@ -2183,122 +3286,20 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid",
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-DECLARE
-  v_match    public.matches%rowtype;
-  v_existing public.match_participants%rowtype;
-  v_new_mp   public.match_participants%rowtype;
-  v_scope_ids uuid[] := '{}'::uuid[];
 BEGIN
-  -- Auth
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
   END IF;
 
-  -- Fetch match
-  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Match not found';
-  END IF;
-
-  v_scope_ids := COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]);
-
-  -- Caller gate: organizer only
   IF NOT public.is_match_organizer(p_match_id, auth.uid()) THEN
     RAISE EXCEPTION 'Only the match organizer can perform this action';
   END IF;
 
-  -- Match active gate
-  IF v_match.status <> 'active' THEN
-    RAISE EXCEPTION 'Match is not active (status: %)', v_match.status;
-  END IF;
-
-  -- Cannot invite self (organizer)
-  IF p_user_id = v_match.organizer_id THEN
+  IF p_user_id = (SELECT organizer_id FROM public.matches WHERE id = p_match_id) THEN
     RAISE EXCEPTION 'Cannot invite yourself';
   END IF;
 
-  -- Already active gate (non-removed rows only)
-  IF public.is_user_match_associated(p_match_id, p_user_id) THEN
-    RAISE EXCEPTION 'User is already a participant in this match';
-  END IF;
-
-  -- Look at latest participant row (any status). If it's NOT removed, enforce scope gate.
-  SELECT *
-  INTO v_existing
-  FROM public.match_participants
-  WHERE match_id = p_match_id AND user_id = p_user_id
-  ORDER BY created_at DESC
-  LIMIT 1;
-
-  IF v_existing.id IS NULL OR v_existing.status <> 'removed' THEN
-    -- First-time invite (or non-removed history): must be in scope OR shared group.
-    IF NOT (
-      public.is_user_in_scope_groups(v_scope_ids, p_user_id)
-      OR public.do_users_share_group(p_user_id, v_match.organizer_id)
-    ) THEN
-      RAISE EXCEPTION 'Target user is not in scope or shared group';
-    END IF;
-  END IF;
-
-  -- Re-entry: find most recent removed row (status-based)
-  SELECT * INTO v_existing
-  FROM public.match_participants
-  WHERE match_id = p_match_id AND user_id = p_user_id AND status = 'removed'
-  ORDER BY created_at DESC
-  LIMIT 1
-  FOR UPDATE;
-
-  IF FOUND THEN
-    -- Re-invite: clear removed + apply as fresh invite
-    -- created_by NOT updated (audit integrity)
-    UPDATE public.match_participants
-    SET
-      status                  = 'pending',
-      removed_at               = NULL,
-      removed_by               = NULL,
-      removal_note             = NULL,
-      confirmed_at             = NULL,
-      join_method              = 'invited',
-      participant_accepted_at  = NULL,
-      participant_accepted_via = NULL,
-      org_approved_at          = now(),
-      org_approved_by          = auth.uid(),
-      nominated_by             = NULL,
-      manual_confirmed_by      = NULL
-    WHERE id = v_existing.id;
-
-    PERFORM public.match_participant_reconcile_status(v_existing.id);
-
-    INSERT INTO public.match_participant_actions
-      (match_id, match_participant_id, action_type, note, created_by)
-    VALUES
-      (p_match_id, v_existing.id, 'reenter', NULL, auth.uid()),
-      (p_match_id, v_existing.id, 'invite',  NULL, auth.uid());
-
-    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
-    RETURN v_new_mp;
-  END IF;
-
-  -- Fresh invite: org side approved (user acceptance still needed)
-  INSERT INTO public.match_participants (
-    match_id, user_id, join_method,
-    participant_accepted_at, participant_accepted_via,
-    org_approved_at, org_approved_by, nominated_by, created_by
-  ) VALUES (
-    p_match_id, p_user_id, 'invited',
-    NULL, NULL,
-    now(), auth.uid(), NULL, auth.uid()
-  )
-  RETURNING * INTO v_new_mp;
-
-  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
-
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (p_match_id, v_new_mp.id, 'invite', NULL, auth.uid());
-
-  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
-  RETURN v_new_mp;
+  RETURN public.rpc_match_admit_user(p_match_id, p_user_id);
 END;
 $$;
 
@@ -2306,7 +3307,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'v1.6.3: ORG-only invite. Target: InScope(target) OR ShareGroup(target, organizer_id) for first-time invites. Removed participants can always be re-invited via re-entry (Invite back). Re-entry sets status=pending and clears removal fields so clients treat them as pending. Status-based gates. Re-entry preserves created_by and writes reenter + invite action logs. Sets org_approved_at; user acceptance required to confirm.';
+COMMENT ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'Phase 1: Organizer-only invite. Thin wrapper around rpc_match_admit_user. Preserves legacy error messages for compatibility.';
 
 
 
@@ -2497,104 +3498,68 @@ DECLARE
   v_uid      uuid := auth.uid();
   v_existing public.match_participants%rowtype;
   v_mp       public.match_participants%rowtype;
+  v_is_org   boolean;
+  v_guest_email text;
+  v_nominator_name text;
+  v_evt_id   uuid;
 BEGIN
-  -- Auth
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
 
-  -- Match must exist and be active
   SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'match_not_found';
-  END IF;
-  IF v_match.status <> 'active' THEN
-    RAISE EXCEPTION 'match_not_active (status=%)', v_match.status;
-  END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'match_not_found'; END IF;
+  IF v_match.status <> 'active' THEN RAISE EXCEPTION 'match_not_active (status=%)', v_match.status; END IF;
 
-  -- Caller: organizer OR active participant
-  IF NOT (
-    public.is_match_organizer(p_match_id, v_uid)
-    OR public.is_user_match_associated(p_match_id, v_uid)
-  ) THEN
+  v_is_org := (v_match.organizer_id = v_uid);
+  IF NOT (v_is_org OR public.is_user_match_associated(p_match_id, v_uid)) THEN
     RAISE EXCEPTION 'not_authorized_to_nominate_guest';
   END IF;
 
-  -- Guest must be in caller''s personal roster
-  IF NOT EXISTS (
-    SELECT 1
-    FROM public.user_roster_guests urg
-    WHERE urg.owner_user_id = v_uid
-      AND urg.guest_id      = p_guest_id
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roster_guests urg WHERE urg.owner_user_id = v_uid AND urg.guest_id = p_guest_id) THEN
     RAISE EXCEPTION 'guest_not_in_my_roster';
   END IF;
 
-  -- Guest must exist and be active
-  IF NOT EXISTS (
-    SELECT 1
-    FROM public.guests g
-    WHERE g.id = p_guest_id
-      AND g.status = 'active'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM public.guests g WHERE g.id = p_guest_id AND g.status = 'active') THEN
     RAISE EXCEPTION 'guest_not_found_or_inactive';
   END IF;
 
-  -- Prevent duplicate active (match, guest) row
-  SELECT * INTO v_existing
-  FROM public.match_participants
-  WHERE match_id = p_match_id
-    AND guest_id = p_guest_id
-    AND removed_at IS NULL
-  LIMIT 1;
+  SELECT * INTO v_existing FROM public.match_participants
+  WHERE match_id = p_match_id AND guest_id = p_guest_id AND removed_at IS NULL LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'guest_already_active'; END IF;
 
-  IF FOUND THEN
-    RAISE EXCEPTION 'guest_already_active';
-  END IF;
-
-  -- Insert nominated guest participant
   INSERT INTO public.match_participants (
-    match_id,
-    join_method,
-    guest_id,
-    created_by,
-    created_at,
-    nominated_by,
-    participant_accepted_at,
-    participant_accepted_via,
-    org_approved_at,
-    org_approved_by
+    match_id, join_method, guest_id, created_by, created_at, nominated_by,
+    participant_accepted_at, participant_accepted_via, org_approved_at, org_approved_by
   ) VALUES (
-    p_match_id,
-    'nominated',
-    p_guest_id,
-    v_uid,
-    now(),
-    v_uid,
-    NULL,
-    NULL,
-    CASE WHEN v_match.organizer_id = v_uid THEN now() ELSE NULL END,
-    CASE WHEN v_match.organizer_id = v_uid THEN v_uid ELSE NULL END
+    p_match_id, 'nominated', p_guest_id, v_uid, now(), v_uid,
+    NULL, NULL,
+    CASE WHEN v_is_org THEN now() ELSE NULL END,
+    CASE WHEN v_is_org THEN v_uid ELSE NULL END
   )
   RETURNING * INTO v_mp;
 
   PERFORM public.match_participant_reconcile_status(v_mp.id);
   SELECT * INTO v_mp FROM public.match_participants WHERE id = v_mp.id;
 
-  -- Action log
-  INSERT INTO public.match_participant_actions (
-    match_id,
-    match_participant_id,
-    action_type,
-    note,
-    created_by
-  ) VALUES (
-    p_match_id,
-    v_mp.id,
-    'nominate_guest',
-    NULL,
-    v_uid
-  );
+  INSERT INTO public.match_participant_actions (match_id, match_participant_id, action_type, note, created_by)
+  VALUES (p_match_id, v_mp.id, 'nominate_guest', NULL, v_uid);
+
+  SELECT NULLIF(trim(g.email), '') INTO v_guest_email FROM public.guests g WHERE g.id = p_guest_id;
+  SELECT p.display_name INTO v_nominator_name FROM public.profiles p WHERE p.id = v_uid;
+  IF v_guest_email IS NOT NULL THEN
+    INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
+    VALUES (
+      'match.guest_nominated', 'match_participant', v_mp.id, v_uid,
+      jsonb_build_object(
+        'match_participant_id', v_mp.id, 'match_id', p_match_id, 'guest_id', p_guest_id,
+        'target_email', v_guest_email, 'nominator_user_id', v_uid,
+        'nominator_display_name', COALESCE(v_nominator_name, 'Someone'),
+        'game_type', v_match.game_type, 'match_date', v_match.match_date,
+        'club_name', (SELECT c.name FROM public.clubs c WHERE c.id = v_match.club_id)
+      )
+    )
+    RETURNING id INTO v_evt_id;
+    PERFORM public.rpc_process_domain_event(v_evt_id);
+  END IF;
 
   RETURN v_mp;
 END;
@@ -2604,19 +3569,17 @@ $$;
 ALTER FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") IS 'v1.7: Nominate a Contact Player (guest) into a match. Organizer OR any active participant may call. Requires guest to be in caller''s roster and active in guests table. Inserts join_method=nominated, leaves participant_accepted_at NULL. Organizer callers write org_approved_at immediately; others leave it NULL. Reconcile derives status from timestamps.';
+COMMENT ON FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") IS 'v1.7: Nominate Contact Player. Organizer: auto org_approved_at only; guest stays pending until delegate_confirm_guest. Non-org: org_approved_at NULL.';
 
 
 
-CREATE OR REPLACE FUNCTION "public"."rpc_match_nominate_targets"("p_match_id" "uuid") RETURNS TABLE("user_id" "uuid", "display_name" "text")
+CREATE OR REPLACE FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") RETURNS "public"."match_participants"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-#variable_conflict use_column
 DECLARE
   v_match public.matches%rowtype;
   v_uid   uuid := auth.uid();
-  v_scope_ids uuid[] := '{}'::uuid[];
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
@@ -2627,141 +3590,26 @@ BEGIN
     RAISE EXCEPTION 'Match not found';
   END IF;
 
-  v_scope_ids := COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]);
-
-  -- Caller gate: return empty on failure (UI-friendly, no exception)
   IF public.is_match_organizer(p_match_id, v_uid) THEN
-    RETURN;
+    RAISE EXCEPTION 'You are not authorized to nominate for this match';
   END IF;
 
   IF NOT v_match.can_participants_invite_users THEN
-    RETURN;
+    RAISE EXCEPTION 'You are not authorized to nominate for this match';
   END IF;
 
   IF NOT (
-    public.is_user_in_scope_groups(v_scope_ids, v_uid)
+    public.is_user_in_scope_groups(COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]), v_uid)
     OR public.is_user_match_associated(p_match_id, v_uid)
   ) THEN
-    RETURN;
-  END IF;
-
-  RETURN QUERY
-  WITH already_active AS (
-    SELECT mp.user_id
-    FROM public.match_participants mp
-    WHERE mp.match_id = p_match_id
-      AND mp.status IN ('pending', 'confirmed')
-      AND mp.user_id IS NOT NULL
-  ),
-  shared_group_members AS (
-    SELECT DISTINCT gm_other.user_id
-    FROM public.group_members gm_caller
-    JOIN public.group_members gm_other
-      ON gm_caller.group_id = gm_other.group_id
-    JOIN public.groups g
-      ON g.id = gm_caller.group_id
-    WHERE gm_caller.user_id = v_uid
-      AND gm_caller.status  = 'active'
-      AND gm_other.status   = 'active'
-      AND gm_other.user_id IS NOT NULL
-      AND gm_other.user_id <> v_uid
-      AND g.group_kind = 'friend'
-  )
-  SELECT sg.user_id, pd.display_name
-  FROM shared_group_members sg
-  JOIN public.profile_display pd ON pd.id = sg.user_id
-  WHERE sg.user_id NOT IN (SELECT aa.user_id FROM already_active aa)
-    AND sg.user_id <> v_match.organizer_id
-  ORDER BY pd.display_name NULLS LAST, sg.user_id;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_nominate_targets"("p_match_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_nominate_targets"("p_match_id" "uuid") IS 'v1.6.3: Eligible nomination targets for non-org participants. Caller gates preserved. Target set: ShareGroup(friend-only, caller). Excludes self, organizer, already-active. Returns empty on unauthorized.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_match     public.matches%rowtype;
-  v_uid       uuid := auth.uid();
-  v_existing  match_participants;
-  v_new_mp    match_participants;
-  v_scope_ids uuid[] := '{}'::uuid[];
-BEGIN
-  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
-
-  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Match not found'; END IF;
-
-  v_scope_ids := COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]);
-
-  IF v_match.status <> 'active' THEN RAISE EXCEPTION 'Match is not active (status: %)', v_match.status; END IF;
-  IF public.is_match_organizer(p_match_id, v_uid) THEN RAISE EXCEPTION 'You are not authorized to nominate for this match'; END IF;
-  IF NOT v_match.can_participants_invite_users THEN RAISE EXCEPTION 'You are not authorized to nominate for this match'; END IF;
-  IF NOT ( public.is_user_in_scope_groups(v_scope_ids, v_uid) OR public.is_user_match_associated(p_match_id, v_uid) ) THEN
     RAISE EXCEPTION 'You are not authorized to nominate for this match';
   END IF;
-  IF p_user_id = v_uid THEN RAISE EXCEPTION 'Cannot nominate yourself'; END IF;
-  IF public.is_user_match_associated(p_match_id, p_user_id) THEN RAISE EXCEPTION 'User is already a participant in this match'; END IF;
-  IF NOT public.do_users_share_group(p_user_id, v_uid) THEN RAISE EXCEPTION 'Target user is not in your shared groups'; END IF;
 
-  SELECT mp.* INTO v_existing
-  FROM public.match_participants mp
-  WHERE mp.match_id = p_match_id AND mp.user_id = p_user_id AND mp.status = 'removed'
-  ORDER BY mp.created_at DESC
-  LIMIT 1
-  FOR UPDATE;
-
-  IF FOUND THEN
-    UPDATE public.match_participants mp
-    SET
-      removed_at               = NULL,
-      removed_by               = NULL,
-      removal_note             = NULL,
-      confirmed_at             = NULL,
-      join_method              = 'nominated',
-      participant_accepted_at  = NULL,
-      participant_accepted_via = NULL,
-      org_approved_at          = NULL,
-      org_approved_by          = NULL,
-      nominated_by             = v_uid,
-      manual_confirmed_by      = NULL
-    WHERE mp.id = v_existing.id;
-
-    PERFORM public.match_participant_reconcile_status(v_existing.id);
-
-    INSERT INTO public.match_participant_actions (match_id, match_participant_id, action_type, note, created_by)
-    VALUES (p_match_id, v_existing.id, 'reenter', NULL, v_uid), (p_match_id, v_existing.id, 'nominate', NULL, v_uid);
-
-    SELECT mp.* INTO v_new_mp FROM public.match_participants mp WHERE mp.id = v_existing.id;
-    RETURN v_new_mp;
+  IF p_user_id = v_uid THEN
+    RAISE EXCEPTION 'Cannot nominate yourself';
   END IF;
 
-  INSERT INTO public.match_participants (
-    match_id, user_id, join_method,
-    participant_accepted_at, participant_accepted_via,
-    org_approved_at, nominated_by, created_by
-  ) VALUES (
-    p_match_id, p_user_id, 'nominated',
-    NULL, NULL,
-    NULL, v_uid, v_uid
-  )
-  RETURNING * INTO v_new_mp;
-
-  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
-
-  INSERT INTO public.match_participant_actions (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (p_match_id, v_new_mp.id, 'nominate', NULL, v_uid);
-
-  SELECT mp.* INTO v_new_mp FROM public.match_participants mp WHERE mp.id = v_new_mp.id;
-  RETURN v_new_mp;
+  RETURN public.rpc_match_admit_user(p_match_id, p_user_id);
 END;
 $$;
 
@@ -2769,7 +3617,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'v1.6.3: Non-org nomination in friend-share groups. No revival of removed participants — use restart channels (rpc_match_request_join / rpc_match_invite_user).';
+COMMENT ON FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'Phase 1: Non-organizer nomination. Thin wrapper around rpc_match_admit_user. Preserves legacy caller-gate errors for compatibility.';
 
 
 
@@ -2778,14 +3626,16 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_org_approve_participant"("p_match
     SET "search_path" TO 'public'
     AS $$
 DECLARE
-  v_mp       match_participants;
+  v_mp       public.match_participants%rowtype;
+  v_match    public.matches%rowtype;
   v_match_id uuid;
+  v_guest_email text;
+  v_evt_id   uuid;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
 
   SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Participant not found'; END IF;
-
   v_match_id := v_mp.match_id;
 
   IF NOT public.is_match_organizer(v_match_id, auth.uid()) THEN
@@ -2794,24 +3644,37 @@ BEGIN
   IF v_mp.removed_at IS NOT NULL THEN
     RAISE EXCEPTION 'Cannot approve a removed participant. Re-invite them first.';
   END IF;
-  -- Already confirmed — idempotent, no log (UI should show toast)
-  IF v_mp.confirmed_at IS NOT NULL THEN
-    RETURN v_mp;
-  END IF;
+  IF v_mp.confirmed_at IS NOT NULL THEN RETURN v_mp; END IF;
 
   UPDATE public.match_participants
-  SET
-    org_approved_at = COALESCE(org_approved_at, now()),
-    org_approved_by = auth.uid()
+  SET org_approved_at = COALESCE(org_approved_at, now()), org_approved_by = auth.uid()
   WHERE id = p_match_participant_id;
 
   PERFORM public.match_participant_reconcile_status(p_match_participant_id);
 
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
+  INSERT INTO public.match_participant_actions (match_id, match_participant_id, action_type, note, created_by)
   VALUES (v_match_id, p_match_participant_id, 'approve', NULL, auth.uid());
 
   SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
+
+  IF v_mp.guest_id IS NOT NULL THEN
+    v_guest_email := public.rpc_match_participant_email(p_match_participant_id);
+    IF v_guest_email IS NOT NULL THEN
+      SELECT * INTO v_match FROM public.matches WHERE id = v_match_id;
+      INSERT INTO public.domain_events (event_type, aggregate_type, aggregate_id, actor_user_id, payload)
+      VALUES (
+        'match.guest_org_approved', 'match_participant', v_mp.id, auth.uid(),
+        jsonb_build_object(
+          'match_participant_id', v_mp.id, 'match_id', v_match_id, 'target_email', v_guest_email,
+          'game_type', v_match.game_type, 'match_date', v_match.match_date,
+          'club_name', (SELECT c.name FROM public.clubs c WHERE c.id = v_match.club_id)
+        )
+      )
+      RETURNING id INTO v_evt_id;
+      PERFORM public.rpc_process_domain_event(v_evt_id);
+    END IF;
+  END IF;
+
   RETURN v_mp;
 END;
 $$;
@@ -2864,6 +3727,96 @@ ALTER FUNCTION "public"."rpc_match_participant_display_names"("p_match_id" "uuid
 
 
 COMMENT ON FUNCTION "public"."rpc_match_participant_display_names"("p_match_id" "uuid", "p_participant_ids" "uuid"[]) IS 'v1.7: Resolve participant display names for activity feed. Bypasses participant RLS for lookup. Caller must see match.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_match_participant_email"("p_match_participant_id" "uuid") RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_mp  public.match_participants%rowtype;
+  v_email text;
+BEGIN
+  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  IF v_mp.user_id IS NOT NULL THEN
+    SELECT COALESCE(NULLIF(trim(p.contact_email), ''), u.email::text) INTO v_email
+    FROM public.profiles p
+    JOIN auth.users u ON u.id = v_mp.user_id
+    WHERE p.id = v_mp.user_id;
+    RETURN v_email;
+  END IF;
+
+  IF v_mp.guest_id IS NOT NULL THEN
+    SELECT NULLIF(trim(g.email), '') INTO v_email
+    FROM public.guests g
+    WHERE g.id = v_mp.guest_id;
+    RETURN v_email;
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_match_participant_email"("p_match_participant_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_match_participant_email"("p_match_participant_id" "uuid") IS 'Returns email for a participant (user: profile/auth; guest: guests.email). NULL if no email.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_match_participant_emails_for_notification"("p_match_id" "uuid") RETURNS TABLE("user_id" "uuid", "email" "text", "contact_channel" "text")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.matches m
+    WHERE m.id = p_match_id
+      AND (
+        m.organizer_id = auth.uid()
+        OR EXISTS (
+          SELECT 1 FROM public.match_participants mp
+          WHERE mp.match_id = p_match_id AND mp.user_id = auth.uid()
+            AND mp.status = 'confirmed' AND mp.removed_at IS NULL
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    mp.user_id,
+    COALESCE(NULLIF(trim(p.contact_email), ''), u.email::text) AS email,
+    COALESCE(NULLIF(trim(p.contact_channel), ''), 'email') AS contact_channel
+  FROM public.match_participants mp
+  JOIN public.profiles p ON p.id = mp.user_id
+  JOIN auth.users u ON u.id = mp.user_id
+  WHERE mp.match_id = p_match_id
+    AND mp.user_id IS NOT NULL
+    AND mp.removed_at IS NULL
+    AND mp.user_id != (SELECT organizer_id FROM public.matches WHERE id = p_match_id)
+    AND mp.org_approved_at IS NOT NULL
+    AND (mp.status = 'confirmed' OR (mp.status = 'pending' AND mp.participant_accepted_at IS NULL))
+    AND COALESCE(NULLIF(trim(p.contact_email), ''), u.email::text) IS NOT NULL;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_match_participant_emails_for_notification"("p_match_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_match_participant_emails_for_notification"("p_match_id" "uuid") IS 'v1.7: Returns email + contact_channel for confirmed user participants (excl. organizer). Caller must be organizer or confirmed participant.';
 
 
 
@@ -3086,6 +4039,147 @@ COMMENT ON FUNCTION "public"."rpc_match_user_withdraw"("p_match_id" "uuid") IS '
 
 
 
+CREATE OR REPLACE FUNCTION "public"."rpc_process_domain_event"("p_event_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_evt public.domain_events%rowtype;
+  v_inv public.email_invitations%rowtype;
+  v_payload jsonb;
+  v_dest text;
+  v_match_id uuid;
+  v_rec record;
+BEGIN
+  SELECT * INTO v_evt FROM public.domain_events WHERE id = p_event_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'event_not_found';
+  END IF;
+
+  -- invitation.email_invitation_created (existing)
+  IF v_evt.event_type = 'invitation.email_invitation_created' THEN
+    v_payload := v_evt.payload;
+    SELECT * INTO v_inv FROM public.email_invitations WHERE id = (v_payload->>'invitation_id')::uuid;
+    IF NOT FOUND THEN
+      RETURN;
+    END IF;
+
+    INSERT INTO public.email_invitation_events (invitation_id, event_type, actor_user_id, metadata)
+    VALUES (v_inv.id, 'email_delivery_requested', v_evt.actor_user_id, jsonb_build_object('domain_event_id', p_event_id));
+
+    INSERT INTO public.notification_deliveries (
+      email_invitation_id, channel, provider, destination, delivery_status, payload
+    ) VALUES (
+      v_inv.id, 'email', 'resend', v_inv.target_email, 'queued',
+      jsonb_build_object(
+        'template_type', 'invitation',
+        'invitation_id', v_inv.id,
+        'inviter_display_name', v_payload->>'inviter_display_name',
+        'target_email', v_inv.target_email,
+        'related_type', v_inv.related_type,
+        'related_id', v_inv.related_id,
+        'match_summary', (SELECT jsonb_build_object('game_type', m.game_type, 'match_date', m.match_date, 'club_name', c.name)
+          FROM public.matches m LEFT JOIN public.clubs c ON c.id = m.club_id WHERE m.id = v_inv.related_id)
+      )
+    );
+    RETURN;
+  END IF;
+
+  -- match.guest_nominated
+  IF v_evt.event_type = 'match.guest_nominated' THEN
+    v_payload := v_evt.payload;
+    v_dest := v_payload->>'target_email';
+    IF v_dest IS NULL OR trim(v_dest) = '' THEN RETURN; END IF;
+
+    INSERT INTO public.notification_deliveries (channel, provider, destination, delivery_status, payload)
+    VALUES (
+      'email', 'resend', v_dest, 'queued',
+      jsonb_build_object(
+        'template_type', 'guest_nominated',
+        'target_email', v_dest,
+        'nominator_display_name', v_payload->>'nominator_display_name',
+        'match_id', v_payload->>'match_id',
+        'game_type', v_payload->>'game_type',
+        'match_date', v_payload->>'match_date',
+        'club_name', v_payload->>'club_name'
+      )
+    );
+    RETURN;
+  END IF;
+
+  -- match.guest_org_approved
+  IF v_evt.event_type = 'match.guest_org_approved' THEN
+    v_payload := v_evt.payload;
+    v_dest := v_payload->>'target_email';
+    IF v_dest IS NULL OR trim(v_dest) = '' THEN RETURN; END IF;
+
+    INSERT INTO public.notification_deliveries (channel, provider, destination, delivery_status, payload)
+    VALUES (
+      'email', 'resend', v_dest, 'queued',
+      jsonb_build_object(
+        'template_type', 'guest_org_approved',
+        'target_email', v_dest,
+        'match_id', v_payload->>'match_id',
+        'game_type', v_payload->>'game_type',
+        'match_date', v_payload->>'match_date',
+        'club_name', v_payload->>'club_name'
+      )
+    );
+    RETURN;
+  END IF;
+
+  -- match.guest_delegate_confirmed
+  IF v_evt.event_type = 'match.guest_delegate_confirmed' THEN
+    v_payload := v_evt.payload;
+    v_dest := v_payload->>'target_email';
+    IF v_dest IS NULL OR trim(v_dest) = '' THEN RETURN; END IF;
+
+    INSERT INTO public.notification_deliveries (channel, provider, destination, delivery_status, payload)
+    VALUES (
+      'email', 'resend', v_dest, 'queued',
+      jsonb_build_object(
+        'template_type', 'guest_delegate_confirmed',
+        'target_email', v_dest,
+        'match_id', v_payload->>'match_id',
+        'game_type', v_payload->>'game_type',
+        'match_date', v_payload->>'match_date',
+        'club_name', v_payload->>'club_name'
+      )
+    );
+    RETURN;
+  END IF;
+
+  -- match.formed: one delivery per confirmed participant (user + guest) with email
+  IF v_evt.event_type = 'match.formed' THEN
+    v_payload := v_evt.payload;
+    v_match_id := (v_payload->>'match_id')::uuid;
+
+    FOR v_rec IN
+      SELECT participant_id, email, contact_channel
+      FROM public.rpc_match_confirmed_participant_emails(v_match_id)
+      WHERE email IS NOT NULL AND trim(email) <> '' AND contact_channel = 'email'
+    LOOP
+      INSERT INTO public.notification_deliveries (channel, provider, destination, delivery_status, payload)
+      VALUES (
+        'email', 'resend', v_rec.email, 'queued',
+        jsonb_build_object(
+          'template_type', 'match_formed',
+          'match_id', v_match_id,
+          'game_type', v_payload->>'game_type',
+          'match_date', v_payload->>'match_date',
+          'club_name', v_payload->>'club_name'
+        )
+      );
+    END LOOP;
+    RETURN;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_process_domain_event"("p_event_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."rpc_profile_init"("p_display_name" "text", "p_first_name" "text" DEFAULT NULL::"text", "p_last_name" "text" DEFAULT NULL::"text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -3093,6 +4187,8 @@ CREATE OR REPLACE FUNCTION "public"."rpc_profile_init"("p_display_name" "text", 
 DECLARE
   v_trimmed      text;
   v_current_name text;
+  v_first        text;
+  v_last         text;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
@@ -3103,8 +4199,10 @@ BEGIN
     RAISE EXCEPTION 'display_name must not be empty';
   END IF;
 
-  -- Preserve existing "already_initialized" behavior:
-  -- if a non-empty display_name already exists, raise and do not modify the row.
+  -- Use '' for first/last when not provided (profiles columns are NOT NULL)
+  v_first := COALESCE(NULLIF(trim(coalesce(p_first_name, '')), ''), '');
+  v_last  := COALESCE(NULLIF(trim(coalesce(p_last_name,  '')), ''), '');
+
   SELECT display_name INTO v_current_name
   FROM public.profiles
   WHERE id = auth.uid();
@@ -3113,15 +4211,8 @@ BEGIN
     RAISE EXCEPTION 'already_initialized';
   END IF;
 
-  -- First-time init or empty-name row: UPSERT so that a missing profile row
-  -- is created and an existing empty row is updated.
   INSERT INTO public.profiles (id, display_name, first_name, last_name)
-  VALUES (
-    auth.uid(),
-    v_trimmed,
-    NULLIF(trim(coalesce(p_first_name, '')), ''),
-    NULLIF(trim(coalesce(p_last_name,  '')), '')
-  )
+  VALUES (auth.uid(), v_trimmed, v_first, v_last)
   ON CONFLICT (id) DO UPDATE
   SET
     display_name = EXCLUDED.display_name,
@@ -3273,6 +4364,144 @@ COMMENT ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last
 
 
 
+CREATE OR REPLACE FUNCTION "public"."rpc_profile_update"("p_first_name" "text" DEFAULT NULL::"text", "p_last_name" "text" DEFAULT NULL::"text", "p_contact_channel" "text" DEFAULT NULL::"text", "p_contact_email" "text" DEFAULT NULL::"text", "p_contact_phone" "text" DEFAULT NULL::"text", "p_show_in_club_member_discovery" boolean DEFAULT NULL::boolean, "p_allow_non_group_invites" boolean DEFAULT NULL::boolean) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
+
+  UPDATE public.profiles
+  SET
+    first_name      = CASE WHEN p_first_name IS NOT NULL THEN NULLIF(trim(p_first_name), '') ELSE first_name END,
+    last_name       = CASE WHEN p_last_name IS NOT NULL THEN NULLIF(trim(p_last_name), '') ELSE last_name END,
+    contact_channel = CASE WHEN p_contact_channel IN ('email','sms') THEN p_contact_channel ELSE contact_channel END,
+    contact_email   = CASE WHEN p_contact_email IS NOT NULL THEN NULLIF(trim(p_contact_email), '') ELSE contact_email END,
+    contact_phone   = CASE WHEN p_contact_phone IS NOT NULL THEN NULLIF(trim(p_contact_phone), '') ELSE contact_phone END,
+    show_in_club_member_discovery = CASE WHEN p_show_in_club_member_discovery IS NOT NULL THEN p_show_in_club_member_discovery ELSE show_in_club_member_discovery END,
+    allow_non_group_invites       = CASE WHEN p_allow_non_group_invites IS NOT NULL THEN p_allow_non_group_invites ELSE allow_non_group_invites END,
+    updated_at      = now()
+  WHERE id = auth.uid();
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text", "p_show_in_club_member_discovery" boolean, "p_allow_non_group_invites" boolean) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text", "p_show_in_club_member_discovery" boolean, "p_allow_non_group_invites" boolean) IS 'v1.7 + Phase 1: Update profile. Includes global preference switches: show_in_club_member_discovery, allow_non_group_invites.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_reconcile_identity_after_magic_link"("p_user_id" "uuid", "p_verified_email" "text", "p_invitation_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_email text := lower(trim(p_verified_email));
+BEGIN
+  IF v_email = '' OR p_user_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- 1) Link invitation
+  INSERT INTO public.identity_links (provider, verified_email, user_id, linked_type, linked_id, linked_by_user_id)
+  VALUES ('email', v_email, p_user_id, 'invitation_target', p_invitation_id, p_user_id)
+  ON CONFLICT (user_id, linked_type, linked_id) DO NOTHING;
+
+  -- 2) Link guest match participants by email (guests.email = verified_email)
+  INSERT INTO public.identity_links (provider, verified_email, user_id, linked_type, linked_id, linked_by_user_id)
+  SELECT 'email', v_email, p_user_id, 'guest_participant', mp.id, p_user_id
+  FROM public.match_participants mp
+  JOIN public.guests g ON g.id = mp.guest_id
+  WHERE lower(trim(g.email)) = v_email
+    AND mp.removed_at IS NULL
+  ON CONFLICT (user_id, linked_type, linked_id) DO NOTHING;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_reconcile_identity_after_magic_link"("p_user_id" "uuid", "p_verified_email" "text", "p_invitation_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_reconcile_identity_after_magic_link"("p_user_id" "uuid", "p_verified_email" "text", "p_invitation_id" "uuid") IS 'Link invitation + guest participants to user after magic link signup. Idempotent.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_reconcile_identity_guest_participants"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_email text;
+BEGIN
+  IF v_uid IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT lower(trim(u.email::text)) INTO v_email
+  FROM auth.users u
+  WHERE u.id = v_uid;
+
+  IF v_email IS NULL OR v_email = '' THEN
+    RETURN;
+  END IF;
+
+  -- 1a) Link guest match participants (guest_participant)
+  INSERT INTO public.identity_links (provider, verified_email, user_id, linked_type, linked_id, linked_by_user_id)
+  SELECT 'email', v_email, v_uid, 'guest_participant', mp.id, v_uid
+  FROM public.match_participants mp
+  JOIN public.guests g ON g.id = mp.guest_id
+  WHERE lower(trim(g.email)) = v_email
+  ON CONFLICT (user_id, linked_type, linked_id) DO NOTHING;
+
+  -- 1b) Link guests (contact) — so roster owner can see "已加入" and Invite to Group
+  INSERT INTO public.identity_links (provider, verified_email, user_id, linked_type, linked_id, linked_by_user_id)
+  SELECT 'email', v_email, v_uid, 'contact', g.id, v_uid
+  FROM public.guests g
+  WHERE lower(trim(g.email)) = v_email
+  ON CONFLICT (user_id, linked_type, linked_id) DO NOTHING;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_reconcile_identity_guest_participants"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_reconcile_identity_guest_participants"() IS 'Link guest participants + contact (guest) to current user by email. Idempotent.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_roster_guest_contact_links"("p_guest_ids" "uuid"[]) RETURNS TABLE("guest_id" "uuid", "user_id" "uuid")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT g.id AS guest_id, il.user_id
+  FROM unnest(p_guest_ids) AS gid
+  JOIN public.guests g ON g.id = gid
+  JOIN public.user_roster_guests urg ON urg.guest_id = g.id AND urg.owner_user_id = auth.uid()
+  JOIN public.identity_links il ON il.linked_type = 'contact' AND il.linked_id = g.id
+  WHERE il.user_id IS NOT NULL;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_roster_guest_contact_links"("p_guest_ids" "uuid"[]) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."rpc_roster_guest_contact_links"("p_guest_ids" "uuid"[]) IS 'For roster owner: which of my guests have registered (identity_links contact). Returns guest_id, user_id for Invite to Group.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."guests" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "display_name" "text" NOT NULL,
@@ -3416,6 +4645,38 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_sports_list"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_update_delivery_result"("p_delivery_id" "uuid", "p_status" "text", "p_provider_message_id" "text" DEFAULT NULL::"text", "p_error_message" "text" DEFAULT NULL::"text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_inv_id uuid;
+BEGIN
+  SELECT email_invitation_id INTO v_inv_id FROM public.notification_deliveries WHERE id = p_delivery_id;
+
+  UPDATE public.notification_deliveries
+  SET delivery_status = p_status,
+      sent_at = CASE WHEN p_status = 'sent' THEN now() ELSE sent_at END,
+      provider_message_id = COALESCE(p_provider_message_id, provider_message_id),
+      error_message = p_error_message
+  WHERE id = p_delivery_id;
+
+  IF v_inv_id IS NOT NULL THEN
+    IF p_status = 'sent' THEN
+      INSERT INTO public.email_invitation_events (invitation_id, event_type, metadata)
+      VALUES (v_inv_id, 'email_sent', jsonb_build_object('delivery_id', p_delivery_id));
+    ELSIF p_status = 'failed' THEN
+      INSERT INTO public.email_invitation_events (invitation_id, event_type, metadata)
+      VALUES (v_inv_id, 'email_failed', jsonb_build_object('delivery_id', p_delivery_id, 'error', p_error_message));
+    END IF;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_update_delivery_result"("p_delivery_id" "uuid", "p_status" "text", "p_provider_message_id" "text", "p_error_message" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."rpc_user_sports_set"("p_sport_codes" "text"[]) RETURNS "void"
@@ -4175,6 +5436,8 @@ CREATE TABLE IF NOT EXISTS "public"."club_identities" (
     "club_handle" "text" NOT NULL,
     "club_handle_norm" "text" GENERATED ALWAYS AS ("lower"(TRIM(BOTH FROM "club_handle"))) STORED,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "visible_in_club_member_discovery" boolean,
+    "accept_non_group_invites_in_club" boolean,
     CONSTRAINT "chk_club_handle_length" CHECK ((("length"("club_handle") >= 2) AND ("length"("club_handle") <= 30))),
     CONSTRAINT "chk_club_handle_no_at" CHECK (("club_handle" !~~ '%@%'::"text")),
     CONSTRAINT "chk_club_handle_trimmed" CHECK (("club_handle" = TRIM(BOTH FROM "club_handle")))
@@ -4182,6 +5445,14 @@ CREATE TABLE IF NOT EXISTS "public"."club_identities" (
 
 
 ALTER TABLE "public"."club_identities" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."club_identities"."visible_in_club_member_discovery" IS 'Layer 2: Club-scoped override for discovery. NULL = no override (treat as true). Only applies when profiles.show_in_club_member_discovery is ON.';
+
+
+
+COMMENT ON COLUMN "public"."club_identities"."accept_non_group_invites_in_club" IS 'Layer 2: Club-scoped override for non-group invites. NULL = no override (treat as true). Only applies when profiles.allow_non_group_invites is ON.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."club_sports" (
@@ -4195,6 +5466,41 @@ CREATE TABLE IF NOT EXISTS "public"."club_sports" (
 ALTER TABLE "public"."club_sports" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."domain_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "event_type" "text" NOT NULL,
+    "aggregate_type" "text" NOT NULL,
+    "aggregate_id" "uuid" NOT NULL,
+    "actor_user_id" "uuid",
+    "payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."domain_events" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."domain_events" IS 'Immutable domain events for invitation/notification architecture. Processed by event processor.';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."email_invitation_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "invitation_id" "uuid" NOT NULL,
+    "event_type" "text" NOT NULL,
+    "actor_user_id" "uuid",
+    "metadata" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."email_invitation_events" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."email_invitation_events" IS 'Audit events for invitation lifecycle. event_type: invitation_created, email_delivery_requested, email_sent, email_failed, invitation_opened, invitation_verified_email, invitation_landed, invitation_accepted, invitation_declined, invitation_expired.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."guest_sports" (
     "guest_id" "uuid" NOT NULL,
     "sport_id" smallint NOT NULL,
@@ -4203,6 +5509,26 @@ CREATE TABLE IF NOT EXISTS "public"."guest_sports" (
 
 
 ALTER TABLE "public"."guest_sports" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."identity_links" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "provider" "text" DEFAULT 'email'::"text" NOT NULL,
+    "verified_email" "text" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "linked_type" "text" NOT NULL,
+    "linked_id" "uuid" NOT NULL,
+    "linked_by_user_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "identity_links_linked_type_check" CHECK (("linked_type" = ANY (ARRAY['guest_participant'::"text", 'contact'::"text", 'invitation_target'::"text"])))
+);
+
+
+ALTER TABLE "public"."identity_links" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."identity_links" IS 'Maps verified email to user_id and legacy rows (guest participants, invitations). Link-first: no in-place mutation of historical records.';
+
 
 
 CREATE OR REPLACE VIEW "public"."match_counts" AS
@@ -4275,6 +5601,33 @@ COMMENT ON TABLE "public"."match_participant_actions" IS 'v1.6.1: Lifecycle even
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."notification_deliveries" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "notification_id" "uuid",
+    "email_invitation_id" "uuid",
+    "channel" "text" DEFAULT 'email'::"text" NOT NULL,
+    "provider" "text" DEFAULT 'resend'::"text" NOT NULL,
+    "destination" "text" NOT NULL,
+    "delivery_status" "text" DEFAULT 'queued'::"text" NOT NULL,
+    "attempt_count" integer DEFAULT 0 NOT NULL,
+    "last_attempt_at" timestamp with time zone,
+    "sent_at" timestamp with time zone,
+    "provider_message_id" "text",
+    "error_code" "text",
+    "error_message" "text",
+    "payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "notification_deliveries_delivery_status_check" CHECK (("delivery_status" = ANY (ARRAY['queued'::"text", 'sending'::"text", 'sent'::"text", 'failed'::"text", 'skipped'::"text"])))
+);
+
+
+ALTER TABLE "public"."notification_deliveries" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."notification_deliveries" IS 'Delivery queue. Worker processes queued rows, sends via Resend, updates status.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."notifications" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "recipient_user_id" "uuid" NOT NULL,
@@ -4311,6 +5664,9 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "contact_channel" "text" DEFAULT 'email'::"text" NOT NULL,
     "contact_email" "text",
     "contact_phone" "text",
+    "show_in_club_member_discovery" boolean DEFAULT true NOT NULL,
+    "allow_non_group_invites" boolean DEFAULT true NOT NULL,
+    "auto_add_played_users_to_invite_circle" boolean DEFAULT false NOT NULL,
     CONSTRAINT "profiles_contact_channel_check" CHECK (("contact_channel" = ANY (ARRAY['email'::"text", 'sms'::"text"])))
 );
 
@@ -4327,6 +5683,18 @@ COMMENT ON COLUMN "public"."profiles"."contact_email" IS 'Contact email. NULL = 
 
 
 COMMENT ON COLUMN "public"."profiles"."contact_phone" IS 'Contact phone for SMS. Used when contact_channel=sms';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."show_in_club_member_discovery" IS 'Phase 1: Discoverability. Whether user appears in club member discovery. Distinct from invite permission.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."allow_non_group_invites" IS 'Phase 1: Invite permission. Whether user may be invited via non-group direct path (Club Members / Invite Circle). Distinct from discoverability.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."auto_add_played_users_to_invite_circle" IS 'Phase 1: Preference for future auto-add. When true, played-with users may be auto-added to Invite Circle. No logic implemented yet.';
 
 
 
@@ -4432,6 +5800,21 @@ ALTER TABLE ONLY "public"."courts"
 
 
 
+ALTER TABLE ONLY "public"."domain_events"
+    ADD CONSTRAINT "domain_events_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."email_invitation_events"
+    ADD CONSTRAINT "email_invitation_events_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."email_invitations"
+    ADD CONSTRAINT "email_invitations_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."group_members"
     ADD CONSTRAINT "group_members_group_id_user_id_key" UNIQUE ("group_id", "user_id");
 
@@ -4457,6 +5840,16 @@ ALTER TABLE ONLY "public"."guests"
 
 
 
+ALTER TABLE ONLY "public"."identity_links"
+    ADD CONSTRAINT "identity_links_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."identity_links"
+    ADD CONSTRAINT "identity_links_user_id_linked_type_linked_id_key" UNIQUE ("user_id", "linked_type", "linked_id");
+
+
+
 ALTER TABLE ONLY "public"."match_courts"
     ADD CONSTRAINT "match_courts_pkey" PRIMARY KEY ("id");
 
@@ -4474,6 +5867,11 @@ ALTER TABLE ONLY "public"."match_participants"
 
 ALTER TABLE ONLY "public"."matches"
     ADD CONSTRAINT "matches_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."notification_deliveries"
+    ADD CONSTRAINT "notification_deliveries_pkey" PRIMARY KEY ("id");
 
 
 
@@ -4517,6 +5915,16 @@ ALTER TABLE ONLY "public"."match_courts"
 
 
 
+ALTER TABLE ONLY "public"."user_invite_circle"
+    ADD CONSTRAINT "user_invite_circle_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."user_invite_circle"
+    ADD CONSTRAINT "user_invite_circle_unique" UNIQUE ("owner_user_id", "target_user_id");
+
+
+
 ALTER TABLE ONLY "public"."user_personal_remarks"
     ADD CONSTRAINT "user_personal_remarks_pkey" PRIMARY KEY ("id");
 
@@ -4537,6 +5945,30 @@ ALTER TABLE ONLY "public"."user_sports"
 
 
 
+CREATE INDEX "idx_domain_events_aggregate" ON "public"."domain_events" USING "btree" ("aggregate_type", "aggregate_id");
+
+
+
+CREATE INDEX "idx_domain_events_type_created" ON "public"."domain_events" USING "btree" ("event_type", "created_at" DESC);
+
+
+
+CREATE INDEX "idx_email_invitation_events_invitation" ON "public"."email_invitation_events" USING "btree" ("invitation_id", "created_at");
+
+
+
+CREATE INDEX "idx_email_invitations_related" ON "public"."email_invitations" USING "btree" ("related_type", "related_id");
+
+
+
+CREATE INDEX "idx_email_invitations_status_created" ON "public"."email_invitations" USING "btree" ("status", "created_at" DESC);
+
+
+
+CREATE INDEX "idx_email_invitations_target_email" ON "public"."email_invitations" USING "btree" ("target_email");
+
+
+
 CREATE INDEX "idx_groups_primary_sport_id" ON "public"."groups" USING "btree" ("primary_sport_id");
 
 
@@ -4546,6 +5978,18 @@ CREATE INDEX "idx_guest_sports_guest" ON "public"."guest_sports" USING "btree" (
 
 
 CREATE INDEX "idx_guest_sports_sport" ON "public"."guest_sports" USING "btree" ("sport_id");
+
+
+
+CREATE INDEX "idx_identity_links_linked" ON "public"."identity_links" USING "btree" ("linked_type", "linked_id");
+
+
+
+CREATE INDEX "idx_identity_links_user_id" ON "public"."identity_links" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_identity_links_verified_email" ON "public"."identity_links" USING "btree" ("lower"(TRIM(BOTH FROM "verified_email")));
 
 
 
@@ -4561,7 +6005,15 @@ CREATE INDEX "idx_mpa_participant" ON "public"."match_participant_actions" USING
 
 
 
+CREATE INDEX "idx_notification_deliveries_queued" ON "public"."notification_deliveries" USING "btree" ("delivery_status", "created_at") WHERE ("delivery_status" = 'queued'::"text");
+
+
+
 CREATE INDEX "idx_notifications_recipient_created_at" ON "public"."notifications" USING "btree" ("recipient_user_id", "created_at" DESC);
+
+
+
+CREATE INDEX "idx_user_invite_circle_owner_created" ON "public"."user_invite_circle" USING "btree" ("owner_user_id", "created_at" DESC);
 
 
 
@@ -4629,6 +6081,10 @@ CREATE OR REPLACE TRIGGER "trg_compute_match_start_at_utc" BEFORE INSERT OR UPDA
 
 
 
+CREATE OR REPLACE TRIGGER "trg_emit_match_formed" AFTER UPDATE OF "formed_at" ON "public"."matches" FOR EACH ROW WHEN ((("old"."formed_at" IS NULL) AND ("new"."formed_at" IS NOT NULL))) EXECUTE FUNCTION "public"."fn_emit_match_formed_on_formed_at"();
+
+
+
 CREATE OR REPLACE TRIGGER "trg_guard_participant_state" BEFORE UPDATE ON "public"."match_participants" FOR EACH ROW EXECUTE FUNCTION "public"."fn_guard_participant_state"();
 
 
@@ -4678,6 +6134,31 @@ ALTER TABLE ONLY "public"."club_sports"
 
 ALTER TABLE ONLY "public"."courts"
     ADD CONSTRAINT "courts_club_id_fkey" FOREIGN KEY ("club_id") REFERENCES "public"."clubs"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."domain_events"
+    ADD CONSTRAINT "domain_events_actor_user_id_fkey" FOREIGN KEY ("actor_user_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."email_invitation_events"
+    ADD CONSTRAINT "email_invitation_events_actor_user_id_fkey" FOREIGN KEY ("actor_user_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."email_invitation_events"
+    ADD CONSTRAINT "email_invitation_events_invitation_id_fkey" FOREIGN KEY ("invitation_id") REFERENCES "public"."email_invitations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."email_invitations"
+    ADD CONSTRAINT "email_invitations_accepted_by_user_id_fkey" FOREIGN KEY ("accepted_by_user_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."email_invitations"
+    ADD CONSTRAINT "email_invitations_inviter_user_id_fkey" FOREIGN KEY ("inviter_user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -4731,6 +6212,16 @@ ALTER TABLE ONLY "public"."guests"
 
 
 
+ALTER TABLE ONLY "public"."identity_links"
+    ADD CONSTRAINT "identity_links_linked_by_user_id_fkey" FOREIGN KEY ("linked_by_user_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."identity_links"
+    ADD CONSTRAINT "identity_links_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."match_courts"
     ADD CONSTRAINT "match_courts_match_id_fkey" FOREIGN KEY ("match_id") REFERENCES "public"."matches"("id") ON DELETE CASCADE;
 
@@ -4781,6 +6272,16 @@ ALTER TABLE ONLY "public"."matches"
 
 
 
+ALTER TABLE ONLY "public"."notification_deliveries"
+    ADD CONSTRAINT "notification_deliveries_email_invitation_id_fkey" FOREIGN KEY ("email_invitation_id") REFERENCES "public"."email_invitations"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."notification_deliveries"
+    ADD CONSTRAINT "notification_deliveries_notification_id_fkey" FOREIGN KEY ("notification_id") REFERENCES "public"."notifications"("id") ON DELETE SET NULL;
+
+
+
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
@@ -4788,6 +6289,16 @@ ALTER TABLE ONLY "public"."profiles"
 
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_primary_club_fk" FOREIGN KEY ("primary_club_id") REFERENCES "public"."clubs"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."user_invite_circle"
+    ADD CONSTRAINT "user_invite_circle_owner_user_id_fkey" FOREIGN KEY ("owner_user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."user_invite_circle"
+    ADD CONSTRAINT "user_invite_circle_target_user_id_fkey" FOREIGN KEY ("target_user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
 
 
 
@@ -4848,6 +6359,39 @@ ALTER TABLE "public"."courts" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "courts_select_auth" ON "public"."courts" FOR SELECT TO "authenticated" USING (true);
+
+
+
+ALTER TABLE "public"."domain_events" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "domain_events_no_select" ON "public"."domain_events" FOR SELECT TO "authenticated" USING (false);
+
+
+
+CREATE POLICY "domain_events_service_insert" ON "public"."domain_events" FOR INSERT TO "authenticated" WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."email_invitation_events" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "email_invitation_events_internal" ON "public"."email_invitation_events" TO "authenticated" USING (false) WITH CHECK (false);
+
+
+
+ALTER TABLE "public"."email_invitations" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "email_invitations_insert_inviter" ON "public"."email_invitations" FOR INSERT TO "authenticated" WITH CHECK (("inviter_user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "email_invitations_no_direct_select" ON "public"."email_invitations" FOR SELECT TO "authenticated" USING (false);
+
+
+
+CREATE POLICY "email_invitations_no_direct_update" ON "public"."email_invitations" FOR UPDATE TO "authenticated" USING (false);
 
 
 
@@ -4946,6 +6490,17 @@ CREATE POLICY "guests_write_none" ON "public"."guests" TO "authenticated" USING 
 
 
 
+ALTER TABLE "public"."identity_links" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "identity_links_insert_service" ON "public"."identity_links" FOR INSERT TO "authenticated" WITH CHECK (true);
+
+
+
+CREATE POLICY "identity_links_select_own" ON "public"."identity_links" FOR SELECT TO "authenticated" USING (("user_id" = "auth"."uid"()));
+
+
+
 CREATE POLICY "insert_internal_notifications" ON "public"."notifications" FOR INSERT WITH CHECK (true);
 
 
@@ -5009,6 +6564,12 @@ CREATE POLICY "match_participants_insert_request" ON "public"."match_participant
 
 
 
+CREATE POLICY "match_participants_select_identity_linked" ON "public"."match_participants" FOR SELECT TO "authenticated" USING ((("guest_id" IS NOT NULL) AND (EXISTS ( SELECT 1
+   FROM "public"."identity_links" "il"
+  WHERE (("il"."linked_type" = 'guest_participant'::"text") AND ("il"."linked_id" = "match_participants"."id") AND ("il"."user_id" = "auth"."uid"()))))));
+
+
+
 CREATE POLICY "match_participants_select_pending_guest" ON "public"."match_participants" FOR SELECT TO "authenticated" USING ((("status" = 'pending'::"public"."match_participant_status") AND ("guest_id" IS NOT NULL) AND ("removed_at" IS NULL) AND "public"."is_caller_confirmed_in_match"("match_id") AND ("public"."is_caller_in_match_scope"("match_id") OR "public"."is_caller_match_associated"("match_id"))));
 
 
@@ -5046,11 +6607,10 @@ CREATE POLICY "matches_insert_self" ON "public"."matches" FOR INSERT TO "authent
 
 CREATE POLICY "matches_select_visibility" ON "public"."matches" FOR SELECT TO "authenticated" USING ((("organizer_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
    FROM "public"."match_participants" "mp"
-  WHERE (("mp"."match_id" = "matches"."id") AND ("mp"."user_id" = "auth"."uid"())))) OR "public"."is_caller_in_match_scope"("id")));
-
-
-
-COMMENT ON POLICY "matches_select_visibility" ON "public"."matches" IS 'v1.5: Organizer, any participant, or scope member can see the match. Uses is_caller_in_match_scope (self-only) to prevent user enumeration.';
+  WHERE (("mp"."match_id" = "matches"."id") AND ("mp"."user_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
+   FROM ("public"."match_participants" "mp"
+     JOIN "public"."identity_links" "il" ON ((("il"."linked_type" = 'guest_participant'::"text") AND ("il"."linked_id" = "mp"."id") AND ("il"."user_id" = "auth"."uid"()))))
+  WHERE ("mp"."match_id" = "matches"."id"))) OR "public"."is_caller_in_match_scope"("id")));
 
 
 
@@ -5065,6 +6625,13 @@ CREATE POLICY "mpa_select" ON "public"."match_participant_actions" FOR SELECT TO
 
 
 CREATE POLICY "mpa_select_in_scope" ON "public"."match_participant_actions" FOR SELECT TO "authenticated" USING (("public"."is_caller_in_match_scope"("match_id") OR "public"."is_caller_match_associated"("match_id")));
+
+
+
+ALTER TABLE "public"."notification_deliveries" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "notification_deliveries_internal" ON "public"."notification_deliveries" TO "authenticated" USING (false) WITH CHECK (false);
 
 
 
@@ -5090,6 +6657,18 @@ CREATE POLICY "select_own_notifications" ON "public"."notifications" FOR SELECT 
 
 
 
+CREATE POLICY "uic_delete_own" ON "public"."user_invite_circle" FOR DELETE TO "authenticated" USING (("owner_user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "uic_insert_own" ON "public"."user_invite_circle" FOR INSERT TO "authenticated" WITH CHECK (("owner_user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "uic_select_own" ON "public"."user_invite_circle" FOR SELECT TO "authenticated" USING (("owner_user_id" = "auth"."uid"()));
+
+
+
 CREATE POLICY "update_own_notifications" ON "public"."notifications" FOR UPDATE USING (("recipient_user_id" = "auth"."uid"())) WITH CHECK (("recipient_user_id" = "auth"."uid"()));
 
 
@@ -5108,6 +6687,9 @@ CREATE POLICY "upr_select_own" ON "public"."user_personal_remarks" FOR SELECT TO
 
 CREATE POLICY "upr_update_own" ON "public"."user_personal_remarks" FOR UPDATE TO "authenticated" USING (("owner_id" = "auth"."uid"())) WITH CHECK (("owner_id" = "auth"."uid"()));
 
+
+
+ALTER TABLE "public"."user_invite_circle" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."user_personal_remarks" ENABLE ROW LEVEL SECURITY;
@@ -5139,14 +6721,6 @@ CREATE POLICY "user_sports_write_own" ON "public"."user_sports" FOR INSERT TO "a
 
 
 
-
-
-ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
-
-
-
-
-
 GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
@@ -5154,165 +6728,45 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."match_participants" TO "anon";
+GRANT ALL ON TABLE "public"."match_participants" TO "authenticated";
+GRANT ALL ON TABLE "public"."match_participants" TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+GRANT ALL ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") TO "service_role";
 
 
 
 GRANT ALL ON FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."can_admit_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."can_admit_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."can_admit_user_to_match"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_caller"("p_match_id" "uuid", "p_actor_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."can_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
 
 
 
@@ -5328,6 +6782,12 @@ GRANT ALL ON FUNCTION "public"."can_manage_participants"("p_match_id" "uuid", "p
 
 
 
+GRANT ALL ON FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."check_delegate_confirm_user_target"("p_match_id" "uuid", "p_actor_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."compute_match_start_at_utc"() TO "anon";
 GRANT ALL ON FUNCTION "public"."compute_match_start_at_utc"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."compute_match_start_at_utc"() TO "service_role";
@@ -5340,6 +6800,12 @@ GRANT ALL ON FUNCTION "public"."do_users_share_group"("p_user_a" "uuid", "p_user
 
 
 
+GRANT ALL ON FUNCTION "public"."fn_emit_match_formed_on_formed_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."fn_emit_match_formed_on_formed_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."fn_emit_match_formed_on_formed_at"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."fn_guard_participant_state"() TO "anon";
 GRANT ALL ON FUNCTION "public"."fn_guard_participant_state"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."fn_guard_participant_state"() TO "service_role";
@@ -5349,6 +6815,12 @@ GRANT ALL ON FUNCTION "public"."fn_guard_participant_state"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."fn_match_detail_change_reconfirm"() TO "anon";
 GRANT ALL ON FUNCTION "public"."fn_match_detail_change_reconfirm"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."fn_match_detail_change_reconfirm"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_delegate_user_target_state"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
 
 
 
@@ -5472,13 +6944,11 @@ GRANT ALL ON FUNCTION "public"."rpc_admin_user_search"("p_query" "text") TO "ser
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_club_admin_grant"("p_user_id" "uuid", "p_club_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_club_admin_grant"("p_user_id" "uuid", "p_club_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_club_admin_grant"("p_user_id" "uuid", "p_club_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") TO "service_role";
 
@@ -5502,9 +6972,14 @@ GRANT ALL ON FUNCTION "public"."rpc_club_handle_check"("p_club_id" "uuid", "p_ha
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_club_handle_set"("p_club_id" "uuid", "p_new_handle" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_club_handle_set"("p_club_id" "uuid", "p_new_handle" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_club_handle_set"("p_club_id" "uuid", "p_new_handle" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_club_identity_set_preferences"("p_club_id" "uuid", "p_visible_in_club_member_discovery" "text", "p_accept_non_group_invites_in_club" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_club_identity_set_preferences"("p_club_id" "uuid", "p_visible_in_club_member_discovery" "text", "p_accept_non_group_invites_in_club" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_club_identity_set_preferences"("p_club_id" "uuid", "p_visible_in_club_member_discovery" "text", "p_accept_non_group_invites_in_club" "text") TO "service_role";
 
 
 
@@ -5514,9 +6989,21 @@ GRANT ALL ON FUNCTION "public"."rpc_club_join"("p_club_id" "uuid", "p_handle" "t
 
 
 
+GRANT ALL ON FUNCTION "public"."rpc_club_members_discovery"("p_club_id" "uuid", "p_search" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_club_members_discovery"("p_club_id" "uuid", "p_search" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_club_members_discovery"("p_club_id" "uuid", "p_search" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."rpc_club_update"("p_club_id" "uuid", "p_name" "text", "p_location_text" "text", "p_timezone" "text", "p_notes" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_club_update"("p_club_id" "uuid", "p_name" "text", "p_location_text" "text", "p_timezone" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_club_update"("p_club_id" "uuid", "p_name" "text", "p_location_text" "text", "p_timezone" "text", "p_notes" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_contact_player_resolution"() TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_contact_player_resolution"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_contact_player_resolution"() TO "service_role";
 
 
 
@@ -5541,6 +7028,48 @@ GRANT ALL ON FUNCTION "public"."rpc_court_delete"("p_court_id" "uuid") TO "servi
 GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."email_invitations" TO "anon";
+GRANT ALL ON TABLE "public"."email_invitations" TO "authenticated";
+GRANT ALL ON TABLE "public"."email_invitations" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_accept"("p_invitation_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_accept"("p_invitation_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_accept"("p_invitation_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_create"("p_target_email" "text", "p_target_name" "text", "p_related_type" "text", "p_related_id" "uuid", "p_expires_at" timestamp with time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_create"("p_target_email" "text", "p_target_name" "text", "p_related_type" "text", "p_related_id" "uuid", "p_expires_at" timestamp with time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_create"("p_target_email" "text", "p_target_name" "text", "p_related_type" "text", "p_related_id" "uuid", "p_expires_at" timestamp with time zone) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_decline"("p_invitation_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_decline"("p_invitation_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_decline"("p_invitation_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_get"("p_invitation_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_get"("p_invitation_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_get"("p_invitation_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_update_flow_status"("p_invitation_id" "uuid", "p_status" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_update_flow_status"("p_invitation_id" "uuid", "p_status" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_email_invitation_update_flow_status"("p_invitation_id" "uuid", "p_status" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_get_queued_deliveries"("p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_get_queued_deliveries"("p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_get_queued_deliveries"("p_limit" integer) TO "service_role";
 
 
 
@@ -5586,7 +7115,6 @@ GRANT ALL ON FUNCTION "public"."rpc_group_reject_invite"("p_group_id" "uuid") TO
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_group_set_display_name"("p_group_id" "uuid", "p_display_name" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_group_set_display_name"("p_group_id" "uuid", "p_display_name" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_group_set_display_name"("p_group_id" "uuid", "p_display_name" "text") TO "service_role";
 
@@ -5604,9 +7132,33 @@ GRANT ALL ON FUNCTION "public"."rpc_guest_sports_set"("p_guest_id" "uuid", "p_sp
 
 
 
-GRANT ALL ON TABLE "public"."match_participants" TO "anon";
-GRANT ALL ON TABLE "public"."match_participants" TO "authenticated";
-GRANT ALL ON TABLE "public"."match_participants" TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_list"() TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_list"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_list"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_remove_user"("p_target_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_remove_user"("p_target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_remove_user"("p_target_user_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."user_invite_circle" TO "anon";
+GRANT ALL ON TABLE "public"."user_invite_circle" TO "authenticated";
+GRANT ALL ON TABLE "public"."user_invite_circle" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" "uuid", "p_source" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" "uuid", "p_source" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" "uuid", "p_source" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "service_role";
 
 
 
@@ -5616,15 +7168,20 @@ GRANT ALL ON FUNCTION "public"."rpc_match_accept_invite"("p_match_id" "uuid") TO
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_org"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_match_admission_targets"("p_match_id" "uuid", "p_search" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_match_admission_targets"("p_match_id" "uuid", "p_search" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_match_admission_targets"("p_match_id" "uuid", "p_search" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_add_guest_participant"("p_match_id" "uuid", "p_guest_display_name" "text", "p_guest_notes" "text", "p_note" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", "p_target_user_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_match_confirmed_participant_emails"("p_match_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_match_confirmed_participant_emails"("p_match_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_match_confirmed_participant_emails"("p_match_id" "uuid") TO "service_role";
 
 
 
@@ -5634,25 +7191,21 @@ GRANT ALL ON TABLE "public"."matches" TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_create"("p_required_count" integer, "p_game_type" "text", "p_match_date" "date", "p_start_time" time without time zone, "p_duration_minutes" integer, "p_club_id" "uuid", "p_court_ids" "uuid"[], "p_invitation_scope_group_ids" "uuid"[], "p_can_participants_invite_users" boolean, "p_can_participants_add_guests" boolean, "p_can_participants_manage_participants" boolean) TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_create"("p_required_count" integer, "p_game_type" "text", "p_match_date" "date", "p_start_time" time without time zone, "p_duration_minutes" integer, "p_club_id" "uuid", "p_court_ids" "uuid"[], "p_invitation_scope_group_ids" "uuid"[], "p_can_participants_invite_users" boolean, "p_can_participants_add_guests" boolean, "p_can_participants_manage_participants" boolean) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_create"("p_required_count" integer, "p_game_type" "text", "p_match_date" "date", "p_start_time" time without time zone, "p_duration_minutes" integer, "p_club_id" "uuid", "p_court_ids" "uuid"[], "p_invitation_scope_group_ids" "uuid"[], "p_can_participants_invite_users" boolean, "p_can_participants_add_guests" boolean, "p_can_participants_manage_participants" boolean) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_guest"("p_match_participant_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
@@ -5664,55 +7217,31 @@ GRANT ALL ON FUNCTION "public"."rpc_match_delegate_manual_confirm_targets"("p_ma
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_invite_guest_from_roster"("p_match_id" "uuid", "p_guest_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_invite_targets"("p_match_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_invite_targets"("p_match_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_invite_targets"("p_match_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_nominate_guest"("p_match_id" "uuid", "p_guest_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_nominate_targets"("p_match_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_match_nominate_targets"("p_match_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_nominate_targets"("p_match_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_nominate_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_org_approve_participant"("p_match_participant_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_org_approve_participant"("p_match_participant_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_org_approve_participant"("p_match_participant_id" "uuid") TO "service_role";
 
@@ -5724,21 +7253,36 @@ GRANT ALL ON FUNCTION "public"."rpc_match_participant_display_names"("p_match_id
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_remove_participant"("p_match_participant_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_match_participant_email"("p_match_participant_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_match_participant_email"("p_match_participant_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_match_participant_email"("p_match_participant_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_match_participant_emails_for_notification"("p_match_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_match_participant_emails_for_notification"("p_match_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_match_participant_emails_for_notification"("p_match_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."rpc_match_remove_participant"("p_match_participant_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_remove_participant"("p_match_participant_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_match_user_withdraw"("p_match_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_user_withdraw"("p_match_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_user_withdraw"("p_match_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_process_domain_event"("p_event_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_process_domain_event"("p_event_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_process_domain_event"("p_event_id" "uuid") TO "service_role";
 
 
 
@@ -5778,19 +7322,41 @@ GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_la
 
 
 
+GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text", "p_show_in_club_member_discovery" boolean, "p_allow_non_group_invites" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text", "p_show_in_club_member_discovery" boolean, "p_allow_non_group_invites" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text", "p_show_in_club_member_discovery" boolean, "p_allow_non_group_invites" boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_reconcile_identity_after_magic_link"("p_user_id" "uuid", "p_verified_email" "text", "p_invitation_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_reconcile_identity_after_magic_link"("p_user_id" "uuid", "p_verified_email" "text", "p_invitation_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_reconcile_identity_after_magic_link"("p_user_id" "uuid", "p_verified_email" "text", "p_invitation_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_reconcile_identity_guest_participants"() TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_reconcile_identity_guest_participants"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_reconcile_identity_guest_participants"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_roster_guest_contact_links"("p_guest_ids" "uuid"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_roster_guest_contact_links"("p_guest_ids" "uuid"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_roster_guest_contact_links"("p_guest_ids" "uuid"[]) TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."guests" TO "anon";
 GRANT ALL ON TABLE "public"."guests" TO "authenticated";
 GRANT ALL ON TABLE "public"."guests" TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text") TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text", "p_notes" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_roster_guest_create"("p_display_name" "text", "p_email" "text", "p_phone" "text", "p_notes" "text") TO "service_role";
 
@@ -5811,6 +7377,12 @@ GRANT ALL ON TABLE "public"."sports" TO "service_role";
 GRANT ALL ON FUNCTION "public"."rpc_sports_list"() TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_sports_list"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_sports_list"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_update_delivery_result"("p_delivery_id" "uuid", "p_status" "text", "p_provider_message_id" "text", "p_error_message" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_update_delivery_result"("p_delivery_id" "uuid", "p_status" "text", "p_provider_message_id" "text", "p_error_message" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_update_delivery_result"("p_delivery_id" "uuid", "p_status" "text", "p_provider_message_id" "text", "p_error_message" "text") TO "service_role";
 
 
 
@@ -5886,21 +7458,6 @@ GRANT ALL ON FUNCTION "public"."validate_club_handle"("p_handle" "text") TO "ser
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 GRANT ALL ON TABLE "public"."club_admins" TO "anon";
 GRANT ALL ON TABLE "public"."club_admins" TO "authenticated";
 GRANT ALL ON TABLE "public"."club_admins" TO "service_role";
@@ -5919,9 +7476,27 @@ GRANT ALL ON TABLE "public"."club_sports" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."domain_events" TO "anon";
+GRANT ALL ON TABLE "public"."domain_events" TO "authenticated";
+GRANT ALL ON TABLE "public"."domain_events" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."email_invitation_events" TO "anon";
+GRANT ALL ON TABLE "public"."email_invitation_events" TO "authenticated";
+GRANT ALL ON TABLE "public"."email_invitation_events" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."guest_sports" TO "anon";
 GRANT ALL ON TABLE "public"."guest_sports" TO "authenticated";
 GRANT ALL ON TABLE "public"."guest_sports" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."identity_links" TO "anon";
+GRANT ALL ON TABLE "public"."identity_links" TO "authenticated";
+GRANT ALL ON TABLE "public"."identity_links" TO "service_role";
 
 
 
@@ -5946,6 +7521,12 @@ GRANT ALL ON TABLE "public"."match_formed" TO "service_role";
 GRANT ALL ON TABLE "public"."match_participant_actions" TO "anon";
 GRANT ALL ON TABLE "public"."match_participant_actions" TO "authenticated";
 GRANT ALL ON TABLE "public"."match_participant_actions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."notification_deliveries" TO "anon";
+GRANT ALL ON TABLE "public"."notification_deliveries" TO "authenticated";
+GRANT ALL ON TABLE "public"."notification_deliveries" TO "service_role";
 
 
 
@@ -5991,12 +7572,6 @@ GRANT ALL ON TABLE "public"."v_group_member_display" TO "service_role";
 
 
 
-
-
-
-
-
-
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
@@ -6021,30 +7596,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

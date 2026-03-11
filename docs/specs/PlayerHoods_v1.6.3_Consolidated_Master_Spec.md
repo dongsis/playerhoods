@@ -77,7 +77,7 @@ confirmed_at: - Snapshot timestamp written only by reconciliation.
 
 Restart channels only:
 
-User → rpc_match_request_join Organizer → rpc_match_invite_user
+User → rpc_match_request_join Organizer → rpc_match_invite_user (wrapper → rpc_match_admit_user)
 
 No branching on: - removed_by - previous join_method - previous
 confirmation state

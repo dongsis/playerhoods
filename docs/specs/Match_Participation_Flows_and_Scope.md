@@ -12,7 +12,7 @@
 | Term | Definition | Used for |
 |------|------------|----------|
 | **invitation_scope_group_ids** | `matches.invitation_scope_group_ids` — array of group IDs. Can be empty/NULL. | Who can be invited (target), who can request join, who can see invite/nominate targets. |
-| **is_user_in_scope_groups(scope_group_ids, user_id)** | True iff user is an **active** member of at least one of the given groups. | Target eligibility (invite/request_join); caller eligibility (nominate targets, delegate_confirm_targets). |
+| **is_user_in_scope_groups(scope_group_ids, user_id)** | True iff user is an **active** member of at least one of the given groups. | Target eligibility (invite/request_join); caller eligibility (nominate targets). |
 | **is_caller_in_match_scope(match_id)** | `is_user_in_match_scope(match_id, auth.uid())`. | RLS, UI “in scope” for match. |
 | **is_user_in_match_scope(match_id, user_id)** | True iff `invitation_scope_group_ids` is non-empty and `is_user_in_scope_groups(invitation_scope_group_ids, user_id)`. | Whether a user is “in scope” for that match. |
 
@@ -38,10 +38,10 @@
 
 | Action | RPC | Caller | Target | Scope / gates | Re-entry (removed → active)? | Result (join_method, timestamps) |
 |--------|-----|--------|--------|----------------|------------------------------|-----------------------------------|
-| **Invite (user)** | `rpc_match_invite_user` | **Organizer only** | User | Target: **InScope(target) OR ShareGroup(target, organizer)**. No scope required for organizer to invite. | **Yes.** Re-entry: clear removed_at, set join_method=invited, **org_approved_at=now()**; participant_accepted_at=NULL → user must Accept to confirm. | invited; org_approved_at set; participant_accepted_at NULL → pending until user Accept. |
+| **Invite (user)** | `rpc_match_invite_user` (organizer wrapper → `rpc_match_admit_user`) | **Organizer only** | User | Target: **InScope(target) OR ShareGroup(target, organizer)**. No scope required for organizer to invite. | **Yes.** Re-entry: clear removed_at, set join_method=invited, **org_approved_at=now()**; participant_accepted_at=NULL → user must Accept to confirm. | invited; org_approved_at set; participant_accepted_at NULL → pending until user Accept. |
 | **Request join** | `rpc_match_request_join` | User (self) | — | Caller must be **InScope(caller)** (match must have non-empty scope; caller in one of those groups). | **Yes.** Re-entry: clear removed_at, join_method=requested, participant_accepted_at=now(); org_approved_at=NULL → pending until org Approve. | requested; participant_accepted_at set; org_approved_at NULL → pending until org Approve. |
 | **Nominate (user)** | `rpc_match_nominate_user` | **Non-organizer** + match.can_participants_invite_users + **(InScope(caller) OR MatchAssociated(caller))** | User | Target: **ShareGroup(target, caller)** only; target ≠ caller; target **not** match-associated (so removed is OK — we re-entry). | **Yes.** Re-entry: clear removed_at, join_method=nominated, nominated_by=caller; participant_accepted_at=NULL, org_approved_at=NULL. | nominated; both timestamps NULL → pending until user Accept **and** org Approve (order arbitrary). |
-| **Nominate (guest / Contact Player)** | `rpc_match_nominate_guest` | **Organizer OR MatchAssociated** | Guest (from caller’s roster) | Guest in caller’s `user_roster_guests`; guest active. | N/A (no “removed” re-entry for guest in same row; duplicate active guest rejected). **Organizer:** org_approved_at only (auto org confirm); participant_accepted_at NULL → guest pending until "Confirm can come". **Non-org:** org_approved_at NULL → pending until delegate_confirm_guest + org Approve. | nominated; organizer auto-approves; guest stays pending until delegate_confirm. |
+| **Nominate (guest / Contact Player)** | `rpc_match_nominate_guest` | **Organizer OR MatchAssociated** | Guest (from caller’s roster) | Guest in caller’s `user_roster_guests`; guest active. | N/A (no “removed” re-entry for guest in same row; duplicate active guest rejected). **Organizer:** org_approved_at only (auto org confirm); participant_accepted_at NULL → guest pending until "Confirm can come". **Non-org:** org_approved_at NULL → pending until delegate_confirm_participant + org Approve. | nominated; organizer auto-approves; guest stays pending until delegate_confirm. |
 
 ---
 
@@ -53,11 +53,9 @@ Unified invariant: **confirmed ⇔ participant_accepted_at IS NOT NULL AND org_a
 |--------|-----|--------|--------------|--------|------|
 | **Accept (user)** | `rpc_match_accept_invite` | Participant (self) | Own row | Sets participant_accepted_at=now(), participant_accepted_via=in_app. Reconcile → confirmed if org_approved_at already set. | For invited/nominated/requested; also used to re-confirm after match detail change. |
 | **Approve (org)** | `rpc_match_org_approve_participant` | **Organizer only** | Any pending participant (user or guest) | Sets org_approved_at (and org_approved_by). Reconcile → confirmed if participant_accepted_at already set. | **Order-free:** org can Approve first or user Accept first. |
-| **Manual confirm (org, existing row)** | `rpc_match_manual_confirm` | **Organizer only** | Pending **user** participant row | Sets participant_accepted_at + org_approved_at (and via=manual). Reconcile → confirmed. | One-click full confirm for user. For guest use Approve + delegate_confirm_guest. |
+| **Manual confirm (org, existing row)** | `rpc_match_manual_confirm` | **Organizer only** | Pending **user** participant row | Sets participant_accepted_at + org_approved_at (and via=manual). Reconcile → confirmed. | One-click full confirm for user. For guest use Approve + delegate_confirm_participant. |
 | **Manual confirm user (by id)** | `rpc_match_manual_confirm_user` | **Organizer only** | User not yet in match (by user_id) | Inserts or re-entries, sets both timestamps → confirmed. | Alternate entry path (scope: InScope(target) OR ShareGroup(target, org)). |
-| **Delegate confirm (user)** | `rpc_match_delegate_confirm_participant` | **Non-org**, MatchAssociated, ShareGroup(caller, participant) | Pending **user** participant (invited or nominated) | Sets participant_accepted_at=now(), participant_accepted_via=delegate_manual. **Does not** set org_approved_at. Reconcile → still pending until org Approve. | So “T1 confirmed for T2” = participant side done; org still Approve. |
-| **Delegate confirm (guest)** | `rpc_match_delegate_confirm_guest` | **Any active participant** (incl. organizer) | Pending **guest** participant row | Sets participant_accepted_at=now(), participant_accepted_via=delegate_manual. **Does not** set org_approved_at. | Guest needs both delegate_confirm_guest and org Approve to become confirmed. |
-| **Delegate confirm user (re-entry)** | `rpc_match_delegate_confirm_user` | **Non-org**, (InScope OR MatchAssociated), ShareGroup(caller, target) | **Removed** user (by user_id) | Re-entry: clear removed_at, set nominated, participant_accepted_at=NULL (target must Accept). Or fresh: insert with participant_accepted_at set. | Re-activates removed user; they then Accept; org Approve. |
+| **Delegate confirm (participant)** | `rpc_match_delegate_confirm_participant` | **User:** Non-org, InScope or MatchAssociated, ShareGroup(caller, participant). **Guest:** Any active participant (incl. organizer) | Pending **user** (invited/nominated) or **guest** participant row | Sets participant_accepted_at=now(), participant_accepted_via=delegate_manual. **Does not** set org_approved_at. Guest branch emits `match.guest_delegate_confirmed`. | Single entry point for both user and guest. User needs org Approve; guest needs org Approve. |
 
 ---
 
@@ -69,17 +67,16 @@ Unified invariant: **confirmed ⇔ participant_accepted_at IS NOT NULL AND org_a
 | **User withdraw** | `rpc_match_user_withdraw` | Participant (self) | Own row | Sets removed_at, removed_by=self. Reconcile → removed. |
 
 After remove, **re-entry** is allowed only via:
-- **User:** `rpc_match_request_join` (if in scope) or `rpc_match_invite_user` (organizer) or **`rpc_match_nominate_user`** (same-group non-org; re-entry supported).
+- **User:** `rpc_match_request_join` (if in scope) or `rpc_match_invite_user` (organizer; wrapper around `rpc_match_admit_user`) or **`rpc_match_nominate_user`** (same-group non-org; re-entry supported).
 - **Guest:** No “removed” state re-use; new nominate only.
 
 ---
 
-## 5. Target RPCs (who can be invited / nominated / delegate-confirmed)
+## 5. Target RPCs (who can be invited / nominated)
 
 | RPC | Returns | Caller gate | Who is in the list |
 |-----|---------|-------------|--------------------|
 | **rpc_match_admission_targets** | (user_id, display_name, avatar_url, club_handle, source, eligible, eligible_via, sort_name) | Organizer OR (can_participants_invite + InScope/MatchAssociated) | Reentry, invite_circle, club_members, groups. API maps to (user_id, display_name) for invite/nominate UI. |
-| **rpc_match_delegate_manual_confirm_targets** | (user_id, display_name) | can_delegate_confirm_user | Users in shared groups who are **not** already in the match (for delegate_confirm_user “fresh” path). |
 
 ---
 
@@ -106,10 +103,10 @@ When match date / time / duration / club_id / court_ids change:
 
 ## 8. Summary table (caller → action)
 
-| Caller | Can invite user | Can nominate user | Can request join | Can Accept | Can Approve | Can Manual confirm | Can Delegate confirm (user) | Can Delegate confirm (guest) | Can Remove |
-|--------|------------------|--------------------|-------------------|------------|------------|--------------------|-----------------------------|-----------------------------|------------|
-| **Organizer** | ✓ (invite_user) | ✗ | ✗ | ✓ (own) | ✓ | ✓ (user row) | ✗ | ✓ | ✓ |
-| **Non-org, in scope or match-associated** | ✗ | ✓ (if can_participants_invite_users) | ✓ (if in scope) | ✓ (own) | ✗ | ✗ | ✓ (share group) | ✓ | ✗ |
+| Caller | Can invite user | Can nominate user | Can request join | Can Accept | Can Approve | Can Manual confirm | Can Delegate confirm (participant) | Can Remove |
+|--------|------------------|--------------------|-------------------|------------|------------|--------------------|-----------------------------------|------------|
+| **Organizer** | ✓ (invite_user) | ✗ | ✗ | ✓ (own) | ✓ | ✓ (user row) | ✓ (guest only; user uses manual) | ✓ |
+| **Non-org, in scope or match-associated** | ✗ | ✓ (if can_participants_invite_users) | ✓ (if in scope) | ✓ (own) | ✗ | ✗ | ✓ (user: share group; guest: any) | ✗ |
 | **Participant (self)** | — | — | — | ✓ (own) | — | — | — | — | ✓ (withdraw) |
 
 ---
@@ -127,12 +124,12 @@ After this flow doc is in place, update:
 
 3. **docs/db/FACTS_functions.md**  
    - For each RPC in §2–§5, ensure **Notes** mention: caller gate, target scope, re-entry yes/no, and “Order-free: org Approve and user Accept in any order” where relevant.  
-   - Add **rpc_match_nominate_guest**, **rpc_match_delegate_confirm_guest**, **rpc_match_delegate_confirm_participant** (if not already), **setMatchCourts** (if you document API).  
+   - Add **rpc_match_nominate_guest**, **rpc_match_delegate_confirm_participant** (single entry for user + guest), **setMatchCourts** (if you document API).  
    - **is_user_match_associated**: note “excludes removed”.
 
 4. **docs/db/FACTS_tables.md**  
    - **match_participants**: confirm join_method values (invited, requested, nominated, manual, guest_add, etc.) and that confirmation is unified (participant_accepted_at + org_approved_at).  
-   - **match_participant_actions**: add action_type values used in v1.7 (e.g. nominate_guest, delegate_confirm_guest, reenter).
+   - **match_participant_actions**: add action_type values used in v1.7 (e.g. nominate_guest, delegate_manual_confirm, reenter).
 
 5. **This file (Match_Participation_Flows_and_Scope.md)**  
    - Keep as the single place for “who can do what, with which scope, and re-entry rules”. Link to it from FACTS and from the Master Spec.

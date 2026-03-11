@@ -31,10 +31,9 @@ Run this checklist after Phase 5 to verify main flows still work.
 
 ## 3. Match detail — Non-organizer flows (user B)
 
-- [ ] **Nominate User**: Delegate-confirm a user from shared groups (DelegateConfirmUserForm)
+- [ ] **Nominate User**: Nominate user from shared groups (ParticipantGroups / admission targets)
 - [ ] **Nominate Contact Player**: From roster or create new (when canNominateGuest)
-- [ ] **Delegate confirm guest**: Confirm a pending Contact Player can come
-- [ ] **Delegate confirm user participant**: Confirm pending invited/nominated user
+- [ ] **Delegate confirm participant**: Confirm pending user or guest can come (single "Confirm can come" button)
 - [ ] **Accept**: Self-accept own invite/nomination
 
 ## 4. Contacts tab

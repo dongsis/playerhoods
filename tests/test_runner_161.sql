@@ -23,8 +23,6 @@ DECLARE
 
   v_mid uuid;
   v_mp  public.match_participants%rowtype;
-
-  fn_delegate_exists boolean;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _v161_results(
     test_name text,
@@ -60,7 +58,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status, admission_mode,
+      organizer_id, status,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -68,7 +66,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active', 'invite',
+      ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '10:00'::time, 90,
       'v161_test_nominate', 4,
@@ -129,7 +127,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status, admission_mode,
+      organizer_id, status,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -137,7 +135,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active', 'invite',
+      ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '11:00'::time, 90,
       'v161_test_org_manual_confirm', 4,
@@ -197,11 +195,11 @@ BEGIN
 
   -- ===========================================================================
   -- T03: Delegated manual confirm keeps pending (no org_approved_at)
-  -- - supports either rpc_match_delegate_confirm_user OR rpc_match_delegate_manual_confirm_user
+  -- Flow: nominate user, then delegate-confirm via rpc_match_delegate_confirm_participant
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status, admission_mode,
+      organizer_id, status,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -209,7 +207,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active', 'invite',
+      ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '12:00'::time, 90,
       'v161_test_delegate_manual_confirm', 4,
@@ -219,44 +217,26 @@ BEGIN
     )
     RETURNING public.matches.id INTO v_mid;
 
-    -- simulate caller = U3 (non-org)
+    -- U3 nominates Real
     PERFORM set_config(
       'request.jwt.claims',
       json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
       true
     );
+    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
 
-    SELECT EXISTS (
-      SELECT 1
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname='public'
-        AND p.proname IN ('rpc_match_delegate_confirm_user','rpc_match_delegate_manual_confirm_user')
-    )
-    INTO fn_delegate_exists;
+    -- U3 delegate-confirms the nominated participant
+    SELECT mp.* INTO v_mp
+    FROM public.match_participants mp
+    WHERE mp.match_id = v_mid AND mp.user_id = REAL_UID
+    ORDER BY mp.created_at DESC
+    LIMIT 1;
 
-    IF NOT fn_delegate_exists THEN
+    IF NOT FOUND THEN
       INSERT INTO _v161_results(test_name, ok, details, match_id)
-      VALUES (
-        'T03 Delegate confirm keeps pending',
-        false,
-        'missing function: public.rpc_match_delegate_confirm_user(uuid,uuid) OR public.rpc_match_delegate_manual_confirm_user(uuid,uuid)',
-        v_mid
-      );
+      VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row after nominate', v_mid);
     ELSE
-      -- Prefer canonical name if exists
-      IF EXISTS (
-        SELECT 1
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname='public' AND p.proname='rpc_match_delegate_manual_confirm_user'
-      ) THEN
-        EXECUTE 'SELECT public.rpc_match_delegate_manual_confirm_user($1,$2)'
-          USING v_mid, REAL_UID;
-      ELSE
-        EXECUTE 'SELECT public.rpc_match_delegate_confirm_user($1,$2)'
-          USING v_mid, REAL_UID;
-      END IF;
+      PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
 
       SELECT mp.* INTO v_mp
       FROM public.match_participants mp
@@ -266,27 +246,25 @@ BEGIN
 
       IF NOT FOUND THEN
         INSERT INTO _v161_results(test_name, ok, details, match_id)
-        VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row created', v_mid);
-      ELSE
-        IF v_mp.participant_accepted_at IS NOT NULL
+        VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row after delegate confirm', v_mid);
+      ELSIF v_mp.participant_accepted_at IS NOT NULL
            AND v_mp.participant_accepted_via::text = 'delegate_manual'
            AND v_mp.org_approved_at IS NULL
            AND v_mp.status::text = 'pending'
-        THEN
-          INSERT INTO _v161_results(test_name, ok, details, match_id)
-          VALUES ('T03 Delegate confirm keeps pending', true, 'ok', v_mid);
-        ELSE
-          INSERT INTO _v161_results(test_name, ok, details, match_id)
-          VALUES (
-            'T03 Delegate confirm keeps pending',
-            false,
-            'got status='||coalesce(v_mp.status::text,'NULL')
-            ||', participant_accepted_at='||coalesce(v_mp.participant_accepted_at::text,'NULL')
-            ||', participant_accepted_via='||coalesce(v_mp.participant_accepted_via::text,'NULL')
-            ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
-            v_mid
-          );
-        END IF;
+      THEN
+        INSERT INTO _v161_results(test_name, ok, details, match_id)
+        VALUES ('T03 Delegate confirm keeps pending', true, 'ok', v_mid);
+      ELSE
+        INSERT INTO _v161_results(test_name, ok, details, match_id)
+        VALUES (
+          'T03 Delegate confirm keeps pending',
+          false,
+          'got status='||coalesce(v_mp.status::text,'NULL')
+          ||', participant_accepted_at='||coalesce(v_mp.participant_accepted_at::text,'NULL')
+          ||', participant_accepted_via='||coalesce(v_mp.participant_accepted_via::text,'NULL')
+          ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
+          v_mid
+        );
       END IF;
     END IF;
   EXCEPTION WHEN OTHERS THEN
@@ -324,7 +302,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status, admission_mode,
+      organizer_id, status,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -332,7 +310,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active', 'invite',
+      ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '13:00'::time, 90,
       'v161_test_match_associated_any_row', 4,

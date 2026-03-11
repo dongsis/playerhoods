@@ -483,9 +483,7 @@ export async function removeParticipant(supabase: Client, participantId: string)
 
 /** v1.5: ORG adds guest (join_method=manual, confirmed immediately). */
 // Deprecated addGuestOrg/addGuestParticipant paths have been replaced by the
-// unified nominate-guest model. New RPCs:
-// - rpc_match_nominate_guest(p_match_id, p_guest_id)
-// - rpc_match_delegate_confirm_guest(p_match_participant_id)
+// unified nominate-guest model. Use rpc_match_nominate_guest + rpc_match_delegate_confirm_participant.
 
 /** Nominate an existing Contact Player (guest) into a match. */
 export async function nominateGuest(
@@ -500,18 +498,7 @@ export async function nominateGuest(
   if (error) throw error
 }
 
-/** Delegate-confirm that a guest can attend (any active participant, including org). */
-export async function delegateConfirmGuest(
-  supabase: Client,
-  matchParticipantId: string,
-) {
-  const { error } = await supabase.rpc('rpc_match_delegate_confirm_guest', {
-    p_match_participant_id: matchParticipantId,
-  })
-  if (error) throw error
-}
-
-/** v1.7: Delegate-confirm an existing nominated user participant (sets participant_accepted_at). */
+/** v1.7: Delegate-confirm an existing pending participant (user or guest). Sets participant_accepted_at. */
 export async function delegateConfirmParticipant(
   supabase: Client,
   matchParticipantId: string,
@@ -999,18 +986,3 @@ export function admissionTargetsToContactPlayers(targets: AdmissionTarget[]): { 
     .map(t => ({ guest_id: t.target_id, display_name: t.display_name ?? '', email: t.contact_email ?? null }))
 }
 
-/** v1.6.1: Delegate-confirm targets for non-org (ShareGroup with caller). Returns [] on gate fail. */
-export async function getDelegateConfirmTargets(supabase: Client, matchId: string): Promise<ScopeUser[]> {
-  const { data, error } = await supabase.rpc('rpc_match_delegate_manual_confirm_targets', { p_match_id: matchId })
-  if (error) throw error
-  return ((data ?? []) as { user_id: string; display_name: string }[]).map(r => ({ id: r.user_id, display_name: r.display_name }))
-}
-
-/** v1.6.1: Non-org delegate-confirms a user from shared groups (pending ORG approval). */
-export async function delegateConfirmUser(supabase: Client, matchId: string, userId: string) {
-  const { error } = await supabase.rpc('rpc_match_delegate_confirm_user', {
-    p_match_id: matchId,
-    p_user_id: userId,
-  })
-  if (error) throw error
-}

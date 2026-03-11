@@ -8,7 +8,6 @@ import {
   manualConfirmParticipant,
   removeParticipant,
   inviteUserToMatch,
-  delegateConfirmGuest,
   delegateConfirmParticipant,
 } from '@/lib/api/matches'
 import { processDeliveriesAction } from './process-deliveries-action'
@@ -111,23 +110,21 @@ function ParticipantRow({
     p.user_id !== null &&
     p.participant_accepted_at == null   // guests use delegate-confirm flow
 
-  // Guest delegate confirm: any active participant (including organizer) can confirm a guest can come.
-  const canConfirmGuest =
-    isGuest &&
+  // Delegate confirm: guest = any active participant; user = non-org + canDelegateConfirmUserParticipants
+  const canDelegateConfirmParticipant =
     isActive &&
     p.status === 'pending' &&
-    viewerIsParticipant
-
-  // v1.7: User delegate confirm: non-org can confirm invited or nominated user (participant_accepted_at null, share group enforced by RPC)
-  const canDelegateConfirmUser =
-    !isGuest &&
-    p.user_id !== null &&
-    isActive &&
-    p.status === 'pending' &&
-    (p.join_method === 'invited' || p.join_method === 'nominated') &&
-    !p.participant_accepted_at &&
-    canDelegateConfirmUserParticipants &&
-    viewerIsParticipant
+    viewerIsParticipant &&
+    (
+      (isGuest)
+      || (
+        !isGuest &&
+        p.user_id !== null &&
+        (p.join_method === 'invited' || p.join_method === 'nominated') &&
+        !p.participant_accepted_at &&
+        canDelegateConfirmUserParticipants
+      )
+    )
 
   // Remove: organizer only (v1.5: participants cannot remove anyone)
   const canRemove =
@@ -187,7 +184,7 @@ function ParticipantRow({
         </div>
 
         {/* Organizer / participant action controls */}
-        {(canApprove || canManualConfirm || canConfirmGuest || canDelegateConfirmUser || canRemove || canInviteBack) && (
+        {(canApprove || canManualConfirm || canDelegateConfirmParticipant || canRemove || canInviteBack) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
             {canApprove && (
               <button
@@ -209,17 +206,7 @@ function ParticipantRow({
               </button>
             )}
 
-            {canConfirmGuest && (
-              <button
-                onClick={() => act(() => delegateConfirmGuest(supabase, p.id))}
-                disabled={isPending}
-                style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
-              >
-                Confirm can come
-              </button>
-            )}
-
-            {canDelegateConfirmUser && (
+            {canDelegateConfirmParticipant && (
               <button
                 onClick={() => act(() => delegateConfirmParticipant(supabase, p.id))}
                 disabled={isPending}
