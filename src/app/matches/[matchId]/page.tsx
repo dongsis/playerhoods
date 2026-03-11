@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { getMatchDetailData, getMatchCourts, isCallerInMatchScope, getInviteTargets, getNominateTargets, getCourts, updateMatchDetails, setMatchCourts, type ScopeUser } from '@/lib/api/matches'
+import { getMatchDetailData, getMatchCourts, isCallerInMatchScope, getAdmissionTargets, admissionTargetsToScopeUsers, admissionTargetsToContactPlayers, getCourts, updateMatchDetails, setMatchCourts, removeParticipant } from '@/lib/api/matches'
+import { getGroups } from '@/lib/api/groups'
 import { formatMatchTime } from '@/lib/utils/format-time'
 import { MatchActions } from './MatchActions'
 import { ParticipantGroups } from './ParticipantGroups'
@@ -11,8 +12,9 @@ import { InviteUserForm } from './InviteUserForm'
 import { NominateUserForm } from './NominateUserForm'
 import { AddGuestForm } from './AddGuestForm'
 import { MatchEditForm } from './MatchEditForm'
+import { MatchScopeGroupsForm } from './MatchScopeGroupsForm'
 import { InviteGuestForm } from './InviteGuestForm'
-import { InviteByEmailForm } from './InviteByEmailForm'
+import { ReconcileIdentityButton } from './ReconcileIdentityButton'
 
 interface Props {
   params: Promise<{ matchId: string }>
@@ -22,6 +24,12 @@ export default async function MatchDetailPage({ params }: Props) {
   const { matchId } = await params
   const user = await getUser()
   const supabase = await createSupabaseServerClient()
+
+  // Reconcile identity when user lands from any email link (nominate, time change, remove, game formed)
+  if (user) {
+    const { error } = await supabase.rpc('rpc_reconcile_identity_guest_participants')
+    if (error) console.error('[MatchDetail] reconcile identity:', error)
+  }
 
   let detail
   try {
@@ -52,29 +60,40 @@ export default async function MatchDetailPage({ params }: Props) {
   // v1.7: organizer or match-associated can nominate Contact Player (RPC requires is_match_organizer OR is_user_match_associated)
   const canNominateGuest = isOrganizer || isMatchAssociated
 
-  // v1.6.1: 3 parallel roster fetches (each RPC enforces its own caller gate)
-  const [inviteTargets, nominateTargets] = await Promise.all([
-    match.status === 'active' && isOrganizer
-      ? getInviteTargets(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] inviteTargets:', e); return [] as ScopeUser[] })
-      : Promise.resolve([] as ScopeUser[]),
-    match.status === 'active' && canNominate
-      ? getNominateTargets(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] nominateTargets:', e); return [] as ScopeUser[] })
-      : Promise.resolve([] as ScopeUser[]),
+  // Phase 3: One mixed admission targets fetch (users + Contact Players)
+  const [admissionTargets, allGroups] = await Promise.all([
+    match.status === 'active' && (isOrganizer || canNominate || canNominateGuest)
+      ? getAdmissionTargets(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] admissionTargets:', e); return [] })
+      : Promise.resolve([]),
+    isOrganizer && match.status === 'active'
+      ? getGroups(supabase).catch((e: unknown) => { console.error('[MatchDetail] groups:', e); return [] })
+      : Promise.resolve([]),
   ])
+  const scopeUsersForInvite = admissionTargetsToScopeUsers(admissionTargets)
+  const scopeUsersForNominate = admissionTargetsToScopeUsers(admissionTargets)
+  const contactTargets = admissionTargetsToContactPlayers(admissionTargets)
 
   // ── Organizer-only server actions ──────────────────────────────────────────
   async function handleUpdateMatchDetails(data: {
-    match_date: string | null
-    start_time: string | null
-    duration_minutes: number | null
+    match_date?: string | null
+    start_time?: string | null
+    duration_minutes?: number | null
+    invitation_scope_group_ids?: string[] | null
   }) {
     'use server'
     const srv = await createSupabaseServerClient()
     await updateMatchDetails(srv, matchId, data)
     const updatedMatch = { ...match, ...data }
-    const { sendMatchTimeChangeEmails } = await import('@/lib/email/send-participant-notifications')
-    await sendMatchTimeChangeEmails(srv, updatedMatch, clubName)
+    if (data.match_date !== undefined || data.start_time !== undefined || data.duration_minutes !== undefined) {
+      const { sendMatchTimeChangeEmails } = await import('@/lib/email/send-participant-notifications')
+      await sendMatchTimeChangeEmails(srv, updatedMatch, clubName)
+    }
     revalidatePath(`/matches/${matchId}`)
+  }
+
+  async function handleUpdateScopeGroups(ids: string[]) {
+    'use server'
+    await handleUpdateMatchDetails({ invitation_scope_group_ids: ids })
   }
 
   async function handleSetCourts(courtLabels: string[]) {
@@ -83,6 +102,20 @@ export default async function MatchDetailPage({ params }: Props) {
     const u = await getUser()
     if (!u) throw new Error('not_authenticated')
     await setMatchCourts(srv, matchId, courtLabels, u.id)
+    revalidatePath(`/matches/${matchId}`)
+  }
+
+  async function handleRemoveParticipant(participantId: string) {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    await removeParticipant(srv, participantId)
+    revalidatePath(`/matches/${matchId}`)
+  }
+
+  async function handleReconcileIdentity() {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    await srv.rpc('rpc_reconcile_identity_guest_participants')
     revalidatePath(`/matches/${matchId}`)
   }
 
@@ -134,16 +167,25 @@ export default async function MatchDetailPage({ params }: Props) {
           <span>Org: <strong style={{ color: '#333' }}>{organizerName}</strong></span>
         </div>
 
-        {scopeGroups.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.8rem' }}>
-            <span style={{ color: '#888' }}>Scope:</span>
-            {scopeGroups.map(g => (
-              <span key={g.id} style={{ background: '#e8f0fe', color: '#1a56db', padding: '0.1rem 0.5rem', borderRadius: '10px' }}>
-                {g.name}
-              </span>
-            ))}
-          </div>
-        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.8rem' }}>
+          {scopeGroups.length > 0 && (
+            <>
+              <span style={{ color: '#888' }}>Scope:</span>
+              {scopeGroups.map(g => (
+                <span key={g.id} style={{ background: '#e8f0fe', color: '#1a56db', padding: '0.1rem 0.5rem', borderRadius: '10px' }}>
+                  {g.name}
+                </span>
+              ))}
+            </>
+          )}
+          {isOrganizer && match.status === 'active' && (
+            <MatchScopeGroupsForm
+              groups={allGroups.map(g => ({ id: g.id, name: g.name }))}
+              currentScopeGroupIds={match.invitation_scope_group_ids ?? []}
+              onSave={handleUpdateScopeGroups}
+            />
+          )}
+        </div>
       </header>
 
       {/* Organizer: edit date / time / court */}
@@ -170,6 +212,10 @@ export default async function MatchDetailPage({ params }: Props) {
             myParticipation={myParticipant}
             inScope={inScope}
           />
+          {/* Contact Player who registered: manual identity link if auto-reconcile didn't run */}
+          {user && !myParticipant && (
+            <ReconcileIdentityButton onReconcile={handleReconcileIdentity} />
+          )}
         </section>
       )}
 
@@ -184,6 +230,7 @@ export default async function MatchDetailPage({ params }: Props) {
           pendingCount={pendingCount}
           myUserId={user?.id ?? null}
           canDelegateConfirmUserParticipants={canDelegateConfirm}
+          onRemoveParticipant={handleRemoveParticipant}
         />
       </section>
 
@@ -196,7 +243,7 @@ export default async function MatchDetailPage({ params }: Props) {
           <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
             They must accept, then the organizer approves to confirm.
           </p>
-          <NominateUserForm matchId={matchId} scopeUsers={nominateTargets} />
+          <NominateUserForm matchId={matchId} scopeUsers={scopeUsersForNominate} />
         </section>
       )}
 
@@ -211,7 +258,7 @@ export default async function MatchDetailPage({ params }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div>
               <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>From my roster</h4>
-              <InviteGuestForm matchId={matchId} />
+              <InviteGuestForm matchId={matchId} contactTargets={contactTargets} />
             </div>
             <div>
               <h4 style={{ margin: '0.75rem 0 0.3rem', fontSize: '0.85rem' }}>Create new Contact Player</h4>
@@ -233,15 +280,7 @@ export default async function MatchDetailPage({ params }: Props) {
             <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
               Pre-approves the user — they only need to Accept to confirm.
             </p>
-            <InviteUserForm matchId={matchId} scopeUsers={inviteTargets} />
-          </div>
-
-          <div style={{ marginBottom: '1.25rem' }}>
-            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite by Email</h4>
-            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
-              Send an email invitation. Recipient verifies email and accepts on the invitation page.
-            </p>
-            <InviteByEmailForm matchId={matchId} />
+            <InviteUserForm matchId={matchId} scopeUsers={scopeUsersForInvite} />
           </div>
 
           <div id="guest">
@@ -252,7 +291,7 @@ export default async function MatchDetailPage({ params }: Props) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div>
                 <h5 style={{ margin: '0 0 0.3rem', fontSize: '0.8rem' }}>From my roster</h5>
-                <InviteGuestForm matchId={matchId} />
+                <InviteGuestForm matchId={matchId} contactTargets={contactTargets} />
               </div>
               <div>
                 <h5 style={{ margin: '0.75rem 0 0.3rem', fontSize: '0.8rem' }}>Create new Contact Player</h5>

@@ -18,6 +18,10 @@ export default async function DashboardPage() {
 
   const supabase = await createSupabaseServerClient()
 
+  // Reconcile identity: link guest participants to user by email (e.g. after signup from nomination email)
+  const { error: reconcileErr } = await supabase.rpc('rpc_reconcile_identity_guest_participants')
+  if (reconcileErr) console.error('[Dashboard] reconcile identity:', reconcileErr)
+
   const [
     items,
     inboxUnreadCount,

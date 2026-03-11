@@ -37,9 +37,7 @@ public.rpc_match_add_guest_participant(p_match_id uuid, p_guest_display_name tex
 
 ## Targets RPCs
 
-public.rpc_match_invite_targets(p_match_id uuid) -> returns TABLE(user_id uuid, display_name text) | SECURITY DEFINER | plpgsql
-
-public.rpc_match_nominate_targets(p_match_id uuid) -> returns TABLE(user_id uuid, display_name text) | SECURITY DEFINER | plpgsql
+public.rpc_match_admission_targets(p_match_id uuid, p_search text) -> returns TABLE(user_id, display_name, avatar_url, club_handle, source, eligible, eligible_via, sort_name) | SECURITY DEFINER | plpgsql
 
 public.rpc_match_delegate_manual_confirm_targets(p_match_id uuid) -> returns TABLE(user_id uuid, display_name text) | SECURITY DEFINER | plpgsql
 
@@ -803,18 +801,6 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Calls:** `public.match_participant_reconcile_status`
 - **Notes:** **Deprecated.** Previously let organizers invite a Contact Player from personal roster with mixed semantics. Now implemented as a stub that raises `deprecated_use_rpc_match_nominate_guest`. All guest flows must go through the nominate / delegate-confirm / org-approve pipeline.
 
-### `public.rpc_match_invite_targets`
-- **Kind:** RPC
-- **Signature:** `public.rpc_match_invite_targets("p_match_id" "uuid")`
-- **Returns:** `TABLE("user_id" "uuid", "display_name" "text")`
-- **Language:** `plpgsql`
-- **Security:** **SECURITY DEFINER**
-- **Volatility:** `—`
-- **Reads:** `public.group_members`, `public.match_participants`, `public.matches`
-- **Writes:** —
-- **Calls:** `public.is_match_organizer`
-- **Notes:** —
-
 ### `public.rpc_match_invite_user`
 - **Kind:** RPC
 - **Signature:** `public.rpc_match_invite_user("p_match_id" "uuid", "p_user_id" "uuid")`
@@ -850,18 +836,6 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Writes:** `public.match_participant_actions`, `public.match_participants`
 - **Calls:** `public.do_users_share_group`, `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.is_user_match_associated`, `public.match_participant_reconcile_status`
 - **Notes:** ⚠️ **Re-entry / removed_* mutation detected** (check against restart-channel doctrine).
-
-### `public.rpc_match_nominate_targets`
-- **Kind:** RPC
-- **Signature:** `public.rpc_match_nominate_targets("p_match_id" "uuid")`
-- **Returns:** `TABLE("user_id" "uuid", "display_name" "text")`
-- **Language:** `plpgsql`
-- **Security:** **SECURITY DEFINER**
-- **Volatility:** `—`
-- **Reads:** `public.group_members`, `public.match_participants`, `public.matches`
-- **Writes:** —
-- **Calls:** `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.is_user_match_associated`
-- **Notes:** —
 
 ### `public.rpc_match_nominate_user`
 - **Kind:** RPC

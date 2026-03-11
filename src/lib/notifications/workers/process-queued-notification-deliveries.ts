@@ -8,9 +8,10 @@ import {
   gameFormedEmail,
 } from '@/lib/email/templates'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : 'http://localhost:3000'
+const raw =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+const SITE_URL = raw && raw !== 'undefined' ? raw : 'http://localhost:3000'
 
 export type DeliveryRow = {
   id: string

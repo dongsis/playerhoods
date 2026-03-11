@@ -18,8 +18,11 @@ export type MatchInfo = {
   siteUrl: string
 }
 
+const FALLBACK_SITE_URL = 'http://localhost:3000'
+
 function matchLink(m: MatchInfo): string {
-  return `${m.siteUrl}/matches/${m.matchId}`
+  const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : FALLBACK_SITE_URL
+  return `${base}/matches/${m.matchId}`
 }
 
 /** Game formed: 比赛成局 */

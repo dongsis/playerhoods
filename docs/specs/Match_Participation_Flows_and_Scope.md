@@ -78,9 +78,8 @@ After remove, **re-entry** is allowed only via:
 
 | RPC | Returns | Caller gate | Who is in the list |
 |-----|---------|-------------|--------------------|
-| **rpc_match_invite_targets** | (user_id, display_name) | Organizer only | Users **InScope(match) OR ShareGroup(user, organizer)**, excluding already active participants. |
-| **rpc_match_nominate_targets** | (user_id, display_name) | **InScope(caller) OR MatchAssociated(caller)**; match.can_participants_invite_users | Users **ShareGroup(caller, user)** only, excluding already match-associated users. |
-| **rpc_match_delegate_manual_confirm_targets** | (user_id, display_name) | Same as nominate_targets | Users in shared groups who are **not** already in the match (for delegate_confirm_user “fresh” path). |
+| **rpc_match_admission_targets** | (user_id, display_name, avatar_url, club_handle, source, eligible, eligible_via, sort_name) | Organizer OR (can_participants_invite + InScope/MatchAssociated) | Reentry, invite_circle, club_members, groups. API maps to (user_id, display_name) for invite/nominate UI. |
+| **rpc_match_delegate_manual_confirm_targets** | (user_id, display_name) | can_delegate_confirm_user | Users in shared groups who are **not** already in the match (for delegate_confirm_user “fresh” path). |
 
 ---
 

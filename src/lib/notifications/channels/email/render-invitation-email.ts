@@ -17,9 +17,12 @@ export type InvitationEmailData = {
   siteUrl: string
 }
 
+const FALLBACK_SITE_URL = 'http://localhost:3000'
+
 /** Render invitation email HTML. CTA: "View Invitation" - no auto-accept. */
 export function renderInvitationEmail(data: InvitationEmailData): string {
-  const viewUrl = `${data.siteUrl}/invitations/${data.invitationId}`
+  const base = data.siteUrl && data.siteUrl !== 'undefined' ? data.siteUrl : FALLBACK_SITE_URL
+  const viewUrl = `${base}/invitations/${data.invitationId}`
   const matchStr = data.matchSummary
     ? [data.matchSummary.game_type, data.matchSummary.match_date, data.matchSummary.club_name]
         .filter(Boolean)

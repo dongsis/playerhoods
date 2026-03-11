@@ -7,6 +7,7 @@ import {
   setDisplayName,
   setClubHandle,
   setPrimaryClub,
+  setClubIdentityPreferences,
   checkClubHandle,
   joinClub,
   getMyClubIdentities,
@@ -20,6 +21,7 @@ import { listSports, getMySports, setUserSports } from '@/lib/api/sports'
 import { ProfileEditForm } from './ProfileEditForm'
 import { DisplayNameEditForm } from './DisplayNameEditForm'
 import { ClubIdentityRow } from './ClubIdentityRow'
+import { DiscoveryAndInvitesSection } from './DiscoveryAndInvitesSection'
 import { ClubJoinForm } from './ClubJoinForm'
 import { GroupAliasRow } from './GroupAliasRow'
 import { SportsPreferenceForm } from './SportsPreferenceForm'
@@ -109,6 +111,26 @@ export default async function ProfilePage() {
     revalidatePath('/profile')
   }
 
+  async function handleSaveGlobalPreferences(params: {
+    show_in_club_member_discovery?: boolean
+    allow_non_group_invites?: boolean
+  }) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await updateProfile(supabase, params)
+    revalidatePath('/profile')
+  }
+
+  async function handleSetClubPreferences(clubId: string, params: {
+    visible_in_club_member_discovery?: 'true' | 'false' | 'inherit'
+    accept_non_group_invites_in_club?: 'true' | 'false' | 'inherit'
+  }) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await setClubIdentityPreferences(supabase, clubId, params)
+    revalidatePath('/profile')
+  }
+
   async function handleSetSports(codes: string[]) {
     'use server'
     const supabase = await createSupabaseServerClient()
@@ -194,7 +216,18 @@ export default async function ProfilePage() {
         />
       </section>
 
-      {/* Venue memberships (legacy: club handles are deprecated in v1.5) */}
+      {/* Phase 1: Discovery & Invites — two capability blocks, each with global + per-club */}
+      <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
+        <DiscoveryAndInvitesSection
+          showInClubMemberDiscovery={profile.show_in_club_member_discovery ?? true}
+          allowNonGroupInvites={profile.allow_non_group_invites ?? true}
+          identities={identities}
+          onSaveGlobal={handleSaveGlobalPreferences}
+          onSetClubPreferences={handleSetClubPreferences}
+        />
+      </section>
+
+      {/* Venue Memberships — handle, rename, primary */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
         <h2 style={{ marginTop: 0 }}>Venue Memberships</h2>
         <p style={{ margin: '0 0 0.6rem', fontSize: '0.82rem', color: '#aaa' }}>

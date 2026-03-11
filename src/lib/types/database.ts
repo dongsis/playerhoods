@@ -45,6 +45,10 @@ export type Profile = {
   contact_email?: string | null
   /** v1.7: Phone for SMS */
   contact_phone?: string | null
+  /** Phase 1: Global master switch — show in Club Members discovery */
+  show_in_club_member_discovery?: boolean
+  /** Phase 1: Global master switch — allow direct invites from club members */
+  allow_non_group_invites?: boolean
 }
 
 export type Club = {
@@ -269,6 +273,10 @@ export type ClubIdentity = {
   club_handle: string
   club_handle_norm: string
   created_at: string
+  /** Layer 2: Club-scoped discovery override. NULL = no override (treat as true). */
+  visible_in_club_member_discovery?: boolean | null
+  /** Layer 2: Club-scoped non-group invite override. NULL = no override (treat as true). */
+  accept_non_group_invites_in_club?: boolean | null
 }
 
 export type ClubHandleCheckResult = {
@@ -435,7 +443,23 @@ export interface Database {
         Returns: void
       }
       rpc_profile_update: {
-        Args: { p_first_name?: string | null; p_last_name?: string | null }
+        Args: {
+          p_first_name?: string | null
+          p_last_name?: string | null
+          p_contact_channel?: string | null
+          p_contact_email?: string | null
+          p_contact_phone?: string | null
+          p_show_in_club_member_discovery?: boolean | null
+          p_allow_non_group_invites?: boolean | null
+        }
+        Returns: void
+      }
+      rpc_club_identity_set_preferences: {
+        Args: {
+          p_club_id: string
+          p_visible_in_club_member_discovery?: string | null
+          p_accept_non_group_invites_in_club?: string | null
+        }
         Returns: void
       }
       // v1.5 Identity: direct display_name setter (club handle deprecated as sync path)
@@ -606,16 +630,6 @@ export interface Database {
         Args: { p_match_id: string; p_user_id: string }
         Returns: MatchParticipant
       }
-      // v1.6.1: Role-specific roster RPCs (replace rpc_match_scope_users).
-      // All return (user_id, display_name). Frontend maps user_id -> id for ScopeUser.
-      rpc_match_invite_targets: {
-        Args: { p_match_id: string }
-        Returns: { user_id: string; display_name: string }[]
-      }
-      rpc_match_nominate_targets: {
-        Args: { p_match_id: string }
-        Returns: { user_id: string; display_name: string }[]
-      }
       rpc_match_delegate_manual_confirm_targets: {
         Args: { p_match_id: string }
         Returns: { user_id: string; display_name: string }[]
@@ -629,6 +643,14 @@ export interface Database {
         Args: Record<string, never>
         Returns: Guest[]
       }
+      rpc_contact_player_resolution: {
+        Args: Record<string, never>
+        Returns: { guest_id: string; display_name: string; email: string | null; phone: string | null; notes: string | null; linked_user_id: string | null; resolution_state: string }[]
+      }
+      rpc_roster_guest_contact_links: {
+        Args: { p_guest_ids: string[] }
+        Returns: { guest_id: string; user_id: string }[]
+      }
       // v1.6.3: Sports RPCs
       rpc_sports_list: {
         Args: Record<string, never>
@@ -641,6 +663,35 @@ export interface Database {
       rpc_guest_sports_set: {
         Args: { p_guest_id: string; p_sport_codes: string[] }
         Returns: void
+      }
+      // Phase 1 Play Network Core
+      rpc_club_members_discovery: {
+        Args: { p_club_id: string; p_search?: string | null }
+        Returns: { user_id: string; display_name: string | null; avatar_url: string | null; club_handle: string | null }[]
+      }
+      rpc_invite_circle_list: {
+        Args: Record<string, never>
+        Returns: { id: string; owner_user_id: string; target_user_id: string; source: string; created_at: string; target_display_name: string | null; target_avatar_url: string | null }[]
+      }
+      rpc_invite_circle_save_user: {
+        Args: { p_target_user_id: string; p_source?: string }
+        Returns: unknown
+      }
+      rpc_invite_circle_remove_user: {
+        Args: { p_target_user_id: string }
+        Returns: { removed: boolean }[]
+      }
+      rpc_match_admission_targets: {
+        Args: { p_match_id: string; p_search?: string | null }
+        Returns: { target_kind: string; target_id: string; display_name: string | null; avatar_url: string | null; club_handle: string | null; source: string; action_kind: string; can_admit: boolean; eligible_via: string | null; sort_name: string | null; contact_email: string | null }[]
+      }
+      rpc_match_admit_user: {
+        Args: { p_match_id: string; p_target_user_id: string }
+        Returns: MatchParticipant
+      }
+      rpc_reconcile_identity_guest_participants: {
+        Args: Record<string, never>
+        Returns: unknown
       }
     }
     Enums: Record<string, never>

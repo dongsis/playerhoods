@@ -2,12 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { listRosterGuests, createRosterGuest } from '@/lib/api/roster'
+import { getContactPlayerResolution, createRosterGuest } from '@/lib/api/roster'
+import { inviteUserToGroup } from '@/lib/api/groups'
 import { listSports, setGuestSports } from '@/lib/api/sports'
-import type { Guest, Sport, GuestSport } from '@/lib/types/database'
+import type { Sport, GuestSport } from '@/lib/types/database'
+import type { GroupWithMembers } from '@/lib/api/players'
 
-export function ContactsPanel() {
-  const [guests, setGuests] = useState<Guest[]>([])
+interface Props {
+  groups?: GroupWithMembers[]
+}
+
+export function ContactsPanel({ groups = [] }: Props) {
+  const [resolved, setResolved] = useState<Awaited<ReturnType<typeof getContactPlayerResolution>>>([])
   const [sports, setSports] = useState<Sport[]>([])
   const [guestSportsMap, setGuestSportsMap] = useState<Map<string, number[]>>(new Map())
   const [loading, setLoading] = useState(true)
@@ -22,26 +28,23 @@ export function ContactsPanel() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [invitingKey, setInvitingKey] = useState<string | null>(null)
 
   const fetchData = async () => {
     const supabase = createSupabaseBrowserClient()
     try {
-      const [guestList, sportList] = await Promise.all([
-        listRosterGuests(supabase),
+      const [resolvedList, sportList] = await Promise.all([
+        getContactPlayerResolution(supabase),
         listSports(supabase),
       ])
-      setGuests(guestList)
+      setResolved(resolvedList)
       setSports(sportList)
 
-      // Fetch guest sports for all guests (frontend join)
-      if (guestList.length > 0) {
-        const guestIds = guestList.map(g => g.id)
-        const { data: gsData } = await supabase
-          .from('guest_sports')
-          .select('*')
-          .in('guest_id', guestIds)
+      if (resolvedList.length > 0) {
+        const guestIds = resolvedList.map(r => r.guest_id)
+        const gsRes = await supabase.from('guest_sports').select('*').in('guest_id', guestIds)
         const map = new Map<string, number[]>()
-        for (const row of (gsData ?? []) as GuestSport[]) {
+        for (const row of (gsRes.data ?? []) as GuestSport[]) {
           const existing = map.get(row.guest_id) ?? []
           existing.push(row.sport_id)
           map.set(row.guest_id, existing)
@@ -112,6 +115,20 @@ export function ContactsPanel() {
 
   const sportById = new Map(sports.map(s => [s.id, s]))
 
+  const handleInviteToGroup = async (guestId: string, userId: string, groupId: string) => {
+    const supabase = createSupabaseBrowserClient()
+    setError(null)
+    setInvitingKey(`${guestId}:${groupId}`)
+    try {
+      await inviteUserToGroup(supabase, groupId, userId)
+      await fetchData()
+    } catch (err) {
+      setError((err as { message?: string })?.message ?? 'Failed to invite')
+    } finally {
+      setInvitingKey(null)
+    }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -136,6 +153,9 @@ export function ContactsPanel() {
         <p style={{ color: 'green', fontSize: '0.85rem', margin: '0 0 0.75rem' }}>
           Contact player created!
         </p>
+      )}
+      {error && (
+        <p style={{ color: 'red', fontSize: '0.85rem', margin: '0 0 0.75rem' }}>{error}</p>
       )}
 
       {/* Create form */}
@@ -202,25 +222,25 @@ export function ContactsPanel() {
               </div>
             </div>
           )}
-          {error && <p style={{ color: 'red', fontSize: '0.8rem', margin: '0 0 0.5rem' }}>{error}</p>}
           <button type="submit" disabled={creating || !displayName.trim() || (!email.trim() && !phone.trim())} style={{ padding: '0.4rem 1rem' }}>
             {creating ? 'Creating...' : 'Create Contact Player'}
           </button>
         </form>
       )}
 
-      {/* Guest list */}
+      {/* Contact Player list */}
       {loading ? (
         <p style={{ color: '#888', fontSize: '0.85rem' }}>Loading...</p>
-      ) : guests.length === 0 ? (
+      ) : resolved.length === 0 ? (
         <p style={{ color: '#888', fontSize: '0.85rem' }}>No contact players yet. Add one above.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {guests.map(g => {
-            const sportIds = guestSportsMap.get(g.id) ?? []
+          {resolved.map(r => {
+            const sportIds = guestSportsMap.get(r.guest_id) ?? []
+            const linkedUserId = r.linked_user_id
             return (
               <div
-                key={g.id}
+                key={r.guest_id}
                 style={{
                   padding: '0.6rem 0.8rem',
                   border: '1px solid #e5e5e5',
@@ -229,7 +249,7 @@ export function ContactsPanel() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <strong style={{ fontSize: '0.9rem' }}>{g.display_name}</strong>
+                  <strong style={{ fontSize: '0.9rem' }}>{r.display_name}</strong>
                   {sportIds.map(sid => {
                     const sport = sportById.get(sid)
                     return sport ? (
@@ -239,9 +259,43 @@ export function ContactsPanel() {
                     ) : null
                   })}
                 </div>
-                {(g.email || g.phone || g.notes) && (
+                {(r.email || r.phone || r.notes) && (
                   <div style={{ fontSize: '0.78rem', color: '#888', marginTop: '0.2rem' }}>
-                    {[g.email, g.phone, g.notes].filter(Boolean).join(' · ')}
+                    {[r.email, r.phone, r.notes].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+                {linkedUserId && (
+                  <div style={{ marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#2d8a4e' }}>已加入 playerhoods.com</span>
+                    {groups.length > 0 && (
+                      <span style={{ fontSize: '0.8rem', color: '#666' }}>
+                        Invite to Group:
+                        {groups.map(gr => {
+                          const key = `${r.guest_id}:${gr.group.id}`
+                          const isInviting = invitingKey === key
+                          return (
+                            <button
+                              key={gr.group.id}
+                              type="button"
+                              onClick={() => handleInviteToGroup(r.guest_id, linkedUserId, gr.group.id)}
+                              disabled={!!invitingKey}
+                              style={{
+                                marginLeft: '0.35rem',
+                                fontSize: '0.75rem',
+                                padding: '0.15rem 0.4rem',
+                                background: '#0369a1',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: isInviting ? 'wait' : 'pointer',
+                              }}
+                            >
+                              {isInviting ? 'Inviting…' : gr.group.name}
+                            </button>
+                          )
+                        })}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

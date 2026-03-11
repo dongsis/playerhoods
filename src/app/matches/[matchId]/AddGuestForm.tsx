@@ -12,9 +12,8 @@ interface Props {
 }
 
 /**
- * Add a nonregistered player to a match.
+ * Add a Contact Player to a match.
  * v1.7: Uses rpc_match_nominate_guest (create roster guest + nominate).
- *       Old rpc_match_add_guest_org / add_guest_participant / invite_guest_from_roster are deprecated.
  */
 export function AddGuestForm({ matchId }: Props) {
   const [displayName, setDisplayName] = useState('')
@@ -93,7 +92,9 @@ export function AddGuestForm({ matchId }: Props) {
           style={{ flex: 1, padding: '0.5rem', boxSizing: 'border-box' }}
         />
       </div>
-      <p style={{ fontSize: '0.75rem', color: '#666', margin: '-0.25rem 0 0.5rem' }}>Email or phone required.</p>
+      <p style={{ fontSize: '0.75rem', color: '#666', margin: '-0.25rem 0 0.5rem' }}>
+        Email or phone required. <strong>Email needed for match notifications.</strong>
+      </p>
       <div style={{ marginBottom: '0.5rem' }}>
         <input
           type="text"
@@ -107,7 +108,7 @@ export function AddGuestForm({ matchId }: Props) {
         {loading ? 'Creating...' : 'Create & Nominate'}
       </button>
       {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
-      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Player added!</p>}
+      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Contact Player added!</p>}
     </form>
   )
 }

@@ -1,33 +1,29 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { nominateGuest } from '@/lib/api/matches'
 import { processDeliveriesAction } from './process-deliveries-action'
-import { listRosterGuests } from '@/lib/api/roster'
-import type { Guest } from '@/lib/types/database'
+
+interface ContactTarget {
+  guest_id: string
+  display_name: string
+  email: string | null
+}
 
 interface Props {
   matchId: string
+  contactTargets: ContactTarget[]
 }
 
-export function InviteGuestForm({ matchId }: Props) {
-  const [guests, setGuests] = useState<Guest[]>([])
+/** Phase 3: Uses unified admission targets (contact_player rows from rpc_match_admission_targets). */
+export function InviteGuestForm({ matchId, contactTargets }: Props) {
   const [guestId, setGuestId] = useState('')
   const [loading, setLoading] = useState(false)
-  const [fetching, setFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const router = useRouter()
-
-  useEffect(() => {
-    const supabase = createSupabaseBrowserClient()
-    listRosterGuests(supabase)
-      .then(setGuests)
-      .catch(console.error)
-      .finally(() => setFetching(false))
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -49,11 +45,7 @@ export function InviteGuestForm({ matchId }: Props) {
     }
   }
 
-  if (fetching) {
-    return <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>Loading contacts...</p>
-  }
-
-  if (guests.length === 0) {
+  if (contactTargets.length === 0) {
     return (
       <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
         No contact players in your favorites. Add some from the Contacts tab.
@@ -70,9 +62,12 @@ export function InviteGuestForm({ matchId }: Props) {
           required
           style={{ padding: '0.4rem 0.5rem', flex: 1, minWidth: '160px', fontSize: '0.9rem' }}
         >
-          <option value="">-- Select a contact --</option>
-          {guests.map(g => (
-            <option key={g.id} value={g.id}>{g.display_name}</option>
+          <option value="">-- Select a Contact Player --</option>
+          {contactTargets.map(r => (
+            <option key={r.guest_id} value={r.guest_id}>
+              {r.display_name}
+              {(!r.email || !r.email.trim()) ? ' (no email — won\'t get notifications)' : ''}
+            </option>
           ))}
         </select>
         <button type="submit" disabled={loading || !guestId} style={{ padding: '0.4rem 0.8rem', background: '#0e7490', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>

@@ -142,7 +142,7 @@ export function DashboardShell({
           />
         )}
         {activeTab === 'contacts' && (
-          <ContactsPanel />
+          <ContactsPanel groups={playersData.groups} />
         )}
         {activeTab === 'profile' && (
           <ProfilePanel

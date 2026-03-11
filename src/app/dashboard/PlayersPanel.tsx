@@ -6,6 +6,7 @@ import type { PlayersData, PendingGroupInvite } from '@/lib/api/players'
 import { acceptGroupInvite, rejectGroupInvite, inviteUserToGroup, createGroup, leaveGroup, updateGroup } from '@/lib/api/groups'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Group } from '@/lib/types/database'
+import { InviteCirclePanel } from './InviteCirclePanel'
 
 type InvitableUser = { id: string; display_name: string }
 
@@ -579,6 +580,9 @@ export function PlayersPanel({ data, userId }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* Phase 1: Invite Circle — private list for match invite candidates */}
+      <InviteCirclePanel />
+
       {/* Pending group invite banners — always visible regardless of view */}
       {pendingInvites.length > 0 && (
         <div className="space-y-2">

@@ -10,6 +10,7 @@ import {
   removeVenuePreference,
 } from '@/lib/api/identities'
 import { VenuePreferenceButton } from './VenuePreferenceButton'
+import { ClubMembersSection } from './ClubMembersSection'
 
 interface Props {
   params: Promise<{ venueId: string }>
@@ -97,6 +98,11 @@ export default async function VenueDetailPage({ params }: Props) {
           </div>
         </div>
       </header>
+
+      {/* Club Members discovery — for members only */}
+      {isMember && user && (
+        <ClubMembersSection clubId={venueId} />
+      )}
 
       {/* Notes / description */}
       {venue.notes && (

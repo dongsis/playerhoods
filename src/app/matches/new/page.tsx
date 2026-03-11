@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { createMatch, nominateGuest } from '@/lib/api/matches'
+import { createMatch, nominateGuest, getAdmissionTargets, admissionTargetsToScopeUsers, inviteUserToMatch, type ScopeUser } from '@/lib/api/matches'
 import { createRosterGuest } from '@/lib/api/roster'
 import { getGroups } from '@/lib/api/groups'
 import type { Group } from '@/lib/types/database'
@@ -28,6 +28,10 @@ export default function NewMatchPage() {
   const [newGuestName, setNewGuestName] = useState('')
   const [newGuestEmail, setNewGuestEmail] = useState('')
   const [newGuestPhone, setNewGuestPhone] = useState('')
+  const [createdMatchId, setCreatedMatchId] = useState<string | null>(null)
+  const [inviteTargets, setInviteTargets] = useState<ScopeUser[]>([])
+  const [selectedInviteIds, setSelectedInviteIds] = useState<Set<string>>(new Set())
+  const [inviteLoading, setInviteLoading] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -79,7 +83,10 @@ export default function NewMatchPage() {
         await nominateGuest(supabase, match.id, guest.id)
       }
 
-      router.push(`/matches/${match.id}`)
+      setCreatedMatchId(match.id)
+      const targets = await getAdmissionTargets(supabase, match.id)
+      setInviteTargets(admissionTargetsToScopeUsers(targets))
+      setSelectedInviteIds(new Set())
     } catch (err: unknown) {
       const message = (err as { message?: string })?.message || 'Failed to create match'
       setError(message)
@@ -87,6 +94,96 @@ export default function NewMatchPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleInviteSelected = async () => {
+    if (!createdMatchId || selectedInviteIds.size === 0) return
+    setInviteLoading(true)
+    setError(null)
+    const supabase = createSupabaseBrowserClient()
+    try {
+      for (const uid of selectedInviteIds) {
+        await inviteUserToMatch(supabase, createdMatchId, uid)
+      }
+      setInviteTargets(prev => prev.filter(u => !selectedInviteIds.has(u.id)))
+      setSelectedInviteIds(new Set())
+    } catch (err: unknown) {
+      setError((err as { message?: string })?.message || 'Failed to invite')
+    } finally {
+      setInviteLoading(false)
+    }
+  }
+
+  const handleDone = () => {
+    if (createdMatchId) router.push(`/matches/${createdMatchId}`)
+  }
+
+  if (createdMatchId) {
+    return (
+      <div style={{ maxWidth: '600px' }}>
+        <h1>Invite People</h1>
+        <p style={{ color: '#666', fontSize: '0.9rem' }}>
+          Match created. Invite registered users from your scope groups, or skip to go to the match.
+        </p>
+        <nav style={{ marginBottom: '1rem' }}>
+          <Link href="/dashboard">Back to Dashboard</Link>
+      {' · '}
+          <Link href={`/matches/${createdMatchId}`}>Go to match</Link>
+        </nav>
+
+        {inviteTargets.length === 0 ? (
+          <>
+            <p style={{ color: '#888', fontSize: '0.9rem' }}>
+              No eligible users in scope (everyone may already be invited, or no scope groups are defined).
+            </p>
+            <button type="button" onClick={handleDone} style={{ marginTop: '1rem', padding: '0.5rem 1rem' }}>
+              Go to match
+            </button>
+          </>
+        ) : (
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              {inviteTargets.map(u => (
+                <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedInviteIds.has(u.id)}
+                    onChange={e => {
+                      setSelectedInviteIds(prev => {
+                        const next = new Set(prev)
+                        if (e.target.checked) next.add(u.id)
+                        else next.delete(u.id)
+                        return next
+                      })
+                    }}
+                  />
+                  {u.display_name}
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={handleInviteSelected}
+                disabled={selectedInviteIds.size === 0 || inviteLoading}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                {inviteLoading ? 'Inviting…' : `Invite selected (${selectedInviteIds.size})`}
+              </button>
+              <button
+                type="button"
+                onClick={handleDone}
+                style={{ padding: '0.5rem 1rem', border: '1px solid #ccc', background: '#f5f5f5' }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
+        {error && <div style={{ color: 'red', marginBottom: '1rem' }}>{error}</div>}
+      </div>
+    )
   }
 
   return (
@@ -277,7 +374,7 @@ export default function NewMatchPage() {
               checked={canAddGuests}
               onChange={(e) => setCanAddGuests(e.target.checked)}
             />{' '}
-            Add guests
+            Add Contact Players
           </label>
 
           <label style={{ display: 'block', marginBottom: '0.5rem' }}>

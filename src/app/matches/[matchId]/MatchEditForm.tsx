@@ -99,7 +99,7 @@ export function MatchEditForm({
           color: '#555',
         }}
       >
-        Edit details
+        Edit date / time
       </button>
     )
   }

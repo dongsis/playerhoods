@@ -12,30 +12,16 @@ interface Props {
 }
 
 export function ProfileForm({ userId, existing, next }: Props) {
-  // 初始化：如果已有值就回填
   const initialDisplayName = useMemo(
     () => (existing as any)?.display_name ?? '',
     [existing]
   )
-  const initialFirstName = useMemo(
-    () => (existing as any)?.first_name ?? '',
-    [existing]
-  )
-  const initialLastName = useMemo(
-    () => (existing as any)?.last_name ?? '',
-    [existing]
-  )
 
   const [displayName, setDisplayName] = useState<string>(initialDisplayName)
-  const [firstName, setFirstName] = useState<string>(initialFirstName)
-  const [lastName, setLastName] = useState<string>(initialLastName)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleClick = async () => {
-    console.log('ProfileForm: Continue clicked')
-
-    // 1. Validate display_name before any async work
     const trimmed = displayName.trim()
     if (!trimmed) {
       setError('Display name is required')
@@ -47,17 +33,9 @@ export function ProfileForm({ userId, existing, next }: Props) {
 
     try {
       const supabase = createSupabaseBrowserClient()
+      await initProfile(supabase, { display_name: trimmed })
 
-      // 2. Create/init profile in DB (RPC)
-      await initProfile(supabase, {
-        display_name: trimmed,
-        first_name: firstName.trim() || undefined,
-        last_name: lastName.trim() || undefined,
-      } as any)
-
-      // 3. Navigate to "next" or dashboard (full load so middleware sees updated profile)
       const target = next || '/dashboard'
-      console.log('ProfileForm: Profile saved, navigating to', target)
       window.location.href = target
     } catch (e: unknown) {
       const msg =
@@ -75,7 +53,6 @@ export function ProfileForm({ userId, existing, next }: Props) {
   }
 
   return (
-    // 关键：用 onSubmit 统一入口，回车也能提交；并 preventDefault
     <form
       onSubmit={(e) => {
         e.preventDefault()
@@ -90,31 +67,13 @@ export function ProfileForm({ userId, existing, next }: Props) {
         value={displayName}
         onChange={(e) => setDisplayName(e.target.value)}
         disabled={loading}
-        style={{ width: '100%', padding: 10, marginBottom: 16 }}
-      />
-
-      <label style={{ display: 'block', marginBottom: 6 }}>First Name</label>
-      <input
-        value={firstName}
-        onChange={(e) => setFirstName(e.target.value)}
-        disabled={loading}
-        style={{ width: '100%', padding: 10, marginBottom: 16 }}
-        placeholder="Optional"
-      />
-
-      <label style={{ display: 'block', marginBottom: 6 }}>Last Name</label>
-      <input
-        value={lastName}
-        onChange={(e) => setLastName(e.target.value)}
-        disabled={loading}
+        placeholder="How other players see you"
         style={{ width: '100%', padding: 10, marginBottom: 20 }}
-        placeholder="Optional"
       />
 
       <button
-        type="button"
+        type="submit"
         disabled={loading}
-        onClick={() => void handleClick()}
         style={{
           padding: '0.75rem 2rem',
           fontSize: '1rem',

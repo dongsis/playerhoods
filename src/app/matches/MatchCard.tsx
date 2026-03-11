@@ -269,7 +269,7 @@ export function MatchCard({ item, userId }: Props) {
                           onClick={() => setMenuOpen(false)}
                           style={{ display: 'block', padding: '0.4rem 0.75rem', textDecoration: 'none', color: '#333', fontSize: '0.85rem' }}
                         >
-                          Add Guest
+                          Add Contact Player
                         </Link>
                         {myParticipant && myParticipant.status !== 'removed' && (
                           <hr style={{ margin: '0.2rem 0', border: 'none', borderTop: '1px solid #eee' }} />

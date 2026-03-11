@@ -20,7 +20,7 @@ export async function initProfile(
   if (error) throw error
 }
 
-/** Update profile fields (name, contact preferences). */
+/** Update profile fields (name, contact preferences, global preference switches). */
 export async function updateProfile(
   supabase: Client,
   params: {
@@ -29,6 +29,8 @@ export async function updateProfile(
     contact_channel?: 'email' | 'sms'
     contact_email?: string | null
     contact_phone?: string | null
+    show_in_club_member_discovery?: boolean
+    allow_non_group_invites?: boolean
   }
 ): Promise<void> {
   const rpcParams: Record<string, unknown> = {
@@ -38,7 +40,29 @@ export async function updateProfile(
   }
   if (params.contact_email !== undefined) rpcParams.p_contact_email = params.contact_email
   if (params.contact_phone !== undefined) rpcParams.p_contact_phone = params.contact_phone
+  if (params.show_in_club_member_discovery !== undefined) rpcParams.p_show_in_club_member_discovery = params.show_in_club_member_discovery
+  if (params.allow_non_group_invites !== undefined) rpcParams.p_allow_non_group_invites = params.allow_non_group_invites
   const { error } = await supabase.rpc('rpc_profile_update', rpcParams)
+  if (error) throw error
+}
+
+/** Set club-scoped preference overrides. 'inherit' = use global (NULL). Omit = don't change. */
+export async function setClubIdentityPreferences(
+  supabase: Client,
+  clubId: string,
+  params: {
+    visible_in_club_member_discovery?: 'true' | 'false' | 'inherit'
+    accept_non_group_invites_in_club?: 'true' | 'false' | 'inherit'
+  }
+): Promise<void> {
+  const rpcParams: {
+    p_club_id: string
+    p_visible_in_club_member_discovery?: string | null
+    p_accept_non_group_invites_in_club?: string | null
+  } = { p_club_id: clubId }
+  if (params.visible_in_club_member_discovery !== undefined) rpcParams.p_visible_in_club_member_discovery = params.visible_in_club_member_discovery
+  if (params.accept_non_group_invites_in_club !== undefined) rpcParams.p_accept_non_group_invites_in_club = params.accept_non_group_invites_in_club
+  const { error } = await supabase.rpc('rpc_club_identity_set_preferences', rpcParams)
   if (error) throw error
 }
 

@@ -28,6 +28,8 @@ interface Props {
   myUserId: string | null
   /** v1.7: non-org can delegate confirm nominated user participants */
   canDelegateConfirmUserParticipants?: boolean
+  /** Server action for remove — ensures revalidatePath so UI updates after remove */
+  onRemoveParticipant?: (participantId: string) => Promise<void>
 }
 
 // Dual-confirmation status tags (organizer view, not shown for guests)
@@ -60,6 +62,7 @@ function ParticipantRow({
   adderName,
   viewerIsParticipant,
   canDelegateConfirmUserParticipants,
+  onRemoveParticipant,
 }: {
   p: MatchParticipantEnriched
   matchId: string
@@ -69,6 +72,7 @@ function ParticipantRow({
   adderName?: string
   viewerIsParticipant: boolean
   canDelegateConfirmUserParticipants?: boolean
+  onRemoveParticipant?: (participantId: string) => Promise<void>
 }) {
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -81,8 +85,9 @@ function ParticipantRow({
     startTransition(async () => {
       try {
         await fn()
-        await processDeliveriesAction()
         router.refresh()
+        // Run delivery worker in background — don't block UI on email send
+        processDeliveriesAction().catch(() => {})
       } catch (err: unknown) {
         setError((err as { message?: string })?.message ?? 'Action failed')
       }
@@ -170,9 +175,14 @@ function ParticipantRow({
           )}
 
           <div style={{ fontSize: '0.72rem', color: '#aaa', marginTop: '0.1rem' }}>
-            {p.join_method}
-            {p.confirmed_at && ` · confirmed ${p.confirmed_at.slice(0, 10)}`}
-            {p.removed_at && ` · removed ${p.removed_at.slice(0, 10)}`}
+            {p.status === 'removed'
+              ? `Removed ${p.removed_at ? p.removed_at.slice(0, 10) : ''}`
+              : (
+                  <>
+                    {p.join_method}
+                    {p.confirmed_at && ` · confirmed ${p.confirmed_at.slice(0, 10)}`}
+                  </>
+                )}
           </div>
         </div>
 
@@ -221,11 +231,26 @@ function ParticipantRow({
 
             {canRemove && (
               <button
-                onClick={() => act(() => removeParticipant(supabase, p.id))}
+                type="button"
+                onClick={() => {
+                  if (onRemoveParticipant) {
+                    setError(null)
+                    startTransition(async () => {
+                      try {
+                        await onRemoveParticipant(p.id)
+                        processDeliveriesAction().catch(() => {})
+                      } catch (err: unknown) {
+                        setError((err as { message?: string })?.message ?? 'Action failed')
+                      }
+                    })
+                  } else {
+                    act(() => removeParticipant(supabase, p.id))
+                  }
+                }}
                 disabled={isPending}
-                style={{ background: '#c00', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
+                style={{ background: '#c00', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: isPending ? 'wait' : 'pointer' }}
               >
-                Remove
+                {isPending ? 'Removing…' : 'Remove'}
               </button>
             )}
 
@@ -289,6 +314,7 @@ export function ParticipantGroups({
   pendingCount,
   myUserId,
   canDelegateConfirmUserParticipants,
+  onRemoveParticipant,
 }: Props) {
   // Build name map: user_id → display_name (for resolving guest adders)
   const nameMap = new Map(
@@ -301,14 +327,23 @@ export function ParticipantGroups({
     p => p.user_id === myUserId && p.status !== 'removed'
   )
 
-  // Confirmed participants (guests with status confirmed count too)
-  const confirmed = participants.filter(p =>
-    p.status === 'confirmed' || (p.join_method === 'guest_add' && p.status !== 'removed')
+  // Removed first — used to exclude duplicates from confirmed/pending
+  const removed = participants.filter(p => p.status === 'removed')
+  const removedIdentityIds = new Set(
+    removed.map(p => p.guest_id ?? p.user_id).filter((id): id is string => !!id)
   )
 
-  // Pending and removed — only present in props when isOrganizer (page.tsx filters for non-org)
-  const pending = participants.filter(p => p.status === 'pending' && p.join_method !== 'guest_add')
-  const removed = participants.filter(p => p.status === 'removed')
+  // Confirmed participants — exclude anyone who is also in removed (handles duplicate rows for same guest/user)
+  const confirmed = participants.filter(p => {
+    if (removedIdentityIds.has(p.guest_id ?? p.user_id ?? '')) return false
+    return p.status === 'confirmed' || (p.join_method === 'guest_add' && p.status !== 'removed')
+  })
+
+  // Pending — exclude anyone in removed
+  const pending = participants.filter(
+    p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
+      p.status === 'pending' && p.join_method !== 'guest_add'
+  )
 
   const rowProps = (p: MatchParticipantEnriched) => ({
     p,
@@ -319,6 +354,7 @@ export function ParticipantGroups({
     adderName: p.join_method === 'guest_add' ? (nameMap.get(p.created_by ?? '') ?? undefined) : undefined,
     viewerIsParticipant,
     canDelegateConfirmUserParticipants,
+    onRemoveParticipant,
   })
 
   return (
