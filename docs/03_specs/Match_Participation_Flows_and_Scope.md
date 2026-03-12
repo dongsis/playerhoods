@@ -53,8 +53,8 @@ Unified invariant: **confirmed ⇔ participant_accepted_at IS NOT NULL AND org_a
 |--------|-----|--------|--------------|--------|------|
 | **Accept (user)** | `rpc_match_accept_invite` | Participant (self) | Own row | Sets participant_accepted_at=now(), participant_accepted_via=in_app. Reconcile → confirmed if org_approved_at already set. | For invited/nominated/requested; also used to re-confirm after match detail change. |
 | **Approve (org)** | `rpc_match_org_approve_participant` | **Organizer only** | Any pending participant (user or guest) | Sets org_approved_at (and org_approved_by). Reconcile → confirmed if participant_accepted_at already set. | **Order-free:** org can Approve first or user Accept first. |
-| **Manual confirm (org, existing row)** | `rpc_match_manual_confirm` | **Organizer only** | Pending **user** participant row | Sets participant_accepted_at + org_approved_at (and via=manual). Reconcile → confirmed. | One-click full confirm for user. For guest use Approve + delegate_confirm_participant. |
-| **Manual confirm user (by id)** | `rpc_match_manual_confirm_user` | **Organizer only** | User not yet in match (by user_id) | Inserts or re-entries, sets both timestamps → confirmed. | Alternate entry path (scope: InScope(target) OR ShareGroup(target, org)). |
+| **Manual confirm (org, existing row)** | `rpc_match_delegate_confirm_participant` + `rpc_match_org_approve_participant` | **Organizer only** | Pending **user** participant row | Composed: delegate_confirm sets participant side, org_approve sets org side → confirmed. | Replaces deprecated rpc_match_manual_confirm. For guest use Approve + delegate_confirm_participant. |
+| **Manual confirm user (by id)** | `rpc_match_admit_user` + `rpc_match_delegate_confirm_participant` | **Organizer only** | User not yet in match (by user_id) | Composed: admit_user adds/re-entries (org_approved_at set), delegate_confirm sets participant side → confirmed. | Replaces deprecated rpc_match_manual_confirm_user. Canonical write: rpc_match_admit_user. |
 | **Delegate confirm (participant)** | `rpc_match_delegate_confirm_participant` | **User:** Non-org, InScope or MatchAssociated, ShareGroup(caller, participant). **Guest:** Any active participant (incl. organizer) | Pending **user** (invited/nominated) or **guest** participant row | Sets participant_accepted_at=now(), participant_accepted_via=delegate_manual. **Does not** set org_approved_at. Guest branch emits `match.guest_delegate_confirmed`. | Single entry point for both user and guest. User needs org Approve; guest needs org Approve. |
 
 ---
@@ -115,19 +115,19 @@ When match date / time / duration / club_id / court_ids change:
 
 After this flow doc is in place, update:
 
-1. **docs/specs/PlayerHoods_v1.6.3_Consolidated_Master_Spec.md**  
+1. **[PlayerHoods_v1.6.3_Consolidated_Master_Spec](../specs/PlayerHoods_v1.6.3_Consolidated_Master_Spec.md)**  
    - Add explicit note that **nominate supports re-entry** (removed → nominated).  
    - Optionally add a short “Entry & confirm matrix” referring to this doc.
 
-2. **docs/specs/00_AUTHORITATIVE_INDEX.md**  
+2. **[00_AUTHORITATIVE_INDEX](../01_authority/00_AUTHORITATIVE_INDEX.md)**  
    - In “Restart Doctrine”, add: **Re-entry also allowed via rpc_match_nominate_user** (non-org, same ShareGroup). So restart channels are: request_join, invite_user, **nominate_user** (for removed user).
 
-3. **docs/db/FACTS_functions.md**  
+3. **[FACTS_functions](../02_facts/FACTS_functions.md)**  
    - For each RPC in §2–§5, ensure **Notes** mention: caller gate, target scope, re-entry yes/no, and “Order-free: org Approve and user Accept in any order” where relevant.  
    - Add **rpc_match_nominate_guest**, **rpc_match_delegate_confirm_participant** (single entry for user + guest), **setMatchCourts** (if you document API).  
    - **is_user_match_associated**: note “excludes removed”.
 
-4. **docs/db/FACTS_tables.md**  
+4. **[FACTS_tables](../02_facts/FACTS_tables.md)**  
    - **match_participants**: confirm join_method values (invited, requested, nominated, manual, guest_add, etc.) and that confirmation is unified (participant_accepted_at + org_approved_at).  
    - **match_participant_actions**: add action_type values used in v1.7 (e.g. nominate_guest, delegate_manual_confirm, reenter).
 

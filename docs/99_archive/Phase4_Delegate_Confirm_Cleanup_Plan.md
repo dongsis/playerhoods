@@ -1,6 +1,6 @@
 # Phase 4 — Delegate / Participant Confirmation Family Cleanup
 
-**Status: Implemented (2026-03-21).** Delegate simplify unified into single `rpc_match_delegate_confirm_participant` (user + guest). Dropped: `rpc_match_delegate_confirm_guest`, `rpc_match_delegate_confirm_user`, `rpc_match_delegate_manual_confirm_targets`, Phase4B helpers. See `docs/specs/DELEGATE_MODEL_FINAL.md`.
+**Status: Implemented (2026-03-21).** Delegate simplify unified into single `rpc_match_delegate_confirm_participant` (user + guest). Dropped: `rpc_match_delegate_confirm_guest`, `rpc_match_delegate_confirm_user`, `rpc_match_delegate_manual_confirm_targets`, Phase4B helpers. See [DELEGATE_MODEL_FINAL](../01_authority/DELEGATE_MODEL_FINAL.md).
 
 ---
 

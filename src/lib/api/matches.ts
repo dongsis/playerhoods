@@ -413,13 +413,23 @@ export async function requestJoinMatch(supabase: Client, matchId: string) {
   if (error) throw error
 }
 
-/** v1.5: ORG-only invite. Invited user must be in scope groups. */
-export async function inviteUserToMatch(supabase: Client, matchId: string, userId: string) {
-  const { error } = await supabase.rpc('rpc_match_invite_user', {
+/** Canonical admission write. Organizer → invite (org_approved_at set). Non-org → nominate. Returns participant. */
+export async function admitUserToMatch(
+  supabase: Client,
+  matchId: string,
+  targetUserId: string
+): Promise<MatchParticipant> {
+  const { data, error } = await supabase.rpc('rpc_match_admit_user', {
     p_match_id: matchId,
-    p_user_id: userId,
+    p_target_user_id: targetUserId,
   })
   if (error) throw error
+  return data as MatchParticipant
+}
+
+/** v1.5: ORG-only invite. Thin wrapper around rpc_match_admit_user. */
+export async function inviteUserToMatch(supabase: Client, matchId: string, userId: string) {
+  await admitUserToMatch(supabase, matchId, userId)
 }
 
 /** v1.5: Nominate a user. join_method=nominated. Scope enforced. ORG or non-removed participant. */
@@ -446,25 +456,22 @@ export async function orgApproveParticipant(supabase: Client, participantId: str
 }
 
 /**
- * v1.5: ORG directly confirms a scope user who has not joined yet.
- * join_method=manual; participant_accepted_at + org_approved_at set simultaneously → confirmed.
- * Handles reenter (removed → manual confirm) and fresh insert.
+ * ORG add+confirm user by id. Composed: admit_user + delegate_confirm.
+ * Organizer path in rpc_match_admit_user already sets org_approved_at, so only delegateConfirmParticipant needed after admit.
+ * Replaces deprecated rpc_match_manual_confirm_user.
  */
 export async function manualConfirmUser(supabase: Client, matchId: string, userId: string) {
-  const { error } = await supabase.rpc('rpc_match_manual_confirm_user', {
-    p_match_id: matchId,
-    p_user_id: userId,
-  })
-  if (error) throw error
+  const participant = await admitUserToMatch(supabase, matchId, userId)
+  await delegateConfirmParticipant(supabase, participant.id)
 }
 
-/** v1.5: ORG manually confirms an existing pending participant (sets participant_accepted_at via=manual + org_approved_at). */
-export async function manualConfirmParticipant(supabase: Client, participantId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_manual_confirm', {
-    p_match_participant_id: participantId,
-    ...(note ? { p_note: note } : {}),
-  })
-  if (error) throw error
+/**
+ * ORG manually confirms an existing pending participant. Composed: delegate_confirm + org_approve.
+ * Replaces deprecated rpc_match_manual_confirm.
+ */
+export async function manualConfirmParticipant(supabase: Client, participantId: string, _note?: string) {
+  await delegateConfirmParticipant(supabase, participantId)
+  await orgApproveParticipant(supabase, participantId)
 }
 
 /** v1.5: User withdraws (decline invite or leave). Sets removed_at. */

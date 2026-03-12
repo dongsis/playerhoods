@@ -1,7 +1,7 @@
 Database Facts: Functions — Index (public)
 ## Match / Participants RPCs
 
-**Flows & scope (invite, nominate, confirm, accept, remove):** see `docs/specs/Match_Participation_Flows_and_Scope.md`.
+**Flows & scope (invite, nominate, confirm, accept, remove):** see [Match_Participation_Flows_and_Scope](../03_specs/Match_Participation_Flows_and_Scope.md).
 
 public.rpc_match_create(p_required_count integer, p_game_type text, p_match_date date, p_start_time time without time zone, p_duration_minutes integer, p_club_id uuid, p_court_ids uuid[], p_invitation_scope_group_ids uuid[], p_can_participants_invite_users boolean, p_can_participants_add_guests boolean, p_can_participants_manage_participants boolean) -> returns matches | SECURITY DEFINER | plpgsql
 
@@ -16,10 +16,6 @@ public.rpc_match_user_withdraw(p_match_id uuid) -> returns match_participants | 
 public.rpc_match_nominate_user(p_match_id uuid, p_user_id uuid) -> returns match_participants | SECURITY DEFINER | plpgsql
 
 public.rpc_match_delegate_confirm_user(p_match_id uuid, p_user_id uuid) -> returns match_participants | SECURITY DEFINER | plpgsql
-
-public.rpc_match_manual_confirm(p_match_participant_id uuid, p_note text) -> returns match_participants | SECURITY DEFINER | plpgsql
-
-public.rpc_match_manual_confirm_user(p_match_id uuid, p_user_id uuid) -> returns match_participants | SECURITY DEFINER | plpgsql
 
 public.rpc_match_org_approve_participant(p_match_participant_id uuid) -> returns match_participants | SECURITY DEFINER | plpgsql
 
@@ -786,29 +782,11 @@ public.test_runner_v161_cleanup(p_run_suffix text) -> returns integer | SECURITY
 - **Calls:** `public.rpc_match_admit_user`
 - **Notes:** Thin organizer-only wrapper around `rpc_match_admit_user`. Legacy API surface preserved; canonical write is `rpc_match_admit_user`.
 
-### `public.rpc_match_manual_confirm`
-- **Kind:** RPC
-- **Signature:** `public.rpc_match_manual_confirm("p_match_participant_id" "uuid", "p_note" "text" DEFAULT NULL::"text")`
-- **Returns:** `"public"."match_participants"`
-- **Language:** `plpgsql`
-- **Security:** **SECURITY DEFINER**
-- **Volatility:** `—`
-- **Reads:** `public.match_participant_actions`, `public.match_participants`, `public.matches`
-- **Writes:** `public.match_participant_actions`, `public.match_participants`
-- **Calls:** `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.match_participant_reconcile_status`
-- **Notes:** ⚠️ **Re-entry / removed_* mutation detected** (check against restart-channel doctrine).
+### `public.rpc_match_manual_confirm` *(dropped)*
+- **Status:** Dropped in `20260322000002_drop_manual_confirm_rpcs.sql`. Use `rpc_match_delegate_confirm_participant` + `rpc_match_org_approve_participant`.
 
-### `public.rpc_match_manual_confirm_user`
-- **Kind:** RPC
-- **Signature:** `public.rpc_match_manual_confirm_user("p_match_id" "uuid", "p_user_id" "uuid")`
-- **Returns:** `"public"."match_participants"`
-- **Language:** `plpgsql`
-- **Security:** **SECURITY DEFINER**
-- **Volatility:** `—`
-- **Reads:** `public.match_participant_actions`, `public.match_participants`, `public.matches`
-- **Writes:** `public.match_participant_actions`, `public.match_participants`
-- **Calls:** `public.do_users_share_group`, `public.is_match_organizer`, `public.is_user_in_scope_groups`, `public.is_user_match_associated`, `public.match_participant_reconcile_status`
-- **Notes:** ⚠️ **Re-entry / removed_* mutation detected** (check against restart-channel doctrine).
+### `public.rpc_match_manual_confirm_user` *(dropped)*
+- **Status:** Dropped in `20260322000002_drop_manual_confirm_rpcs.sql`. Use `rpc_match_admit_user` + `rpc_match_delegate_confirm_participant`.
 
 ### `public.rpc_match_nominate_user`
 - **Kind:** RPC

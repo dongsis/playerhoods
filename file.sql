@@ -139,6 +139,322 @@ ALTER FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_acto
 COMMENT ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", "p_actor_id" "uuid", "p_is_self" boolean, "p_action_type" "text") IS 'Phase 4A: Internal write core for participant-side acceptance. Self: in_app, manual_confirmed_by=NULL. Delegate: delegate_manual, manual_confirmed_by=actor.';
 
 
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."match_participants" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "match_id" "uuid" NOT NULL,
+    "status" "public"."match_participant_status" DEFAULT 'pending'::"public"."match_participant_status" NOT NULL,
+    "join_method" "public"."match_join_method" NOT NULL,
+    "user_id" "uuid",
+    "guest_id" "uuid",
+    "created_by" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "confirmed_at" timestamp with time zone,
+    "removed_at" timestamp with time zone,
+    "org_approved_at" timestamp with time zone,
+    "org_approved_by" "uuid",
+    "nominated_by" "uuid",
+    "removed_by" "uuid",
+    "removal_note" "text",
+    "participant_accepted_at" timestamp with time zone,
+    "participant_accepted_via" "text",
+    "manual_confirmed_by" "uuid",
+    CONSTRAINT "chk_participant_accepted_via" CHECK ((("participant_accepted_via" IS NULL) OR ("participant_accepted_via" = ANY (ARRAY['in_app'::"text", 'manual'::"text", 'delegate_manual'::"text", 'email_invitation'::"text"])))),
+    CONSTRAINT "match_participants_exactly_one_identity" CHECK (((("user_id" IS NOT NULL) AND ("guest_id" IS NULL)) OR (("user_id" IS NULL) AND ("guest_id" IS NOT NULL))))
+);
+
+
+ALTER TABLE "public"."match_participants" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."match_participants"."org_approved_at" IS 'v1.3: Timestamp when organizer approved this participant. NULL = not yet approved. Required for all participants to become confirmed.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."org_approved_by" IS 'v1.3: User ID of the organizer who approved this participant. NULL if not yet approved.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."nominated_by" IS 'v1.3: User ID of the participant who nominated this user (for join_method=requested with nomination). NULL if not nominated or if direct request/invite.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."removed_by" IS 'v1.3 CRITICAL: User ID who removed this participant. Must be set when status=removed. Used to distinguish user-withdrawal vs org-removal for reactivation logic.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."removal_note" IS 'v1.3: Optional note explaining why participant was removed (e.g., "declined", "rejected", "capacity reached").';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."participant_accepted_at" IS 'v1.5: Participant-side confirmation timestamp. Replaces user_accepted_at. Written by: rpc_match_accept_invite (in_app), rpc_match_manual_confirm (manual). Never written directly by UI or non-RPC code.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."participant_accepted_via" IS 'v1.5: How participant confirmed. in_app = user clicked Accept; manual = organizer confirmed on their behalf. Must be set whenever participant_accepted_at is set. Cleared on reconfirm.';
+
+
+
+COMMENT ON COLUMN "public"."match_participants"."manual_confirmed_by" IS 'v1.5: User ID of organizer who manually confirmed this participant. Set only when participant_accepted_via = ''manual''. Cleared on reconfirm.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."apply_participant_admission"("p_match_id" "uuid", "p_target_user_id" "uuid", "p_actor_id" "uuid", "p_admission_kind" "text") RETURNS "public"."match_participants"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_existing public.match_participants%rowtype;
+  v_new_mp   public.match_participants%rowtype;
+  v_action   text;
+BEGIN
+  IF p_actor_id IS NULL THEN
+    RAISE EXCEPTION 'actor_id_required';
+  END IF;
+
+  IF p_admission_kind IS NULL OR p_admission_kind NOT IN ('requested', 'invited', 'nominated') THEN
+    RAISE EXCEPTION 'admission_kind_must_be_requested_invited_or_nominated';
+  END IF;
+
+  v_action := CASE p_admission_kind
+    WHEN 'requested' THEN 'request_join'
+    WHEN 'invited'   THEN 'invite'
+    WHEN 'nominated' THEN 'nominate'
+    ELSE 'nominate'
+  END;
+
+  -- Re-entry: find most recent removed row
+  SELECT * INTO v_existing
+  FROM public.match_participants
+  WHERE match_id = p_match_id
+    AND user_id = p_target_user_id
+    AND status = 'removed'
+  ORDER BY created_at DESC
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    -- Re-entry UPDATE
+    IF p_admission_kind = 'requested' THEN
+      UPDATE public.match_participants
+      SET
+        removed_at               = NULL,
+        removed_by               = NULL,
+        removal_note             = NULL,
+        confirmed_at             = NULL,
+        join_method              = 'requested',
+        participant_accepted_at  = now(),
+        participant_accepted_via = 'in_app',
+        org_approved_at          = NULL,
+        org_approved_by          = NULL,
+        nominated_by             = NULL,
+        manual_confirmed_by      = NULL
+      WHERE id = v_existing.id;
+    ELSIF p_admission_kind = 'invited' THEN
+      UPDATE public.match_participants
+      SET
+        removed_at               = NULL,
+        removed_by               = NULL,
+        removal_note             = NULL,
+        confirmed_at             = NULL,
+        join_method              = 'invited',
+        participant_accepted_at  = NULL,
+        participant_accepted_via = NULL,
+        org_approved_at          = now(),
+        org_approved_by          = p_actor_id,
+        nominated_by             = NULL,
+        manual_confirmed_by      = NULL
+      WHERE id = v_existing.id;
+    ELSE
+      -- nominated
+      UPDATE public.match_participants
+      SET
+        removed_at               = NULL,
+        removed_by               = NULL,
+        removal_note             = NULL,
+        confirmed_at             = NULL,
+        join_method              = 'nominated',
+        participant_accepted_at  = NULL,
+        participant_accepted_via = NULL,
+        org_approved_at          = NULL,
+        org_approved_by          = NULL,
+        nominated_by             = p_actor_id,
+        manual_confirmed_by      = NULL
+      WHERE id = v_existing.id;
+    END IF;
+
+    PERFORM public.match_participant_reconcile_status(v_existing.id);
+
+    INSERT INTO public.match_participant_actions
+      (match_id, match_participant_id, action_type, note, created_by)
+    VALUES
+      (p_match_id, v_existing.id, 'reenter', NULL, p_actor_id),
+      (p_match_id, v_existing.id, v_action, NULL, p_actor_id);
+
+    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
+    RETURN v_new_mp;
+  END IF;
+
+  -- Fresh INSERT
+  IF p_admission_kind = 'requested' THEN
+    INSERT INTO public.match_participants (
+      match_id, user_id, join_method,
+      participant_accepted_at, participant_accepted_via,
+      org_approved_at, nominated_by, created_by
+    ) VALUES (
+      p_match_id, p_target_user_id, 'requested',
+      now(), 'in_app',
+      NULL, NULL, p_actor_id
+    )
+    RETURNING * INTO v_new_mp;
+  ELSIF p_admission_kind = 'invited' THEN
+    INSERT INTO public.match_participants (
+      match_id, user_id, join_method,
+      participant_accepted_at, participant_accepted_via,
+      org_approved_at, org_approved_by, nominated_by, created_by
+    ) VALUES (
+      p_match_id, p_target_user_id, 'invited',
+      NULL, NULL,
+      now(), p_actor_id, NULL, p_actor_id
+    )
+    RETURNING * INTO v_new_mp;
+  ELSE
+    -- nominated
+    INSERT INTO public.match_participants (
+      match_id, user_id, join_method,
+      participant_accepted_at, participant_accepted_via,
+      org_approved_at, nominated_by, created_by
+    ) VALUES (
+      p_match_id, p_target_user_id, 'nominated',
+      NULL, NULL,
+      NULL, p_actor_id, p_actor_id
+    )
+    RETURNING * INTO v_new_mp;
+  END IF;
+
+  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
+
+  INSERT INTO public.match_participant_actions
+    (match_id, match_participant_id, action_type, note, created_by)
+  VALUES (p_match_id, v_new_mp.id, v_action, NULL, p_actor_id);
+
+  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
+  RETURN v_new_mp;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."apply_participant_admission"("p_match_id" "uuid", "p_target_user_id" "uuid", "p_actor_id" "uuid", "p_admission_kind" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."apply_participant_admission"("p_match_id" "uuid", "p_target_user_id" "uuid", "p_actor_id" "uuid", "p_admission_kind" "text") IS 'Internal helper: centralizes admission write (fresh + re-entry) for request_join, invite, nominate. admission_kind: requested | invited | nominated. Callers: rpc_match_request_join, rpc_match_admit_user.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."apply_participant_exit"("p_match_participant_id" "uuid", "p_actor_id" "uuid", "p_exit_kind" "text", "p_removal_note" "text" DEFAULT NULL::"text") RETURNS "public"."match_participants"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_mp       public.match_participants%rowtype;
+  v_log_type text;
+  v_log_note text;
+BEGIN
+  IF p_actor_id IS NULL THEN
+    RAISE EXCEPTION 'actor_id_required';
+  END IF;
+
+  IF p_exit_kind IS NULL OR p_exit_kind NOT IN ('remove', 'withdraw') THEN
+    RAISE EXCEPTION 'exit_kind_must_be_remove_or_withdraw';
+  END IF;
+
+  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Participant not found';
+  END IF;
+
+  -- Idempotent: already removed — return current row without logging
+  IF v_mp.removed_at IS NOT NULL THEN
+    RETURN v_mp;
+  END IF;
+
+  -- Derive action_type and removal_note from participant state and exit_kind
+  IF p_removal_note IS NOT NULL THEN
+    v_log_note := p_removal_note;
+    -- action_type still derived for action log
+    IF p_exit_kind = 'remove' THEN
+      v_log_type := CASE
+        WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'requested'  THEN 'reject_request'
+        WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'invited'    THEN 'revoke_invite'
+        WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'nominated'  THEN 'reject_nomination'
+        WHEN v_mp.confirmed_at IS NOT NULL                                 THEN 'remove_confirmed'
+        ELSE 'remove'
+      END;
+    ELSE
+      v_log_type := CASE
+        WHEN v_mp.join_method IN ('invited', 'nominated') AND v_mp.confirmed_at IS NULL THEN 'decline'
+        ELSE 'withdraw'
+      END;
+    END IF;
+  ELSIF p_exit_kind = 'remove' THEN
+    v_log_type := CASE
+      WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'requested'  THEN 'reject_request'
+      WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'invited'    THEN 'revoke_invite'
+      WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'nominated'  THEN 'reject_nomination'
+      WHEN v_mp.confirmed_at IS NOT NULL                                 THEN 'remove_confirmed'
+      ELSE 'remove'
+    END;
+    v_log_note := CASE
+      WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'requested'  THEN 'Request rejected'
+      WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'invited'    THEN 'Invitation revoked'
+      WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'nominated'  THEN 'Nomination rejected'
+      WHEN v_mp.confirmed_at IS NOT NULL                                 THEN 'Removed by organizer'
+      ELSE 'Removed (join_method=' || COALESCE(v_mp.join_method::text, 'unknown') || ')'
+    END;
+  ELSE
+    -- p_exit_kind = 'withdraw'
+    v_log_type := CASE
+      WHEN v_mp.join_method IN ('invited', 'nominated') AND v_mp.confirmed_at IS NULL THEN 'decline'
+      ELSE 'withdraw'
+    END;
+    v_log_note := CASE
+      WHEN v_mp.join_method = 'invited'   AND v_mp.confirmed_at IS NULL THEN 'User declined invitation'
+      WHEN v_mp.join_method = 'nominated' AND v_mp.confirmed_at IS NULL THEN 'User declined nomination'
+      WHEN v_mp.confirmed_at IS NOT NULL                                THEN 'User left match'
+      ELSE 'User withdrew'
+    END;
+  END IF;
+
+  UPDATE public.match_participants
+  SET
+    removed_at   = now(),
+    removed_by   = p_actor_id,
+    removal_note = v_log_note
+  WHERE id = p_match_participant_id;
+
+  PERFORM public.match_participant_reconcile_status(p_match_participant_id);
+
+  INSERT INTO public.match_participant_actions
+    (match_id, match_participant_id, action_type, note, created_by)
+  VALUES
+    (v_mp.match_id, p_match_participant_id, v_log_type, v_log_note, p_actor_id);
+
+  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
+  RETURN v_mp;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."apply_participant_exit"("p_match_participant_id" "uuid", "p_actor_id" "uuid", "p_exit_kind" "text", "p_removal_note" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."apply_participant_exit"("p_match_participant_id" "uuid", "p_actor_id" "uuid", "p_exit_kind" "text", "p_removal_note" "text") IS 'Internal helper: centralizes participant exit write (removed_at, removed_by, removal_note), reconcile, action log. exit_kind: remove | withdraw. Callers: rpc_match_remove_participant, rpc_match_user_withdraw.';
+
+
 
 CREATE OR REPLACE FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
@@ -904,10 +1220,6 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_club_admin_revoke"("p_user_id" "uuid", "p_club_id" "uuid") OWNER TO "postgres";
-
-SET default_tablespace = '';
-
-SET default_table_access_method = "heap";
 
 
 CREATE TABLE IF NOT EXISTS "public"."clubs" (
@@ -2184,65 +2496,6 @@ COMMENT ON FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" "u
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."match_participants" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "match_id" "uuid" NOT NULL,
-    "status" "public"."match_participant_status" DEFAULT 'pending'::"public"."match_participant_status" NOT NULL,
-    "join_method" "public"."match_join_method" NOT NULL,
-    "user_id" "uuid",
-    "guest_id" "uuid",
-    "created_by" "uuid" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "confirmed_at" timestamp with time zone,
-    "removed_at" timestamp with time zone,
-    "org_approved_at" timestamp with time zone,
-    "org_approved_by" "uuid",
-    "nominated_by" "uuid",
-    "removed_by" "uuid",
-    "removal_note" "text",
-    "participant_accepted_at" timestamp with time zone,
-    "participant_accepted_via" "text",
-    "manual_confirmed_by" "uuid",
-    CONSTRAINT "chk_participant_accepted_via" CHECK ((("participant_accepted_via" IS NULL) OR ("participant_accepted_via" = ANY (ARRAY['in_app'::"text", 'manual'::"text", 'delegate_manual'::"text", 'email_invitation'::"text"])))),
-    CONSTRAINT "match_participants_exactly_one_identity" CHECK (((("user_id" IS NOT NULL) AND ("guest_id" IS NULL)) OR (("user_id" IS NULL) AND ("guest_id" IS NOT NULL))))
-);
-
-
-ALTER TABLE "public"."match_participants" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."match_participants"."org_approved_at" IS 'v1.3: Timestamp when organizer approved this participant. NULL = not yet approved. Required for all participants to become confirmed.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."org_approved_by" IS 'v1.3: User ID of the organizer who approved this participant. NULL if not yet approved.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."nominated_by" IS 'v1.3: User ID of the participant who nominated this user (for join_method=requested with nomination). NULL if not nominated or if direct request/invite.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."removed_by" IS 'v1.3 CRITICAL: User ID who removed this participant. Must be set when status=removed. Used to distinguish user-withdrawal vs org-removal for reactivation logic.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."removal_note" IS 'v1.3: Optional note explaining why participant was removed (e.g., "declined", "rejected", "capacity reached").';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."participant_accepted_at" IS 'v1.5: Participant-side confirmation timestamp. Replaces user_accepted_at. Written by: rpc_match_accept_invite (in_app), rpc_match_manual_confirm (manual). Never written directly by UI or non-RPC code.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."participant_accepted_via" IS 'v1.5: How participant confirmed. in_app = user clicked Accept; manual = organizer confirmed on their behalf. Must be set whenever participant_accepted_at is set. Cleared on reconfirm.';
-
-
-
-COMMENT ON COLUMN "public"."match_participants"."manual_confirmed_by" IS 'v1.5: User ID of organizer who manually confirmed this participant. Set only when participant_accepted_via = ''manual''. Cleared on reconfirm.';
-
-
-
 CREATE OR REPLACE FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") RETURNS "public"."match_participants"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -2579,11 +2832,9 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_admit_user"("p_match_id" "uuid", 
     SET "search_path" TO 'public'
     AS $$
 DECLARE
-  v_match    public.matches%rowtype;
-  v_uid      uuid := auth.uid();
-  v_existing public.match_participants%rowtype;
-  v_new_mp   public.match_participants%rowtype;
-  v_is_org   boolean;
+  v_match  public.matches%rowtype;
+  v_uid    uuid := auth.uid();
+  v_is_org boolean;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
@@ -2616,92 +2867,12 @@ BEGIN
 
   v_is_org := public.is_match_organizer(p_match_id, v_uid);
 
-  -- Re-entry: find most recent removed row
-  SELECT * INTO v_existing
-  FROM public.match_participants
-  WHERE match_id = p_match_id AND user_id = p_target_user_id AND status = 'removed'
-  ORDER BY created_at DESC
-  LIMIT 1
-  FOR UPDATE;
-
-  IF FOUND THEN
-    IF v_is_org THEN
-      UPDATE public.match_participants
-      SET
-        removed_at               = NULL,
-        removed_by               = NULL,
-        removal_note             = NULL,
-        confirmed_at             = NULL,
-        join_method              = 'invited',
-        participant_accepted_at  = NULL,
-        participant_accepted_via = NULL,
-        org_approved_at          = now(),
-        org_approved_by          = v_uid,
-        nominated_by             = NULL,
-        manual_confirmed_by      = NULL
-      WHERE id = v_existing.id;
-    ELSE
-      UPDATE public.match_participants
-      SET
-        removed_at               = NULL,
-        removed_by               = NULL,
-        removal_note             = NULL,
-        confirmed_at             = NULL,
-        join_method              = 'nominated',
-        participant_accepted_at  = NULL,
-        participant_accepted_via = NULL,
-        org_approved_at          = NULL,
-        org_approved_by          = NULL,
-        nominated_by             = v_uid,
-        manual_confirmed_by      = NULL
-      WHERE id = v_existing.id;
-    END IF;
-
-    PERFORM public.match_participant_reconcile_status(v_existing.id);
-
-    INSERT INTO public.match_participant_actions
-      (match_id, match_participant_id, action_type, note, created_by)
-    VALUES
-      (p_match_id, v_existing.id, 'reenter', NULL, v_uid),
-      (p_match_id, v_existing.id, CASE WHEN v_is_org THEN 'invite' ELSE 'nominate' END, NULL, v_uid);
-
-    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
-    RETURN v_new_mp;
-  END IF;
-
-  -- Fresh admission
-  IF v_is_org THEN
-    INSERT INTO public.match_participants (
-      match_id, user_id, join_method,
-      participant_accepted_at, participant_accepted_via,
-      org_approved_at, org_approved_by, nominated_by, created_by
-    ) VALUES (
-      p_match_id, p_target_user_id, 'invited',
-      NULL, NULL,
-      now(), v_uid, NULL, v_uid
-    )
-    RETURNING * INTO v_new_mp;
-  ELSE
-    INSERT INTO public.match_participants (
-      match_id, user_id, join_method,
-      participant_accepted_at, participant_accepted_via,
-      org_approved_at, nominated_by, created_by
-    ) VALUES (
-      p_match_id, p_target_user_id, 'nominated',
-      NULL, NULL,
-      NULL, v_uid, v_uid
-    )
-    RETURNING * INTO v_new_mp;
-  END IF;
-
-  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
-
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (p_match_id, v_new_mp.id, CASE WHEN v_is_org THEN 'invite' ELSE 'nominate' END, NULL, v_uid);
-
-  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
-  RETURN v_new_mp;
+  RETURN public.apply_participant_admission(
+    p_match_id,
+    p_target_user_id,
+    v_uid,
+    CASE WHEN v_is_org THEN 'invited' ELSE 'nominated' END
+  );
 END;
 $$;
 
@@ -2923,23 +3094,24 @@ BEGIN
     RETURN v_mp;
   END IF;
 
-  -- User branch: non-org, InScope OR MatchAssociated, ShareGroup
-  IF v_mp.join_method NOT IN ('invited', 'nominated') THEN
-    RAISE EXCEPTION 'participant_not_invited_or_nominated';
-  END IF;
-
+  -- User branch: organizer may delegate-confirm any pending user; non-org requires invited/nominated + ShareGroup
   IF public.is_match_organizer(v_mp.match_id, v_uid) THEN
-    RAISE EXCEPTION 'organizer_use_manual_confirm_or_approve';
-  END IF;
-  IF NOT (
-    public.is_user_in_scope_groups(COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]), v_uid)
-    OR public.is_user_match_associated(v_mp.match_id, v_uid)
-  ) THEN
-    RAISE EXCEPTION 'not_authorized_to_delegate_confirm';
-  END IF;
+    -- Organizer: allowed for any pending user participant (invited, nominated, requested)
+    NULL; -- fall through to apply
+  ELSE
+    IF v_mp.join_method NOT IN ('invited', 'nominated') THEN
+      RAISE EXCEPTION 'participant_not_invited_or_nominated';
+    END IF;
+    IF NOT (
+      public.is_user_in_scope_groups(COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]), v_uid)
+      OR public.is_user_match_associated(v_mp.match_id, v_uid)
+    ) THEN
+      RAISE EXCEPTION 'not_authorized_to_delegate_confirm';
+    END IF;
 
-  IF NOT public.do_users_share_group(v_mp.user_id, v_uid) THEN
-    RAISE EXCEPTION 'target_not_in_shared_groups';
+    IF NOT public.do_users_share_group(v_mp.user_id, v_uid) THEN
+      RAISE EXCEPTION 'target_not_in_shared_groups';
+    END IF;
   END IF;
 
   PERFORM public.apply_participant_acceptance(p_match_participant_id, v_uid, false, 'delegate_manual_confirm');
@@ -2953,7 +3125,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") IS 'v1.7: Delegate-confirm an existing pending participant (user or guest). User: non-org, InScope/MatchAssociated, ShareGroup. Guest: any active participant. Sets participant_accepted_at only. Guest branch emits match.guest_delegate_confirmed.';
+COMMENT ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match_participant_id" "uuid") IS 'v1.7: Delegate-confirm an existing pending participant (user or guest). User: organizer OR (non-org + InScope/MatchAssociated + ShareGroup). Guest: any active participant. Sets participant_accepted_at only. Guest branch emits match.guest_delegate_confirmed. Organizer may call for user participants to replace manual_confirm via composed delegate_confirm + org_approve.';
 
 
 
@@ -2983,184 +3155,6 @@ ALTER FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id"
 
 
 COMMENT ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'Phase 1: Organizer-only invite. Thin wrapper around rpc_match_admit_user. Preserves legacy error messages for compatibility.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text" DEFAULT NULL::"text") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_mp       match_participants;
-  v_match_id uuid;
-BEGIN
-  IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
-
-  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Participant not found';
-  END IF;
-
-  v_match_id := v_mp.match_id;
-
-  IF NOT public.is_match_organizer(v_match_id, auth.uid()) THEN
-    RAISE EXCEPTION 'Only the organizer can manually confirm participants';
-  END IF;
-
-  IF v_mp.user_id IS NULL THEN
-    RAISE EXCEPTION 'Use rpc_match_org_approve_participant for guest participants';
-  END IF;
-
-  IF v_mp.removed_at IS NOT NULL THEN
-    RAISE EXCEPTION 'Cannot manually confirm a removed participant';
-  END IF;
-
-  -- Participant is already in this match (match-associated); no scope-group check needed.
-  -- Covers: invited/nominated not yet accepted, and request-joined needing re-confirm after match edit.
-  UPDATE public.match_participants
-  SET
-    participant_accepted_at  = COALESCE(participant_accepted_at, now()),
-    participant_accepted_via = COALESCE(participant_accepted_via, 'manual'),
-    manual_confirmed_by      = auth.uid(),
-    org_approved_at          = COALESCE(org_approved_at, now()),
-    org_approved_by          = auth.uid()
-  WHERE id = p_match_participant_id;
-
-  PERFORM public.match_participant_reconcile_status(p_match_participant_id);
-
-  INSERT INTO public.match_participant_actions (
-    match_id, match_participant_id, action_type, note, created_by
-  ) VALUES (
-    v_match_id, p_match_participant_id, 'manual_confirm', p_note, auth.uid()
-  );
-
-  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
-  RETURN v_mp;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") IS 'v1.6.3: ORG manually confirms an existing pending participant. No scope check — participant is already match-associated. Covers invited/nominated and request-joined re-confirm after match edit.';
-
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") RETURNS "public"."match_participants"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-DECLARE
-  v_match      public.matches%rowtype;
-  v_existing   match_participants;
-  v_new_mp     match_participants;
-  v_constraint text;
-  v_scope_ids  uuid[] := '{}'::uuid[];
-BEGIN
-  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
-
-  SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Match not found'; END IF;
-
-  v_scope_ids := COALESCE(v_match.invitation_scope_group_ids, '{}'::uuid[]);
-
-  IF v_match.status <> 'active' THEN RAISE EXCEPTION 'Match is not active (status: %)', v_match.status; END IF;
-  IF NOT public.is_match_organizer(p_match_id, auth.uid()) THEN
-    RAISE EXCEPTION 'Only the match organizer can perform this action';
-  END IF;
-
-  IF p_user_id = v_match.organizer_id THEN
-    RAISE EXCEPTION 'Organizer cannot be manually confirmed into their own match';
-  END IF;
-
-  IF public.is_user_match_associated(p_match_id, p_user_id) THEN
-    RAISE EXCEPTION 'User is already a participant in this match';
-  END IF;
-
-  IF NOT (
-    public.is_user_in_scope_groups(v_scope_ids, p_user_id)
-    OR public.do_users_share_group(p_user_id, v_match.organizer_id)
-  ) THEN
-    RAISE EXCEPTION 'Target user is not in scope or shared group';
-  END IF;
-
-  SELECT * INTO v_existing
-  FROM public.match_participants
-  WHERE match_id = p_match_id AND user_id = p_user_id AND status = 'removed'
-  ORDER BY created_at DESC
-  LIMIT 1
-  FOR UPDATE;
-
-  IF FOUND THEN
-    UPDATE public.match_participants
-    SET
-      removed_at               = NULL,
-      removed_by               = NULL,
-      removal_note             = NULL,
-      confirmed_at             = NULL,
-      join_method              = 'manual',
-      participant_accepted_at  = now(),
-      participant_accepted_via = 'manual',
-      org_approved_at          = now(),
-      org_approved_by          = auth.uid(),
-      nominated_by             = NULL,
-      manual_confirmed_by      = auth.uid()
-    WHERE id = v_existing.id;
-
-    PERFORM public.match_participant_reconcile_status(v_existing.id);
-
-    INSERT INTO public.match_participant_actions
-      (match_id, match_participant_id, action_type, note, created_by)
-    VALUES
-      (p_match_id, v_existing.id, 'reenter',        NULL, auth.uid()),
-      (p_match_id, v_existing.id, 'manual_confirm', NULL, auth.uid());
-
-    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
-    RETURN v_new_mp;
-  END IF;
-
-  BEGIN
-    INSERT INTO public.match_participants (
-      match_id, user_id, join_method,
-      participant_accepted_at, participant_accepted_via,
-      org_approved_at, org_approved_by,
-      manual_confirmed_by, created_by
-    ) VALUES (
-      p_match_id, p_user_id, 'manual',
-      now(), 'manual',
-      now(), auth.uid(),
-      auth.uid(), auth.uid()
-    )
-    RETURNING * INTO v_new_mp;
-  EXCEPTION
-    WHEN unique_violation THEN
-      GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
-      IF v_constraint = 'uq_match_participants_active_user' THEN
-        RAISE EXCEPTION 'User is already a participant in this match';
-      ELSE
-        RAISE;
-      END IF;
-  END;
-
-  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
-
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (p_match_id, v_new_mp.id, 'manual_confirm', NULL, auth.uid());
-
-  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
-  RETURN v_new_mp;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") IS 'v1.6.3: ORG manually confirms a user. No revival of removed participants here — use restart channels (rpc_match_invite_user / rpc_match_request_join). Sets participant_accepted_at + via=manual + org_approved_at; reconcile derives status.';
 
 
 
@@ -3500,15 +3494,17 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_remove_participant"("p_match_part
     SET "search_path" TO 'public'
     AS $$
 DECLARE
-  v_mp       match_participants;
+  v_mp       public.match_participants%rowtype;
   v_match_id uuid;
-  v_log_type text;
-  v_log_note text;
 BEGIN
-  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
 
   SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Participant not found'; END IF;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Participant not found';
+  END IF;
 
   v_match_id := v_mp.match_id;
 
@@ -3522,44 +3518,7 @@ BEGIN
     RAISE EXCEPTION 'You do not have permission to remove participants';
   END IF;
 
-  -- Already removed — idempotent, no log (UI should show toast)
-  IF v_mp.removed_at IS NOT NULL THEN
-    RETURN v_mp;
-  END IF;
-
-  -- Determine semantic action_type and human-readable note from pre-removal state
-  v_log_type := CASE
-    WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'requested'  THEN 'reject_request'
-    WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'invited'    THEN 'revoke_invite'
-    WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'nominated'  THEN 'reject_nomination'
-    WHEN v_mp.confirmed_at IS NOT NULL                                   THEN 'remove_confirmed'
-    ELSE 'remove'
-  END;
-
-  v_log_note := CASE
-    WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'requested'  THEN 'Request rejected'
-    WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'invited'    THEN 'Invitation revoked'
-    WHEN v_mp.confirmed_at IS NULL AND v_mp.join_method = 'nominated'  THEN 'Nomination rejected'
-    WHEN v_mp.confirmed_at IS NOT NULL                                   THEN 'Removed by organizer'
-    ELSE 'Removed (join_method=' || COALESCE(v_mp.join_method::text, 'unknown') || ')'
-  END;
-
-  UPDATE public.match_participants
-  SET
-    removed_at   = now(),
-    removed_by   = auth.uid(),
-    removal_note = v_log_note
-  WHERE id = p_match_participant_id;
-
-  PERFORM public.match_participant_reconcile_status(p_match_participant_id);
-
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
-  VALUES
-    (v_match_id, p_match_participant_id, v_log_type, v_log_note, auth.uid());
-
-  SELECT * INTO v_mp FROM public.match_participants WHERE id = p_match_participant_id;
-  RETURN v_mp;
+  RETURN public.apply_participant_exit(p_match_participant_id, auth.uid(), 'remove', NULL);
 END;
 $$;
 
@@ -3576,69 +3535,41 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid"
     SET "search_path" TO 'public'
     AS $$
 DECLARE
-  v_match    record;
-  v_existing match_participants;
-  v_new_mp   match_participants;
+  v_match    public.matches%rowtype;
+  v_existing public.match_participants%rowtype;
+  v_uid      uuid := auth.uid();
 BEGIN
-  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
 
   SELECT * INTO v_match FROM public.matches WHERE id = p_match_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Match not found'; END IF;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Match not found';
+  END IF;
 
-  IF v_match.organizer_id = auth.uid() THEN RAISE EXCEPTION 'Organizer cannot request to join their own match'; END IF;
-  IF v_match.invitation_scope_group_ids IS NULL OR array_length(v_match.invitation_scope_group_ids, 1) IS NULL THEN
+  IF v_match.organizer_id = v_uid THEN
+    RAISE EXCEPTION 'Organizer cannot request to join their own match';
+  END IF;
+
+  IF v_match.invitation_scope_group_ids IS NULL
+     OR array_length(v_match.invitation_scope_group_ids, 1) IS NULL THEN
     RAISE EXCEPTION 'This match is not open for join requests (no scope groups configured)';
   END IF;
-  IF NOT public.is_user_in_scope_groups(v_match.invitation_scope_group_ids, auth.uid()) THEN
+
+  IF NOT public.is_user_in_scope_groups(v_match.invitation_scope_group_ids, v_uid) THEN
     RAISE EXCEPTION 'You are not eligible to request to join this match (not in scope groups)';
   END IF;
 
   SELECT * INTO v_existing
   FROM public.match_participants
-  WHERE match_id = p_match_id AND user_id = auth.uid();
+  WHERE match_id = p_match_id AND user_id = v_uid;
 
-  IF FOUND THEN
-    IF v_existing.removed_at IS NULL THEN RAISE EXCEPTION 'You are already a participant in this match'; END IF;
-
-    UPDATE public.match_participants
-    SET
-      status = 'pending',
-      removed_at = NULL,
-      removed_by = NULL,
-      removal_note = NULL,
-      confirmed_at = NULL,
-      join_method = 'requested',
-      participant_accepted_at = now(),
-      participant_accepted_via = 'in_app',
-      org_approved_at = NULL,
-      org_approved_by = NULL,
-      nominated_by = NULL,
-      manual_confirmed_by = NULL
-    WHERE id = v_existing.id;
-
-    PERFORM public.match_participant_reconcile_status(v_existing.id);
-
-    INSERT INTO public.match_participant_actions (match_id, match_participant_id, action_type, note, created_by)
-    VALUES (p_match_id, v_existing.id, 'reenter', NULL, auth.uid()), (p_match_id, v_existing.id, 'request_join', NULL, auth.uid());
-
-    SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_existing.id;
-    RETURN v_new_mp;
+  IF FOUND AND v_existing.removed_at IS NULL THEN
+    RAISE EXCEPTION 'You are already a participant in this match';
   END IF;
 
-  INSERT INTO public.match_participants (
-    match_id, user_id, join_method,
-    participant_accepted_at, participant_accepted_via,
-    org_approved_at, nominated_by, created_by
-  ) VALUES (p_match_id, auth.uid(), 'requested', now(), 'in_app', NULL, NULL, auth.uid())
-  RETURNING * INTO v_new_mp;
-
-  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
-  SELECT * INTO v_new_mp FROM public.match_participants WHERE id = v_new_mp.id;
-
-  INSERT INTO public.match_participant_actions (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (p_match_id, v_new_mp.id, 'request_join', NULL, auth.uid());
-
-  RETURN v_new_mp;
+  RETURN public.apply_participant_admission(p_match_id, v_uid, v_uid, 'requested');
 END;
 $$;
 
@@ -3646,7 +3577,7 @@ $$;
 ALTER FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") IS 'v1.6.3: User requests to join. Removed users can re-request (status=pending). Sets participant_accepted_at. ORG approval needed to confirm.';
+COMMENT ON FUNCTION "public"."rpc_match_request_join"("p_match_id" "uuid") IS 'v1.6.3: User requests to join. Scope required. Removed users can re-request. Sets participant_accepted_at. ORG approval needed to confirm.';
 
 
 
@@ -3655,11 +3586,11 @@ CREATE OR REPLACE FUNCTION "public"."rpc_match_user_withdraw"("p_match_id" "uuid
     SET "search_path" TO 'public'
     AS $$
 DECLARE
-  v_mp        match_participants;
-  v_log_type  text;
-  v_log_note  text;
+  v_mp public.match_participants%rowtype;
 BEGIN
-  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated';
+  END IF;
 
   SELECT * INTO v_mp
   FROM public.match_participants
@@ -3669,40 +3600,7 @@ BEGIN
     RAISE EXCEPTION 'You are not a participant in this match';
   END IF;
 
-  -- Already removed — idempotent, no log (UI should show toast)
-  IF v_mp.removed_at IS NOT NULL THEN
-    RETURN v_mp;
-  END IF;
-
-  -- Determine action type and note from pre-removal state
-  v_log_type := CASE
-    WHEN v_mp.join_method IN ('invited', 'nominated') AND v_mp.confirmed_at IS NULL THEN 'decline'
-    ELSE 'withdraw'
-  END;
-
-  v_log_note := CASE
-    WHEN v_mp.join_method = 'invited'   AND v_mp.confirmed_at IS NULL THEN 'User declined invitation'
-    WHEN v_mp.join_method = 'nominated' AND v_mp.confirmed_at IS NULL THEN 'User declined nomination'
-    WHEN v_mp.confirmed_at IS NOT NULL                                  THEN 'User left match'
-    ELSE 'User withdrew'
-  END;
-
-  UPDATE public.match_participants
-  SET
-    removed_at   = now(),
-    removed_by   = auth.uid(),
-    removal_note = v_log_note
-  WHERE id = v_mp.id;
-
-  PERFORM public.match_participant_reconcile_status(v_mp.id);
-
-  INSERT INTO public.match_participant_actions
-    (match_id, match_participant_id, action_type, note, created_by)
-  VALUES
-    (p_match_id, v_mp.id, v_log_type, v_log_note, auth.uid());
-
-  SELECT * INTO v_mp FROM public.match_participants WHERE id = v_mp.id;
-  RETURN v_mp;
+  RETURN public.apply_participant_exit(v_mp.id, auth.uid(), 'withdraw', NULL);
 END;
 $$;
 
@@ -4408,10 +4306,887 @@ $$;
 ALTER FUNCTION "public"."sharegroup_exists"("p_user_a" "uuid", "p_user_b" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."test_runner_v161"() RETURNS TABLE("test_name" "text", "ok" boolean, "details" "text", "match_id" "uuid")
+CREATE OR REPLACE FUNCTION "public"."test_runner_match_regression_v2"() RETURNS TABLE("test_name" "text", "ok" boolean, "details" "text", "match_id" "uuid")
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+DECLARE
+  -- Fixed identities from dataset
+  ORG_UID  uuid := '1bb09aac-908c-4746-b904-81c5ff302872'; -- OldChai
+  P_UID    uuid := '37c9e087-5b62-43e8-add6-893dec015efd'; -- U3
+  REAL_UID uuid := 'a3631e91-27e4-4db1-a64b-4162d86a4a44'; -- Real
+
+  -- Scope / club
+  SCOPE_GID uuid := '17ed4074-6afa-47c7-b9c1-5e110db5859f'; -- orc2
+  CLUB_ID   uuid := '3802862a-db80-40e5-bed0-c76e8a631fa8'; -- Whiteoak Tennis Club
+
+  v_mid uuid;
+  v_mp  public.match_participants%rowtype;
+  v_cnt integer;
+  v_ok  boolean;
+  v_msg text;
+BEGIN
+  CREATE TEMP TABLE IF NOT EXISTS _v2_results(
+    test_name text,
+    ok boolean,
+    details text,
+    match_id uuid
+  ) ON COMMIT DROP;
+
+  -- =========================================================
+  -- A. Helper / invariant tests
+  -- =========================================================
+
+  -- A01 ShareGroup positive
+  BEGIN
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    IF public.do_users_share_group(P_UID, REAL_UID) IS TRUE THEN
+      INSERT INTO _v2_results VALUES ('A01 ShareGroup(U3, Real) positive', true, 'ok', NULL);
+    ELSE
+      INSERT INTO _v2_results VALUES ('A01 ShareGroup(U3, Real) positive', false, 'expected true', NULL);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('A01 ShareGroup(U3, Real) positive', false, 'exception: '||SQLERRM, NULL);
+  END;
+
+  -- A02 MatchAssociated includes removed
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '08:00'::time, 90,
+      'tr_v2_A02_match_associated_removed', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    INSERT INTO public.match_participants(
+      match_id, user_id, status, join_method,
+      removed_at, removed_by, created_by
+    ) VALUES (
+      v_mid, REAL_UID, 'removed', 'invited',
+      now(), ORG_UID, ORG_UID
+    );
+
+    IF public.is_user_match_associated(v_mid, REAL_UID) IS TRUE THEN
+      INSERT INTO _v2_results VALUES ('A02 MatchAssociated includes removed', true, 'ok', v_mid);
+    ELSE
+      INSERT INTO _v2_results VALUES ('A02 MatchAssociated includes removed', false, 'expected true', v_mid);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('A02 MatchAssociated includes removed', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- =========================================================
+  -- B. Admission / nominate / request
+  -- =========================================================
+
+  -- B01 Nominate creates pending nominated
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '09:00'::time, 90,
+      'tr_v2_B01_nominate', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE match_id = v_mid AND user_id = REAL_UID
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    IF NOT FOUND THEN
+      INSERT INTO _v2_results VALUES ('B01 Nominate creates pending nominated', false, 'no row', v_mid);
+    ELSIF v_mp.status::text = 'pending'
+       AND v_mp.join_method::text = 'nominated'
+       AND v_mp.nominated_by = P_UID
+       AND v_mp.org_approved_at IS NULL
+       AND v_mp.participant_accepted_at IS NULL
+    THEN
+      INSERT INTO _v2_results VALUES ('B01 Nominate creates pending nominated', true, 'ok', v_mid);
+    ELSE
+      INSERT INTO _v2_results VALUES (
+        'B01 Nominate creates pending nominated',
+        false,
+        'unexpected: status='||coalesce(v_mp.status::text,'NULL')
+        ||', join_method='||coalesce(v_mp.join_method::text,'NULL'),
+        v_mid
+      );
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('B01 Nominate creates pending nominated', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- B02 Admit user (organizer) creates invited row with org_approved_at
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '09:30'::time, 90,
+      'tr_v2_B02_admit_user', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    SELECT * INTO v_mp
+    FROM public.rpc_match_admit_user(v_mid, REAL_UID);
+
+    IF v_mp.id IS NULL THEN
+      INSERT INTO _v2_results VALUES ('B02 Admit user creates row', false, 'no row returned', v_mid);
+    ELSIF v_mp.org_approved_at IS NOT NULL AND v_mp.join_method::text = 'invited' THEN
+      INSERT INTO _v2_results VALUES (
+        'B02 Admit user creates row',
+        true,
+        'status='||coalesce(v_mp.status::text,'NULL')
+        ||', org_approved_at set',
+        v_mid
+      );
+    ELSE
+      INSERT INTO _v2_results VALUES (
+        'B02 Admit user creates row',
+        false,
+        'org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL')
+        ||', join_method='||coalesce(v_mp.join_method::text,'NULL'),
+        v_mid
+      );
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('B02 Admit user creates row', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- B03 Request join creates pending requested
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '09:45'::time, 90,
+      'tr_v2_B03_request_join', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', REAL_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    SELECT * INTO v_mp
+    FROM public.rpc_match_request_join(v_mid);
+
+    IF v_mp.id IS NULL THEN
+      INSERT INTO _v2_results VALUES ('B03 Request join creates pending requested', false, 'no row returned', v_mid);
+    ELSIF v_mp.status::text = 'pending'
+       AND v_mp.join_method::text = 'requested'
+       AND v_mp.participant_accepted_at IS NOT NULL
+    THEN
+      INSERT INTO _v2_results VALUES ('B03 Request join creates pending requested', true, 'ok', v_mid);
+    ELSE
+      INSERT INTO _v2_results VALUES (
+        'B03 Request join creates pending requested',
+        false,
+        'status='||coalesce(v_mp.status::text,'NULL')
+        ||', join_method='||coalesce(v_mp.join_method::text,'NULL'),
+        v_mid
+      );
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('B03 Request join creates pending requested', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- =========================================================
+  -- C. Delegate / approve / composed confirm
+  -- =========================================================
+
+  -- C01 Organizer delegate existing admitted participant
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '10:00'::time, 90,
+      'tr_v2_C01_org_delegate', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    SELECT * INTO v_mp
+    FROM public.rpc_match_admit_user(v_mid, REAL_UID);
+
+    PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE id = v_mp.id;
+
+    IF v_mp.participant_accepted_at IS NOT NULL THEN
+      INSERT INTO _v2_results VALUES (
+        'C01 Organizer delegate existing admitted participant',
+        true,
+        'participant_accepted_via='||coalesce(v_mp.participant_accepted_via::text,'NULL')
+        ||', status='||coalesce(v_mp.status::text,'NULL'),
+        v_mid
+      );
+    ELSE
+      INSERT INTO _v2_results VALUES ('C01 Organizer delegate existing admitted participant', false, 'participant_accepted_at is NULL', v_mid);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('C01 Organizer delegate existing admitted participant', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- C02 Non-organizer delegate nominated participant (stays pending)
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '10:30'::time, 90,
+      'tr_v2_C02_non_org_delegate', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE match_id = v_mid AND user_id = REAL_UID
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE id = v_mp.id;
+
+    IF v_mp.participant_accepted_at IS NOT NULL
+       AND v_mp.org_approved_at IS NULL
+       AND v_mp.status::text = 'pending'
+    THEN
+      INSERT INTO _v2_results VALUES ('C02 Non-organizer delegate keeps pending', true, 'ok', v_mid);
+    ELSE
+      INSERT INTO _v2_results VALUES (
+        'C02 Non-organizer delegate keeps pending',
+        false,
+        'status='||coalesce(v_mp.status::text,'NULL')
+        ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
+        v_mid
+      );
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('C02 Non-organizer delegate keeps pending', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- C03 Organizer approve completes confirmed state
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '11:00'::time, 90,
+      'tr_v2_C03_org_approve', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE match_id = v_mid AND user_id = REAL_UID
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    PERFORM public.rpc_match_org_approve_participant(v_mp.id);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE id = v_mp.id;
+
+    IF v_mp.org_approved_at IS NOT NULL
+       AND v_mp.participant_accepted_at IS NOT NULL
+       AND v_mp.status::text = 'confirmed'
+    THEN
+      INSERT INTO _v2_results VALUES ('C03 Organizer approve completes confirmed', true, 'ok', v_mid);
+    ELSE
+      INSERT INTO _v2_results VALUES (
+        'C03 Organizer approve completes confirmed',
+        false,
+        'status='||coalesce(v_mp.status::text,'NULL')
+        ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
+        v_mid
+      );
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('C03 Organizer approve completes confirmed', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- C04 Composed add+confirm (admit + delegate_confirm)
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '11:15'::time, 90,
+      'tr_v2_C04_composed_add_confirm', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    SELECT * INTO v_mp
+    FROM public.rpc_match_admit_user(v_mid, REAL_UID);
+    PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE id = v_mp.id;
+
+    IF v_mp.org_approved_at IS NOT NULL
+       AND v_mp.participant_accepted_at IS NOT NULL
+       AND v_mp.status::text = 'confirmed'
+    THEN
+      INSERT INTO _v2_results VALUES ('C04 Composed add+confirm (admit+delegate)', true, 'ok', v_mid);
+    ELSE
+      INSERT INTO _v2_results VALUES (
+        'C04 Composed add+confirm (admit+delegate)',
+        false,
+        'status='||coalesce(v_mp.status::text,'NULL')
+        ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
+        v_mid
+      );
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('C04 Composed add+confirm (admit+delegate)', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- C05 Composed manual confirm existing (delegate + org_approve)
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '11:30'::time, 90,
+      'tr_v2_C05_composed_manual_confirm', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE match_id = v_mid AND user_id = REAL_UID
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+    PERFORM public.rpc_match_org_approve_participant(v_mp.id);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE id = v_mp.id;
+
+    IF v_mp.org_approved_at IS NOT NULL
+       AND v_mp.participant_accepted_at IS NOT NULL
+       AND v_mp.status::text = 'confirmed'
+    THEN
+      INSERT INTO _v2_results VALUES ('C05 Composed manual confirm (delegate+approve)', true, 'ok', v_mid);
+    ELSE
+      INSERT INTO _v2_results VALUES (
+        'C05 Composed manual confirm (delegate+approve)',
+        false,
+        'status='||coalesce(v_mp.status::text,'NULL'),
+        v_mid
+      );
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('C05 Composed manual confirm (delegate+approve)', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- =========================================================
+  -- D. Participant exit: remove / withdraw
+  -- =========================================================
+
+  -- D01 Remove pending nominated logs reject_nomination
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '11:45'::time, 90,
+      'tr_v2_D01_remove_pending_nominated', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE match_id = v_mid AND user_id = REAL_UID
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    SELECT * INTO v_mp FROM public.rpc_match_remove_participant(v_mp.id);
+
+    IF v_mp.removed_at IS NOT NULL THEN
+      SELECT count(*) INTO v_cnt
+      FROM public.match_participant_actions a
+      WHERE a.match_participant_id = v_mp.id
+        AND a.action_type::text = 'reject_nomination';
+
+      IF v_cnt >= 1 THEN
+        INSERT INTO _v2_results VALUES ('D01 Remove pending nominated logs reject_nomination', true, 'ok', v_mid);
+      ELSE
+        INSERT INTO _v2_results VALUES ('D01 Remove pending nominated logs reject_nomination', false, 'missing action log', v_mid);
+      END IF;
+    ELSE
+      INSERT INTO _v2_results VALUES ('D01 Remove pending nominated logs reject_nomination', false, 'removed_at is NULL', v_mid);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('D01 Remove pending nominated logs reject_nomination', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- D02 Remove pending requested logs reject_request
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '12:00'::time, 90,
+      'tr_v2_D02_remove_pending_requested', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', REAL_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    SELECT * INTO v_mp FROM public.rpc_match_request_join(v_mid);
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    SELECT * INTO v_mp FROM public.rpc_match_remove_participant(v_mp.id);
+
+    IF v_mp.removed_at IS NOT NULL THEN
+      SELECT count(*) INTO v_cnt
+      FROM public.match_participant_actions a
+      WHERE a.match_participant_id = v_mp.id
+        AND a.action_type::text = 'reject_request';
+
+      IF v_cnt >= 1 THEN
+        INSERT INTO _v2_results VALUES ('D02 Remove pending requested logs reject_request', true, 'ok', v_mid);
+      ELSE
+        INSERT INTO _v2_results VALUES ('D02 Remove pending requested logs reject_request', false, 'missing action log', v_mid);
+      END IF;
+    ELSE
+      INSERT INTO _v2_results VALUES ('D02 Remove pending requested logs reject_request', false, 'removed_at is NULL', v_mid);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('D02 Remove pending requested logs reject_request', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- D03 Withdraw confirmed logs withdraw
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '12:15'::time, 90,
+      'tr_v2_D03_withdraw_confirmed', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    SELECT * INTO v_mp FROM public.rpc_match_admit_user(v_mid, REAL_UID);
+    PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', REAL_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    SELECT * INTO v_mp FROM public.rpc_match_user_withdraw(v_mid);
+
+    SELECT count(*) INTO v_cnt
+    FROM public.match_participant_actions a
+    WHERE a.match_participant_id = v_mp.id
+      AND a.action_type::text = 'withdraw';
+
+    IF v_mp.removed_at IS NOT NULL AND v_cnt >= 1 THEN
+      INSERT INTO _v2_results VALUES ('D03 Withdraw confirmed logs withdraw', true, 'ok', v_mid);
+    ELSE
+      INSERT INTO _v2_results VALUES ('D03 Withdraw confirmed logs withdraw', false, 'missing removed_at or action log', v_mid);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('D03 Withdraw confirmed logs withdraw', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- =========================================================
+  -- E. Deprecated / dropped RPCs (must not succeed)
+  -- Accepts: deprecated stub error OR function does not exist (dropped)
+  -- =========================================================
+
+  -- E01 manual_confirm deprecated or dropped
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '12:30'::time, 90,
+      'tr_v2_E01_manual_confirm', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    SELECT * INTO v_mp FROM public.rpc_match_admit_user(v_mid, REAL_UID);
+
+    BEGIN
+      PERFORM public.rpc_match_manual_confirm(v_mp.id, NULL);
+      INSERT INTO _v2_results VALUES ('E01 manual_confirm deprecated', false, 'expected exception, got success', v_mid);
+    EXCEPTION WHEN OTHERS THEN
+      IF position('deprecated' in SQLERRM) > 0
+         OR position('does not exist' in SQLERRM) > 0
+         OR position('could not find' in SQLERRM) > 0
+      THEN
+        INSERT INTO _v2_results VALUES ('E01 manual_confirm deprecated', true, 'ok (stub or dropped)', v_mid);
+      ELSE
+        INSERT INTO _v2_results VALUES ('E01 manual_confirm deprecated', false, 'unexpected: '||SQLERRM, v_mid);
+      END IF;
+    END;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('E01 manual_confirm deprecated', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- E02 manual_confirm_user deprecated or dropped
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '12:45'::time, 90,
+      'tr_v2_E02_manual_confirm_user', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    BEGIN
+      PERFORM public.rpc_match_manual_confirm_user(v_mid, REAL_UID);
+      INSERT INTO _v2_results VALUES ('E02 manual_confirm_user deprecated', false, 'expected exception, got success', v_mid);
+    EXCEPTION WHEN OTHERS THEN
+      IF position('deprecated' in SQLERRM) > 0
+         OR position('does not exist' in SQLERRM) > 0
+         OR position('could not find' in SQLERRM) > 0
+      THEN
+        INSERT INTO _v2_results VALUES ('E02 manual_confirm_user deprecated', true, 'ok (stub or dropped)', v_mid);
+      ELSE
+        INSERT INTO _v2_results VALUES ('E02 manual_confirm_user deprecated', false, 'unexpected: '||SQLERRM, v_mid);
+      END IF;
+    END;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('E02 manual_confirm_user deprecated', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- =========================================================
+  -- F. Integrity checks
+  -- =========================================================
+
+  -- F01 Confirmed requires both timestamps
+  BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM public.matches m
+      JOIN public.match_participants mp ON mp.match_id = m.id
+      WHERE m.game_type LIKE 'tr_v2_%'
+        AND m.match_date = current_date
+        AND mp.status::text = 'confirmed'
+        AND (mp.org_approved_at IS NULL OR mp.participant_accepted_at IS NULL)
+    ) THEN
+      INSERT INTO _v2_results VALUES ('F01 Confirmed requires both timestamps', false, 'found confirmed row missing required timestamps', NULL);
+    ELSE
+      INSERT INTO _v2_results VALUES ('F01 Confirmed requires both timestamps', true, 'ok', NULL);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('F01 Confirmed requires both timestamps', false, 'exception: '||SQLERRM, NULL);
+  END;
+
+  -- =========================================================
+  -- G. Permission negative
+  -- =========================================================
+
+  -- G01 Non-organizer cannot org_approve
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '13:00'::time, 90,
+      'tr_v2_G01_non_org_approve', 4,
+      ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE match_id = v_mid AND user_id = REAL_UID
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    BEGIN
+      PERFORM public.rpc_match_org_approve_participant(v_mp.id);
+      INSERT INTO _v2_results VALUES ('G01 Non-organizer cannot org_approve', false, 'expected exception, got success', v_mid);
+    EXCEPTION WHEN OTHERS THEN
+      INSERT INTO _v2_results VALUES ('G01 Non-organizer cannot org_approve', true, 'ok', v_mid);
+    END;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('G01 Non-organizer cannot org_approve', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  -- G02 User not in scope cannot request_join
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, club_id, court_ids,
+      match_date, start_time, duration_minutes,
+      game_type, required_count,
+      invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
+      created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[],
+      current_date, '13:15'::time, 90,
+      'tr_v2_G02_empty_scope', 4,
+      '{}'::uuid[],
+      true, true, true, now()
+    )
+    RETURNING id INTO v_mid;
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', REAL_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+
+    BEGIN
+      PERFORM public.rpc_match_request_join(v_mid);
+      INSERT INTO _v2_results VALUES ('G02 User not in scope cannot request_join', false, 'expected exception, got success', v_mid);
+    EXCEPTION WHEN OTHERS THEN
+      INSERT INTO _v2_results VALUES ('G02 User not in scope cannot request_join', true, 'ok', v_mid);
+    END;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _v2_results VALUES ('G02 User not in scope cannot request_join', false, 'exception: '||SQLERRM, v_mid);
+  END;
+
+  RETURN QUERY
+  SELECT r.test_name, r.ok, r.details, r.match_id
+  FROM _v2_results r
+  ORDER BY r.test_name;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."test_runner_match_regression_v2"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."test_runner_v161"() RETURNS TABLE("test_name" "text", "ok" boolean, "details" "text", "match_id" "uuid")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
 DECLARE
   -- Fixed identities from your dataset
   ORG_UID  uuid := '1bb09aac-908c-4746-b904-81c5ff302872'; -- OldChai
@@ -4426,6 +5201,8 @@ DECLARE
 
   v_mid uuid;
   v_mp  public.match_participants%rowtype;
+
+  fn_delegate_exists boolean;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _v161_results(
     test_name text,
@@ -4461,7 +5238,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status,
+      organizer_id, status, admission_mode,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -4469,7 +5246,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active',
+      ORG_UID, 'active', 'invite',
       CLUB_ID, '{}'::uuid[],
       current_date, '10:00'::time, 90,
       'v161_test_nominate', 4,
@@ -4530,7 +5307,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status,
+      organizer_id, status, admission_mode,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -4538,7 +5315,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active',
+      ORG_UID, 'active', 'invite',
       CLUB_ID, '{}'::uuid[],
       current_date, '11:00'::time, 90,
       'v161_test_org_manual_confirm', 4,
@@ -4598,11 +5375,11 @@ BEGIN
 
   -- ===========================================================================
   -- T03: Delegated manual confirm keeps pending (no org_approved_at)
-  -- Flow: nominate user, then delegate-confirm via rpc_match_delegate_confirm_participant
+  -- - supports either rpc_match_delegate_confirm_user OR rpc_match_delegate_manual_confirm_user
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status,
+      organizer_id, status, admission_mode,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -4610,7 +5387,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active',
+      ORG_UID, 'active', 'invite',
       CLUB_ID, '{}'::uuid[],
       current_date, '12:00'::time, 90,
       'v161_test_delegate_manual_confirm', 4,
@@ -4620,26 +5397,44 @@ BEGIN
     )
     RETURNING public.matches.id INTO v_mid;
 
-    -- U3 nominates Real
+    -- simulate caller = U3 (non-org)
     PERFORM set_config(
       'request.jwt.claims',
       json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
       true
     );
-    PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
 
-    -- U3 delegate-confirms the nominated participant
-    SELECT mp.* INTO v_mp
-    FROM public.match_participants mp
-    WHERE mp.match_id = v_mid AND mp.user_id = REAL_UID
-    ORDER BY mp.created_at DESC
-    LIMIT 1;
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname='public'
+        AND p.proname IN ('rpc_match_delegate_confirm_user','rpc_match_delegate_manual_confirm_user')
+    )
+    INTO fn_delegate_exists;
 
-    IF NOT FOUND THEN
+    IF NOT fn_delegate_exists THEN
       INSERT INTO _v161_results(test_name, ok, details, match_id)
-      VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row after nominate', v_mid);
+      VALUES (
+        'T03 Delegate confirm keeps pending',
+        false,
+        'missing function: public.rpc_match_delegate_confirm_user(uuid,uuid) OR public.rpc_match_delegate_manual_confirm_user(uuid,uuid)',
+        v_mid
+      );
     ELSE
-      PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+      -- Prefer canonical name if exists
+      IF EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname='public' AND p.proname='rpc_match_delegate_manual_confirm_user'
+      ) THEN
+        EXECUTE 'SELECT public.rpc_match_delegate_manual_confirm_user($1,$2)'
+          USING v_mid, REAL_UID;
+      ELSE
+        EXECUTE 'SELECT public.rpc_match_delegate_confirm_user($1,$2)'
+          USING v_mid, REAL_UID;
+      END IF;
 
       SELECT mp.* INTO v_mp
       FROM public.match_participants mp
@@ -4649,25 +5444,27 @@ BEGIN
 
       IF NOT FOUND THEN
         INSERT INTO _v161_results(test_name, ok, details, match_id)
-        VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row after delegate confirm', v_mid);
-      ELSIF v_mp.participant_accepted_at IS NOT NULL
+        VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row created', v_mid);
+      ELSE
+        IF v_mp.participant_accepted_at IS NOT NULL
            AND v_mp.participant_accepted_via::text = 'delegate_manual'
            AND v_mp.org_approved_at IS NULL
            AND v_mp.status::text = 'pending'
-      THEN
-        INSERT INTO _v161_results(test_name, ok, details, match_id)
-        VALUES ('T03 Delegate confirm keeps pending', true, 'ok', v_mid);
-      ELSE
-        INSERT INTO _v161_results(test_name, ok, details, match_id)
-        VALUES (
-          'T03 Delegate confirm keeps pending',
-          false,
-          'got status='||coalesce(v_mp.status::text,'NULL')
-          ||', participant_accepted_at='||coalesce(v_mp.participant_accepted_at::text,'NULL')
-          ||', participant_accepted_via='||coalesce(v_mp.participant_accepted_via::text,'NULL')
-          ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
-          v_mid
-        );
+        THEN
+          INSERT INTO _v161_results(test_name, ok, details, match_id)
+          VALUES ('T03 Delegate confirm keeps pending', true, 'ok', v_mid);
+        ELSE
+          INSERT INTO _v161_results(test_name, ok, details, match_id)
+          VALUES (
+            'T03 Delegate confirm keeps pending',
+            false,
+            'got status='||coalesce(v_mp.status::text,'NULL')
+            ||', participant_accepted_at='||coalesce(v_mp.participant_accepted_at::text,'NULL')
+            ||', participant_accepted_via='||coalesce(v_mp.participant_accepted_via::text,'NULL')
+            ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL'),
+            v_mid
+          );
+        END IF;
       END IF;
     END IF;
   EXCEPTION WHEN OTHERS THEN
@@ -4705,7 +5502,7 @@ BEGIN
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
-      organizer_id, status,
+      organizer_id, status, admission_mode,
       club_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
@@ -4713,7 +5510,7 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants,
       created_at
     ) VALUES (
-      ORG_UID, 'active',
+      ORG_UID, 'active', 'invite',
       CLUB_ID, '{}'::uuid[],
       current_date, '13:00'::time, 90,
       'v161_test_match_associated_any_row', 4,
@@ -4754,7 +5551,7 @@ BEGIN
     ORDER BY r.test_name;
 
 END;
-$$;
+$_$;
 
 
 ALTER FUNCTION "public"."test_runner_v161"() OWNER TO "postgres";
@@ -6551,6 +7348,24 @@ GRANT ALL ON FUNCTION "public"."apply_participant_acceptance"("p_mp_id" "uuid", 
 
 
 
+GRANT ALL ON TABLE "public"."match_participants" TO "anon";
+GRANT ALL ON TABLE "public"."match_participants" TO "authenticated";
+GRANT ALL ON TABLE "public"."match_participants" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."apply_participant_admission"("p_match_id" "uuid", "p_target_user_id" "uuid", "p_actor_id" "uuid", "p_admission_kind" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_participant_admission"("p_match_id" "uuid", "p_target_user_id" "uuid", "p_actor_id" "uuid", "p_admission_kind" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_participant_admission"("p_match_id" "uuid", "p_target_user_id" "uuid", "p_actor_id" "uuid", "p_admission_kind" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."apply_participant_exit"("p_match_participant_id" "uuid", "p_actor_id" "uuid", "p_exit_kind" "text", "p_removal_note" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_participant_exit"("p_match_participant_id" "uuid", "p_actor_id" "uuid", "p_exit_kind" "text", "p_removal_note" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_participant_exit"("p_match_participant_id" "uuid", "p_actor_id" "uuid", "p_exit_kind" "text", "p_removal_note" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."can_add_guests"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
@@ -6937,12 +7752,6 @@ GRANT ALL ON FUNCTION "public"."rpc_invite_circle_save_user"("p_target_user_id" 
 
 
 
-GRANT ALL ON TABLE "public"."match_participants" TO "anon";
-GRANT ALL ON TABLE "public"."match_participants" TO "authenticated";
-GRANT ALL ON TABLE "public"."match_participants" TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_accept_email_invitation"("p_match_id" "uuid", "p_user_id" "uuid", "p_invitation_id" "uuid") TO "service_role";
@@ -6990,16 +7799,6 @@ GRANT ALL ON FUNCTION "public"."rpc_match_delegate_confirm_participant"("p_match
 
 GRANT ALL ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_match_invite_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm"("p_match_participant_id" "uuid", "p_note" "text") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_match_manual_confirm_user"("p_match_id" "uuid", "p_user_id" "uuid") TO "service_role";
 
 
 
@@ -7166,6 +7965,12 @@ GRANT ALL ON FUNCTION "public"."rpc_user_sports_set"("p_sport_codes" "text"[]) T
 GRANT ALL ON FUNCTION "public"."sharegroup_exists"("p_user_a" "uuid", "p_user_b" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."sharegroup_exists"("p_user_a" "uuid", "p_user_b" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."sharegroup_exists"("p_user_a" "uuid", "p_user_b" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."test_runner_match_regression_v2"() TO "anon";
+GRANT ALL ON FUNCTION "public"."test_runner_match_regression_v2"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."test_runner_match_regression_v2"() TO "service_role";
 
 
 

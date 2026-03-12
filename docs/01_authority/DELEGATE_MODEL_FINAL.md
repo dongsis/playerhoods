@@ -22,10 +22,11 @@
 
 | Participant type | Caller gate | Target gate |
 |------------------|-------------|-------------|
-| **User** (invited/nominated) | Non-organizer, (InScope OR MatchAssociated), match active | ShareGroup(caller, participant) |
+| **User** (invited/nominated/requested) | **Organizer** OR (non-organizer + InScope OR MatchAssociated) | Non-org only: ShareGroup(caller, participant) |
 | **Guest** | Any active participant (incl. organizer) | — |
 
-- **User:** Organizer must use `rpc_match_manual_confirm` or `rpc_match_org_approve_participant` instead.
+- **User, organizer:** Organizer **is allowed** to call `rpc_match_delegate_confirm_participant` for existing user participants. This enables replacing `rpc_match_manual_confirm` with composed `delegate_confirm` + `org_approve`.
+- **User, non-organizer:** InScope OR MatchAssociated, ShareGroup(caller, participant).
 - **Guest:** Organizer can delegate-confirm a guest (same as any participant).
 
 ---

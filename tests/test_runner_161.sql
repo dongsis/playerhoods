@@ -152,7 +152,9 @@ BEGIN
       true
     );
 
-    PERFORM public.rpc_match_manual_confirm_user(v_mid, REAL_UID);
+    -- Composed: admit_user (via invite_user) + delegate_confirm (replaces deprecated manual_confirm_user)
+    SELECT * INTO v_mp FROM public.rpc_match_invite_user(v_mid, REAL_UID);
+    PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
 
     SELECT mp.* INTO v_mp
     FROM public.match_participants mp
@@ -162,15 +164,15 @@ BEGIN
 
     IF NOT FOUND THEN
       INSERT INTO _v161_results(test_name, ok, details, match_id)
-      VALUES ('T02 Org manual confirm sets timestamps', false, 'no match_participants row created', v_mid);
+      VALUES ('T02 Org add+confirm via composed flow', false, 'no match_participants row created', v_mid);
     ELSE
       IF v_mp.org_approved_at IS NOT NULL
          AND v_mp.participant_accepted_at IS NOT NULL
-         AND v_mp.participant_accepted_via::text = 'manual'
+         AND v_mp.participant_accepted_via::text = 'delegate_manual'
       THEN
         INSERT INTO _v161_results(test_name, ok, details, match_id)
         VALUES (
-          'T02 Org manual confirm sets timestamps',
+          'T02 Org add+confirm via composed flow',
           true,
           'status='||coalesce(v_mp.status::text,'NULL')||', ok',
           v_mid
@@ -178,7 +180,7 @@ BEGIN
       ELSE
         INSERT INTO _v161_results(test_name, ok, details, match_id)
         VALUES (
-          'T02 Org manual confirm sets timestamps',
+          'T02 Org add+confirm via composed flow',
           false,
           'got status='||coalesce(v_mp.status::text,'NULL')
           ||', org_approved_at='||coalesce(v_mp.org_approved_at::text,'NULL')
@@ -190,7 +192,7 @@ BEGIN
     END IF;
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _v161_results(test_name, ok, details, match_id)
-    VALUES ('T02 Org manual confirm sets timestamps', false, 'exception: '||SQLERRM, v_mid);
+    VALUES ('T02 Org add+confirm via composed flow', false, 'exception: '||SQLERRM, v_mid);
   END;
 
   -- ===========================================================================

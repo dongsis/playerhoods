@@ -597,10 +597,6 @@ export interface Database {
         Args: { p_match_participant_id: string }
         Returns: MatchParticipant
       }
-      rpc_match_manual_confirm: {
-        Args: { p_match_participant_id: string; p_note?: string }
-        Returns: MatchParticipant
-      }
       // v1.7: Guest / Contact Player flows
       rpc_match_nominate_guest: {
         Args: { p_match_id: string; p_guest_id: string }
@@ -614,11 +610,6 @@ export interface Database {
       // v1.7: Delegate-confirm pending participant (user or guest).
       rpc_match_delegate_confirm_participant: {
         Args: { p_match_participant_id: string }
-        Returns: MatchParticipant
-      }
-      // v1.6.1: Organizer directly confirms a user (InScope OR ShareGroup).
-      rpc_match_manual_confirm_user: {
-        Args: { p_match_id: string; p_user_id: string }
         Returns: MatchParticipant
       }
       // v1.6.2-lite: Roster guest RPCs

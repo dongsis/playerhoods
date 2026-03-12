@@ -87,3 +87,10 @@ coverage/
 tmp/
 temp/
 *.tmp
+# AI runtime files
+ai/inbox/task_for_cursor.md
+ai/inbox/task_for_chatgpt.md
+ai/outbox/cursor_report.md
+ai/outbox/chatgpt_review.md
+ai/outbox/technical_snapshot.md
+ai/state/project_state.local.md

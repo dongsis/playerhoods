@@ -70,8 +70,8 @@
 | `rpc_match_nominate_guest` | `can_nominate_guest(match_id, auth.uid())` | guest in roster |
 | `rpc_match_accept_invite` | 自己是参与者 | — |
 | `rpc_match_org_approve_participant` | `is_match_organizer(match_id, auth.uid())` | — |
-| `rpc_match_manual_confirm` | `is_match_organizer(match_id, auth.uid())` | — |
-| `rpc_match_manual_confirm_user` | `is_match_organizer(match_id, auth.uid())` | `can_invite_target(match_id, target)` |
+| `rpc_match_manual_confirm` | *(deprecated stub)* | — |
+| `rpc_match_manual_confirm_user` | *(deprecated stub)* | — |
 | `rpc_match_delegate_confirm_participant` | **User:** `can_delegate_confirm_user`; **Guest:** `is_user_match_associated` | User: `do_users_share_group`; Guest: — |
 | `rpc_match_remove_participant` | `is_match_organizer` OR `can_manage_participants` | — |
 | `rpc_match_user_withdraw` | 自己是参与者 | — |

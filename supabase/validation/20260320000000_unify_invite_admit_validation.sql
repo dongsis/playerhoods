@@ -62,8 +62,8 @@ END$$;
 DO $$
 DECLARE
   v_funcs text[] := ARRAY[
-    'rpc_match_invite_user', 'rpc_match_admit_user', 'rpc_match_manual_confirm',
-    'rpc_match_manual_confirm_user', 'rpc_match_remove_participant',
+    'rpc_match_invite_user', 'rpc_match_admit_user',
+    'rpc_match_remove_participant',
     'rpc_match_org_approve_participant', 'rpc_match_request_join',
     'rpc_match_user_withdraw', 'rpc_match_create', 'rpc_match_nominate_user',
     'rpc_match_nominate_guest',     'rpc_match_delegate_confirm_participant',
