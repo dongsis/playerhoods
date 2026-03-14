@@ -28,10 +28,13 @@ If a topic is not fully specified here, follow the canonical document linked for
 The following are authoritative for database behavior and DB-facing implementation governance:
 
 1. **This index** (`00_AUTHORITATIVE_INDEX.md`) for authority mapping and conflict resolution
-2. **DB Governance Charter** for global database invariants and governance rules
-3. **Topic-level canonical documents** for lifecycle, delegate, permissions, admission/discovery rules
-4. **Current append-only migrations** as the implementation change history
-5. **Current schema / facts snapshots** as implementation evidence, subject to drift review
+2. **Baseline overview and semantics** in `../baseline/DB_BASELINE_2026-03-14.md` and `../baseline/DB_SEMANTICS_BASELINE.md`
+3. **Current schema baseline snapshot** in `../baseline/schema_baseline.sql`
+4. **DB Governance Charter** for global database invariants and governance rules
+5. **Topic-level canonical documents** for lifecycle, delegate, permissions, admission/discovery rules
+6. **Migration status index** in `../baseline/MIGRATION_STATUS_INDEX.md`
+7. **Current append-only migrations** as implementation change history
+8. **Current schema / facts snapshots** as implementation evidence, subject to drift review
 
 ---
 
@@ -53,11 +56,12 @@ Where an older consolidated master spec still contains useful domain intent, it 
 
 When conflicts exist, resolve them in this order:
 
-1. **Global canonical invariants** in the governance charter
-2. **Topic-level canonical documents**
-3. **Most recent validated migration intent**
-4. **Current schema / facts snapshot**
-5. **Older specs, audits, or historical planning documents**
+1. **Baseline semantics and baseline overview**
+2. **Global canonical invariants** in the governance charter
+3. **Topic-level canonical documents**
+4. **Most recent validated migration intent**
+5. **Current schema / facts snapshot**
+6. **Older specs, audits, or historical planning documents**
 
 ### Interpretation rule
 If implementation appears valid in the current schema but conflicts with:
@@ -250,13 +254,19 @@ If a document is not clearly classified, it should not be treated as authoritati
 Before generating or reviewing any DB-facing change, read in this order:
 
 1. `00_AUTHORITATIVE_INDEX.md`
-2. `DB_GOVERNANCE_CHARTER.md`
-3. the relevant topic canonical document(s)
-4. latest relevant facts / schema truth check
-5. current migrations touching the same area
-6. active spec / audit for the current work item
+2. `../baseline/DB_BASELINE_2026-03-14.md`
+3. `../baseline/schema_baseline.sql`
+4. `../baseline/DB_SEMANTICS_BASELINE.md`
+5. `../baseline/LEGACY_AND_RETIRED_ITEMS.md`
+6. `../baseline/MIGRATION_STATUS_INDEX.md`
+7. `DB_GOVERNANCE_CHARTER.md`
+8. the relevant topic canonical document(s)
+9. latest relevant facts / schema truth check
+10. current migrations touching the same area (only when needed for traceability)
+11. active spec / audit for the current work item
 
 No migration or DB-facing implementation should proceed without confirming alignment across these layers.
+Do not start by reverse-reading large historical migration ranges to infer current rules.
 
 ---
 
@@ -267,6 +277,14 @@ Migration writing rules, validation expectations, and PR requirements are govern
 - `MIGRATION_GOVERNANCE_REQUIREMENTS.md`
 
 This index does not restate those details in full.
+
+### Practical migration handling rule
+
+- Keep old migration files as historical ledger.
+- Do not rewrite old migration files.
+- Do not move old migration files to simulate cleanup.
+- Perform cleanup by creating **new append-only migrations** that drop/revoke/adjust objects.
+- Use `../baseline/MIGRATION_STATUS_INDEX.md` to determine whether a migration is active foundation, retained history, cleanup track, or non-authoritative design source.
 
 ---
 
