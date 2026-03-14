@@ -15,6 +15,7 @@ export type EmailInvitation = {
   target_name: string | null
   related_type: string
   related_id: string
+  match_participant_id: string | null
   status: string
   magic_link_flow_status: string
   created_at: string

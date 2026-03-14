@@ -6,12 +6,12 @@ export type EmailInvitation = {
   accepted_at: string | null
 }
 
-/** Accept invitation. Validates session email matches target. Idempotent if already accepted. */
-export async function acceptInvitation(
+/** Accept invitation as guest via invitation anchor path. */
+export async function acceptInvitationAsGuest(
   supabase: SupabaseClient,
   invitationId: string
 ): Promise<EmailInvitation> {
-  const { data, error } = await supabase.rpc('rpc_email_invitation_accept', {
+  const { data, error } = await supabase.rpc('rpc_email_invitation_accept_as_guest', {
     p_invitation_id: invitationId,
   })
   if (error) throw error

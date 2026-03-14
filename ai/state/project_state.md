@@ -1,59 +1,60 @@
 # Project State
 
-## Project
-PlayerHoods
+## Current Phase
+Match participant lifecycle has been largely cleaned up and canonicalized on the **local DB**.
 
-## Current Branch
-v1.5-venues-ui
+## Stable Core Model
+### Enter
+- `rpc_match_request_join`
+- `rpc_match_admit_user`
+- `rpc_match_nominate_user` (wrapper)
+- `rpc_match_nominate_guest`
+- internal helper: `apply_participant_admission`
 
-## Current Slice / Workstream
-[fill here]
+### Confirm
+- `rpc_match_accept_invite`
+- `rpc_match_delegate_confirm_participant`
+- internal helper: `apply_participant_acceptance`
 
-## Current Objective
-[一句话说明当前阶段目标]
+### Approve
+- `rpc_match_org_approve_participant`
 
-## Authoritative Documents
-按优先级从高到低：
-1. docs/01_authority/00_AUTHORITATIVE_INDEX.md
-2. docs/01_authority/Migration Governance Requirements.md
-3. docs/01_authority/Match_Participant_Lifecycle_Canonical.md
-4. docs/01_authority/DELEGATE_MODEL_FINAL.md
-5. docs/01_authority/PERMISSION_ARCHITECTURE_v1.md
-6. docs/02_facts/FACTS_functions.md, FACTS_tables.md, SCHEMA_TRUTH_CHECK_2026-03.md
+### Exit
+- `rpc_match_remove_participant`
+- `rpc_match_user_withdraw`
+- internal helper: `apply_participant_exit`
 
-## Frozen Rules
-- 不允许 rewrite 历史 migration
-- 仅允许 append-only migration
-- enum 语义在 v1 中不可静默变更
-- 不允许绕开既定 authoritative contract
-- 所有实现必须与当前 canonical lifecycle 一致
+### Reset
+- `fn_match_detail_change_reconfirm`
 
-## Implementation Constraints
-- 使用 Next.js 14, React 18, Supabase, TypeScript
-- 数据库为 Supabase (local / remote 按环境)
-- 当前测试方式为 Playwright test, scripts/test_v1_3_admission.mjs
-- 当前 deploy / validation 方式为 supabase/validation/*.sql
+## Key Rules
+- Confirmed = `participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL`
+- Status is derived only by `match_participant_reconcile_status`
+- Removed = `removed_at IS NOT NULL`
 
-## Known Decisions
-- [decision 1]
-- [decision 2]
-- [decision 3]
+## Contact Player Decision
+Adopted **Scheme B**:
+- Contact Player can respond to a match via magic link **without registration**
+- Responding to the current match does **not** create a new user participant row
+- Registration is a separate optional CTA
+- After registration, future new flows should prefer **user identity**
+- No full historical canonicalization / no backfill conversion of old match rows
 
-## Known Drift / Risks
-- [risk 1]
-- [risk 2]
+## Current Focus
+- Adjust Contact Player email / magic-link flow to reflect Scheme B
+- Keep current match response and registration as two separate paths
+- Do **not** modify core helpers or participant lifecycle semantics in this step
 
-## Open Questions Requiring Human Approval
-- [question 1]
-- [question 2]
+## Explicit Do-Not-Touch
+- `apply_participant_admission`
+- `apply_participant_acceptance`
+- `apply_participant_exit`
+- `match_participant_reconcile_status`
+- canonical participant row strategy implementation
+- historical/global canonicalization
+- identity_links core rules
 
-## Current Files / Areas In Scope
-- [path 1]
-- [path 2]
-
-## Out of Scope
-- [path or domain 1]
-- [path or domain 2]
-
-## Latest Approved Direction
-[这里放最近一次你明确批准的方向摘要]
+## Notes
+- Local DB is the current source of truth
+- Remote sync is intentionally deferred
+- Canonicalization orchestration is documented as design only, not implemented

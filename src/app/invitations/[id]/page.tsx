@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { getInvitationById } from '@/lib/invitations/get-invitation-by-id'
-import { InvitationActions } from './InvitationActions'
+import { acceptInvitationAsGuestAction, declineInvitationAsGuestAction } from './guest-invitation-actions'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -11,13 +11,13 @@ interface Props {
 export default async function InvitationPage({ params }: Props) {
   const { id } = await params
   const supabase = await createSupabaseServerClient()
-  const user = await getUser()
 
   const inv = await getInvitationById(supabase, id)
   if (!inv) notFound()
 
   const isExpired = inv.expires_at ? new Date(inv.expires_at) < new Date() : false
-  const canRespond = inv.status === 'pending' && !isExpired && inv.caller_email_matches
+  const acceptAction = acceptInvitationAsGuestAction.bind(null, id)
+  const declineAction = declineInvitationAsGuestAction.bind(null, id)
 
   const matchStr = inv.match_summary
     ? [inv.match_summary.game_type, inv.match_summary.match_date, inv.match_summary.club_name]
@@ -60,12 +60,34 @@ export default async function InvitationPage({ params }: Props) {
       )}
 
       {inv.status === 'pending' && !isExpired && (
-        <InvitationActions
-          invitationId={id}
-          targetEmail={inv.target_email}
-          callerEmailMatches={inv.caller_email_matches}
-          isLoggedIn={!!user}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
+            Respond to this invitation for the current match.
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <form action={acceptAction}>
+              <button
+                type="submit"
+                style={{ padding: '0.5rem 1rem', background: '#0369a1', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+              >
+                Yes, I can come
+              </button>
+            </form>
+            <form action={declineAction}>
+              <button
+                type="submit"
+                style={{ padding: '0.5rem 1rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+              >
+                No, I can&apos;t come
+              </button>
+            </form>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
+            <Link href="/login?mode=register" style={{ color: '#0369a1' }}>
+              Register for PlayerHoods
+            </Link>
+          </p>
+        </div>
       )}
 
       <p style={{ marginTop: '1.5rem', fontSize: '0.8rem', color: '#888' }}>

@@ -114,39 +114,6 @@ function Try-ReadFile {
     }
 }
 
-function Try-ReadLatestTimestampedFile {
-    param(
-        [string]$RelativeDirectory,
-        [string]$Prefix,
-        [int]$MaxLines = 120
-    )
-
-    $dirPath = Join-Path $projectRoot $RelativeDirectory
-    if (!(Test-Path $dirPath)) {
-        return "[path not found] $RelativeDirectory"
-    }
-
-    $files = Get-ChildItem -Path $dirPath -File -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -match ('^' + [regex]::Escape($Prefix) + '_(\d{8})\.md$')
-        } |
-        Sort-Object {
-            if ($_.Name -match ('^' + [regex]::Escape($Prefix) + '_(\d{8})\.md$')) {
-                $matches[1]
-            } else {
-                ''
-            }
-        } -Descending
-
-    if (!$files -or $files.Count -eq 0) {
-        return "[file not found] $RelativeDirectory/$Prefix`_mmddhhmm.md"
-    }
-
-    $latest = $files | Select-Object -First 1
-    $relPath = $latest.FullName.Replace($projectRoot + "\", "").Replace("\", "/")
-    return Try-ReadFile -RelativePath $relPath -MaxLines $MaxLines
-}
-
 $projectRoot = Get-ProjectRoot
 Set-Location $projectRoot
 
@@ -209,8 +176,8 @@ $docsFilesLatest = Get-LatestFiles -RelativePath "docs" -MaxItems 30
 # -----------------------------
 # Optional AI files
 # -----------------------------
-$taskForCursor = Try-ReadLatestTimestampedFile -RelativeDirectory "ai/inbox" -Prefix "task_for_curser" -MaxLines 120
-$cursorReport = Try-ReadLatestTimestampedFile -RelativeDirectory "ai/outbox" -Prefix "cursor_report" -MaxLines 120
+$taskForCursor = Try-ReadFile -RelativePath "ai/inbox/task_for_cursor.md" -MaxLines 120
+$cursorReport = Try-ReadFile -RelativePath "ai/outbox/cursor_report.md" -MaxLines 120
 $projectState = Try-ReadFile -RelativePath "ai/state/project_state.md" -MaxLines 120
 
 # -----------------------------
@@ -321,19 +288,14 @@ $(Section-CodeBlock $testFilesLatest)
 ## Latest Files Under docs/
 $(Section-CodeBlock $docsFilesLatest)
 
-## AI State - latest task_for_curser_mmddhhmm.md
+## AI State - task_for_cursor.md
 $(Section-CodeBlock $taskForCursor)
 
-## AI State - latest cursor_report_mmddhhmm.md
+## AI State - cursor_report.md
 $(Section-CodeBlock $cursorReport)
 
 ## AI State - project_state.md
 $(Section-CodeBlock $projectState)
-
-## AI Handoff Naming Rules
-- Cursor must read the latest file in `ai/inbox/` named `task_for_curser_mmddhhmm.md`.
-- Cursor must write its report to `ai/outbox/` using the filename pattern `cursor_report_mmddhhmm.md`.
-- Timestamp format is `MMddHHmm`. Example: `03142358`.
 
 ## Environment Versions
 
