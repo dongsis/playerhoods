@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Club, Group } from '@/lib/types/database'
+import { listMyPendingGroupInvites, type MyPendingGroupInvite } from '@/lib/api/groups'
 
 type Client = SupabaseClient<Database>
 
@@ -10,14 +11,15 @@ export type ClubWithMembers = {
   members: ClubMember[]
 }
 
-export type GroupMemberRow = { userId: string; displayName: string }
+export type GroupMemberRow = { userId: string; displayName: string; status: 'active' | 'pending' }
 
 export type GroupWithMembers = {
   group: Group
   members: GroupMemberRow[]
 }
 
-export type PendingGroupInvite = { groupId: string; groupName: string }
+// Re-export the canonical pending-invite shape from groups API
+export type PendingGroupInvite = MyPendingGroupInvite
 
 export type PlayersData = {
   clubs: ClubWithMembers[]
@@ -31,8 +33,11 @@ export type PlayersData = {
  * Users with no club identity appear in noClub list.
  * 5 parallel queries merged in JS — no nested WHERE.
  */
-export async function getAllPlayersGroupedByClub(supabase: Client): Promise<PlayersData> {
-  const [identitiesRes, clubsRes, profilesRes, groupsRes, groupMembersRes, pendingInvitesRes] = await Promise.all([
+export async function getAllPlayersGroupedByClub(
+  supabase: Client,
+  userId: string,
+): Promise<PlayersData> {
+  const [identitiesRes, clubsRes, profilesRes, groupsRes, groupMembersRes] = await Promise.all([
     supabase
       .from('club_identities')
       .select('user_id, club_id, club_handle')
@@ -51,13 +56,10 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
       .order('name', { ascending: true }),
     supabase
       .from('group_members')
-      .select('group_id, user_id')
-      .eq('status', 'active'),
-    // group_members_select_self RLS auto-filters to auth.uid() rows only
-    supabase
-      .from('group_members')
-      .select('group_id')
-      .eq('status', 'pending'),
+      .select('group_id, user_id, status, accepted_at, removed_at')
+      .eq('status', 'active')
+      .not('accepted_at', 'is', null)
+      .is('removed_at', null),
   ])
 
   const identities = (identitiesRes.data ?? []) as {
@@ -68,7 +70,13 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
   const clubs = (clubsRes.data ?? []) as Club[]
   const profiles = (profilesRes.data ?? []) as { id: string; display_name: string }[]
   const groups = (groupsRes.data ?? []) as Group[]
-  const groupMembers = (groupMembersRes.data ?? []) as { group_id: string; user_id: string }[]
+  const groupMembers = (groupMembersRes.data ?? []) as {
+    group_id: string
+    user_id: string
+    status: 'active'
+    accepted_at: string
+    removed_at: string | null
+  }[]
 
   // Build club map
   const clubMap = new Map(clubs.map(c => [c.id, c]))
@@ -99,36 +107,30 @@ export async function getAllPlayersGroupedByClub(supabase: Client): Promise<Play
   // Build profile display name map
   const profileMap = new Map(profiles.map(p => [p.id, p.display_name]))
 
-  // Group group_members rows by group_id
+  // Group group_members rows by group_id (only active, non-removed members)
   const membersByGroup = new Map<string, GroupMemberRow[]>()
   for (const row of groupMembers) {
     const list = membersByGroup.get(row.group_id) ?? []
     list.push({
       userId: row.user_id,
       displayName: profileMap.get(row.user_id) ?? '',
+      status: row.status,
     })
     membersByGroup.set(row.group_id, list)
   }
 
-  // Build GroupWithMembers list in group name order (only groups with members)
+  // Resolve pending group invites via helper (self-scope, pending+invited+not-removed)
+  const pendingGroupInvites = await listMyPendingGroupInvites(supabase, userId)
+
+  // Build GroupWithMembers list in group name order, excluding pending-invite groups
+  // (those are surfaced as banners via pendingGroupInvites, not in the roster list)
+  const pendingInviteGroupIds = new Set(pendingGroupInvites.map(inv => inv.groupId))
   const groupsResult: GroupWithMembers[] = []
   for (const group of groups) {
+    if (pendingInviteGroupIds.has(group.id)) continue
     const members = membersByGroup.get(group.id)
     if (members && members.length > 0) {
       groupsResult.push({ group, members })
-    }
-  }
-
-  // Resolve pending group invites: deduplicate by group_id and exclude already-active groups
-  const groupMap = new Map(groups.map(g => [g.id, g.name]))
-  const activeGroupIds = new Set((groupMembersRes.data ?? []).map(row => row.group_id as string))
-  const seenGroupIds = new Set<string>()
-  const pendingGroupInvites: PendingGroupInvite[] = []
-  for (const row of (pendingInvitesRes.data ?? [])) {
-    const groupId = row.group_id as string
-    if (!seenGroupIds.has(groupId) && !activeGroupIds.has(groupId)) {
-      seenGroupIds.add(groupId)
-      pendingGroupInvites.push({ groupId, groupName: groupMap.get(groupId) ?? groupId })
     }
   }
 

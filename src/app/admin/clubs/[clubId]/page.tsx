@@ -121,7 +121,7 @@ export default async function ClubAdminPage({ params }: Props) {
         {superAdmin && (
           <>
             <Link href="/admin/clubs" style={{ color: '#888', textDecoration: 'none' }}>
-              Club Admin
+              Venue Admin
             </Link>
             <span style={{ margin: '0 0.4rem' }}>›</span>
           </>

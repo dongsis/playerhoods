@@ -35,7 +35,10 @@ export function ActivityFeed({ activities }: Props) {
               </em>
             )}
           </div>
-          <time style={{ color: '#aaa', fontSize: '0.75rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <time
+            suppressHydrationWarning
+            style={{ color: '#aaa', fontSize: '0.75rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
             {formatRelativeTime(a.created_at)}
           </time>
         </div>

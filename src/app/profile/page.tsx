@@ -4,16 +4,28 @@ import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import {
   updateProfile,
+  setDisplayName,
   setClubHandle,
   setPrimaryClub,
+  setClubIdentityPreferences,
   checkClubHandle,
   joinClub,
   getMyClubIdentities,
   getJoinableClubs,
+  getMyVenuePreferences,
+  removeVenuePreference,
+  getMyGroupMemberships,
+  setGroupDisplayName,
 } from '@/lib/api/identities'
+import { listSports, getMySports, setUserSports } from '@/lib/api/sports'
 import { ProfileEditForm } from './ProfileEditForm'
+import { DisplayNameEditForm } from './DisplayNameEditForm'
 import { ClubIdentityRow } from './ClubIdentityRow'
+import { DiscoveryAndInvitesSection } from './DiscoveryAndInvitesSection'
 import { ClubJoinForm } from './ClubJoinForm'
+import { GroupAliasRow } from './GroupAliasRow'
+import { SportsPreferenceForm } from './SportsPreferenceForm'
+import { ProfileAvatarSection } from './ProfileAvatarSection'
 
 export default async function ProfilePage() {
   const user = await getUser()
@@ -21,15 +33,31 @@ export default async function ProfilePage() {
 
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: profile }, identities, joinable] = await Promise.all([
+  const [{ data: profile }, identities, joinable, venuePrefs, groupMemberships, sports, mySports] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
     getMyClubIdentities(supabase, user.id),
     getJoinableClubs(supabase, user.id),
+    getMyVenuePreferences(supabase, user.id).catch(() => []),
+    getMyGroupMemberships(supabase, user.id).catch(() => []),
+    listSports(supabase).catch(() => []),
+    getMySports(supabase).catch(() => []),
   ])
 
   if (!profile) redirect('/onboarding/profile')
 
   // Server actions
+  async function handleAvatarSaved() {
+    'use server'
+    revalidatePath('/profile')
+  }
+
+  async function handleSetDisplayName(newName: string) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await setDisplayName(supabase, newName)
+    revalidatePath('/profile')
+  }
+
   async function handleUpdateProfile(formData: FormData) {
     'use server'
     const supabase = await createSupabaseServerClient()
@@ -67,6 +95,49 @@ export default async function ProfilePage() {
     revalidatePath('/profile')
   }
 
+  async function handleSetGroupAlias(groupId: string, alias: string) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await setGroupDisplayName(supabase, groupId, alias)
+    revalidatePath('/profile')
+  }
+
+  async function handleRemoveVenuePref(venueId: string) {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    const u = await getUser()
+    if (!u) return
+    await removeVenuePreference(srv, u.id, venueId)
+    revalidatePath('/profile')
+  }
+
+  async function handleSaveGlobalPreferences(params: {
+    show_in_club_member_discovery?: boolean
+    allow_non_group_invites?: boolean
+  }) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await updateProfile(supabase, params)
+    revalidatePath('/profile')
+  }
+
+  async function handleSetClubPreferences(clubId: string, params: {
+    visible_in_club_member_discovery?: 'true' | 'false' | 'inherit'
+    accept_non_group_invites_in_club?: 'true' | 'false' | 'inherit'
+  }) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await setClubIdentityPreferences(supabase, clubId, params)
+    revalidatePath('/profile')
+  }
+
+  async function handleSetSports(codes: string[]) {
+    'use server'
+    const supabase = await createSupabaseServerClient()
+    await setUserSports(supabase, codes)
+    revalidatePath('/profile')
+  }
+
   return (
     <div style={{ maxWidth: '700px', margin: '0 auto', padding: '1.5rem' }}>
       <nav style={{ marginBottom: '1rem' }}>
@@ -75,15 +146,64 @@ export default async function ProfilePage() {
 
       <h1>Your Profile</h1>
 
-      {/* Display name (read-only — set via club handle or onboarding) */}
+      {/* v1.5 Identity: global display name (directly editable) */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
         <h2 style={{ marginTop: 0 }}>Identity</h2>
-        <p style={{ margin: '0 0 0.25rem' }}>
-          <strong>Display Name:</strong> {profile.display_name || <em style={{ color: '#888' }}>not set</em>}
+        <div style={{ marginBottom: '1rem' }}>
+          <ProfileAvatarSection
+            userId={user.id}
+            currentAvatarUrl={profile.avatar_url ?? null}
+            onAvatarSaved={handleAvatarSaved}
+          />
+        </div>
+        <div style={{ marginBottom: '0.4rem' }}>
+          <span style={{ fontSize: '0.85rem', color: '#666', display: 'block', marginBottom: '0.3rem' }}>
+            Display Name — your global identity across playerhoods
+          </span>
+          {profile.display_name ? (
+            <DisplayNameEditForm
+              displayName={profile.display_name}
+              onSave={handleSetDisplayName}
+            />
+          ) : (
+            <em style={{ color: '#888' }}>Not set — complete onboarding to set your name.</em>
+          )}
+        </div>
+      </section>
+
+      {/* v1.6.3: Sports I Play */}
+      {sports.length > 0 && (
+        <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
+          <h2 style={{ marginTop: 0 }}>Sports I Play</h2>
+          <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#666' }}>
+            Select the sports you play. This helps with filtering and discovery.
+          </p>
+          <SportsPreferenceForm
+            sports={sports}
+            initialSportIds={mySports.map(s => s.sport_id)}
+            onSave={handleSetSports}
+          />
+        </section>
+      )}
+
+      {/* v1.5 Identity: group-scoped aliases */}
+      <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
+        <h2 style={{ marginTop: 0 }}>Group Aliases</h2>
+        <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#666' }}>
+          Set a contextual alias per group. Your alias takes priority over your display name within that group.
         </p>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
-          Your display name is set by your primary club handle. To change it, rename your handle in the primary club below.
-        </p>
+        {groupMemberships.length === 0 ? (
+          <p style={{ color: '#888', fontSize: '0.85rem' }}>You are not an active member of any groups.</p>
+        ) : (
+          groupMemberships.map(m => (
+            <GroupAliasRow
+              key={m.id}
+              membership={m}
+              userDisplayName={profile.display_name ?? ''}
+              onSetAlias={handleSetGroupAlias}
+            />
+          ))
+        )}
       </section>
 
       {/* Non-identity fields */}
@@ -96,11 +216,25 @@ export default async function ProfilePage() {
         />
       </section>
 
-      {/* Club memberships */}
+      {/* Phase 1: Discovery & Invites — two capability blocks, each with global + per-club */}
       <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
-        <h2 style={{ marginTop: 0 }}>Club Memberships</h2>
+        <DiscoveryAndInvitesSection
+          showInClubMemberDiscovery={profile.show_in_club_member_discovery ?? true}
+          allowNonGroupInvites={profile.allow_non_group_invites ?? true}
+          identities={identities}
+          onSaveGlobal={handleSaveGlobalPreferences}
+          onSetClubPreferences={handleSetClubPreferences}
+        />
+      </section>
+
+      {/* Venue Memberships — handle, rename, primary */}
+      <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
+        <h2 style={{ marginTop: 0 }}>Venue Memberships</h2>
+        <p style={{ margin: '0 0 0.6rem', fontSize: '0.82rem', color: '#aaa' }}>
+          Per-venue handles are legacy. Your display name is now managed directly above.
+        </p>
         {identities.length === 0 ? (
-          <p style={{ color: '#888' }}>You have not joined any clubs yet.</p>
+          <p style={{ color: '#888' }}>You have not joined any venues yet.</p>
         ) : (
           identities.map(identity => (
             <ClubIdentityRow
@@ -114,10 +248,44 @@ export default async function ProfilePage() {
         )}
       </section>
 
-      {/* Join a club */}
+      {/* My saved venues (lightweight preference, no handle required) */}
+      {venuePrefs.length > 0 && (
+        <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
+          <h2 style={{ marginTop: 0 }}>My Saved Venues</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {venuePrefs.map(v => (
+              <div
+                key={v.id}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}
+              >
+                <div>
+                  <Link href={`/venues/${v.id}`} style={{ fontWeight: 500, fontSize: '0.9rem' }}>
+                    {v.name}
+                  </Link>
+                  {(v.location_text || v.timezone) && (
+                    <div style={{ fontSize: '0.78rem', color: '#888' }}>
+                      {[v.location_text, v.timezone].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </div>
+                <form action={handleRemoveVenuePref.bind(null, v.id)}>
+                  <button
+                    type="submit"
+                    style={{ fontSize: '0.78rem', color: '#999', background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem 0.4rem' }}
+                  >
+                    Remove
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Join a venue */}
       {joinable.length > 0 && (
         <section style={{ padding: '1rem', border: '1px solid #ccc' }}>
-          <h2 style={{ marginTop: 0 }}>Join a Club</h2>
+          <h2 style={{ marginTop: 0 }}>Join a Venue</h2>
           <ClubJoinForm
             clubs={joinable}
             defaultHandle={profile.display_name ?? ''}

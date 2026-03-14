@@ -3,21 +3,22 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { addGuestOrg, addGuestParticipant } from '@/lib/api/matches'
+import { createRosterGuest } from '@/lib/api/roster'
+import { nominateGuest } from '@/lib/api/matches'
+import { processDeliveriesAction } from './process-deliveries-action'
 
 interface Props {
   matchId: string
-  isOrganizer: boolean
 }
 
 /**
- * Add a nonregistered player to a match.
- * v1.3: Split into two RPCs based on caller role:
- * - ORG: rpc_match_add_guest_org (immediately confirmed)
- * - Participant: rpc_match_add_guest_participant (pending, needs ORG approval)
+ * Add a Contact Player to a match.
+ * v1.7: Uses rpc_match_nominate_guest (create roster guest + nominate).
  */
-export function AddGuestForm({ matchId, isOrganizer }: Props) {
+export function AddGuestForm({ matchId }: Props) {
   const [displayName, setDisplayName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [guestNotes, setGuestNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,20 +31,34 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
     setSuccess(false)
     setLoading(true)
 
-    const supabase = createSupabaseBrowserClient()
+    const emailVal = email.trim() || null
+    const phoneVal = phone.trim() || null
+    if (!emailVal && !phoneVal) {
+      setError('Please enter either email or phone number.')
+      setLoading(false)
+      return
+    }
 
     try {
-      if (isOrganizer) {
-        await addGuestOrg(supabase, matchId, displayName, guestNotes || undefined)
-      } else {
-        await addGuestParticipant(supabase, matchId, displayName, guestNotes || undefined)
-      }
+      const supabase = createSupabaseBrowserClient()
+      // 1) Create Contact Player in caller's roster
+      const guest = await createRosterGuest(supabase, {
+        display_name: displayName,
+        email: emailVal,
+        phone: phoneVal,
+        notes: guestNotes || null,
+      })
+      // 2) Nominate that Contact Player into this match
+      await nominateGuest(supabase, matchId, guest.id)
+      await processDeliveriesAction()
       setSuccess(true)
       setDisplayName('')
+      setEmail('')
+      setPhone('')
       setGuestNotes('')
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add player')
+      setError((err as { message?: string })?.message ?? 'Failed to add player')
     } finally {
       setLoading(false)
     }
@@ -54,13 +69,32 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
       <div style={{ marginBottom: '0.5rem' }}>
         <input
           type="text"
-          placeholder="Player name"
+          placeholder="Player name *"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           required
           style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
         />
       </div>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ flex: 1, padding: '0.5rem', boxSizing: 'border-box' }}
+        />
+        <input
+          type="tel"
+          placeholder="Phone"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          style={{ flex: 1, padding: '0.5rem', boxSizing: 'border-box' }}
+        />
+      </div>
+      <p style={{ fontSize: '0.75rem', color: '#666', margin: '-0.25rem 0 0.5rem' }}>
+        Email or phone required. <strong>Email needed for match notifications.</strong>
+      </p>
       <div style={{ marginBottom: '0.5rem' }}>
         <input
           type="text"
@@ -70,11 +104,11 @@ export function AddGuestForm({ matchId, isOrganizer }: Props) {
           style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
         />
       </div>
-      <button type="submit" disabled={loading}>
-        {loading ? 'Adding...' : 'Add Nonregistered Player'}
+      <button type="submit" disabled={loading || (!email.trim() && !phone.trim())}>
+        {loading ? 'Creating...' : 'Create & Nominate'}
       </button>
       {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
-      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Player added!</p>}
+      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Contact Player added!</p>}
     </form>
   )
 }

@@ -22,8 +22,11 @@ type Client = SupabaseClient<Database>
 // v1.4.1 enriched types
 // ============================================================================
 
-/** Participant with display_name resolved via club handle (or profile fallback). */
-export type MatchParticipantEnriched = MatchParticipant & { display_name: string }
+/** Participant with display_name and avatar_url resolved via club handle / profile. */
+export type MatchParticipantEnriched = MatchParticipant & {
+  display_name: string
+  avatar_url?: string | null
+}
 
 /** Flattened activity row for ActivityFeed — all names resolved server-side. */
 export type ActivityItem = {
@@ -54,8 +57,11 @@ export type MatchDetailData = {
   myParticipant: MatchParticipantEnriched | null
   isOrganizer: boolean
   confirmedCount: number
+  pendingCount: number
   activities: ActivityItem[]
   organizerName: string
+  scopeGroups: { id: string; name: string }[]
+  sportName: string  // v1.6.3
 }
 
 // Read operations (respect RLS)
@@ -240,10 +246,10 @@ export async function getMatchParticipants(supabase: Client, matchId: string): P
   return result
 }
 
-export async function isUserInMatchScope(supabase: Client, matchId: string, userId: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc('is_user_in_match_scope', {
+/** v1.5: Self-only scope check. Uses is_caller_in_match_scope (safe, granted to authenticated). */
+export async function isCallerInMatchScope(supabase: Client, matchId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_caller_in_match_scope', {
     p_match_id: matchId,
-    p_user_id: userId,
   })
   if (error) throw error
   return data as boolean
@@ -338,12 +344,20 @@ export async function cancelMatch(supabase: Client, matchId: string): Promise<vo
 export async function updateMatchDetails(
   supabase: Client,
   matchId: string,
-  data: { match_date?: string | null; start_time?: string | null; duration_minutes?: number | null }
+  data: {
+    match_date?: string | null
+    start_time?: string | null
+    duration_minutes?: number | null
+    invitation_scope_group_ids?: string[] | null
+  }
 ): Promise<void> {
-  const { error } = await supabase
-    .from('matches')
-    .update(data)
-    .eq('id', matchId)
+  const updateData: Record<string, unknown> = {}
+  if (data.match_date !== undefined) updateData.match_date = data.match_date
+  if (data.start_time !== undefined) updateData.start_time = data.start_time
+  if (data.duration_minutes !== undefined) updateData.duration_minutes = data.duration_minutes
+  if (data.invitation_scope_group_ids !== undefined) updateData.invitation_scope_group_ids = data.invitation_scope_group_ids
+  if (Object.keys(updateData).length === 0) return
+  const { error } = await supabase.from('matches').update(updateData).eq('id', matchId)
   if (error) throw error
 }
 
@@ -357,16 +371,34 @@ export async function setMatchSingleCourt(
   courtLabel: string | null,
   userId: string
 ): Promise<void> {
+  return setMatchCourts(supabase, matchId, courtLabel ? [courtLabel] : [], userId)
+}
+
+/**
+ * Replace all court slots with the given list of court labels (slot_index 1, 2, 3…).
+ * Organizer only — match_courts RLS allows organizer to insert/delete.
+ */
+export async function setMatchCourts(
+  supabase: Client,
+  matchId: string,
+  courtLabels: string[],
+  userId: string
+): Promise<void> {
   const { error: delErr } = await supabase
     .from('match_courts')
     .delete()
     .eq('match_id', matchId)
   if (delErr) throw delErr
 
-  if (courtLabel) {
-    const { error: insErr } = await supabase
-      .from('match_courts')
-      .insert({ match_id: matchId, slot_index: 0, court_label: courtLabel, created_by: userId })
+  const labels = courtLabels.map(l => l?.trim()).filter(Boolean)
+  if (labels.length > 0) {
+    const rows = labels.map((court_label, i) => ({
+      match_id: matchId,
+      slot_index: i + 1,
+      court_label,
+      created_by: userId,
+    }))
+    const { error: insErr } = await supabase.from('match_courts').insert(rows)
     if (insErr) throw insErr
   }
 }
@@ -375,89 +407,111 @@ export async function setMatchSingleCourt(
 // v1.3 Write operations (via RPC only)
 // ============================================================================
 
-/** Request to join a match. v1.3: Must be in scope groups. */
-export async function requestJoinMatch(supabase: Client, matchId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_request_join', {
-    p_match_id: matchId,
-    ...(note ? { p_note: note } : {}),
-  })
+/** v1.5: Request to join a match. Requester must be in scope groups. Empty scope → rejected. */
+export async function requestJoinMatch(supabase: Client, matchId: string) {
+  const { error } = await supabase.rpc('rpc_match_request_join', { p_match_id: matchId })
   if (error) throw error
 }
 
-/** Invite a user. v1.3: NOT restricted by scope. */
-export async function inviteUserToMatch(supabase: Client, matchId: string, userId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_invite_user', {
+/** Canonical admission write. Organizer → invite (org_approved_at set). Non-org → nominate. Returns participant. */
+export async function admitUserToMatch(
+  supabase: Client,
+  matchId: string,
+  targetUserId: string
+): Promise<MatchParticipant> {
+  const { data, error } = await supabase.rpc('rpc_match_admit_user', {
     p_match_id: matchId,
-    p_user_id: userId,
-    ...(note ? { p_note: note } : {}),
+    p_target_user_id: targetUserId,
   })
   if (error) throw error
+  return data as MatchParticipant
 }
 
-/** Nominate a user (participant action). v1.3: NOT restricted by scope. */
-export async function nominateUser(supabase: Client, matchId: string, userId: string, note?: string) {
+/** v1.5: ORG-only invite. Thin wrapper around rpc_match_admit_user. */
+export async function inviteUserToMatch(supabase: Client, matchId: string, userId: string) {
+  await admitUserToMatch(supabase, matchId, userId)
+}
+
+/** v1.5: Nominate a user. join_method=nominated. Scope enforced. ORG or non-removed participant. */
+export async function nominateUser(supabase: Client, matchId: string, userId: string) {
   const { error } = await supabase.rpc('rpc_match_nominate_user', {
     p_match_id: matchId,
     p_user_id: userId,
-    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
-/** Accept a pending invitation. v1.3: Sets user_accepted_at. */
-export async function acceptMatchInvite(supabase: Client, matchId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_accept_invite', {
-    p_match_id: matchId,
-    ...(note ? { p_note: note } : {}),
-  })
+/** v1.5: Accept a pending invitation or nomination. Writes participant_accepted_at + via=in_app. */
+export async function acceptMatchInvite(supabase: Client, matchId: string) {
+  const { error } = await supabase.rpc('rpc_match_accept_invite', { p_match_id: matchId })
   if (error) throw error
 }
 
-/** ORG approves a pending participant. v1.3: ORG ONLY. */
-export async function orgApproveParticipant(supabase: Client, participantId: string, note?: string) {
+/** v1.5: ORG approves a pending participant. Writes org_approved_at. */
+export async function orgApproveParticipant(supabase: Client, participantId: string) {
   const { error } = await supabase.rpc('rpc_match_org_approve_participant', {
     p_match_participant_id: participantId,
-    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
-/** User withdraws (decline invite or leave). v1.3: Unified. */
-export async function userWithdraw(supabase: Client, matchId: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_user_withdraw', {
-    p_match_id: matchId,
-    ...(note ? { p_note: note } : {}),
-  })
+/**
+ * ORG add+confirm user by id. Composed: admit_user + delegate_confirm.
+ * Organizer path in rpc_match_admit_user already sets org_approved_at, so only delegateConfirmParticipant needed after admit.
+ * Replaces deprecated rpc_match_manual_confirm_user.
+ */
+export async function manualConfirmUser(supabase: Client, matchId: string, userId: string) {
+  const participant = await admitUserToMatch(supabase, matchId, userId)
+  await delegateConfirmParticipant(supabase, participant.id)
+}
+
+/**
+ * ORG manually confirms an existing pending participant. Composed: delegate_confirm + org_approve.
+ * Replaces deprecated rpc_match_manual_confirm.
+ */
+export async function manualConfirmParticipant(supabase: Client, participantId: string, _note?: string) {
+  await delegateConfirmParticipant(supabase, participantId)
+  await orgApproveParticipant(supabase, participantId)
+}
+
+/** v1.5: User withdraws (decline invite or leave). Sets removed_at. */
+export async function userWithdraw(supabase: Client, matchId: string) {
+  const { error } = await supabase.rpc('rpc_match_user_withdraw', { p_match_id: matchId })
   if (error) throw error
 }
 
-/** ORG/manager removes participant. */
-export async function removeParticipant(supabase: Client, participantId: string, note?: string) {
+/** v1.5: ORG/manager removes participant. Sets removed_at. */
+export async function removeParticipant(supabase: Client, participantId: string) {
   const { error } = await supabase.rpc('rpc_match_remove_participant', {
     p_match_participant_id: participantId,
-    ...(note ? { p_note: note } : {}),
   })
   if (error) throw error
 }
 
-/** ORG adds guest (immediately confirmed). */
-export async function addGuestOrg(supabase: Client, matchId: string, displayName: string, guestNotes?: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_add_guest_org', {
+/** v1.5: ORG adds guest (join_method=manual, confirmed immediately). */
+// Deprecated addGuestOrg/addGuestParticipant paths have been replaced by the
+// unified nominate-guest model. Use rpc_match_nominate_guest + rpc_match_delegate_confirm_participant.
+
+/** Nominate an existing Contact Player (guest) into a match. */
+export async function nominateGuest(
+  supabase: Client,
+  matchId: string,
+  guestId: string,
+) {
+  const { error } = await supabase.rpc('rpc_match_nominate_guest', {
     p_match_id: matchId,
-    p_guest_display_name: displayName,
-    p_guest_notes: guestNotes ?? '',
-    ...(note ? { p_note: note } : {}),
+    p_guest_id: guestId,
   })
   if (error) throw error
 }
 
-/** Participant adds guest (pending, needs ORG approval). */
-export async function addGuestParticipant(supabase: Client, matchId: string, displayName: string, guestNotes?: string, note?: string) {
-  const { error } = await supabase.rpc('rpc_match_add_guest_participant', {
-    p_match_id: matchId,
-    p_guest_display_name: displayName,
-    p_guest_notes: guestNotes ?? '',
-    ...(note ? { p_note: note } : {}),
+/** v1.7: Delegate-confirm an existing pending participant (user or guest). Sets participant_accepted_at. */
+export async function delegateConfirmParticipant(
+  supabase: Client,
+  matchParticipantId: string,
+) {
+  const { error } = await supabase.rpc('rpc_match_delegate_confirm_participant', {
+    p_match_participant_id: matchParticipantId,
   })
   if (error) throw error
 }
@@ -516,6 +570,7 @@ export async function createMatch(
     can_participants_invite_users?: boolean
     can_participants_add_guests?: boolean
     can_participants_manage_participants?: boolean
+    sport_id?: number  // v1.6.3: rpc_match_create doesn't accept p_sport_id; we update after create
   }
 ) {
   // Only pass explicitly-set values; omitted args use RPC/DB defaults as single source of truth
@@ -551,6 +606,16 @@ export async function createMatch(
         .insert(rows)
       if (courtError) throw courtError
     }
+  }
+
+  // v1.6.3: rpc_match_create doesn't accept p_sport_id; update after create if non-default
+  if (data.sport_id != null && data.sport_id !== 1) {
+    const { error: sportError } = await supabase
+      .from('matches')
+      .update({ sport_id: data.sport_id })
+      .eq('id', created.id)
+    if (sportError) throw sportError
+    created.sport_id = data.sport_id
   }
 
   return created
@@ -606,21 +671,16 @@ export async function getMatchListData(
   supabase: Client,
   userId: string | null,
 ): Promise<MatchListItem[]> {
-  const [matchesRes, formedRes] = await Promise.all([
-    supabase
-      .from('matches')
-      .select('*')
-      .neq('status', 'cancelled')
-      .order('start_at_utc', { ascending: true }),
-    supabase.from('match_formed').select('*'),
-  ])
+  const matchesRes = await supabase
+    .from('matches')
+    .select('*')
+    .neq('status', 'cancelled')
+    .order('start_at_utc', { ascending: true })
   if (matchesRes.error) throw matchesRes.error
-  if (formedRes.error) throw formedRes.error
 
   const matches = matchesRes.data as Match[]
   if (matches.length === 0) return []
 
-  const formedMap = new Map((formedRes.data as MatchFormed[]).map(f => [f.match_id, f]))
   const matchIds = matches.map(m => m.id)
   const clubIds = [...new Set(matches.filter(m => m.club_id).map(m => m.club_id as string))]
 
@@ -641,22 +701,35 @@ export async function getMatchListData(
 
   const userIds = [...new Set(allParticipants.filter(p => p.user_id).map(p => p.user_id as string))]
   const guestIds = [...new Set(allParticipants.filter(p => p.guest_id).map(p => p.guest_id as string))]
+  const guestParticipantIds = allParticipants.filter(p => p.guest_id).map(p => p.id)
 
-  const [profilesRes, identityMap, guestsRes] = await Promise.all([
+  const [profilesRes, identityMap, guestsRes, identityLinksRes] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('profile_display').select('id, display_name').in('id', userIds)
+      ? supabase.from('profile_display').select('*').in('id', userIds)
       : Promise.resolve({ data: [] }),
     fetchIdentityMap(supabase, clubIds, userIds),
     guestIds.length > 0
       ? supabase.from('guests').select('id, display_name').in('id', guestIds)
       : Promise.resolve({ data: [] }),
+    userId && guestParticipantIds.length > 0
+      ? (async () => {
+          const r = await supabase.from('identity_links').select('linked_id, user_id').eq('user_id', userId).eq('linked_type', 'guest_participant').in('linked_id', guestParticipantIds)
+          return r.error ? { data: [] } : r
+        })()
+      : Promise.resolve({ data: [] }),
   ])
 
+  const profileDisplayMap = new Map(
+    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p])
+  )
   const profileMap = new Map(
     ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name])
   )
   const guestMap = new Map(
     ((guestsRes.data ?? []) as { id: string; display_name: string }[]).map(g => [g.id, g.display_name])
+  )
+  const participantLinkedToUser = new Map(
+    ((identityLinksRes.data ?? []) as { linked_id: string; user_id: string }[]).map((r) => [r.linked_id, r.user_id])
   )
 
   const byMatch = new Map<string, MatchParticipant[]>()
@@ -667,26 +740,41 @@ export async function getMatchListData(
   }
 
   return matches.map(match => {
-    const formed = formedMap.get(match.id)
     const club = match.club_id ? (clubMap.get(match.club_id) ?? null) : null
     const mps = byMatch.get(match.id) ?? []
 
-    const enriched: MatchParticipantEnriched[] = mps.map(p => ({
-      ...p,
-      display_name: resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap),
-    }))
+    const enriched: MatchParticipantEnriched[] = mps.map(p => {
+      const linkedUserId = p.guest_id ? participantLinkedToUser.get(p.id) : null
+      const effectiveUserId = p.user_id ?? linkedUserId
+      const displayName = effectiveUserId
+        ? (profileMap.get(effectiveUserId) ?? resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap))
+        : resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap)
+      const profileDisplay = effectiveUserId ? profileDisplayMap.get(effectiveUserId) : null
+      return {
+        ...p,
+        display_name: displayName,
+        avatar_url: profileDisplay?.avatar_url ?? null,
+      }
+    })
 
-    const confirmed = enriched.filter(p => p.status === 'confirmed')
+    const confirmed = enriched.filter(p =>
+      p.status === 'confirmed' ||
+      (p.user_id === match.organizer_id && p.status !== 'removed')
+    )
     const pending = enriched.filter(p => p.status === 'pending')
-    const myParticipant = userId ? (enriched.find(p => p.user_id === userId) ?? null) : null
+    const myParticipant = userId
+      ? (enriched.find(p => p.user_id === userId || participantLinkedToUser.get(p.id) === userId) ?? null)
+      : null
 
     return {
       match,
       clubTimezone: club?.timezone ?? null,
       clubName: club?.name ?? null,
-      confirmedCount: formed?.confirmed_count ?? confirmed.length,
+      // Use status-based local counts — more reliable than confirmed_at-based view
+      // (old participants may have status='confirmed' but confirmed_at=NULL; view undercounts them).
+      confirmedCount: confirmed.length,
       pendingCount: pending.length,
-      isFormed: formed?.is_formed ?? false,
+      isFormed: confirmed.length >= match.required_count,
       participants: enriched,
       myParticipant,
     }
@@ -727,25 +815,36 @@ export async function getMatchDetailData(
     club = data as unknown as ClubRow | null
   }
 
-  // Collect IDs needed for name resolution (include organizer even if not a participant)
+  // Collect IDs needed for name resolution (include organizer, participants, linked users for identity display)
   const userIds = [...new Set([
     match.organizer_id,
     ...participants.filter(p => p.user_id).map(p => p.user_id as string),
     ...actions.map(a => a.created_by),
+    ...(userId ? [userId] : []),
   ])]
   const guestIds = [...new Set(participants.filter(p => p.guest_id).map(p => p.guest_id as string))]
+  const guestParticipantIds = participants.filter(p => p.guest_id).map(p => p.id)
   const clubIds = match.club_id ? [match.club_id] : []
 
-  const [profilesRes, identityMap, guestsRes] = await Promise.all([
+  const [profilesRes, identityMap, guestsRes, identityLinksRes] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('profile_display').select('id, display_name').in('id', userIds)
+      ? supabase.from('profile_display').select('*').in('id', userIds)
       : Promise.resolve({ data: [] }),
     fetchIdentityMap(supabase, clubIds, userIds),
     guestIds.length > 0
       ? supabase.from('guests').select('id, display_name').in('id', guestIds)
       : Promise.resolve({ data: [] }),
+    userId && guestParticipantIds.length > 0
+      ? (async () => {
+          const r = await supabase.from('identity_links').select('linked_id, user_id').eq('user_id', userId).eq('linked_type', 'guest_participant').in('linked_id', guestParticipantIds)
+          return r.error ? { data: [] } : r
+        })()
+      : Promise.resolve({ data: [] }),
   ])
 
+  const profileDisplayMap = new Map(
+    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p])
+  )
   const profileMap = new Map(
     ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name])
   )
@@ -753,29 +852,77 @@ export async function getMatchDetailData(
     ((guestsRes.data ?? []) as { id: string; display_name: string }[]).map(g => [g.id, g.display_name])
   )
 
+  const participantLinkedToUser = new Map(
+    ((identityLinksRes.data ?? []) as { linked_id: string; user_id: string }[]).map((r) => [r.linked_id, r.user_id])
+  )
+
+  const scopeGroupIds = match.invitation_scope_group_ids ?? []
+  const [scopeGroupsRes, sportRes] = await Promise.all([
+    scopeGroupIds.length > 0
+      ? supabase.from('groups').select('id, name').in('id', scopeGroupIds)
+      : Promise.resolve({ data: [] }),
+    supabase.from('sports').select('display_name').eq('id', match.sport_id).single(),
+  ])
+
   const resolve = (uid: string | null, gid: string | null) =>
     resolveNameFromMaps(uid, gid, match.club_id, identityMap, profileMap, guestMap)
 
-  const enriched: MatchParticipantEnriched[] = participants.map(p => ({
-    ...p,
-    display_name: resolve(p.user_id, p.guest_id),
-  }))
+  const enriched: MatchParticipantEnriched[] = participants.map(p => {
+    const linkedUserId = p.guest_id ? participantLinkedToUser.get(p.id) : null
+    const effectiveUserId = p.user_id ?? linkedUserId
+    const profileDisplay = effectiveUserId ? profileDisplayMap.get(effectiveUserId) : null
+    const displayName = effectiveUserId
+      ? (profileDisplay?.display_name ?? profileMap.get(effectiveUserId) ?? 'Unknown')
+      : resolve(p.user_id, p.guest_id)
+    return {
+      ...p,
+      display_name: displayName,
+      avatar_url: profileDisplay?.avatar_url ?? null,
+    }
+  })
 
   const participantById = new Map(participants.map(p => [p.id, p]))
+
+  // v1.7: For actions whose subject we don't have (RLS may hide), fetch display names via RPC
+  const missingParticipantIds = actions
+    .map(a => a.match_participant_id)
+    .filter((id): id is string => !!id && !participantById.has(id))
+  const participantDisplayNames = new Map<string, string>()
+  if (missingParticipantIds.length > 0) {
+    const { data: namesData } = await supabase.rpc('rpc_match_participant_display_names', {
+      p_match_id: matchId,
+      p_participant_ids: missingParticipantIds,
+    })
+    for (const row of (namesData ?? []) as { participant_id: string; display_name: string }[]) {
+      participantDisplayNames.set(row.participant_id, row.display_name)
+    }
+  }
+
   const activities: ActivityItem[] = actions.map(a => {
     const subject = participantById.get(a.match_participant_id)
+    const subjectName = subject
+      ? resolve(subject.user_id, subject.guest_id)
+      : (participantDisplayNames.get(a.match_participant_id) ?? 'Unknown')
     return {
       id: a.id,
       action_type: a.action_type,
       note: a.note,
       actor_name: resolve(a.created_by, null),
-      subject_name: subject ? resolve(subject.user_id, subject.guest_id) : 'Unknown',
+      subject_name: subjectName,
       created_at: a.created_at,
     }
   })
 
-  const confirmed = enriched.filter(p => p.status === 'confirmed')
-  const myParticipant = userId ? (enriched.find(p => p.user_id === userId) ?? null) : null
+  const confirmed = enriched.filter(p =>
+    p.status === 'confirmed' ||
+    (p.user_id === match.organizer_id && p.status !== 'removed')
+  )
+  const pending = enriched.filter(p => p.status === 'pending' && p.removed_at === null)
+  const isOrganizer = userId === match.organizer_id
+  const myParticipant = userId
+    ? (enriched.find(p => p.user_id === userId || participantLinkedToUser.get(p.id) === userId) ?? null)
+    : null
+  const scopeGroups = ((scopeGroupsRes.data ?? []) as { id: string; name: string }[])
 
   return {
     match,
@@ -783,92 +930,66 @@ export async function getMatchDetailData(
     clubName: club?.name ?? null,
     participants: enriched,
     myParticipant,
-    isOrganizer: userId === match.organizer_id,
-    confirmedCount: formedRes.data?.confirmed_count ?? confirmed.length,
+    isOrganizer,
+    // Use status-based local count for confirmedCount — more reliable than confirmed_at-based view
+    // (old participants may have status='confirmed' but confirmed_at=NULL; view undercounts them).
+    confirmedCount: confirmed.length,
+    // For organizer (sees all participants): use local count.
+    // For non-organizer (RLS hides other pending): use view aggregate to show total pending count.
+    pendingCount: isOrganizer ? pending.length : (formedRes.data?.pending_count ?? 0),
     activities,
     organizerName: resolve(match.organizer_id, null),
+    scopeGroups,
+    sportName: (sportRes.data as { display_name: string } | null)?.display_name ?? 'Unknown',
   }
 }
 
 // ============================================================================
-// Scope user lookup (for invite / nominate dropdowns)
+// v1.6.1 Role-specific roster RPCs (replace rpc_match_scope_users)
 // ============================================================================
 
 export type ScopeUser = { id: string; display_name: string }
 
-/**
- * Returns all active members of the match's invitation scope groups,
- * with display names resolved, excluding any user already in the match
- * (non-removed status). Sorted alphabetically.
- */
-export async function getMatchScopeUsers(
-  supabase: Client,
-  match: Match,
-  excludeUserIds: string[],
-): Promise<ScopeUser[]> {
-  let groupIds: string[] | null = match.invitation_scope_group_ids ?? null
-
-  // Fallback: if no scope groups set on the match, use the organizer's active group memberships
-  // visible to the current caller via RLS:
-  //   - organizer themselves: group_members_select_self (user_id = auth.uid())
-  //   - confirmed participant in a shared group: group_members_select_active_roster_for_active_members
-  if (!groupIds || groupIds.length === 0) {
-    const { data: orgMemberships } = await supabase
-      .from('group_members')
-      .select('group_id')
-      .eq('user_id', match.organizer_id)
-      .eq('status', 'active')
-    groupIds = (orgMemberships ?? []).map(m => m.group_id as string)
-  }
-
-  // Final fallback: organizer not in any group → show all platform users via club_identities
-  // (open RLS USING(true): no access restriction). Covers "Invite is NOT scope-restricted" per v1.4.
-  if (!groupIds || groupIds.length === 0) {
-    const excludeSet = new Set(excludeUserIds)
-    const { data: allIdentities } = await supabase
-      .from('club_identities')
-      .select('user_id, club_handle')
-      .order('club_handle', { ascending: true })
-    const seen = new Set<string>()
-    const result: ScopeUser[] = []
-    for (const row of allIdentities ?? []) {
-      const uid = row.user_id as string | null
-      if (!uid || excludeSet.has(uid) || seen.has(uid)) continue
-      seen.add(uid)
-      result.push({ id: uid, display_name: row.club_handle as string })
-    }
-    return result
-  }
-
-  const { data: members, error } = await supabase
-    .from('group_members')
-    .select('user_id')
-    .in('group_id', groupIds)
-    .eq('status', 'active')
-  if (error) throw error
-
-  const excludeSet = new Set(excludeUserIds)
-  const userIds = [...new Set(
-    (members ?? [])
-      .map(m => m.user_id)
-      .filter((uid): uid is string => !!uid && !excludeSet.has(uid)),
-  )]
-  if (userIds.length === 0) return []
-
-  const clubIds = match.club_id ? [match.club_id] : []
-  const [profilesRes, identityMap] = await Promise.all([
-    supabase.from('profile_display').select('id, display_name').in('id', userIds),
-    fetchIdentityMap(supabase, clubIds, userIds),
-  ])
-
-  const profileMap = new Map(
-    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name]),
-  )
-
-  return userIds
-    .map(uid => ({
-      id: uid,
-      display_name: resolveNameFromMaps(uid, null, match.club_id, identityMap, profileMap, new Map()),
-    }))
-    .sort((a, b) => a.display_name.localeCompare(b.display_name))
+/** Phase 3: Mixed admission target (user or Contact Player). */
+export type AdmissionTarget = {
+  target_kind: 'user' | 'contact_player'
+  target_id: string
+  display_name: string | null
+  avatar_url: string | null
+  club_handle: string | null
+  source: string
+  action_kind: 'admit_user' | 'nominate_contact_player'
+  can_admit: boolean
+  eligible_via: string | null
+  sort_name: string | null
+  contact_email: string | null
 }
+
+/** Phase 3: Unified mixed admission targets (users + Contact Players). */
+export async function getAdmissionTargets(
+  supabase: Client,
+  matchId: string,
+  search?: string | null
+): Promise<AdmissionTarget[]> {
+  const { data, error } = await supabase.rpc('rpc_match_admission_targets', {
+    p_match_id: matchId,
+    p_search: search ?? null,
+  })
+  if (error) throw error
+  return (data ?? []) as AdmissionTarget[]
+}
+
+/** Phase 3: User targets only (for InviteUserForm / NominateUserForm). Maps to ScopeUser for backward compat. */
+export function admissionTargetsToScopeUsers(targets: AdmissionTarget[]): ScopeUser[] {
+  return targets
+    .filter(t => t.action_kind === 'admit_user')
+    .map(t => ({ id: t.target_id, display_name: t.display_name ?? '' }))
+}
+
+/** Phase 3: Contact Player targets only (for InviteGuestForm). */
+export function admissionTargetsToContactPlayers(targets: AdmissionTarget[]): { guest_id: string; display_name: string; email: string | null }[] {
+  return targets
+    .filter(t => t.action_kind === 'nominate_contact_player')
+    .map(t => ({ guest_id: t.target_id, display_name: t.display_name ?? '', email: t.contact_email ?? null }))
+}
+

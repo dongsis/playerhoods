@@ -8,6 +8,7 @@ import { acceptMatchInvite } from '@/lib/api/matches'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
+import { Avatar } from '@/app/components/Avatar'
 
 // ─── inbox split ─────────────────────────────────────────────────────────────
 
@@ -26,18 +27,41 @@ function isInboxItem(item: MatchListItem, nowIso: string): boolean {
   return !isPast(item, nowIso)
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function needsUserAction(item: MatchListItem): boolean {
+  const mp = item.myParticipant
+  if (!mp || mp.status !== 'pending') return false
+  const hasUserAccepted =
+    mp.participant_accepted_at != null
+  const isInvited = mp.join_method === 'invited'
+  const isNominated = mp.join_method === 'nominated'
+  const isRequested = mp.join_method === 'requested'
+
+  if ((isInvited || isNominated) && !hasUserAccepted) return true
+  if (isRequested && mp.org_approved_at !== null && !hasUserAccepted) return true
+  return false
+}
+
 // ─── MatchRow ─────────────────────────────────────────────────────────────────
 
-function MatchRow({ item }: { item: MatchListItem }) {
+function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId: string) => void }) {
   const { match, confirmedCount, pendingCount, isFormed, participants, myParticipant, clubTimezone, clubName } = item
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirmError, setConfirmError] = useState<string | null>(null)
 
+  const hasUserAccepted =
+    myParticipant &&
+    myParticipant.participant_accepted_at != null
   const isInvited =
     myParticipant?.status === 'pending' && myParticipant?.join_method === 'invited'
+  const isNominated =
+    myParticipant?.status === 'pending' && myParticipant?.join_method === 'nominated'
   const isRequested =
     myParticipant?.status === 'pending' && myParticipant?.join_method === 'requested'
+  const needsReconfirmRequested =
+    isRequested && myParticipant?.org_approved_at !== null && !hasUserAccepted
   const isRemoved = myParticipant?.status === 'removed'
 
   const handleConfirm = () => {
@@ -89,10 +113,24 @@ function MatchRow({ item }: { item: MatchListItem }) {
           </span>
         )}
       </div>
-      <div className="flex-1 text-sm text-gray-600 truncate">{roster}</div>
-      {isInvited && (
+      <div className="flex-1 flex items-center gap-2 min-w-0">
+        <div className="flex shrink-0 gap-0.5">
+          {confirmed.slice(0, 3).map(p => (
+            <Avatar key={p.id} src={p.avatar_url} displayName={p.display_name} size="sm" />
+          ))}
+        </div>
+        <span className="text-sm text-gray-600 truncate">{roster}</span>
+      </div>
+      {/* Needs action: invited/nominated not yet accepted, or requested needing re-confirm */}
+      {(isInvited || (isNominated && !hasUserAccepted) || needsReconfirmRequested) && (
         <div className="shrink-0 flex items-center gap-2">
-          <span className="text-xs text-blue-600 font-medium whitespace-nowrap">Invited</span>
+          <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
+            {isNominated
+              ? 'Nominated'
+              : isInvited
+                ? 'Invited'
+                : 'Needs confirm'}
+          </span>
           <button
             onClick={handleConfirm}
             disabled={isPending}
@@ -103,7 +141,13 @@ function MatchRow({ item }: { item: MatchListItem }) {
           {confirmError && <span className="text-xs text-red-500">{confirmError}</span>}
         </div>
       )}
-      {isRequested && (
+      {/* Nominated, already accepted — waiting for organizer approval */}
+      {isNominated && hasUserAccepted && (
+        <span className="shrink-0 text-xs text-blue-600 font-medium whitespace-nowrap">
+          Nominated ✓ · Awaiting approval
+        </span>
+      )}
+      {isRequested && !needsReconfirmRequested && (
         <span className="shrink-0 text-xs text-amber-600 font-medium whitespace-nowrap">
           Awaiting approval
         </span>
@@ -115,6 +159,7 @@ function MatchRow({ item }: { item: MatchListItem }) {
       )}
       <Link
         href={`/matches/${match.id}`}
+        onClick={() => onViewed?.(match.id)}
         className="shrink-0 text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
       >
         Details →
@@ -203,9 +248,10 @@ interface Props {
   items: MatchListItem[]
   userId: string
   onCancelMatch?: (matchId: string) => Promise<void>
+  onViewedMatch?: (matchId: string) => void
 }
 
-export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
+export function MatchesPanel({ items, userId, onCancelMatch, onViewedMatch }: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'history'>('upcoming')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
 
@@ -265,18 +311,22 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
 
       {subTab === 'upcoming' && (
         <>
-          {/* Notifications: pending invites + removed from match */}
-          {(removed.length > 0 || lookingFor.some(i => i.myParticipant?.join_method === 'invited')) && (
+          {/* Notifications: pending invites/nominations/re-confirms + removed from match */}
+          {(removed.length > 0 || lookingFor.some(needsUserAction)) && (
             <section>
-              <SectionHeading label="Notifications" count={removed.length + lookingFor.filter(i => i.myParticipant?.join_method === 'invited').length} />
+              <SectionHeading
+                label="Notifications"
+                count={
+                  removed.length +
+                  lookingFor.filter(needsUserAction).length
+                }
+              />
               <div className="space-y-2">
-                {lookingFor
-                  .filter(i => i.myParticipant?.join_method === 'invited')
-                  .map(item => (
-                    <MatchRow key={item.match.id} item={item} />
-                  ))}
+                {lookingFor.filter(needsUserAction).map(item => (
+                  <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} />
+                ))}
                 {removed.map(item => (
-                  <MatchRow key={item.match.id} item={item} />
+                  <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} />
                 ))}
               </div>
             </section>
@@ -302,7 +352,7 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
 
                   return (
                     <div key={item.match.id} className="mb-2">
-                      <MatchRow item={item} />
+                      <MatchRow item={item} onViewed={onViewedMatch} />
                       {expiring && onCancelMatch && (
                         <ExpiryBanner item={item} hoursLeft={hoursLeft!} onCancel={onCancelMatch} />
                       )}
@@ -313,18 +363,16 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
             )}
           </section>
 
-          {lookingFor.filter(i => i.myParticipant?.join_method !== 'invited').length > 0 && (
+          {lookingFor.filter(i => !needsUserAction(i)).length > 0 && (
             <section>
               <SectionHeading
                 label="Looking for Players"
-                count={lookingFor.filter(i => i.myParticipant?.join_method !== 'invited').length}
+                count={lookingFor.filter(i => !needsUserAction(i)).length}
               />
               <div className="space-y-2">
-                {lookingFor
-                  .filter(i => i.myParticipant?.join_method !== 'invited')
-                  .map(item => (
-                    <MatchRow key={item.match.id} item={item} />
-                  ))}
+                {lookingFor.filter(i => !needsUserAction(i)).map(item => (
+                  <MatchRow key={item.match.id} item={item} />
+                ))}
               </div>
             </section>
           )}
@@ -347,7 +395,7 @@ export function MatchesPanel({ items, userId, onCancelMatch }: Props) {
             <>
               <div className="space-y-2">
                 {history.slice(0, historyShown).map(item => (
-                  <MatchRow key={item.match.id} item={item} />
+                  <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} />
                 ))}
               </div>
               {historyShown < history.length && (

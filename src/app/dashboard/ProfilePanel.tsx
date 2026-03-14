@@ -2,16 +2,22 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Profile, ClubIdentity, Club } from '@/lib/types/database'
+import { AvatarUpload } from './AvatarUpload'
 
 interface Props {
-  profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id'>
+  userId: string
+  profile: Pick<Profile, 'display_name' | 'first_name' | 'last_name' | 'primary_club_id' | 'contact_channel' | 'contact_email' | 'contact_phone' | 'avatar_url'>
+  userEmail?: string | null
   myIdentities: (ClubIdentity & { club: Club })[]
   joinableCount: number
   onUpdateProfile: (formData: FormData) => Promise<void>
+  onAvatarSaved: () => Promise<void>
 }
 
-export function ProfilePanel({ profile, myIdentities, joinableCount, onUpdateProfile }: Props) {
+export function ProfilePanel({ userId, profile, userEmail, myIdentities, joinableCount, onUpdateProfile, onAvatarSaved }: Props) {
+  const router = useRouter()
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -32,8 +38,22 @@ export function ProfilePanel({ profile, myIdentities, joinableCount, onUpdatePro
     })
   }
 
+  const handleAvatarSaved = async () => {
+    await onAvatarSaved()
+    router.refresh()
+  }
+
   return (
     <div className="space-y-8 max-w-md">
+      {/* Avatar */}
+      <section>
+        <AvatarUpload
+          userId={userId}
+          currentAvatarUrl={profile.avatar_url ?? null}
+          onSaved={handleAvatarSaved}
+        />
+      </section>
+
       {/* Identity */}
       <section>
         <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
@@ -75,6 +95,64 @@ export function ProfilePanel({ profile, myIdentities, joinableCount, onUpdatePro
               />
             </div>
           </div>
+
+          {/* Contact preferences */}
+          <div className="pt-4 border-t border-gray-100">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              Contact preference
+            </h3>
+            <p className="text-xs text-gray-500 mb-2">
+              How you prefer to receive notifications (email or SMS).
+            </p>
+            <div className="flex gap-4 mb-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="contact_channel"
+                  value="email"
+                  defaultChecked={(profile.contact_channel ?? 'email') === 'email'}
+                  className="text-gray-900"
+                />
+                <span className="text-sm">Email</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="contact_channel"
+                  value="sms"
+                  defaultChecked={profile.contact_channel === 'sms'}
+                  className="text-gray-900"
+                />
+                <span className="text-sm">SMS</span>
+              </label>
+            </div>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Contact email</label>
+                <input
+                  type="email"
+                  name="contact_email"
+                  placeholder={userEmail ?? 'Your registered email'}
+                  defaultValue={profile.contact_email ?? ''}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-gray-300"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Leave empty to use your registered email ({userEmail ?? '—'})
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Contact phone (for SMS)</label>
+                <input
+                  type="tel"
+                  name="contact_phone"
+                  placeholder="+1 234 567 8900"
+                  defaultValue={profile.contact_phone ?? ''}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-gray-300"
+                />
+              </div>
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={isPending}

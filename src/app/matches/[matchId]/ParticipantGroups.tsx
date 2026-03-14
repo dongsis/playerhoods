@@ -5,28 +5,44 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   orgApproveParticipant,
+  manualConfirmParticipant,
   removeParticipant,
   inviteUserToMatch,
+  delegateConfirmParticipant,
 } from '@/lib/api/matches'
+import { processDeliveriesAction } from './process-deliveries-action'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
+import { Avatar } from '@/app/components/Avatar'
 import type { MatchStatus } from '@/lib/types/database'
 
 interface Props {
   matchId: string
   matchStatus: MatchStatus
+  // v1.5: page.tsx filters to confirmed-only for non-organizer before passing here.
+  // Organizer receives full participants list (confirmed + pending + removed).
   participants: MatchParticipantEnriched[]
   isOrganizer: boolean
-  canManage: boolean
+  // Count from match_formed view — used to display "Pending (N)" for non-organizer
+  pendingCount: number
   myUserId: string | null
+  /** v1.7: non-org can delegate confirm nominated user participants */
+  canDelegateConfirmUserParticipants?: boolean
+  /** Server action for remove — ensures revalidatePath so UI updates after remove */
+  onRemoveParticipant?: (participantId: string) => Promise<void>
 }
 
-// Dual-confirmation status tags (not shown for guests)
+// Dual-confirmation status tags (organizer view, not shown for guests)
 function ConfirmationTags({ p }: { p: MatchParticipantEnriched }) {
-  if (p.status !== 'pending' || p.join_method === 'guest_add') return null
+  if (p.status !== 'pending' || p.guest_id !== null) return null
+  // 'requested' join_method: user accepted implicitly by requesting — treat as always accepted
+  const userAccepted =
+    p.join_method === 'requested'
+      ? (p.participant_accepted_at ?? p.created_at)
+      : p.participant_accepted_at
   return (
     <span style={{ fontSize: '0.72rem', marginLeft: '0.4rem' }}>
-      <span style={{ color: p.user_accepted_at ? '#2d8a4e' : '#d97706' }}>
-        User:{p.user_accepted_at ? '✓' : '⏳'}
+      <span style={{ color: userAccepted ? '#2d8a4e' : '#d97706' }}>
+        User:{userAccepted ? '✓' : '⏳'}
       </span>
       {' '}
       <span style={{ color: p.org_approved_at ? '#2d8a4e' : '#d97706' }}>
@@ -41,19 +57,22 @@ function ParticipantRow({
   matchId,
   matchStatus,
   isOrganizer,
-  canManage,
   isMe,
   adderName,
+  viewerIsParticipant,
+  canDelegateConfirmUserParticipants,
+  onRemoveParticipant,
 }: {
   p: MatchParticipantEnriched
   matchId: string
   matchStatus: MatchStatus
   isOrganizer: boolean
-  canManage: boolean
   isMe: boolean
   adderName?: string
+  viewerIsParticipant: boolean
+  canDelegateConfirmUserParticipants?: boolean
+  onRemoveParticipant?: (participantId: string) => Promise<void>
 }) {
-  const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -65,43 +84,80 @@ function ParticipantRow({
     startTransition(async () => {
       try {
         await fn()
-        setNote('')
         router.refresh()
+        // Run delivery worker in background — don't block UI on email send
+        processDeliveriesAction().catch(() => {})
       } catch (err: unknown) {
         setError((err as { message?: string })?.message ?? 'Action failed')
       }
     })
   }
 
+  const isGuest = p.guest_id !== null
+  // Approve: organizer only, pending, org not yet approved. Org and user confirm can happen in any order.
   const canApprove =
     isOrganizer &&
     isActive &&
     p.status === 'pending' &&
-    p.user_accepted_at !== null &&
     p.org_approved_at === null
 
-  const canRemove =
-    canManage && isActive && p.status !== 'removed'
+  // Manual Confirm (users only): organizer only, pending user whose participant side not yet confirmed.
+  // Hide when participant_accepted_at is set (T2 accepted or T1 delegate-confirmed for T2) — then only Approve is needed.
+  const canManualConfirm =
+    isOrganizer &&
+    isActive &&
+    p.status === 'pending' &&
+    p.user_id !== null &&
+    p.participant_accepted_at == null   // guests use delegate-confirm flow
 
-  // v1.4: No standalone reactivate. Organizer re-invites via invite_user (removed branch → reset + reconcile).
+  // Delegate confirm: guest = any active participant; user = non-org + canDelegateConfirmUserParticipants
+  const canDelegateConfirmParticipant =
+    isActive &&
+    p.status === 'pending' &&
+    viewerIsParticipant &&
+    (
+      (isGuest)
+      || (
+        !isGuest &&
+        p.user_id !== null &&
+        (p.join_method === 'invited' || p.join_method === 'nominated') &&
+        !p.participant_accepted_at &&
+        canDelegateConfirmUserParticipants
+      )
+    )
+
+  // Remove: organizer only (v1.5: participants cannot remove anyone)
+  const canRemove =
+    isOrganizer && isActive && p.status !== 'removed'
+
+  // Invite back a removed participant (organizer only; uses rpc_match_invite_user)
   const canInviteBack =
     isOrganizer && isActive && p.status === 'removed' && p.user_id !== null
 
   return (
     <div style={{ padding: '0.5rem 0', borderBottom: '1px solid #f5f5f5' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+        <Avatar
+          src={p.avatar_url}
+          displayName={p.display_name}
+          size="md"
+          className="mt-0.5"
+        />
         <div style={{ flex: 1 }}>
           <span style={{ fontWeight: isMe ? 700 : 500, fontSize: '0.9rem' }}>
             {p.display_name}
             {isMe && <span style={{ fontWeight: 400, color: '#888', fontSize: '0.75rem', marginLeft: '0.3rem' }}>(you)</span>}
           </span>
 
-          {p.join_method === 'guest_add' ? (
+          {p.guest_id !== null ? (
             <span style={{ fontSize: '0.72rem', color: '#555', marginLeft: '0.4rem' }}>
-              (confirmed attendance by {adderName ?? 'unknown'})
+              (Contact Player)
             </span>
           ) : (
             <>
+              {p.join_method === 'invited' && (
+                <span style={{ fontSize: '0.72rem', color: '#888', marginLeft: '0.4rem' }}>invited</span>
+              )}
               {p.nominated_by && (
                 <span style={{ fontSize: '0.72rem', color: '#888', marginLeft: '0.4rem' }}>nominated</span>
               )}
@@ -116,26 +172,23 @@ function ParticipantRow({
           )}
 
           <div style={{ fontSize: '0.72rem', color: '#aaa', marginTop: '0.1rem' }}>
-            {p.join_method}
-            {p.confirmed_at && ` · confirmed ${p.confirmed_at.slice(0, 10)}`}
-            {p.removed_at && ` · removed ${p.removed_at.slice(0, 10)}`}
+            {p.status === 'removed'
+              ? `Removed ${p.removed_at ? p.removed_at.slice(0, 10) : ''}`
+              : (
+                  <>
+                    {p.join_method}
+                    {p.confirmed_at && ` · confirmed ${p.confirmed_at.slice(0, 10)}`}
+                  </>
+                )}
           </div>
         </div>
 
-        {/* Org action controls */}
-        {(canApprove || canRemove || canInviteBack) && (
+        {/* Organizer / participant action controls */}
+        {(canApprove || canManualConfirm || canDelegateConfirmParticipant || canRemove || canInviteBack) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
-            <input
-              type="text"
-              placeholder="Note"
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', width: '100px', border: '1px solid #ddd', borderRadius: '3px' }}
-            />
-
             {canApprove && (
               <button
-                onClick={() => act(() => orgApproveParticipant(supabase, p.id, note || undefined))}
+                onClick={() => act(() => orgApproveParticipant(supabase, p.id))}
                 disabled={isPending}
                 style={{ background: '#2d8a4e', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
               >
@@ -143,19 +196,54 @@ function ParticipantRow({
               </button>
             )}
 
+            {canManualConfirm && (
+              <button
+                onClick={() => act(() => manualConfirmParticipant(supabase, p.id))}
+                disabled={isPending}
+                style={{ background: '#6d28d9', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
+              >
+                Manual Confirm
+              </button>
+            )}
+
+            {canDelegateConfirmParticipant && (
+              <button
+                onClick={() => act(() => delegateConfirmParticipant(supabase, p.id))}
+                disabled={isPending}
+                style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
+              >
+                Confirm can come
+              </button>
+            )}
+
             {canRemove && (
               <button
-                onClick={() => act(() => removeParticipant(supabase, p.id, note || undefined))}
+                type="button"
+                onClick={() => {
+                  if (onRemoveParticipant) {
+                    setError(null)
+                    startTransition(async () => {
+                      try {
+                        await onRemoveParticipant(p.id)
+                        processDeliveriesAction().catch(() => {})
+                      } catch (err: unknown) {
+                        setError((err as { message?: string })?.message ?? 'Action failed')
+                      }
+                    })
+                  } else {
+                    act(() => removeParticipant(supabase, p.id))
+                  }
+                }}
                 disabled={isPending}
-                style={{ background: '#c00', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
+                style={{ background: '#c00', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: isPending ? 'wait' : 'pointer' }}
               >
-                Remove
+                {isPending ? 'Removing…' : 'Remove'}
               </button>
             )}
 
             {canInviteBack && (
               <button
-                onClick={() => act(() => inviteUserToMatch(supabase, matchId, p.user_id!, note || undefined))}
+                onClick={() => act(() => inviteUserToMatch(supabase, matchId, p.user_id!))}
                 disabled={isPending}
                 style={{ background: '#4a90d9', color: 'white', border: 'none', padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderRadius: '3px', cursor: 'pointer' }}
               >
@@ -210,8 +298,10 @@ export function ParticipantGroups({
   matchStatus,
   participants,
   isOrganizer,
-  canManage,
+  pendingCount,
   myUserId,
+  canDelegateConfirmUserParticipants,
+  onRemoveParticipant,
 }: Props) {
   // Build name map: user_id → display_name (for resolving guest adders)
   const nameMap = new Map(
@@ -220,14 +310,26 @@ export function ParticipantGroups({
       .map(p => [p.user_id!, p.display_name])
   )
 
-  // Guests (guest_add) count as confirmed — but only when not removed
-  const confirmed = participants.filter(p =>
-    p.status === 'confirmed' || (p.join_method === 'guest_add' && p.status !== 'removed')
+  const viewerIsParticipant = participants.some(
+    p => p.user_id === myUserId && p.status !== 'removed'
   )
-  const pending   = participants.filter(p => p.status === 'pending' && p.join_method !== 'guest_add')
-  // Removed guests are only visible to organizer/manager; regular removed members are always shown
-  const removed   = participants.filter(p =>
-    p.status === 'removed' && (canManage || p.join_method !== 'guest_add')
+
+  // Removed first — used to exclude duplicates from confirmed/pending
+  const removed = participants.filter(p => p.status === 'removed')
+  const removedIdentityIds = new Set(
+    removed.map(p => p.guest_id ?? p.user_id).filter((id): id is string => !!id)
+  )
+
+  // Confirmed participants — exclude anyone who is also in removed (handles duplicate rows for same guest/user)
+  const confirmed = participants.filter(p => {
+    if (removedIdentityIds.has(p.guest_id ?? p.user_id ?? '')) return false
+    return p.status === 'confirmed' || (p.join_method === 'guest_add' && p.status !== 'removed')
+  })
+
+  // Pending — exclude anyone in removed
+  const pending = participants.filter(
+    p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
+      p.status === 'pending' && p.join_method !== 'guest_add'
   )
 
   const rowProps = (p: MatchParticipantEnriched) => ({
@@ -235,13 +337,16 @@ export function ParticipantGroups({
     matchId,
     matchStatus,
     isOrganizer,
-    canManage,
     isMe: p.user_id === myUserId,
     adderName: p.join_method === 'guest_add' ? (nameMap.get(p.created_by ?? '') ?? undefined) : undefined,
+    viewerIsParticipant,
+    canDelegateConfirmUserParticipants,
+    onRemoveParticipant,
   })
 
   return (
     <div>
+      {/* Confirmed — visible to all */}
       <Section title="Confirmed" badge={confirmed.length} badgeColor="#2d8a4e">
         {confirmed.length === 0
           ? <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None yet.</p>
@@ -249,19 +354,35 @@ export function ParticipantGroups({
         }
       </Section>
 
-      <Section title="Pending" badge={pending.length} badgeColor="#d97706">
-        {pending.length === 0
-          ? <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None.</p>
-          : pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)
+      {/* Pending — organizer sees full list; non-org sees pending nominated users (for delegate confirm) or count only */}
+      {isOrganizer ? (
+        <Section title="Pending" badge={pending.length} badgeColor="#d97706">
+          {pending.length === 0
+            ? <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None.</p>
+            : pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)
         }
       </Section>
+      ) : pending.length > 0 ? (
+        <Section title="Pending" badge={pending.length} badgeColor="#d97706">
+          {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+        </Section>
+      ) : (
+        <div style={{ marginBottom: '1.25rem' }}>
+          <h4 style={{ margin: '0 0 0.4rem', fontSize: '0.85rem', color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Pending ({pendingCount})
+          </h4>
+        </div>
+      )}
 
-      <Section title="Removed" badge={removed.length} badgeColor="#999" defaultOpen={false}>
-        {removed.length === 0
-          ? <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None.</p>
-          : removed.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)
-        }
-      </Section>
+      {/* Removed — organizer only (§3.3). Always expanded for clarity. */}
+      {isOrganizer && (
+        <Section title="Removed" badge={removed.length} badgeColor="#999">
+          {removed.length === 0
+            ? <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None.</p>
+            : removed.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)
+          }
+        </Section>
+      )}
     </div>
   )
 }

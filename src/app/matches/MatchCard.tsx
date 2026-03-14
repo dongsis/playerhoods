@@ -41,12 +41,15 @@ export function MatchCard({ item, userId }: Props) {
   const supabase = createSupabaseBrowserClient()
 
   const pendingApprovals = participants.filter(
-    p => p.status === 'pending' && p.user_accepted_at !== null && p.org_approved_at === null,
+    p => p.status === 'pending' &&
+         p.participant_accepted_at !== null &&
+         p.org_approved_at === null,
   )
 
   const cta = computeCardCTA({
     matchStatus: match.status,
-    admissionMode: match.admission_mode,
+    // v1.5: use invitation_scope_group_ids instead of deprecated admissionMode
+    hasScope: (match.invitation_scope_group_ids ?? []).length > 0,
     myParticipant,
     isOrganizer,
     pendingApprovals,
@@ -266,7 +269,7 @@ export function MatchCard({ item, userId }: Props) {
                           onClick={() => setMenuOpen(false)}
                           style={{ display: 'block', padding: '0.4rem 0.75rem', textDecoration: 'none', color: '#333', fontSize: '0.85rem' }}
                         >
-                          Add Guest
+                          Add Contact Player
                         </Link>
                         {myParticipant && myParticipant.status !== 'removed' && (
                           <hr style={{ margin: '0.2rem 0', border: 'none', borderTop: '1px solid #eee' }} />

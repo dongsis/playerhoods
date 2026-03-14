@@ -10,7 +10,12 @@ interface Props {
   onSetPrimary: (clubId: string) => Promise<void>
 }
 
-export function ClubIdentityRow({ identity, isPrimary, onRename, onSetPrimary }: Props) {
+export function ClubIdentityRow({
+  identity,
+  isPrimary,
+  onRename,
+  onSetPrimary,
+}: Props) {
   const [editing, setEditing] = useState(false)
   const [handle, setHandle] = useState(identity.club_handle)
   const [error, setError] = useState<string | null>(null)
@@ -57,7 +62,7 @@ export function ClubIdentityRow({ identity, isPrimary, onRename, onSetPrimary }:
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.4rem' }}>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
           {!isPrimary && (
             <button
               onClick={handleSetPrimary}

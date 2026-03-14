@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
-export type DashTab = 'matches' | 'players' | 'profile' | 'admin'
+export type DashTab = 'inbox' | 'matches' | 'players' | 'contacts' | 'venues' | 'profile' | 'admin'
 
 interface Props {
   active: DashTab
@@ -13,10 +13,13 @@ interface Props {
 }
 
 const tabs: { key: DashTab; label: string; icon: string }[] = [
+  { key: 'inbox', label: 'Inbox', icon: '📬' },
   { key: 'matches', label: 'Matches', icon: '🎾' },
   { key: 'players', label: 'Players', icon: '👥' },
+  { key: 'contacts', label: 'Contacts', icon: '📇' },
+  { key: 'venues', label: 'Venues', icon: '🏟️' },
   { key: 'profile', label: 'My Profile', icon: '👤' },
-  { key: 'admin', label: 'Club Management', icon: '⚙️' },
+  { key: 'admin', label: 'Venue Admin', icon: '⚙️' },
 ]
 
 export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
@@ -52,7 +55,7 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
             <span className="text-base leading-none">{t.icon}</span>
             <span className="flex-1">{t.label}</span>
             {badge > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold bg-red-500 text-white leading-none">
+              <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold bg-blue-500 text-white leading-none">
                 {badge > 99 ? '99+' : badge}
               </span>
             )}

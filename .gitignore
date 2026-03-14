@@ -7,3 +7,90 @@ dist/
 node_modules
 db_dump/
 *.zip
+tsconfig.tsbuildinfo
+tsconfig.tsbuildinfo
+nul
+archive.aiarchive.ai/
+full_
+full_schema.sql
+# -----------------------------
+# Node / npm
+# -----------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# lock files (keep package-lock.json)
+pnpm-lock.yaml
+yarn.lock
+
+# -----------------------------
+# Next.js
+# -----------------------------
+.next/
+out/
+build/
+dist/
+
+# -----------------------------
+# Environment files
+# -----------------------------
+.env
+.env.local
+.env.*.local
+
+# -----------------------------
+# Supabase
+# -----------------------------
+.supabase/
+supabase/.temp/
+supabase/.branches/
+
+# Local schema / dump files
+full_
+full_schema.sql
+dump.sql
+db_schema.sql
+
+# -----------------------------
+# Logs
+# -----------------------------
+logs
+*.log
+
+# -----------------------------
+# OS files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# VS Code / Cursor
+# -----------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+.cursor/
+.cursor-cache/
+.continue/*
+# -----------------------------
+# Testing
+# -----------------------------
+coverage/
+.playwright/
+
+# -----------------------------
+# Misc
+# -----------------------------
+tmp/
+temp/
+*.tmp
+# AI runtime files
+ai/inbox/task_for_cursor.md
+ai/inbox/task_for_chatgpt.md
+ai/outbox/cursor_report.md
+ai/outbox/chatgpt_review.md
+ai/outbox/technical_snapshot.md
+ai/state/project_state.local.md

@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { getMatchDetailData, getMatchCourts, isUserInMatchScope, getMatchScopeUsers, getCourts, updateMatchDetails, setMatchSingleCourt } from '@/lib/api/matches'
+import { getMatchDetailData, getMatchCourts, isCallerInMatchScope, getAdmissionTargets, admissionTargetsToScopeUsers, admissionTargetsToContactPlayers, getCourts, updateMatchDetails, setMatchCourts, removeParticipant } from '@/lib/api/matches'
+import { getGroups } from '@/lib/api/groups'
 import { formatMatchTime } from '@/lib/utils/format-time'
 import { MatchActions } from './MatchActions'
 import { ParticipantGroups } from './ParticipantGroups'
@@ -11,6 +12,9 @@ import { InviteUserForm } from './InviteUserForm'
 import { NominateUserForm } from './NominateUserForm'
 import { AddGuestForm } from './AddGuestForm'
 import { MatchEditForm } from './MatchEditForm'
+import { MatchScopeGroupsForm } from './MatchScopeGroupsForm'
+import { InviteGuestForm } from './InviteGuestForm'
+import { ReconcileIdentityButton } from './ReconcileIdentityButton'
 
 interface Props {
   params: Promise<{ matchId: string }>
@@ -21,57 +25,111 @@ export default async function MatchDetailPage({ params }: Props) {
   const user = await getUser()
   const supabase = await createSupabaseServerClient()
 
+  // Reconcile identity when user lands from any email link (nominate, time change, remove, game formed)
+  if (user) {
+    const { error } = await supabase.rpc('rpc_reconcile_identity_guest_participants')
+    if (error) console.error('[MatchDetail] reconcile identity:', error)
+  }
+
   let detail
   try {
     detail = await getMatchDetailData(supabase, matchId, user?.id ?? null)
-  } catch {
+  } catch (err) {
+    console.error('[MatchDetail] getMatchDetailData failed for matchId:', matchId, err)
     notFound()
   }
 
-  const { match, clubTimezone, clubName, participants, myParticipant, isOrganizer, confirmedCount, activities, organizerName } = detail
+  const { match, clubTimezone, clubName, participants, myParticipant, isOrganizer, confirmedCount, pendingCount, activities, organizerName, scopeGroups, sportName } = detail
 
-  // Active non-removed participant user IDs — exclude from invite/nominate dropdowns
-  const activeParticipantIds = participants
-    .filter(p => p.status !== 'removed' && p.user_id)
-    .map(p => p.user_id as string)
+  // v1.6.1: MatchAssociated = ANY row in match_participants (matches DB helper).
+  // Even removed participants are "associated" — they had prior interaction with this match.
+  const isMatchAssociated = myParticipant !== null
 
-  const [matchCourts, inScope, scopeUsers, clubCourts] = await Promise.all([
-    getMatchCourts(supabase, matchId).catch(() => []),
-    user ? isUserInMatchScope(supabase, matchId, user.id).catch(() => false) : false,
-    (match.status === 'active' && (isOrganizer || myParticipant?.status === 'confirmed'))
-      ? getMatchScopeUsers(supabase, match, activeParticipantIds).catch(() => [])
-      : Promise.resolve([]),
-    match.club_id ? getCourts(supabase, match.club_id).catch(() => []) : Promise.resolve([]),
+  // Fetch inScope, courts, and role-specific roster targets in parallel
+  const [matchCourts, inScope, clubCourts] = await Promise.all([
+    getMatchCourts(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] getMatchCourts:', e); return [] }),
+    user ? isCallerInMatchScope(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] isCallerInMatchScope:', e); return false }) : false,
+    match.club_id ? getCourts(supabase, match.club_id).catch((e: unknown) => { console.error('[MatchDetail] getCourts:', e); return [] }) : Promise.resolve([]),
   ])
+
+  // v1.6.1: canNominate requires can_participants_invite_users
+  const canNominate = !isOrganizer && match.can_participants_invite_users && (inScope || isMatchAssociated)
+  // v1.6.1: canDelegateConfirm — no can_participants_invite_users requirement
+  // v1.7: RLS restricts visibility of pending invited/guests to confirmed only; nominated uses share-group policy
+  const canDelegateConfirm = !isOrganizer && (inScope || isMatchAssociated)
+  // v1.7: organizer or match-associated can nominate Contact Player (RPC requires is_match_organizer OR is_user_match_associated)
+  const canNominateGuest = isOrganizer || isMatchAssociated
+
+  // Phase 3: One mixed admission targets fetch (users + Contact Players)
+  const [admissionTargets, allGroups] = await Promise.all([
+    match.status === 'active' && (isOrganizer || canNominate || canNominateGuest)
+      ? getAdmissionTargets(supabase, matchId).catch((e: unknown) => { console.error('[MatchDetail] admissionTargets:', e); return [] })
+      : Promise.resolve([]),
+    isOrganizer && match.status === 'active'
+      ? getGroups(supabase).catch((e: unknown) => { console.error('[MatchDetail] groups:', e); return [] })
+      : Promise.resolve([]),
+  ])
+  const scopeUsersForInvite = admissionTargetsToScopeUsers(admissionTargets)
+  const scopeUsersForNominate = admissionTargetsToScopeUsers(admissionTargets)
+  const contactTargets = admissionTargetsToContactPlayers(admissionTargets)
 
   // ── Organizer-only server actions ──────────────────────────────────────────
   async function handleUpdateMatchDetails(data: {
-    match_date: string | null
-    start_time: string | null
-    duration_minutes: number | null
+    match_date?: string | null
+    start_time?: string | null
+    duration_minutes?: number | null
+    invitation_scope_group_ids?: string[] | null
   }) {
     'use server'
     const srv = await createSupabaseServerClient()
     await updateMatchDetails(srv, matchId, data)
+    const updatedMatch = { ...match, ...data }
+    if (data.match_date !== undefined || data.start_time !== undefined || data.duration_minutes !== undefined) {
+      const { sendMatchTimeChangeEmails } = await import('@/lib/email/send-participant-notifications')
+      await sendMatchTimeChangeEmails(srv, updatedMatch, clubName)
+    }
     revalidatePath(`/matches/${matchId}`)
   }
 
-  async function handleSetCourt(courtLabel: string | null) {
+  async function handleUpdateScopeGroups(ids: string[]) {
+    'use server'
+    await handleUpdateMatchDetails({ invitation_scope_group_ids: ids })
+  }
+
+  async function handleSetCourts(courtLabels: string[]) {
     'use server'
     const srv = await createSupabaseServerClient()
     const u = await getUser()
     if (!u) throw new Error('not_authenticated')
-    await setMatchSingleCourt(srv, matchId, courtLabel, u.id)
+    await setMatchCourts(srv, matchId, courtLabels, u.id)
     revalidatePath(`/matches/${matchId}`)
   }
 
-  const isConfirmed  = myParticipant?.status === 'confirmed'
-  const canInvite    = isOrganizer || (isConfirmed && match.can_participants_invite_users)
-  const canAddGuests = isOrganizer || (isConfirmed && match.can_participants_add_guests)
-  const canManage    = isOrganizer || (isConfirmed && match.can_participants_manage_participants)
+  async function handleRemoveParticipant(participantId: string) {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    await removeParticipant(srv, participantId)
+    revalidatePath(`/matches/${matchId}`)
+  }
+
+  async function handleReconcileIdentity() {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    await srv.rpc('rpc_reconcile_identity_guest_participants')
+    revalidatePath(`/matches/${matchId}`)
+  }
 
   const time = formatMatchTime(match.start_at_utc, match.match_date, match.start_time, clubTimezone)
   const need = Math.max(match.required_count - confirmedCount, 0)
+
+  // v1.7: non-organizer clients see confirmed + pending guests + pending invited/nominated users (for delegate confirm).
+  const participantsForDisplay = isOrganizer
+    ? participants
+    : participants.filter(p =>
+        p.status === 'confirmed' ||
+        (p.guest_id !== null && p.status === 'pending') ||
+        (p.user_id !== null && p.status === 'pending' && (p.join_method === 'invited' || p.join_method === 'nominated') && !p.participant_accepted_at)
+      )
 
   return (
     <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1rem' }}>
@@ -79,9 +137,12 @@ export default async function MatchDetailPage({ params }: Props) {
         <Link href="/dashboard">← Matches</Link>
       </nav>
 
-      {/* Header */}
+      {/* ── 1. Header: Match Summary ─────────────────────────────────────── */}
       <header style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ margin: '0 0 0.4rem', fontSize: '1.3rem' }}>
+          <span style={{ background: '#f0f9ff', color: '#0369a1', padding: '0.1rem 0.4rem', fontSize: '0.7rem', borderRadius: '4px', verticalAlign: 'middle', marginRight: '0.4rem' }}>
+            {sportName}
+          </span>
           {match.game_type || 'Match'}
           {' '}
           {confirmedCount >= match.required_count ? (
@@ -105,6 +166,26 @@ export default async function MatchDetailPage({ params }: Props) {
           {match.duration_minutes && <span>{match.duration_minutes}min</span>}
           <span>Org: <strong style={{ color: '#333' }}>{organizerName}</strong></span>
         </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.8rem' }}>
+          {scopeGroups.length > 0 && (
+            <>
+              <span style={{ color: '#888' }}>Scope:</span>
+              {scopeGroups.map(g => (
+                <span key={g.id} style={{ background: '#e8f0fe', color: '#1a56db', padding: '0.1rem 0.5rem', borderRadius: '10px' }}>
+                  {g.name}
+                </span>
+              ))}
+            </>
+          )}
+          {isOrganizer && match.status === 'active' && (
+            <MatchScopeGroupsForm
+              groups={allGroups.map(g => ({ id: g.id, name: g.name }))}
+              currentScopeGroupIds={match.invitation_scope_group_ids ?? []}
+              onSave={handleUpdateScopeGroups}
+            />
+          )}
+        </div>
       </header>
 
       {/* Organizer: edit date / time / court */}
@@ -117,13 +198,13 @@ export default async function MatchDetailPage({ params }: Props) {
             currentCourts={matchCourts}
             clubCourts={clubCourts}
             onSave={handleUpdateMatchDetails}
-            onSetCourt={handleSetCourt}
+            onSetCourts={handleSetCourts}
           />
         </div>
       )}
 
-      {/* Self-actions (accept/withdraw/request) */}
-      {match.status === 'active' && (
+      {/* ── 2. CTA: My Actions (non-organizer only) ──────────────────────── */}
+      {match.status === 'active' && !isOrganizer && (
         <section style={{ marginBottom: '1.5rem', padding: '0.75rem 1rem', border: '1px solid #e0e0e0', borderRadius: '6px' }}>
           <MatchActions
             matchId={matchId}
@@ -131,51 +212,97 @@ export default async function MatchDetailPage({ params }: Props) {
             myParticipation={myParticipant}
             inScope={inScope}
           />
+          {/* Contact Player who registered: manual identity link if auto-reconcile didn't run */}
+          {user && !myParticipant && (
+            <ReconcileIdentityButton onReconcile={handleReconcileIdentity} />
+          )}
         </section>
       )}
 
-      {/* Participant groups */}
+      {/* ── 3. Participants Overview ─────────────────────────────────────── */}
       <section style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1rem', margin: '0 0 0.75rem' }}>Participants</h2>
         <ParticipantGroups
           matchId={matchId}
           matchStatus={match.status}
-          participants={participants}
+          participants={participantsForDisplay}
           isOrganizer={isOrganizer}
-          canManage={canManage}
+          pendingCount={pendingCount}
           myUserId={user?.id ?? null}
+          canDelegateConfirmUserParticipants={canDelegateConfirm}
+          onRemoveParticipant={handleRemoveParticipant}
         />
       </section>
 
-      {/* Add participants (organizer/allowed) */}
-      {match.status === 'active' && (canInvite || canAddGuests) && (
-        <section id="invite" style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
-          <h3 style={{ margin: '0 0 1rem', fontSize: '0.95rem' }}>Add Participants</h3>
-
-          {isOrganizer && (
-            <div style={{ marginBottom: '1.25rem' }}>
-              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite User</h4>
-              <InviteUserForm matchId={matchId} scopeUsers={scopeUsers} />
-            </div>
-          )}
-
-          {canInvite && !isOrganizer && (
-            <div style={{ marginBottom: '1.25rem' }}>
-              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Nominate User</h4>
-              <NominateUserForm matchId={matchId} scopeUsers={scopeUsers} />
-            </div>
-          )}
-
-          {canAddGuests && (
-            <div id="guest">
-              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Add Nonregistered Player</h4>
-              <AddGuestForm matchId={matchId} isOrganizer={isOrganizer} />
-            </div>
-          )}
+      {/* ── 4a. Nominate (non-org with shared groups, not organizer) ────── */}
+      {/* Nominate flow: nominee Accepts → organizer Approves → confirmed      */}
+      {/* Show section when canNominate even if targets empty (form shows empty state) */}
+      {match.status === 'active' && canNominate && (
+        <section style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
+          <h3 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem' }}>Nominate a Player</h3>
+          <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
+            They must accept, then the organizer approves to confirm.
+          </p>
+          <NominateUserForm matchId={matchId} scopeUsers={scopeUsersForNominate} />
         </section>
       )}
 
-      {/* Activity feed */}
+      {/* ── 4a2. Nominate Contact Player (in-scope participants, not in organizer admin) ─ */}
+      {/* Per NOMINATE model: anyone in match scope can nominate Contact Player. Organizer has it in admin. */}
+      {match.status === 'active' && canNominateGuest && !isOrganizer && (
+        <section style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
+          <h3 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem' }}>Nominate Contact Player</h3>
+          <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
+            Nominate a Contact Player into this match. Confirmation requires both participant accept and organizer approval.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div>
+              <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>From my roster</h4>
+              <InviteGuestForm matchId={matchId} contactTargets={contactTargets} />
+            </div>
+            <div>
+              <h4 style={{ margin: '0.75rem 0 0.3rem', fontSize: '0.85rem' }}>Create new Contact Player</h4>
+              <AddGuestForm matchId={matchId} />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── 4b. Organizer Admin ──────────────────────────────────────────── */}
+      {/* Organizer uses Invite (pre-approves; invitee just clicks Accept).    */}
+      {/* Organizer never uses Nominate — that is participant-only.            */}
+      {match.status === 'active' && isOrganizer && (
+        <section id="organizer-admin" style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '2rem' }}>
+          <h3 style={{ margin: '0 0 1rem', fontSize: '0.95rem' }}>Organizer Admin</h3>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Invite User</h4>
+            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
+              Pre-approves the user — they only need to Accept to confirm.
+            </p>
+            <InviteUserForm matchId={matchId} scopeUsers={scopeUsersForInvite} />
+          </div>
+
+          <div id="guest">
+            <h4 style={{ margin: '0 0 0.3rem', fontSize: '0.85rem' }}>Nominate Contact Player</h4>
+            <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.75rem' }}>
+              Nominate a Contact Player into this match. Confirmation requires both participant accept and organizer approval.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div>
+                <h5 style={{ margin: '0 0 0.3rem', fontSize: '0.8rem' }}>From my roster</h5>
+                <InviteGuestForm matchId={matchId} contactTargets={contactTargets} />
+              </div>
+              <div>
+                <h5 style={{ margin: '0.75rem 0 0.3rem', fontSize: '0.8rem' }}>Create new Contact Player</h5>
+                <AddGuestForm matchId={matchId} />
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── 5. Audit Timeline ────────────────────────────────────────────── */}
       <section>
         <h2 style={{ fontSize: '1rem', margin: '0 0 0.75rem' }}>Activity</h2>
         <ActivityFeed activities={activities} />

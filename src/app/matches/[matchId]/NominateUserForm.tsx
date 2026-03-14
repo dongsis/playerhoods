@@ -6,6 +6,11 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { nominateUser } from '@/lib/api/matches'
 import type { ScopeUser } from '@/lib/api/matches'
 
+// v1.5: Nominate = participant-only flow.
+// Shown only when: active participant (removed_at IS NULL) + not organizer
+//                 + match.can_participants_invite_users = true.
+// After nomination: nominee must Accept → organizer must Approve → confirmed.
+
 interface Props {
   matchId: string
   scopeUsers: ScopeUser[]
@@ -13,7 +18,6 @@ interface Props {
 
 export function NominateUserForm({ matchId, scopeUsers }: Props) {
   const [userId, setUserId] = useState('')
-  const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -27,13 +31,12 @@ export function NominateUserForm({ matchId, scopeUsers }: Props) {
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
     try {
-      await nominateUser(supabase, matchId, userId, note || undefined)
+      await nominateUser(supabase, matchId, userId)
       setSuccess(true)
       setUserId('')
-      setNote('')
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to nominate user')
+      setError(err instanceof Error ? err.message : 'Failed to nominate')
     } finally {
       setLoading(false)
     }
@@ -65,15 +68,8 @@ export function NominateUserForm({ matchId, scopeUsers }: Props) {
           {loading ? 'Nominating…' : 'Nominate'}
         </button>
       </div>
-      <input
-        type="text"
-        placeholder="Add a note (optional)"
-        value={note}
-        onChange={e => setNote(e.target.value)}
-        style={{ padding: '0.4rem', marginTop: '0.4rem', width: '100%', boxSizing: 'border-box', fontSize: '0.85rem' }}
-      />
       {error   && <p style={{ color: 'red',   fontSize: '0.8rem', margin: '0.3rem 0 0' }}>{error}</p>}
-      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Nominated! Needs user acceptance and organizer approval.</p>}
+      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Nominated! They must accept, then organizer approves to confirm.</p>}
     </form>
   )
 }

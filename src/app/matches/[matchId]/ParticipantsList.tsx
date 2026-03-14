@@ -107,7 +107,7 @@ export function ParticipantsList({
                     {p.join_method}
                     {p.status === 'pending' && (
                       <>
-                        {p.user_accepted_at ? ' | User: accepted' : ' | User: waiting'}
+                        {p.participant_accepted_at ? ' | User: accepted' : ' | User: waiting'}
                         {p.org_approved_at ? ' | ORG: approved' : ' | ORG: waiting'}
                       </>
                     )}
@@ -132,7 +132,7 @@ export function ParticipantsList({
                     {showApproveButton && isOrganizer && p.status === 'pending' && !p.org_approved_at && (
                       <button
                         onClick={() =>
-                          handleAction(p.id, () => orgApproveParticipant(supabase, p.id, getNote(p.id)))
+                          handleAction(p.id, () => orgApproveParticipant(supabase, p.id))
                         }
                         disabled={loading === p.id}
                         style={{
@@ -149,7 +149,7 @@ export function ParticipantsList({
                     {canManage && p.status !== 'removed' && (
                       <button
                         onClick={() =>
-                          handleAction(p.id, () => removeParticipant(supabase, p.id, getNote(p.id)))
+                          handleAction(p.id, () => removeParticipant(supabase, p.id))
                         }
                         disabled={loading === p.id}
                         style={{
@@ -175,7 +175,7 @@ export function ParticipantsList({
                         />
                         <button
                           onClick={() =>
-                            handleAction(p.id, () => inviteUserToMatch(supabase, matchId, p.user_id!, getNote(p.id)))
+                            handleAction(p.id, () => inviteUserToMatch(supabase, matchId, p.user_id!))
                           }
                           disabled={loading === p.id}
                           style={{
