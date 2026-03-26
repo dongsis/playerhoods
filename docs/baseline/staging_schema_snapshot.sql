@@ -1779,8 +1779,7 @@ BEGIN
       RAISE EXCEPTION 'anchor_not_guest_participant';
     END IF;
   ELSE
-    -- Use text cast for uuid min to avoid aggregate resolution errors.
-    SELECT COUNT(*), MIN(mp.id::text)::uuid
+    SELECT COUNT(*), MIN(mp.id)
     INTO v_match_count, v_match_mp_id
     FROM public.match_participants mp
     JOIN public.guests g ON g.id = mp.guest_id
@@ -1863,8 +1862,10 @@ BEGIN
     RAISE EXCEPTION 'match_not_active';
   END IF;
 
-  -- Use text cast for uuid min to avoid environment-specific aggregate resolution errors.
-  SELECT COUNT(*), MIN(mp.id::text)::uuid
+  -- Bind anchor only when there is exactly one active guest participant by match + email.
+  -- Zero match: keep NULL (legacy/non-guest invitation path).
+  -- Multi-match: fail fast, never guess.
+  SELECT COUNT(*), MIN(mp.id)
   INTO v_anchor_count, v_anchor_mp_id
   FROM public.match_participants mp
   JOIN public.guests g ON g.id = mp.guest_id
@@ -2016,8 +2017,7 @@ BEGIN
       RAISE EXCEPTION 'anchor_not_guest_participant';
     END IF;
   ELSE
-    -- Use text cast for uuid min to avoid aggregate resolution errors.
-    SELECT COUNT(*), MIN(mp.id::text)::uuid
+    SELECT COUNT(*), MIN(mp.id)
     INTO v_match_count, v_match_mp_id
     FROM public.match_participants mp
     JOIN public.guests g ON g.id = mp.guest_id
@@ -2043,6 +2043,7 @@ BEGIN
       AND match_participant_id IS NULL;
   END IF;
 
+  -- Decline semantics: participant exits with withdraw-equivalent behavior.
   PERFORM public.apply_participant_exit(
     v_mp.id,
     p_system_actor_id,
@@ -2084,11 +2085,7 @@ DECLARE
   v_match jsonb;
   v_caller_email text;
 BEGIN
-  SELECT *
-  INTO v_inv
-  FROM public.email_invitations ei
-  WHERE ei.id = p_invitation_id;
-
+  SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
   IF NOT FOUND THEN
     RETURN;
   END IF;

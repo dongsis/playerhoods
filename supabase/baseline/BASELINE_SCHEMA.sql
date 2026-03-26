@@ -1,5 +1,23 @@
-
-
+-- Baseline schema layer
+-- Baseline commit: 03522d7
+-- Baseline patch: 20260328153000_staging_gate_fix_invitation_get_and_guest_ambiguity.sql
+-- Bootstrap dependencies for empty-db execution.
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+CREATE EXTENSION IF NOT EXISTS "pg_graphql";
+CREATE EXTENSION IF NOT EXISTS "supabase_vault";
+CREATE EXTENSION IF NOT EXISTS "plpgsql";
+CREATE SCHEMA IF NOT EXISTS "auth";
+CREATE TABLE IF NOT EXISTS "auth"."users" (
+    "id" "uuid" NOT NULL,
+    CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+);
+CREATE OR REPLACE FUNCTION "auth"."uid"() RETURNS "uuid"
+    LANGUAGE "sql" STABLE
+    AS $$
+  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
+$$;
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;

@@ -4,14 +4,14 @@
 
 本轮已完成 baseline 收口，当前以合并后状态作为唯一 authoritative 依据。
 
-- Baseline effective point: `87dca86`
+- Baseline effective point: `03522d7`
 - Branch: `v2.0`（与 `main` 同 HEAD）
-- Remote: `origin/main` 已包含 `87dca86`
+- Remote: `origin/v2.0` 已包含 `03522d7`
 - 定位：guest invitation 改造已从功能交付阶段进入治理基线阶段
 
 ## 2. Merge / Baseline Status
 
-**Merged; baseline established at commit `87dca86`.**
+**Merged; baseline established at commit `03522d7`.**
 
 当前不再使用 “Ready with caveats” 作为主结论。  
 该结论仅属于 merge 前评估快照，已移至附录归档。
