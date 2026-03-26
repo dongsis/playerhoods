@@ -4,13 +4,15 @@
 
 - Baseline date: `2026-03-14`
 - Baseline branch: `v2.0` (aligned with `main`)
-- Baseline commit: `87dca86`
+- Baseline commit: `03522d7`
+- Baseline patch migration: `20260328153000_staging_gate_fix_invitation_get_and_guest_ambiguity.sql`
 - Baseline type: post-merge stable snapshot
 
 ## Baseline Freeze Rule
 
-This baseline is frozen at commit `87dca86` as the governance starting point.  
+This baseline is frozen at commit `03522d7` as the governance starting point.  
 It does not imply deleting history. Historical migrations remain append-only ledger records.
+Post-freeze hotfix migrations can be attached as patch-level updates when they are baseline-critical.
 
 ## Why This Baseline Exists
 
@@ -51,4 +53,8 @@ This baseline does not:
 1. New database changes must be additive migrations relative to this baseline.
 2. Semantics changes must update baseline docs in the same delivery cycle.
 3. Function retirement requires evidence gates (static refs + DB dependencies + runtime confidence).
-4. Do not modify, move, or remove old migration files as part of cleanup.
+4. Pre-baseline migrations are archived under `supabase/migrations_archive/pre_baseline_20260328/`.
+5. Do not edit archived migration content; preserve it as historical ledger.
+6. Future reset execution line is fixed as:
+   - apply baseline SQL set first
+   - then apply baseline-after append-only migrations

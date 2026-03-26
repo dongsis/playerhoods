@@ -39,6 +39,11 @@ That means:
 - implementation drift must be corrected through new migrations,
 - historical migration order must remain intact.
 
+Post-rebaseline archive rule:
+
+- pre-baseline historical migrations are preserved in `supabase/migrations_archive/pre_baseline_20260328/`,
+- active append-only migration authoring continues in `supabase/migrations/`.
+
 Any attempt to “fix history” by rewriting old migrations is disallowed.
 
 ---
@@ -54,6 +59,16 @@ Before writing SQL, the author must confirm:
 4. and the latest migrations touching the same area.
 
 If schema behavior conflicts with canonical rules, the schema behavior is drift and must not be treated as authority.
+
+---
+
+## 2.3 Reset Execution Line
+Reset strategy is baseline-first and append-only:
+
+1. apply baseline SQL set (`BASELINE_SCHEMA.sql` + `BASELINE_SECURITY.sql` + `BASELINE_REQUIRED_SEED.sql`)
+2. apply migrations created after the baseline freeze point
+
+Do not reset by replaying pre-baseline historical migrations when the baseline SQL set is the active foundation.
 
 ---
 

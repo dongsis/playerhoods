@@ -280,11 +280,14 @@ This index does not restate those details in full.
 
 ### Practical migration handling rule
 
-- Keep old migration files as historical ledger.
-- Do not rewrite old migration files.
-- Do not move old migration files to simulate cleanup.
-- Perform cleanup by creating **new append-only migrations** that drop/revoke/adjust objects.
+- Archived pre-baseline migrations are preserved at `../../supabase/migrations_archive/pre_baseline_20260328/`.
+- `supabase/migrations` contains only post-baseline append-only migrations.
+- Do not rewrite archived migration files.
+- Perform cleanup/evolution by creating **new append-only migrations** in `supabase/migrations`.
 - Use `../baseline/MIGRATION_STATUS_INDEX.md` to determine whether a migration is active foundation, retained history, cleanup track, or non-authoritative design source.
+- Future reset execution line is baseline-first:
+  - apply baseline SQL set
+  - then apply post-baseline append-only migrations
 
 ---
 

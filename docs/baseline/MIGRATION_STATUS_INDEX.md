@@ -2,26 +2,27 @@
 
 ## Purpose
 
-This index classifies migrations by governance role for the current baseline.  
-It is a **cognitive layering index**, not a file move plan.
+This index classifies migrations by governance role for the current baseline.
+It is a governance map for both archived historical chain and active post-baseline chain.
 
 Rules:
 
-1. Keep historical migration files in place.
-2. Use this index to decide what is active design authority vs historical execution chain.
-3. New cleanup work must be done via new append-only migrations.
+1. Historical pre-baseline migrations are archived at `supabase/migrations_archive/pre_baseline_20260328/`.
+2. Active post-baseline migrations live in `supabase/migrations/`.
+3. Use this index to decide what is active design authority vs historical execution chain.
+4. New cleanup work must be done via new append-only migrations in `supabase/migrations/`.
 
 ## Baseline Anchor
 
-- Baseline commit: `87dca86`
+- Baseline commit: `03522d7`
 - Baseline branch: `v2.0` (aligned with `main`)
 - Baseline effective date: `2026-03-14`
 
 ---
 
-## ACTIVE FOUNDATION
+## ACTIVE FOUNDATION (ARCHIVED IN BASELINE)
 
-Current baseline depends on these migrations as active foundation:
+These migrations define the frozen baseline foundation and are preserved in the archive path:
 
 - `0001_baseline_public.sql`
 - `0002_enable_rls.sql`
@@ -32,10 +33,17 @@ Current baseline depends on these migrations as active foundation:
 - `20260323000000_participant_exit_unified_helper.sql`
 - `20260326000000_reentry_removed_at_canonical.sql`
 - `20260327000000_guest_invitation_anchor_and_guest_response_paths.sql`
+---
+
+## ACTIVE POST-BASELINE CHAIN
+
+Migrations currently in active execution path (`supabase/migrations/`):
+
+- `20260328153000_staging_gate_fix_invitation_get_and_guest_ambiguity.sql`
 
 ---
 
-## SUPERSEDED BUT RETAINED
+## SUPERSEDED BUT RETAINED (ARCHIVED)
 
 These migrations are historically valid and remain in chain, but later changes supersede parts of their operational design:
 
@@ -46,7 +54,7 @@ These migrations are historically valid and remain in chain, but later changes s
 
 ---
 
-## LEGACY CLEANUP
+## LEGACY CLEANUP (ARCHIVED)
 
 Migrations used to retire legacy objects, harden permissions, or close old paths:
 
@@ -91,8 +99,8 @@ For new work, use this order:
 
 ## Non-Goals
 
-- Do not move old migration files
-- Do not rewrite old migration files
-- Do not delete migration files to "clean" directories
+- Do not rewrite archived migration files
+- Do not move active post-baseline migrations out of `supabase/migrations/`
+- Do not delete archived migrations without explicit governance approval
 
-Cleanup means dropping outdated **objects** via new migrations, not erasing historical migration records.
+Cleanup means dropping outdated **objects** via new migrations while preserving archived history.
