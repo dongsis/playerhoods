@@ -1,6 +1,9 @@
 -- Baseline schema layer
 -- Baseline commit: 03522d7
 -- Baseline patch: 20260328153000_staging_gate_fix_invitation_get_and_guest_ambiguity.sql
+-- Frozen bootstrap layer only. This file is used to seed the baseline reset chain and intentionally reflects
+-- the 2026-03-28 baseline cutover state, not the current runtime object graph.
+-- For current runtime shape, inspect ../../schema.sql plus append-only migrations in ../../supabase/migrations/.
 -- Bootstrap dependencies for empty-db execution.
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -1560,6 +1563,7 @@ COMMENT ON FUNCTION "public"."rpc_contact_player_resolution"() IS 'Phase 2: Cont
 CREATE TABLE IF NOT EXISTS "public"."courts" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "club_id" "uuid" NOT NULL,
+    "sport_id" integer DEFAULT 1 NOT NULL,
     "court_code" "text" NOT NULL,
     "surface" "text",
     "notes" "text",
@@ -1570,7 +1574,7 @@ CREATE TABLE IF NOT EXISTS "public"."courts" (
 ALTER TABLE "public"."courts" OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_court_code" "text", "p_surface" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text") RETURNS "public"."courts"
+CREATE OR REPLACE FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text") RETURNS "public"."courts"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -1585,8 +1589,8 @@ BEGIN
     RAISE EXCEPTION 'court_code_required';
   END IF;
 
-  INSERT INTO public.courts (club_id, court_code, surface, notes)
-  VALUES (p_club_id, trim(p_court_code), p_surface, p_notes)
+  INSERT INTO public.courts (club_id, sport_id, court_code, surface, notes)
+  VALUES (p_club_id, p_sport_id, trim(p_court_code), p_surface, p_notes)
   RETURNING * INTO v_court;
 
   RETURN v_court;
@@ -1594,7 +1598,7 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text", "p_notes" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."rpc_court_delete"("p_court_id" "uuid") RETURNS "void"
@@ -1621,7 +1625,7 @@ $$;
 ALTER FUNCTION "public"."rpc_court_delete"("p_court_id" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text" DEFAULT NULL::"text", "p_surface" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text") RETURNS "void"
+CREATE OR REPLACE FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_sport_id" integer DEFAULT NULL::integer, "p_court_code" "text" DEFAULT NULL::"text", "p_surface" "text" DEFAULT NULL::"text", "p_notes" "text" DEFAULT NULL::"text") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -1639,6 +1643,7 @@ BEGIN
 
   UPDATE public.courts
   SET
+    sport_id   = COALESCE(p_sport_id, sport_id),
     court_code = COALESCE(p_court_code, court_code),
     surface    = COALESCE(p_surface, surface),
     notes      = COALESCE(p_notes, notes)
@@ -1647,7 +1652,7 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text", "p_notes" "text") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."email_invitations" (
@@ -1686,7 +1691,6 @@ DECLARE
   v_uid uuid := auth.uid();
   v_inv public.email_invitations%rowtype;
   v_user_email text;
-  v_existing_mp uuid;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
@@ -1711,21 +1715,6 @@ BEGIN
   END IF;
 
   IF v_inv.related_type = 'match' THEN
-    SELECT mp.id INTO v_existing_mp
-    FROM public.match_participants mp
-    WHERE mp.match_id = v_inv.related_id AND mp.user_id = v_uid AND mp.removed_at IS NULL
-    LIMIT 1;
-    IF FOUND THEN
-      UPDATE public.email_invitations SET status = 'accepted', accepted_by_user_id = v_uid, accepted_at = now(), updated_at = now()
-      WHERE id = p_invitation_id AND status = 'pending';
-      SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
-      IF v_inv.status = 'accepted' THEN
-        INSERT INTO public.email_invitation_events (invitation_id, event_type, actor_user_id)
-        VALUES (v_inv.id, 'invitation_accepted', v_uid);
-      END IF;
-      PERFORM public.rpc_reconcile_identity_after_magic_link(v_uid, v_user_email, p_invitation_id);
-      RETURN v_inv;
-    END IF;
     PERFORM public.rpc_match_accept_email_invitation(v_inv.related_id, v_uid, p_invitation_id);
   END IF;
 
@@ -2703,7 +2692,9 @@ DECLARE
   v_inv public.email_invitations%rowtype;
   v_match public.matches%rowtype;
   v_user_email text;
-  v_new_mp public.match_participants%rowtype;
+  v_target_mp public.match_participants%rowtype;
+  v_match_count int := 0;
+  v_match_mp_id uuid := NULL;
 BEGIN
   SELECT * INTO v_inv FROM public.email_invitations WHERE id = p_invitation_id;
   IF NOT FOUND OR v_inv.related_type <> 'match' OR v_inv.related_id <> p_match_id THEN
@@ -2724,8 +2715,58 @@ BEGIN
     RAISE EXCEPTION 'email_mismatch';
   END IF;
 
-  IF EXISTS (SELECT 1 FROM public.match_participants WHERE match_id = p_match_id AND user_id = p_user_id AND removed_at IS NULL) THEN
-    RETURN (SELECT * FROM public.match_participants WHERE match_id = p_match_id AND user_id = p_user_id AND removed_at IS NULL LIMIT 1);
+  SELECT * INTO v_target_mp
+  FROM public.match_participants
+  WHERE match_id = p_match_id
+    AND user_id = p_user_id
+    AND removed_at IS NULL
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    IF v_inv.match_participant_id IS NOT NULL THEN
+      SELECT * INTO v_target_mp
+      FROM public.match_participants
+      WHERE id = v_inv.match_participant_id
+        AND match_id = p_match_id
+        AND removed_at IS NULL;
+
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'anchored_participant_not_found';
+      END IF;
+    ELSE
+      SELECT COUNT(*), MIN(mp.id::text)::uuid
+      INTO v_match_count, v_match_mp_id
+      FROM public.match_participants mp
+      JOIN public.guests g ON g.id = mp.guest_id
+      WHERE mp.match_id = p_match_id
+        AND mp.removed_at IS NULL
+        AND lower(trim(coalesce(g.email, ''))) = lower(trim(v_inv.target_email));
+
+      IF v_match_count > 1 THEN
+        RAISE EXCEPTION 'participant_ambiguous_for_invitation';
+      END IF;
+
+      IF v_match_count = 1 THEN
+        SELECT * INTO v_target_mp
+        FROM public.match_participants
+        WHERE id = v_match_mp_id;
+      END IF;
+    END IF;
+  END IF;
+
+  IF v_target_mp.id IS NOT NULL THEN
+    UPDATE public.match_participants
+    SET participant_accepted_at = COALESCE(participant_accepted_at, now()),
+        participant_accepted_via = CASE
+          WHEN participant_accepted_at IS NULL THEN 'email_invitation'
+          ELSE participant_accepted_via
+        END
+    WHERE id = v_target_mp.id
+    RETURNING * INTO v_target_mp;
+
+    PERFORM public.match_participant_reconcile_status(v_target_mp.id);
+    RETURN (SELECT * FROM public.match_participants WHERE id = v_target_mp.id);
   END IF;
 
   INSERT INTO public.match_participants (
@@ -2735,15 +2776,12 @@ BEGIN
   ) VALUES (
     p_match_id, p_user_id, 'invited',
     now(), 'email_invitation',
-    now(), v_inv.inviter_user_id, v_inv.inviter_user_id
+    NULL, NULL, v_inv.inviter_user_id
   )
-  RETURNING * INTO v_new_mp;
+  RETURNING * INTO v_target_mp;
 
-  PERFORM public.match_participant_reconcile_status(v_new_mp.id);
-  INSERT INTO public.match_participant_actions (match_id, match_participant_id, action_type, note, created_by)
-  VALUES (p_match_id, v_new_mp.id, 'invite', 'email_invitation', v_inv.inviter_user_id);
-
-  RETURN (SELECT * FROM public.match_participants WHERE id = v_new_mp.id);
+  PERFORM public.match_participant_reconcile_status(v_target_mp.id);
+  RETURN (SELECT * FROM public.match_participants WHERE id = v_target_mp.id);
 END;
 $$;
 
@@ -4084,56 +4122,6 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_profile_set_primary_club"("p_club_id" "uuid") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_profile_update"("p_first_name" "text" DEFAULT NULL::"text", "p_last_name" "text" DEFAULT NULL::"text") RETURNS "void"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-BEGIN
-  IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
-
-  UPDATE public.profiles
-  SET
-    first_name = NULLIF(trim(coalesce(p_first_name, '')), ''),
-    last_name  = NULLIF(trim(coalesce(p_last_name,  '')), '')
-  WHERE id = auth.uid();
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."rpc_profile_update"("p_first_name" "text" DEFAULT NULL::"text", "p_last_name" "text" DEFAULT NULL::"text", "p_contact_channel" "text" DEFAULT NULL::"text", "p_contact_email" "text" DEFAULT NULL::"text", "p_contact_phone" "text" DEFAULT NULL::"text") RETURNS "void"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$
-BEGIN
-  IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
-
-  UPDATE public.profiles
-  SET
-    first_name      = CASE WHEN p_first_name IS NOT NULL THEN NULLIF(trim(p_first_name), '') ELSE first_name END,
-    last_name       = CASE WHEN p_last_name IS NOT NULL THEN NULLIF(trim(p_last_name), '') ELSE last_name END,
-    contact_channel = CASE WHEN p_contact_channel IN ('email','sms') THEN p_contact_channel ELSE contact_channel END,
-    contact_email   = CASE WHEN p_contact_email IS NOT NULL THEN NULLIF(trim(p_contact_email), '') ELSE contact_email END,
-    contact_phone   = CASE WHEN p_contact_phone IS NOT NULL THEN NULLIF(trim(p_contact_phone), '') ELSE contact_phone END,
-    updated_at      = now()
-  WHERE id = auth.uid();
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") IS 'v1.7: Update profile. contact_channel: email|sms. contact_email: override or NULL to use auth email. contact_phone for SMS.';
-
 
 
 CREATE OR REPLACE FUNCTION "public"."rpc_profile_update"("p_first_name" "text" DEFAULT NULL::"text", "p_last_name" "text" DEFAULT NULL::"text", "p_contact_channel" "text" DEFAULT NULL::"text", "p_contact_email" "text" DEFAULT NULL::"text", "p_contact_phone" "text" DEFAULT NULL::"text", "p_show_in_club_member_discovery" boolean DEFAULT NULL::boolean, "p_allow_non_group_invites" boolean DEFAULT NULL::boolean) RETURNS "void"
@@ -5604,7 +5592,7 @@ ALTER TABLE ONLY "public"."clubs"
 
 
 ALTER TABLE ONLY "public"."courts"
-    ADD CONSTRAINT "courts_club_id_court_code_key" UNIQUE ("club_id", "court_code");
+    ADD CONSTRAINT "courts_club_id_sport_id_court_code_key" UNIQUE ("club_id", "sport_id", "court_code");
 
 
 
@@ -5955,6 +5943,10 @@ ALTER TABLE ONLY "public"."club_sports"
 
 ALTER TABLE ONLY "public"."courts"
     ADD CONSTRAINT "courts_club_id_fkey" FOREIGN KEY ("club_id") REFERENCES "public"."clubs"("id") ON DELETE CASCADE;
+
+
+ALTER TABLE ONLY "public"."courts"
+    ADD CONSTRAINT "courts_sport_id_fkey" FOREIGN KEY ("sport_id") REFERENCES "public"."sports"("id") ON DELETE RESTRICT;
 
 
 
@@ -6821,9 +6813,9 @@ GRANT ALL ON TABLE "public"."courts" TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_court_create"("p_club_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "service_role";
 
 
 
@@ -6833,9 +6825,9 @@ GRANT ALL ON FUNCTION "public"."rpc_court_delete"("p_court_id" "uuid") TO "servi
 
 
 
-GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_court_update"("p_court_id" "uuid", "p_sport_id" integer, "p_court_code" "text", "p_surface" "text", "p_notes" "text") TO "service_role";
 
 
 
@@ -7097,18 +7089,6 @@ GRANT ALL ON FUNCTION "public"."rpc_profile_set_display_name"("p_display_name" "
 GRANT ALL ON FUNCTION "public"."rpc_profile_set_primary_club"("p_club_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_profile_set_primary_club"("p_club_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_profile_set_primary_club"("p_club_id" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rpc_profile_update"("p_first_name" "text", "p_last_name" "text", "p_contact_channel" "text", "p_contact_email" "text", "p_contact_phone" "text") TO "service_role";
 
 
 

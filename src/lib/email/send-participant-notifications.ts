@@ -28,7 +28,7 @@ export async function getParticipantEmails(
 
 function buildMatchInfo(
   match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
-  clubName: string | null
+  venueName: string | null
 ): MatchInfo {
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
@@ -38,7 +38,7 @@ function buildMatchInfo(
     gameType: match.game_type ?? 'Match',
     matchDate: match.match_date,
     startTime: match.start_time,
-    clubName,
+    venueName,
     siteUrl,
   }
 }
@@ -47,7 +47,7 @@ function buildMatchInfo(
 export async function sendMatchTimeChangeEmails(
   supabase: SupabaseClient,
   match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
-  clubName: string | null
+  venueName: string | null
 ): Promise<{ sent: number; skipped: number; errors: string[] }> {
   let rows: ParticipantEmailRow[]
   try {
@@ -57,9 +57,7 @@ export async function sendMatchTimeChangeEmails(
     throw err
   }
 
-  console.log('[email] match time change: recipients=', rows.length, rows.map(r => ({ channel: r.contact_channel, hasEmail: !!r.email })))
-
-  const m = buildMatchInfo(match, clubName)
+  const m = buildMatchInfo(match, venueName)
   const html = matchTimeChangePendingEmail(m)
   const subject = 'Match time changed — please confirm'
 
@@ -82,7 +80,6 @@ export async function sendMatchTimeChangeEmails(
     else errors.push(`${email}: ${result.error}`)
   }
 
-  console.log('[email] match time change: sent=', sent, 'skipped=', skipped, 'errors=', errors.length)
   if (errors.length > 0) console.error('[email] send errors:', errors)
 
   return { sent, skipped, errors }
@@ -92,10 +89,10 @@ export async function sendMatchTimeChangeEmails(
 export async function sendGameFormedEmails(
   supabase: SupabaseClient,
   match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
-  clubName: string | null
+  venueName: string | null
 ): Promise<{ sent: number; skipped: number; errors: string[] }> {
   const rows = await getParticipantEmails(supabase, match.id)
-  const m = buildMatchInfo(match, clubName)
+  const m = buildMatchInfo(match, venueName)
   const html = gameFormedEmail(m)
   const subject = 'Game formed'
 

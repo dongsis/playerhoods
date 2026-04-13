@@ -18,7 +18,7 @@ ORDER BY ordinal_position;
 SELECT column_name, data_type, is_nullable, column_default
 FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name = 'profiles'
-  AND column_name IN ('show_in_club_member_discovery', 'allow_non_group_invites', 'auto_add_played_users_to_invite_circle');
+  AND column_name IN ('show_in_venue_member_discovery', 'allow_non_group_invites', 'auto_add_played_users_to_invite_circle');
 -- Expected: 3 rows, is_nullable = 'NO', data_type = 'boolean'
 
 -- 1c) Assert: all 3 profile columns are NOT NULL (predicate logic must not handle nulls)
@@ -29,7 +29,7 @@ BEGIN
   SELECT COUNT(*) INTO v_nullable_count
   FROM information_schema.columns
   WHERE table_schema = 'public' AND table_name = 'profiles'
-    AND column_name IN ('show_in_club_member_discovery', 'allow_non_group_invites', 'auto_add_played_users_to_invite_circle')
+    AND column_name IN ('show_in_venue_member_discovery', 'allow_non_group_invites', 'auto_add_played_users_to_invite_circle')
     AND is_nullable = 'YES';
   IF v_nullable_count > 0 THEN
     RAISE EXCEPTION 'FAIL: profiles new columns must be NOT NULL, found % nullable', v_nullable_count;

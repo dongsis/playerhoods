@@ -54,7 +54,7 @@ BEGIN
       'club_name', c.name
     ) INTO v_match
     FROM public.matches m
-    LEFT JOIN public.clubs c ON c.id = m.club_id
+    LEFT JOIN public.venues c ON c.id = m.venue_id
     WHERE m.id = v_inv.related_id;
   END IF;
 

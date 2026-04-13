@@ -12,8 +12,8 @@ interface Props {
 }
 
 /**
- * Add a Contact Player to a match.
- * v1.7: Uses rpc_match_nominate_guest (create roster guest + nominate).
+ * Create a Contact Player and immediately direct-invite them to a match.
+ * Uses roster creation + rpc_match_nominate_guest.
  */
 export function AddGuestForm({ matchId }: Props) {
   const [displayName, setDisplayName] = useState('')
@@ -48,7 +48,7 @@ export function AddGuestForm({ matchId }: Props) {
         phone: phoneVal,
         notes: guestNotes || null,
       })
-      // 2) Nominate that Contact Player into this match
+      // 2) Direct-invite that Contact Player into this match
       await nominateGuest(supabase, matchId, guest.id)
       await processDeliveriesAction()
       setSuccess(true)
@@ -58,7 +58,7 @@ export function AddGuestForm({ matchId }: Props) {
       setGuestNotes('')
       router.refresh()
     } catch (err) {
-      setError((err as { message?: string })?.message ?? 'Failed to add player')
+      setError((err as { message?: string })?.message ?? 'Failed to create contact player')
     } finally {
       setLoading(false)
     }
@@ -105,10 +105,10 @@ export function AddGuestForm({ matchId }: Props) {
         />
       </div>
       <button type="submit" disabled={loading || (!email.trim() && !phone.trim())}>
-        {loading ? 'Creating...' : 'Create & Nominate'}
+        {loading ? 'Creating...' : 'Create & Direct Invite'}
       </button>
       {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
-      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Contact Player added!</p>}
+      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Contact Player created and invited.</p>}
     </form>
   )
 }

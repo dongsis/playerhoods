@@ -19,10 +19,7 @@ export default function NewGroupPage() {
 
     try {
       const group = await createGroupAction({ name, description })
-      console.log('[NewGroupPage] Created group:', JSON.stringify(group))
-      const url = `/groups/${group.id}`
-      console.log('[NewGroupPage] Redirecting to:', url)
-      router.push(url)
+      router.push(`/groups/${group.id}`)
     } catch (err: unknown) {
       const message = (err as { message?: string })?.message || 'Failed to create group'
       setError(message)

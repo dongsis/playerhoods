@@ -25,7 +25,7 @@ function buildMatchInfo(payload: Record<string, unknown>): {
   gameType: string
   matchDate: string | null
   startTime: string | null
-  clubName: string | null
+  venueName: string | null
   siteUrl: string
 } {
   return {
@@ -33,7 +33,7 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     gameType: (payload.game_type as string) ?? 'Match',
     matchDate: (payload.match_date as string) ?? null,
     startTime: null,
-    clubName: (payload.club_name as string) ?? null,
+    venueName: (payload.club_name as string) ?? null,
     siteUrl: SITE_URL,
   }
 }
@@ -76,9 +76,10 @@ export async function processQueuedNotificationDeliveries(
       const matchSummary = ms
         ? { game_type: ms.game_type ?? null, match_date: ms.match_date ?? null, club_name: ms.club_name ?? null }
         : null
-      subject = "You're invited to a match"
+      const inviterDisplayName = (payload.inviter_display_name as string) ?? 'Someone'
+      subject = `${inviterDisplayName} invited you to a match`
       html = renderInvitationEmail({
-        inviterDisplayName: (payload.inviter_display_name as string) ?? 'Someone',
+        inviterDisplayName,
         targetEmail: (payload.target_email as string) ?? d.destination,
         invitationId: (payload.invitation_id as string) ?? '',
         matchSummary,

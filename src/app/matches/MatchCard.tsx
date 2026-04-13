@@ -22,17 +22,19 @@ interface Props {
 export function MatchCard({ item, userId }: Props) {
   const {
     match,
-    clubTimezone,
-    clubName,
+    venueTimezone,
+    venueName,
+    courtState,
     confirmedCount,
     pendingCount,
     isFormed,
     participants,
     myParticipant,
+    rosterInsight,
   } = item
 
   const isOrganizer = userId === match.organizer_id
-  const need = Math.max(match.required_count - confirmedCount, 0)
+  const isCancelled = match.status === 'cancelled'
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -64,7 +66,7 @@ export function MatchCard({ item, userId }: Props) {
     match.match_date,
     match.start_time,
     match.duration_minutes,
-    clubTimezone,
+    venueTimezone,
   )
 
   const handleCTA = () => {
@@ -88,8 +90,10 @@ export function MatchCard({ item, userId }: Props) {
   if (confirmedCount > 3) nameParts.push(`+${confirmedCount - 3}`)
   const peopleParts: string[] = [...nameParts]
   if (pendingCount > 0) peopleParts.push(`⏳${pendingCount}`)
-  if (need > 0) peopleParts.push(`need ${need}`)
+  if (rosterInsight.summaryLabel) peopleParts.push(rosterInsight.summaryLabel)
   const peopleSummary = peopleParts.join(' · ')
+
+  const rosterPeopleSummary = [...nameParts, ...(rosterInsight.summaryLabel ? [rosterInsight.summaryLabel] : [])].join(' · ')
 
   return (
     <div
@@ -123,9 +127,9 @@ export function MatchCard({ item, userId }: Props) {
                 {match.game_type}
               </span>
             )}
-            {clubName && (
+            {venueName && (
               <span style={{ fontWeight: 400, color: '#999', marginLeft: '0.5rem', fontSize: '0.8rem' }}>
-                {clubName}
+                {venueName}
               </span>
             )}
           </div>
@@ -160,8 +164,52 @@ export function MatchCard({ item, userId }: Props) {
             )}
           </div>
 
+          {!isCancelled && (
+            <div style={{ marginTop: '0.25rem' }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0.05rem 0.4rem',
+                  fontSize: '0.7rem',
+                  borderRadius: '999px',
+                  background:
+                    courtState.status === 'secured'
+                      ? '#dcfce7'
+                      : courtState.status === 'walk_in'
+                        ? '#dbeafe'
+                        : '#fef3c7',
+                  color:
+                    courtState.status === 'secured'
+                      ? '#166534'
+                      : courtState.status === 'walk_in'
+                        ? '#1d4ed8'
+                        : '#b45309',
+                }}
+              >
+                {courtState.badgeLabel}
+              </span>
+              {myParticipant?.status === 'waiting_list' && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '0.05rem 0.4rem',
+                    fontSize: '0.7rem',
+                    borderRadius: '999px',
+                    background: '#fef3c7',
+                    color: '#b45309',
+                    marginLeft: '0.35rem',
+                  }}
+                >
+                  Waiting list
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Line 3: people summary */}
-          {peopleSummary && (
+          {rosterPeopleSummary && (
             <div
               style={{
                 fontSize: '0.78rem',
@@ -172,7 +220,7 @@ export function MatchCard({ item, userId }: Props) {
                 whiteSpace: 'nowrap',
               }}
             >
-              {peopleSummary}
+              {rosterPeopleSummary}
             </div>
           )}
         </div>

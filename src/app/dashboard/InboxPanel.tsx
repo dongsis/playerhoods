@@ -15,9 +15,11 @@ const KIND_LABELS: Record<string, string> = {
   match_cancelled: 'Match cancelled',
   invited: 'You were invited',
   nominated: 'You were nominated',
-  removed: 'You were removed from match',
+  removed: 'No longer invited',
   delegate_target_confirmed: 'Your nominee was confirmed',
   delegate_target_removed: 'Your nominee was removed',
+  court_plan_updated: 'Court plan updated',
+  waiting_list_promoted: 'You are now in the match',
 }
 
 function formatTime(iso: string): string {

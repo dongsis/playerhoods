@@ -72,8 +72,8 @@ export function formatTimeWindow(
   return start
 }
 
-/** Returns YYYY-MM-DD in club-local timezone for date-grouping in history. */
-export function clubDateKey(
+/** Returns YYYY-MM-DD in venue-local timezone for date-grouping in history. */
+export function venueDateKey(
   startAtUtc: string | null,
   matchDate: string | null,
   timezone: string | null,
@@ -151,7 +151,9 @@ export function formatActionType(type: string): string {
     reenter:               're-entered match for',
     manual_confirm:        'manually confirmed',
     delegate_manual_confirm: 'confirmed for',
+    revoke_delegate_confirm: 'revoked delegated confirmation for',
     nominate_guest:       'nominated Contact Player',
+    proxy_confirm:        'confirmed on behalf of',
   }
   return MAP[type] ?? type
 }

@@ -8,20 +8,20 @@
 ## 1. Two-Layer Model (Authoritative)
 
 ### Layer 1: Global master switches (profiles)
-- `profiles.show_in_club_member_discovery`
+- `profiles.show_in_venue_member_discovery`
 - `profiles.allow_non_group_invites`
 
-If global switch is OFF → behavior OFF everywhere. Club-level settings have no effect.
+If global switch is OFF → behavior OFF everywhere. Venue-level settings have no effect.
 
-### Layer 2: Club-scoped overrides (club_identities)
-- `club_identities.visible_in_club_member_discovery` (nullable)
-- `club_identities.accept_non_group_invites_in_club` (nullable)
+### Layer 2: Venue-scoped overrides (venue_identities)
+- `venue_identities.visible_in_venue_member_discovery` (nullable)
+- `venue_identities.accept_non_group_invites_in_venue` (nullable)
 
 NULL = no override, treated as true. Only applies when corresponding global switch is ON.
 
 ### Effective logic
-- **Discovery:** `profiles.show_in_club_member_discovery` AND `COALESCE(club_identities.visible_in_club_member_discovery, true)`
-- **Non-group invite:** `profiles.allow_non_group_invites` AND `COALESCE(club_identities.accept_non_group_invites_in_club, true)`
+- **Discovery:** `profiles.show_in_venue_member_discovery` AND `COALESCE(venue_identities.visible_in_venue_member_discovery, true)`
+- **Non-group invite:** `profiles.allow_non_group_invites` AND `COALESCE(venue_identities.accept_non_group_invites_in_venue, true)`
 
 ---
 
@@ -56,14 +56,14 @@ No sport-specific permission split. This is not a permanent design; it is the cu
 
 | Component | Change |
 |-----------|--------|
-| `rpc_club_members_discovery` | Two-layer discovery filter |
-| `can_admit_user_to_match` | Path B (non-group) two-layer; club context = match.club_id or organizer.primary_club_id |
+| `rpc_venue_members_discovery` | Two-layer discovery filter |
+| `can_admit_user_to_match` | Path B (non-group) two-layer; club context = match.venue_id or organizer.primary_venue_id |
 | `rpc_match_admission_targets` | club_members_src uses two-layer discovery; eligible = can_admit |
 
 ---
 
 ## References
 
-- `Naming_Simplification_and_Club_Preferences_Plan.md`
+- `Naming_Simplification_and_Venue_Preferences_Plan.md`
 - Migration: `20260313000000_two_layer_preferences_minimal.sql`
 - Validation: `supabase/validation/20260313000000_two_layer_preferences_validation.sql`

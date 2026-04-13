@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getGroup, getMyGroupMembership, getGroupMembers, getInvitableUsers } from '@/lib/api/groups'
+import { getGroup, getMyGroupMembership, getGroupMembers, getInvitableUsers, getGroupContacts } from '@/lib/api/groups'
 import { AcceptInviteButton } from './AcceptInviteButton'
 import { LeaveGroupButton } from './LeaveGroupButton'
 import { InviteUserForm } from './InviteUserForm'
+import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
 import type { GroupMemberWithProfile, Group } from '@/lib/types/database'
 
 interface Props {
@@ -43,9 +44,10 @@ export default async function GroupDetailPage({ params }: Props) {
 
   const isBoundaryKeeper = user?.id === group.boundary_keeper_id
 
-  const [membership, members, invitableUsers] = await Promise.all([
+  const [membership, members, groupContacts, invitableUsers] = await Promise.all([
     user ? getMyGroupMembership(supabase, groupId, user.id) : Promise.resolve(null),
     getGroupMembers(supabase, groupId),
+    getGroupContacts(supabase, groupId),
     isBoundaryKeeper ? getInvitableUsers(supabase, groupId) : Promise.resolve([]),
   ])
 
@@ -136,6 +138,44 @@ export default async function GroupDetailPage({ params }: Props) {
           </details>
         )}
       </section>
+
+      {groupContacts.length > 0 && (
+        <section style={{ marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1rem', margin: '0 0 0.75rem' }}>Contact Players</h2>
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            {groupContacts.map((contact) => (
+              <div
+                key={contact.group_contact_id}
+                style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', padding: '0.55rem 0.65rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#fcfcfd' }}
+              >
+                <div>
+                  <strong>{contact.display_name}</strong>
+                  <div style={{ marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#667085' }}>
+                      Limited group contact
+                    </span>
+                    {contact.saved_by_viewer && (
+                      <span style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 600 }}>
+                        Saved by you
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ marginTop: '0.2rem', fontSize: '0.74rem', color: '#98a2b3' }}>
+                    {contact.created_by_name ? `Added by ${contact.created_by_name}` : 'Added to this group'}
+                  </div>
+                </div>
+                <SaveContactPlayerButton
+                  guestId={contact.guest_id}
+                  source="group_contact"
+                  groupId={groupId}
+                  compact
+                  saveLabel="Save"
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Invite (Boundary Keeper only) */}
       {isBoundaryKeeper && (

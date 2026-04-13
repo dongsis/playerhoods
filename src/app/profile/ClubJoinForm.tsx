@@ -1,31 +1,31 @@
 'use client'
 
 import { useState, useTransition, useCallback, useRef } from 'react'
-import type { Club } from '@/lib/types/database'
+import type { Venue } from '@/lib/types/database'
 
 interface Props {
-  clubs: Club[]
+  venues: Venue[]
   defaultHandle?: string
-  onCheckHandle: (clubId: string, handle: string) => Promise<{ available: boolean; suggestions: string[] }>
-  onJoin: (clubId: string, handle: string) => Promise<void>
+  onCheckHandle: (venueId: string, handle: string) => Promise<{ available: boolean; suggestions: string[] }>
+  onJoin: (venueId: string, handle: string) => Promise<void>
 }
 
-export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin }: Props) {
-  const [selectedClub, setSelectedClub] = useState<string>('')
+export function VenueJoinForm({ venues, defaultHandle = '', onCheckHandle, onJoin }: Props) {
+  const [selectedVenue, setSelectedVenue] = useState<string>('')
   const [handle, setHandle] = useState(defaultHandle)
   const [checkResult, setCheckResult] = useState<{ available: boolean; suggestions: string[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const scheduleCheck = useCallback((clubId: string, h: string) => {
+  const scheduleCheck = useCallback((venueId: string, h: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setCheckResult(null)
-    if (!clubId || h.trim().length < 2) return
+    if (!venueId || h.trim().length < 2) return
     debounceRef.current = setTimeout(() => {
       startTransition(async () => {
         try {
-          const result = await onCheckHandle(clubId, h.trim())
+          const result = await onCheckHandle(venueId, h.trim())
           setCheckResult(result)
         } catch {
           // ignore check errors silently
@@ -38,11 +38,11 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
     const val = e.target.value
     setHandle(val)
     setError(null)
-    scheduleCheck(selectedClub, val)
+    scheduleCheck(selectedVenue, val)
   }
 
-  const handleClubChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedClub(e.target.value)
+  const handleVenueChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedVenue(e.target.value)
     setCheckResult(null)
     setError(null)
     scheduleCheck(e.target.value, handle)
@@ -51,14 +51,14 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = handle.trim()
-    if (!selectedClub) { setError('Please select a venue'); return }
+    if (!selectedVenue) { setError('Please select a venue'); return }
     if (!trimmed) { setError('Handle is required'); return }
     setError(null)
     startTransition(async () => {
       try {
-        await onJoin(selectedClub, trimmed)
+        await onJoin(selectedVenue, trimmed)
         setHandle('')
-        setSelectedClub('')
+        setSelectedVenue('')
         setCheckResult(null)
       } catch (err: unknown) {
         setError((err as { message?: string })?.message || 'Failed to join venue')
@@ -66,7 +66,7 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
     })
   }
 
-  if (clubs.length === 0) {
+  if (venues.length === 0) {
     return <p style={{ color: '#888', fontSize: '0.9rem' }}>You have joined all available venues.</p>
   }
 
@@ -77,12 +77,12 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
       <div>
         <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Venue</label>
         <select
-          value={selectedClub}
-          onChange={handleClubChange}
+          value={selectedVenue}
+          onChange={handleVenueChange}
           style={{ padding: '0.4rem', minWidth: '180px' }}
         >
           <option value="">Select a venue...</option>
-          {clubs.map(c => (
+          {venues.map(c => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
@@ -95,7 +95,7 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
           onChange={handleHandleChange}
           placeholder="2–30 chars, no @"
           style={{ padding: '0.4rem', width: '180px' }}
-          disabled={!selectedClub}
+          disabled={!selectedVenue}
         />
         {checkResult !== null && (
           <div style={{ fontSize: '0.8rem', marginTop: '0.2rem' }}>
@@ -109,7 +109,7 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
                     <button
                       key={i}
                       type="button"
-                      onClick={() => { setHandle(s); scheduleCheck(selectedClub, s) }}
+                      onClick={() => { setHandle(s); scheduleCheck(selectedVenue, s) }}
                       style={{ marginLeft: '0.3rem', fontSize: '0.8rem', padding: '0 0.3rem', cursor: 'pointer' }}
                     >
                       {s}
@@ -124,7 +124,7 @@ export function ClubJoinForm({ clubs, defaultHandle = '', onCheckHandle, onJoin 
 
       <button
         type="submit"
-        disabled={isPending || !selectedClub || !handle.trim() || checkResult?.available === false}
+        disabled={isPending || !selectedVenue || !handle.trim() || checkResult?.available === false}
         style={{ padding: '0.4rem 1rem', background: '#333', color: 'white', border: 'none', cursor: 'pointer' }}
       >
         {isPending ? 'Joining...' : 'Join Venue'}

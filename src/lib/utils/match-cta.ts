@@ -62,7 +62,7 @@ export function computeCardCTA(params: {
   }
 
   // 3a. Pending participant — can withdraw/cancel
-  if (mp?.status === 'pending') {
+  if (mp?.status === 'pending' || mp?.status === 'waiting_list') {
     return { kind: 'withdraw' }
   }
 

@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { getGroup, getGroupMembers } from '@/lib/api/groups'
+import { getGroup, getGroupContacts, getGroupMembers } from '@/lib/api/groups'
+import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
 
 interface Props {
   params: Promise<{ groupId: string }>
@@ -18,7 +19,10 @@ export default async function GroupMembersPage({ params }: Props) {
     notFound()
   }
 
-  const members = await getGroupMembers(supabase, groupId)
+  const [members, groupContacts] = await Promise.all([
+    getGroupMembers(supabase, groupId),
+    getGroupContacts(supabase, groupId),
+  ])
 
   // Group members by status
   const pendingMembers = members.filter((m) => m.status === 'pending')
@@ -64,6 +68,36 @@ export default async function GroupMembersPage({ params }: Props) {
                 <strong>{member.profile?.display_name || member.user_id}</strong>
                 <br />
                 <small>Invited: {new Date(member.created_at).toLocaleDateString()}</small>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section style={{ marginBottom: '2rem' }}>
+        <h2>Contact Players ({groupContacts.length})</h2>
+        {groupContacts.length === 0 ? (
+          <p>No contact players</p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {groupContacts.map((contact) => (
+              <li key={contact.group_contact_id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', padding: '0.5rem', border: '1px solid #dbeafe', marginBottom: '0.25rem' }}>
+                <div>
+                  <strong>{contact.display_name}</strong>
+                  <br />
+                  <small>
+                    Limited group contact
+                    {contact.saved_by_viewer ? ' · Saved by you' : ''}
+                    {contact.created_by_name ? ` · Added by ${contact.created_by_name}` : ''}
+                  </small>
+                </div>
+                <SaveContactPlayerButton
+                  guestId={contact.guest_id}
+                  source="group_contact"
+                  groupId={groupId}
+                  compact
+                  saveLabel="Save"
+                />
               </li>
             ))}
           </ul>

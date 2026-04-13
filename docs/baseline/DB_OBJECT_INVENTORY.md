@@ -4,6 +4,9 @@
 
 Source: `supabase/baseline/BASELINE_SCHEMA.sql` and baseline security layer.
 
+This inventory is a frozen baseline-cutover inventory, not a current runtime inventory.
+For the current runtime object graph, use `schema.sql` together with active append-only migrations in `supabase/migrations/`.
+
 ## Summary Counts
 
 - Extensions: 6

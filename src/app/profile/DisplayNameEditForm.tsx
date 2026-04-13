@@ -1,93 +1,80 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 
 interface Props {
   displayName: string
   onSave: (newName: string) => Promise<void>
 }
 
-/**
- * Inline edit form for the user's global display_name.
- * v1.5 Identity: display_name is the primary global identity layer.
- * Max 50 chars; non-empty required.
- */
 export function DisplayNameEditForm({ displayName, onSave }: Props) {
-  const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(displayName)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [isPending, startTransition] = useTransition()
 
+  useEffect(() => {
+    setValue(displayName)
+  }, [displayName])
+
+  const trimmedValue = value.trim()
+  const isDirty = trimmedValue !== displayName.trim()
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmed = value.trim()
-    if (!trimmed) { setError('Display name cannot be empty'); return }
-    if (trimmed.length > 50) { setError('Max 50 characters'); return }
+    if (!trimmedValue) {
+      setError('Display name cannot be empty.')
+      return
+    }
+    if (trimmedValue.length > 50) {
+      setError('Display name must be 50 characters or fewer.')
+      return
+    }
+
     setError(null)
     setSaved(false)
     startTransition(async () => {
       try {
-        await onSave(trimmed)
-        setEditing(false)
+        await onSave(trimmedValue)
         setSaved(true)
-        setTimeout(() => setSaved(false), 2000)
+        setTimeout(() => setSaved(false), 1800)
       } catch (err: unknown) {
-        setError((err as { message?: string })?.message ?? 'Failed to save')
+        setError((err as { message?: string })?.message ?? 'Failed to save display name.')
       }
     })
   }
 
-  const handleCancel = () => {
-    setValue(displayName)
-    setEditing(false)
-    setError(null)
-  }
-
-  if (!editing) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 600, fontSize: '1rem' }}>{displayName}</span>
-        {saved && <span style={{ color: '#2d8a4e', fontSize: '0.8rem' }}>Saved</span>}
+  return (
+    <form onSubmit={handleSave} className="space-y-3">
+      <div className="flex items-end gap-3">
+        <div className="flex-1">
+          <input
+            value={value}
+            onChange={e => {
+              setValue(e.target.value)
+              setError(null)
+              setSaved(false)
+            }}
+            maxLength={50}
+            placeholder="Your display name"
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-slate-100"
+          />
+        </div>
         <button
-          onClick={() => { setEditing(true); setSaved(false) }}
-          style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}
+          type="submit"
+          disabled={isPending || !isDirty || !trimmedValue}
+          className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Edit
+          {isPending ? 'Saving...' : 'Save'}
         </button>
       </div>
-    )
-  }
 
-  return (
-    <form onSubmit={handleSave} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-      <input
-        value={value}
-        onChange={e => { setValue(e.target.value); setError(null) }}
-        maxLength={50}
-        placeholder="Your display name"
-        autoFocus
-        style={{ padding: '0.35rem 0.5rem', fontSize: '0.95rem', minWidth: '180px', flex: 1 }}
-      />
-      <span style={{ fontSize: '0.75rem', color: '#aaa', whiteSpace: 'nowrap' }}>
-        {value.trim().length}/50
-      </span>
-      <button
-        type="submit"
-        disabled={isPending || !value.trim()}
-        style={{ padding: '0.3rem 0.7rem', background: '#333', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}
-      >
-        {isPending ? '...' : 'Save'}
-      </button>
-      <button
-        type="button"
-        onClick={handleCancel}
-        disabled={isPending}
-        style={{ fontSize: '0.85rem', padding: '0.3rem 0.5rem' }}
-      >
-        Cancel
-      </button>
-      {error && <p style={{ width: '100%', color: 'red', fontSize: '0.8rem', margin: '0.2rem 0 0' }}>{error}</p>}
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className={error ? 'text-rose-500' : saved ? 'text-emerald-600' : 'text-slate-400'}>
+          {error ?? (saved ? 'Saved' : 'Use the name other players will recognize.')}
+        </span>
+        <span className="text-slate-400">{trimmedValue.length}/50</span>
+      </div>
     </form>
   )
 }

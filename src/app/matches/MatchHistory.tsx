@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import type { MatchListItem } from '@/lib/api/matches'
-import { clubDateKey, formatDateHeading } from '@/lib/format-time'
+import { venueDateKey, formatDateHeading } from '@/lib/format-time'
 import { MatchCard } from './MatchCard'
 
 interface Props {
@@ -11,14 +11,14 @@ interface Props {
 }
 
 export function MatchHistory({ items, userId }: Props) {
-  // Group by club-local date, newest first
+  // Group by venue-local date, newest first
   const groups = useMemo(() => {
     const map = new Map<string, MatchListItem[]>()
     for (const item of items) {
-      const key = clubDateKey(
+      const key = venueDateKey(
         item.match.start_at_utc,
         item.match.match_date,
-        item.clubTimezone,
+        item.venueTimezone,
       )
       const arr = map.get(key) ?? []
       arr.push(item)

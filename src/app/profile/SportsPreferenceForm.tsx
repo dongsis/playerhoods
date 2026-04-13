@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Sport } from '@/lib/types/database'
 
 interface Props {
@@ -11,9 +11,17 @@ interface Props {
 
 export function SportsPreferenceForm({ sports, initialSportIds, onSave }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set(initialSportIds))
-  const [saving, setSaving] = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(false)
+  const lastSavedKeyRef = useRef([...initialSportIds].sort((a, b) => a - b).join(','))
+
+  useEffect(() => {
+    const sortedInitial = [...initialSportIds].sort((a, b) => a - b)
+    setSelectedIds(new Set(sortedInitial))
+    lastSavedKeyRef.current = sortedInitial.join(',')
+    setSaveState('idle')
+  }, [initialSportIds])
 
   const toggle = (id: number) => {
     setSelectedIds(prev => {
@@ -22,60 +30,75 @@ export function SportsPreferenceForm({ sports, initialSportIds, onSave }: Props)
       else next.add(id)
       return next
     })
-    setSuccess(false)
   }
 
-  const hasChanges = (() => {
-    const initial = new Set(initialSportIds)
-    if (initial.size !== selectedIds.size) return true
-    for (const id of selectedIds) {
-      if (!initial.has(id)) return true
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
     }
-    return false
-  })()
 
-  const handleSave = async () => {
-    setError(null)
-    setSuccess(false)
-    setSaving(true)
-    try {
+    const sortedIds = [...selectedIds].sort((a, b) => a - b)
+    const nextKey = sortedIds.join(',')
+    if (nextKey === lastSavedKeyRef.current) return
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    setSaveState('saving')
+
+    saveTimerRef.current = setTimeout(async () => {
       const codes = sports
         .filter(s => selectedIds.has(s.id))
         .map(s => s.code)
-      await onSave(codes)
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 2000)
-    } catch (err) {
-      setError((err as { message?: string })?.message ?? 'Failed to save')
-    } finally {
-      setSaving(false)
+      try {
+        await onSave(codes)
+        lastSavedKeyRef.current = nextKey
+        setSaveState('saved')
+        setTimeout(() => {
+          setSaveState(prev => (prev === 'saved' ? 'idle' : prev))
+        }, 1200)
+      } catch {
+        setSaveState('error')
+      }
+    }, 400)
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }
+  }, [onSave, selectedIds, sports])
+
+  const saveLabel =
+    saveState === 'saving'
+      ? 'Saving...'
+      : saveState === 'saved'
+        ? 'Saved'
+        : saveState === 'error'
+          ? 'Could not save'
+          : null
 
   return (
-    <div>
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
-        {sports.map(s => (
-          <label key={s.id} style={{ fontSize: '0.9rem', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={selectedIds.has(s.id)}
-              onChange={() => toggle(s.id)}
-            />{' '}
-            {s.display_name}
-          </label>
-        ))}
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2.5">
+        {sports.map(sport => {
+          const selected = selectedIds.has(sport.id)
+          return (
+            <button
+              key={sport.id}
+              type="button"
+              onClick={() => toggle(sport.id)}
+              className={`inline-flex items-center rounded-full border px-3.5 py-2 text-sm transition ${
+                selected
+                  ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900'
+              }`}
+              aria-pressed={selected}
+            >
+              {sport.display_name}
+            </button>
+          )
+        })}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <button
-          onClick={handleSave}
-          disabled={saving || !hasChanges}
-          style={{ padding: '0.3rem 0.8rem', fontSize: '0.85rem' }}
-        >
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-        {success && <span style={{ color: 'green', fontSize: '0.8rem' }}>Saved!</span>}
-        {error && <span style={{ color: 'red', fontSize: '0.8rem' }}>{error}</span>}
+      <div className={`text-xs ${saveState === 'error' ? 'text-rose-500' : 'text-slate-400'}`}>
+        {saveLabel ?? 'Saved automatically'}
       </div>
     </div>
   )

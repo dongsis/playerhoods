@@ -19,7 +19,7 @@ export type InvitationEmailData = {
 
 const FALLBACK_SITE_URL = 'http://localhost:3000'
 
-/** Render invitation email HTML. CTA: "View Invitation" - no auto-accept. */
+/** Render invitation email HTML. CTA leads to the invitation response page. */
 export function renderInvitationEmail(data: InvitationEmailData): string {
   const base = data.siteUrl && data.siteUrl !== 'undefined' ? data.siteUrl : FALLBACK_SITE_URL
   const viewUrl = `${base}/invitations/${data.invitationId}`
@@ -35,12 +35,12 @@ export function renderInvitationEmail(data: InvitationEmailData): string {
 <head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
 <body>
   <div class="card">
-    <h2>You're invited</h2>
-    <p><strong>${escapeHtml(data.inviterDisplayName)}</strong> invited you to a match.</p>
+    <h2>You&apos;re invited to play</h2>
+    <p><strong>${escapeHtml(data.inviterDisplayName)}</strong> invited you to join a match.</p>
     <p><strong>Details:</strong> ${escapeHtml(matchStr)}</p>
-    <p>View the invitation and respond.</p>
-    <p><a href="${escapeHtml(viewUrl)}" class="btn">View Invitation</a></p>
-    <p class="meta">PlayerHoods — You must sign in and confirm to accept.</p>
+    <p>Use your private invitation link to accept or decline this match invitation.</p>
+    <p><a href="${escapeHtml(viewUrl)}" class="btn">Respond to invitation</a></p>
+    <p class="meta">No PlayerHoods account is required to respond. If you enjoy playing with this group, you&apos;re also welcome to join the PlayerHoods community later and organize more games with friends.</p>
   </div>
 </body>
 </html>

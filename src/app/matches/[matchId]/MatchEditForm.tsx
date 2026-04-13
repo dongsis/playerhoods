@@ -1,83 +1,175 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Court, MatchCourt } from '@/lib/types/database'
+import type { Court, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
+import type { MatchCourtPlanUpdateInput } from './match-detail.actions'
 
 interface Props {
+  requiredCount: number
+  minRequiredCount?: number
+  gameType: string | null
+  doublesFormat: MatchDoublesFormat | null
   matchDate: string | null
   startTime: string | null
   durationMinutes: number | null
-  currentCourts: MatchCourt[]
-  clubCourts: Court[]          // courts available in the match's club
-  onSave: (data: {
+  courtPlanMode: MatchCourtPlanMode
+  courtNote: string | null
+  finalCourtLabel: string | null
+  venueCourts: Court[]
+  onSaveMatchDetails: (data: {
+    required_count?: number | null
+    doubles_format?: MatchDoublesFormat | null
     match_date: string | null
     start_time: string | null
     duration_minutes: number | null
   }) => Promise<void>
-  onSetCourts: (courtLabels: string[]) => Promise<void>
+  onSaveCourtPlan: (data: MatchCourtPlanUpdateInput) => Promise<void>
 }
 
+const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
+  { value: 'secured', label: 'Court already secured' },
+  { value: 'walk_in', label: 'Walk-in / no advance booking' },
+  { value: 'self_book_later', label: 'Host will book it later' },
+  { value: 'needs_help_booking', label: 'Participants can help secure a court' },
+]
+
+const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
+  { value: 'open', label: 'Open doubles' },
+  { value: 'mens_doubles', label: "Men's doubles" },
+  { value: 'womens_doubles', label: "Women's doubles" },
+  { value: 'mixed_doubles', label: 'Mixed doubles' },
+]
+
 export function MatchEditForm({
+  requiredCount,
+  minRequiredCount = 1,
+  gameType,
+  doublesFormat,
   matchDate,
   startTime,
   durationMinutes,
-  currentCourts,
-  clubCourts,
-  onSave,
-  onSetCourts,
+  courtPlanMode,
+  courtNote,
+  finalCourtLabel,
+  venueCourts,
+  onSaveMatchDetails,
+  onSaveCourtPlan,
 }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const [saved, setSaved] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Local form state
+  const [players, setPlayers] = useState(requiredCount.toString())
   const [date, setDate] = useState(matchDate ?? '')
   const [time, setTime] = useState(startTime ?? '')
   const [duration, setDuration] = useState(durationMinutes?.toString() ?? '')
-  // Court slots: array of labels (at least one if club has courts)
-  const [courtLabels, setCourtLabels] = useState<string[]>(() =>
-    currentCourts.length > 0
-      ? currentCourts.map(c => c.court_label)
-      : clubCourts.length > 0 ? [clubCourts[0].court_code] : ['']
-  )
+  const [nextDoublesFormat, setNextDoublesFormat] = useState<MatchDoublesFormat>(doublesFormat ?? 'open')
+  const [planMode, setPlanMode] = useState<MatchCourtPlanMode>(courtPlanMode)
+  const [planNote, setPlanNote] = useState(courtNote ?? '')
+  const [courtLabel, setCourtLabel] = useState(finalCourtLabel ?? '')
 
-  // When opening the form, init court slots from current match courts
   useEffect(() => {
     if (!open) return
-    if (currentCourts.length > 0) {
-      setCourtLabels(currentCourts.map(c => c.court_label))
-    } else if (clubCourts.length > 0) {
-      setCourtLabels([clubCourts[0].court_code])
-    }
-  }, [open])
 
-  const addCourt = () => setCourtLabels(prev => [...prev, clubCourts[0]?.court_code ?? ''])
-  const removeCourt = (i: number) => setCourtLabels(prev => prev.filter((_, j) => j !== i))
-  const setCourtLabelAt = (i: number, value: string) =>
-    setCourtLabels(prev => prev.map((l, j) => (j === i ? value : l)))
+    setPlayers(requiredCount.toString())
+    setDate(matchDate ?? '')
+    setTime(startTime ?? '')
+    setDuration(durationMinutes?.toString() ?? '')
+    setNextDoublesFormat(doublesFormat ?? 'open')
+    setPlanMode(courtPlanMode)
+    setPlanNote(courtNote ?? '')
+    setCourtLabel(finalCourtLabel ?? '')
+  }, [open, requiredCount, doublesFormat, matchDate, startTime, durationMinutes, courtPlanMode, courtNote, finalCourtLabel])
+
+  useEffect(() => {
+    if (planMode !== 'secured') return
+    if (courtLabel.trim()) return
+    if (venueCourts.length === 0) return
+    setCourtLabel(venueCourts[0].court_code)
+  }, [courtLabel, planMode, venueCourts])
+
+  const nextRequiredCount = players ? parseInt(players, 10) : null
+  const nextDate = date || null
+  const nextTime = time || null
+  const nextDuration = duration ? parseInt(duration, 10) : null
+  const nextCourtNote = planNote.trim() || null
+  const normalizedCourtLabel = courtLabel.trim()
+  const nextCourtLabel = planMode === 'secured' ? (normalizedCourtLabel || null) : null
+  const courtNotePlaceholder =
+    planMode === 'walk_in'
+      ? 'Walk-in only, meet early'
+      : planMode === 'self_book_later'
+        ? 'Host will confirm the court later'
+        : planMode === 'needs_help_booking'
+          ? 'Use the match message area to coordinate court booking'
+          : 'Optional court note'
+
+  const detailsChanged =
+    nextRequiredCount !== requiredCount
+    || (gameType === 'doubles' && nextDoublesFormat !== (doublesFormat ?? 'open'))
+    || nextDate !== (matchDate ?? null)
+    || nextTime !== (startTime ?? null)
+    || nextDuration !== (durationMinutes ?? null)
+
+  const scheduleChanged =
+    nextDate !== (matchDate ?? null)
+    || nextTime !== (startTime ?? null)
+    || nextDuration !== (durationMinutes ?? null)
+
+  const courtPlanChanged =
+    planMode !== courtPlanMode
+    || nextCourtNote !== (courtNote ?? null)
+    || nextCourtLabel !== (finalCourtLabel ?? null)
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setSaved(false)
+
+    if (nextRequiredCount == null || Number.isNaN(nextRequiredCount)) {
+      setError('Players is required')
+      return
+    }
+    if (nextRequiredCount < minRequiredCount) {
+      setError(`Players cannot be less than ${minRequiredCount}`)
+      return
+    }
+    if (planMode === 'secured' && venueCourts.length > 0 && !normalizedCourtLabel) {
+      setError('Please choose the secured court.')
+      return
+    }
+
     startTransition(async () => {
       try {
-        await onSave({
-          match_date: date || null,
-          start_time: time || null,
-          duration_minutes: duration ? parseInt(duration, 10) : null,
-        })
-        const labels = courtLabels.map(l => l.trim()).filter(Boolean)
-        const currentLabels = currentCourts.map(c => c.court_label)
-        const same = labels.length === currentLabels.length && labels.every((l, i) => l === currentLabels[i])
-        if (!same) {
-          await onSetCourts(labels)
+        if (detailsChanged) {
+          await onSaveMatchDetails({
+            required_count: nextRequiredCount,
+            doubles_format: gameType === 'doubles' ? nextDoublesFormat : null,
+            match_date: nextDate,
+            start_time: nextTime,
+            duration_minutes: nextDuration,
+          })
         }
-        setSaved(true)
-        setTimeout(() => setSaved(false), 2500)
+
+        if (courtPlanChanged) {
+          await onSaveCourtPlan({
+            court_plan_mode: planMode,
+            court_note: nextCourtNote,
+            final_court_label: nextCourtLabel,
+          })
+        }
+
+        if (!detailsChanged && !courtPlanChanged) {
+          setNotice('No changes were saved.')
+        } else if (scheduleChanged) {
+          setNotice('Saved. Participants will be asked to confirm again because the schedule changed.')
+        } else {
+          setNotice('Saved.')
+        }
+
+        setOpen(false)
         router.refresh()
       } catch (err: unknown) {
         setError((err as { message?: string })?.message || 'Failed to save')
@@ -87,20 +179,33 @@ export function MatchEditForm({
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          fontSize: '0.8rem',
-          padding: '0.25rem 0.75rem',
-          border: '1px solid #ccc',
-          borderRadius: '4px',
-          background: 'none',
-          cursor: 'pointer',
-          color: '#555',
-        }}
-      >
-        Edit date / time
-      </button>
+      <div style={{ display: 'grid', justifyItems: 'end', gap: '0.45rem' }}>
+        {notice && (
+          <p style={{ color: '#166534', margin: 0, fontSize: '0.8rem', maxWidth: '18rem', textAlign: 'right' }}>
+            {notice}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setError(null)
+            setOpen(true)
+          }}
+          style={{
+            fontSize: '0.82rem',
+            fontWeight: 600,
+            padding: '0.48rem 1rem',
+            border: '1px solid #d0d5dd',
+            borderRadius: '999px',
+            background: 'rgba(255,255,255,0.92)',
+            cursor: 'pointer',
+            color: '#344054',
+            boxShadow: '0 8px 16px -14px rgba(15, 23, 42, 0.3)',
+          }}
+        >
+          Edit
+        </button>
+      </div>
     )
   }
 
@@ -108,11 +213,13 @@ export function MatchEditForm({
     <form
       onSubmit={handleSave}
       style={{
-        marginTop: '0.75rem',
+        width: '100%',
+        marginTop: '0.35rem',
         padding: '1rem',
-        border: '1px solid #e0e0e0',
-        borderRadius: '6px',
-        background: '#fafafa',
+        border: '1px solid #d9e2ec',
+        borderRadius: '16px',
+        background: '#ffffff',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8)',
         display: 'flex',
         flexWrap: 'wrap',
         gap: '1rem',
@@ -122,8 +229,39 @@ export function MatchEditForm({
       {error && (
         <p style={{ width: '100%', color: 'red', margin: 0, fontSize: '0.85rem' }}>{error}</p>
       )}
-      {saved && (
-        <p style={{ width: '100%', color: 'green', margin: 0, fontSize: '0.85rem' }}>Saved.</p>
+
+      <div>
+        <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '0.2rem' }}>
+          Players
+        </label>
+        <input
+          type="number"
+          min={minRequiredCount}
+          max={12}
+          step={1}
+          value={players}
+          onChange={(e) => setPlayers(e.target.value)}
+          style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', width: '88px' }}
+        />
+      </div>
+
+      {gameType === 'doubles' && (
+        <div>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '0.2rem' }}>
+            Doubles format
+          </label>
+          <select
+            value={nextDoublesFormat}
+            onChange={(e) => setNextDoublesFormat(e.target.value as MatchDoublesFormat)}
+            style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', minWidth: '170px' }}
+          >
+            {DOUBLES_FORMAT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
       )}
 
       <div>
@@ -133,7 +271,7 @@ export function MatchEditForm({
         <input
           type="date"
           value={date}
-          onChange={e => setDate(e.target.value)}
+          onChange={(e) => setDate(e.target.value)}
           style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem' }}
         />
       </div>
@@ -145,7 +283,7 @@ export function MatchEditForm({
         <input
           type="time"
           value={time}
-          onChange={e => setTime(e.target.value)}
+          onChange={(e) => setTime(e.target.value)}
           style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem' }}
         />
       </div>
@@ -160,66 +298,73 @@ export function MatchEditForm({
           max={480}
           step={15}
           value={duration}
-          onChange={e => setDuration(e.target.value)}
+          onChange={(e) => setDuration(e.target.value)}
           style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', width: '80px' }}
         />
       </div>
 
-      {(clubCourts.length > 0 || courtLabels.length > 0) && (
-        <div style={{ width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem', flexWrap: 'wrap' }}>
-            <label style={{ fontSize: '0.8rem', color: '#666' }}>
-              Courts ({courtLabels.length})
+      <div style={{ width: '100%' }}>
+        <div style={{ display: 'grid', gap: '0.75rem', maxWidth: '420px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '0.2rem' }}>
+              Court plan
             </label>
-            <button
-              type="button"
-              onClick={addCourt}
-              style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px', background: '#f5f5f5', cursor: 'pointer' }}
+            <select
+              value={planMode}
+              onChange={(e) => setPlanMode(e.target.value as MatchCourtPlanMode)}
+              style={{ width: '100%', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
             >
-              + Add court
-            </button>
+              {COURT_PLAN_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            {courtLabels.map((label, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{ fontSize: '0.8rem', color: '#888', width: '1.5rem' }}>{i + 1}.</span>
-                {clubCourts.length > 0 ? (
-                  <select
-                    value={label}
-                    onChange={e => setCourtLabelAt(i, e.target.value)}
-                    style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', flex: 1, maxWidth: '200px' }}
-                  >
-                    <option value="">— No court —</option>
-                    {clubCourts.map(c => (
-                      <option key={c.id} value={c.court_code}>
-                        {c.court_code}{c.surface ? ` (${c.surface})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={label}
-                    onChange={e => setCourtLabelAt(i, e.target.value)}
-                    placeholder="Court name"
-                    style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', flex: 1, maxWidth: '200px' }}
-                  />
-                )}
-                {courtLabels.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeCourt(i)}
-                    aria-label="Remove court"
-                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: '#c00', border: '1px solid #fcc', borderRadius: '4px', background: '#fff', cursor: 'pointer' }}
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))}
+
+          {planMode === 'secured' && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '0.2rem' }}>
+                Final court
+              </label>
+              {venueCourts.length > 0 ? (
+                <select
+                  value={courtLabel}
+                  onChange={(e) => setCourtLabel(e.target.value)}
+                  style={{ width: '100%', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
+                >
+                  {venueCourts.map((court) => (
+                    <option key={court.id} value={court.court_code}>
+                      {court.court_code}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={courtLabel}
+                  onChange={(e) => setCourtLabel(e.target.value)}
+                  placeholder="Court 2"
+                  style={{ width: '100%', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
+                />
+              )}
+            </div>
+          )}
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '0.2rem' }}>
+              Court note
+            </label>
+            <input
+              type="text"
+              value={planNote}
+              onChange={(e) => setPlanNote(e.target.value)}
+              placeholder={courtNotePlaceholder}
+              style={{ width: '100%', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
+            />
           </div>
         </div>
-      )}
+      </div>
 
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <button
@@ -235,11 +380,14 @@ export function MatchEditForm({
             fontSize: '0.85rem',
           }}
         >
-          {isPending ? 'Saving…' : 'Save'}
+          {isPending ? 'Saving...' : 'Save'}
         </button>
         <button
           type="button"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            setError(null)
+            setOpen(false)
+          }}
           style={{
             padding: '0.35rem 0.75rem',
             border: '1px solid #ccc',

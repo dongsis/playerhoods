@@ -29,6 +29,8 @@ yarn.lock
 # Next.js
 # -----------------------------
 .next/
+.next-dev/
+.next-build/
 out/
 build/
 dist/

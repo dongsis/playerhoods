@@ -1,8 +1,10 @@
-# Match Participant Lifecycle — Canonical Reference
+# Match Participant Lifecycle - Canonical Reference
 
-**Status:** Authoritative  
-**Scope:** Enter, Confirm, Approve, Exit, Re-entry, Reset  
-**Last updated:** 2026-03 (post admission/exit helper unification)
+**Status:** Authoritative, updated for Contact Player + Match Proxy canonical spec v1.2  
+**Scope:** Admission, confirmation, approval, exit, re-entry, reconfirm  
+**Last updated:** 2026-04-01
+
+This document is the canonical lifecycle reference for the current match participant model.
 
 ---
 
@@ -10,123 +12,182 @@
 
 | Invariant | Rule |
 |-----------|------|
-| **Confirmed** | `participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL` |
-| **Status** | Derived by `match_participant_reconcile_status` only. Never written directly. |
-| **Removed** | Canonical: `removed_at IS NOT NULL` |
+| Confirmed | `participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL` |
+| Status | Derived only by `match_participant_reconcile_status` |
+| Removed | Canonical removed signal is `removed_at IS NOT NULL` |
 
 ---
 
-## 2. Enter (Admission)
+## 2. Admission
 
-**Internal helper:** `apply_participant_admission(p_match_id, p_target_user_id, p_actor_id, p_admission_kind)`
+### Internal write core
 
-| RPC | Caller | Target | admission_kind | join_method | participant_accepted_at | org_approved_at |
-|-----|--------|--------|----------------|-------------|-------------------------|-----------------|
-| `rpc_match_request_join` | Self | auth.uid() | requested | requested | now(), in_app | NULL |
-| `rpc_match_admit_user` (invite) | Organizer | p_target | invited | invited | NULL | now() |
-| `rpc_match_admit_user` (nominate) | Non-org | p_target | nominated | nominated | NULL | NULL |
-| `rpc_match_nominate_guest` | Organizer OR MatchAssociated | Guest (roster) | — | nominated | NULL | org only if organizer |
+- `apply_participant_admission(p_match_id, p_target_user_id, p_actor_id, p_admission_kind)`
 
-**Wrappers:** `rpc_match_invite_user` → `rpc_match_admit_user`; `rpc_match_nominate_user` → `rpc_match_admit_user`
+This helper is the canonical internal write core for user admission flows.
 
-**Discovery:** Mixed candidate discovery is provided by `rpc_match_admission_targets`, but write paths remain split:
-- **Users** via `rpc_match_admit_user` (request_join, invite_user, nominate_user)
-- **Contact Players** via `rpc_match_nominate_guest`
+### Public admission RPCs
 
----
-
-## 3. Confirm (Participant-side acceptance)
-
-**Participant-side confirmation and organizer approval are separate phases; confirmed requires both.**
-
-**Internal helper:** `apply_participant_acceptance(p_mp_id, p_actor_id, p_is_self, p_action_type)`
-
-| RPC | Caller | Target | Effect |
+| RPC | Caller | Target | Result |
 |-----|--------|--------|--------|
-| `rpc_match_accept_invite` | Participant (self) | Own row | participant_accepted_at=now(), via=in_app |
-| `rpc_match_delegate_confirm_participant` | Organizer OR (non-org + InScope/MatchAssociated + ShareGroup) for user; any active participant for guest | Pending user or guest | participant_accepted_at=now(), via=delegate_manual. Guest: emits `match.guest_delegate_confirmed` |
+| `rpc_match_request_join` | self | `auth.uid()` | `requested`; participant side accepted immediately; organizer approval pending |
+| `rpc_match_admit_user` (invite path) | organizer | target user | `invited`; organizer-approved immediately; participant side pending |
+| `rpc_match_admit_user` (nominate path) | non-organizer | target user | `nominated`; both sides pending |
+| `rpc_match_nominate_guest` | organizer or eligible non-organizer | target guest / Contact Player | `nominated`; guest row path, not user admission helper |
 
-**Order-free:** Org Approve and participant Accept can happen in any order.
+Thin wrappers:
+
+- `rpc_match_invite_user -> rpc_match_admit_user`
+- `rpc_match_nominate_user -> rpc_match_admit_user`
+
+Discovery read model:
+
+- `rpc_match_admission_targets`
 
 ---
 
-## 4. Approve (Organizer-side)
+## 3. Participant-Side Confirmation
 
-| RPC | Caller | Target | Effect |
+### Internal write core
+
+- `apply_participant_acceptance(p_mp_id, p_actor_id, p_is_self, p_action_type)`
+
+This helper is the canonical internal write core for participant-side confirmation writes.
+
+### Public confirmation RPCs
+
+| RPC | Caller | Target | Result |
 |-----|--------|--------|--------|
-| `rpc_match_org_approve_participant` | Organizer only | Any pending participant (user or guest) | org_approved_at=now(), org_approved_by=actor |
+| `rpc_match_accept_invite` | self | own row | writes participant-side acceptance via `in_app` |
+| `rpc_match_proxy_confirm_participant` | explicit active Match Proxy only | principal's pending user or Contact Player row | writes participant-side acceptance via `proxy` |
+
+Current rule:
+
+- participant-side confirmation does not itself imply organizer approval
+
+Order is free:
+
+- participant accept first, then organizer approve
+- organizer approve first, then participant accept
+
+Both converge through `match_participant_reconcile_status`.
 
 ---
 
-## 5. Exit
+## 4. Proxy Confirmation Revoke
 
-**Internal helper:** `apply_participant_exit(p_match_participant_id, p_actor_id, p_exit_kind, p_removal_note)`
+The old ad-hoc delegate-confirm revoke flow is retired.
 
-| RPC | Caller | Target | exit_kind | Effect |
-|-----|--------|--------|-----------|--------|
-| `rpc_match_remove_participant` | Organizer OR (confirmed + can_manage) | Any non-removed | remove | removed_at, removed_by, removal_note; reconcile → removed |
-| `rpc_match_user_withdraw` | Participant (self) | Own row (user only) | withdraw | Same |
+Current rule:
 
----
-
-## 6. Re-entry
-
-**User:** Via admission family only. No dedicated re-entry RPC.
-
-| Path | Condition |
-|------|-----------|
-| `rpc_match_request_join` | Caller in scope |
-| `rpc_match_invite_user` / `rpc_match_admit_user` | Organizer |
-| `rpc_match_nominate_user` / `rpc_match_admit_user` | Non-org, ShareGroup with target |
-
-**Guest:** No re-entry. New `rpc_match_nominate_guest` only.
+- participant-side confirmation rollback is not exposed as a general non-principal convenience action
+- any retained compatibility stubs such as `rpc_match_delegate_confirm_participant` or `rpc_match_revoke_delegate_confirm_participant` are deprecated and should not be used for new product flows
 
 ---
 
-## 7. Reset (Reconfirm)
+## 5. Organizer Approval
 
-**Trigger:** `trg_match_detail_change_reconfirm` on `matches` UPDATE of `match_date`, `start_time`, `duration_minutes`, `club_id`, `court_ids`
+Public RPC:
 
-**Function:** `fn_match_detail_change_reconfirm`
+- `rpc_match_org_approve_participant`
 
-**Effect:** For all **confirmed** non-removed participants **except organizer**:
-- Clear: `participant_accepted_at`, `participant_accepted_via`, `manual_confirmed_by`, `confirmed_at`
-- Preserve: `org_approved_at`
-- Reconcile → status pending
+Organizer approval:
 
-**Applies to:** User and guest participants.
-
----
-
-## 8. Canonicalization Settlement (Contact Player → Registered User)
-
-When a Contact Player (guest participant) registers or logs in, the same real person may have both an active guest row and an active user row in the same match. **Canonicalization settlement** resolves this into a single active canonical row (user row canonical; guest row retired).
-
-**Design document:** [Contact_Player_Canonicalization_Orchestration_Design.md](../fixes/Contact_Player_Canonicalization_Orchestration_Design.md)
-
-**Scope:** Row identity and active-row uniqueness only. Does **not** decide participant acceptance or organizer approval.
-
-**Status:** Level 1 design complete. Next: L2 dry-run audit (read-only).
+- sets `org_approved_at`
+- sets `org_approved_by`
+- never writes final status directly
+- relies on reconcile to derive `pending` or `confirmed`
 
 ---
 
-## 9. Canonical Function Index
+## 6. Exit
 
-| Phase | Public RPC | Internal Helper |
-|-------|------------|-----------------|
-| Enter | request_join, admit_user, invite_user, nominate_user, nominate_guest | apply_participant_admission |
-| Confirm | accept_invite, delegate_confirm_participant | apply_participant_acceptance |
-| Approve | org_approve_participant | — |
-| Exit | remove_participant, user_withdraw | apply_participant_exit |
-| Reset | (trigger) | fn_match_detail_change_reconfirm |
-| Canonicalization | (design only; future) | canonicalize_participant_for_registered_user |
+### Internal write core
+
+- `apply_participant_exit(p_match_participant_id, p_actor_id, p_exit_kind, p_removal_note)`
+
+This helper is the canonical internal write core for removing an active participant from the active lifecycle.
+
+### Public exit RPCs
+
+| RPC | Caller | Target | Result |
+|-----|--------|--------|--------|
+| `rpc_match_user_withdraw` | self | own row | marks removed with self as remover |
+| `rpc_match_remove_participant` | organizer | target row | marks removed with actor as remover |
+
+Both exit paths end in:
+
+- `removed_at`
+- `removed_by`
+- reconcile -> `status = removed`
 
 ---
 
-## 10. References
+## 7. Match Association
 
-- `00_AUTHORITATIVE_INDEX.md` — invariants, Restart Doctrine
-- `Match_Participation_Flows_and_Scope.md` — scope, gates, RLS
-- `Participant_Exit_Unified_Helper_Design.md` — exit helper
-- `Admission_Family_Unified_Helper_Design.md` — admission helper
-- `Contact_Player_Canonicalization_Orchestration_Design.md` — canonicalization settlement (guest→user)
+Current helper:
+
+- `is_user_match_associated(match_id, user_id)`
+
+Current rule:
+
+- active row => match-associated
+- self-withdraw or self-decline removed row => still match-associated
+- organizer-removed or manager-removed row => not match-associated
+
+This is the current post-baseline model and should be treated as canonical for caller gates.
+
+---
+
+## 8. Re-entry
+
+There is no dedicated re-entry RPC.
+
+Current user re-entry channels:
+
+- `rpc_match_request_join`
+- `rpc_match_invite_user`
+- `rpc_match_nominate_user`
+
+Current Contact Player rule:
+
+- no removed-row reuse model
+- use a fresh `rpc_match_nominate_guest` path
+
+---
+
+## 9. Reconfirm on Match Detail Change
+
+Trigger:
+
+- `trg_match_detail_change_reconfirm`
+
+Trigger function:
+
+- `fn_match_detail_change_reconfirm`
+
+Current effect:
+
+- for confirmed, non-removed, non-organizer participants
+- clear:
+  - `participant_accepted_at`
+  - `participant_accepted_via`
+  - `manual_confirmed_by`
+  - `confirmed_at`
+- preserve:
+  - `org_approved_at`
+- reconcile back to pending
+
+This applies to both user and guest participants.
+
+---
+
+## 10. Canonical Function Families
+
+| Family | Public RPCs | Internal write core |
+|--------|-------------|---------------------|
+| Admission | `request_join`, `admit_user`, `invite_user`, `nominate_user`, `nominate_guest` | `apply_participant_admission` for user flows |
+| Confirmation | `accept_invite`, `proxy_confirm_participant` | `apply_participant_acceptance` for write-side acceptance |
+| Approval | `org_approve_participant` | none |
+| Exit | `user_withdraw`, `remove_participant` | `apply_participant_exit` |
+| Status derivation | all lifecycle families | `match_participant_reconcile_status` |

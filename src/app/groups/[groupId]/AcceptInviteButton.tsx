@@ -26,9 +26,7 @@ export function AcceptInviteButton({ groupId }: Props) {
     const supabase = createSupabaseBrowserClient()
 
     try {
-      console.log('AcceptInvite: calling RPC for group', groupId)
       await acceptGroupInvite(supabase, groupId)
-      console.log('AcceptInvite: RPC succeeded, refreshing')
       router.refresh()
     } catch (err: unknown) {
       const message = (err as { message?: string })?.message || String(err)

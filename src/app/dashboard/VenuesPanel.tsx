@@ -1,16 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import type { Club, ClubIdentity } from '@/lib/types/database'
+import type { Venue, VenueIdentity } from '@/lib/types/database'
 
 interface Props {
-  myIdentities: (ClubIdentity & { club: Club })[]
-  myVenuePrefs: Club[]
+  myIdentities: (VenueIdentity & { venue: Venue })[]
+  myVenuePrefs: Venue[]
   isAdmin: boolean
 }
 
 export function VenuesPanel({ myIdentities, myVenuePrefs, isAdmin }: Props) {
-  const joinedVenues = myIdentities.map(i => i.club)
+  const joinedVenues = myIdentities.map(identity => identity.venue)
 
   // Saved venues that aren't already joined
   const joinedIds = new Set(joinedVenues.map(v => v.id))
@@ -19,17 +19,17 @@ export function VenuesPanel({ myIdentities, myVenuePrefs, isAdmin }: Props) {
   return (
     <div className="space-y-8 max-w-lg">
 
-      {/* My Clubs (member) */}
+      {/* My Venues (member) */}
       <section>
         <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-          My Clubs
+          My Venues
         </h2>
         {joinedVenues.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">Not a member of any club yet.</p>
+          <p className="text-sm text-gray-400 italic">Not a member of any venue yet.</p>
         ) : (
           <div className="space-y-2">
             {joinedVenues.map(v => {
-              const identity = myIdentities.find(i => i.club_id === v.id)!
+              const identity = myIdentities.find(i => i.venue_id === v.id)!
               return (
                 <Link
                   key={v.id}
@@ -40,8 +40,8 @@ export function VenuesPanel({ myIdentities, myVenuePrefs, isAdmin }: Props) {
                     <span className="text-sm font-medium text-gray-800 group-hover:text-gray-900">
                       {v.name}
                     </span>
-                    {identity.club_handle && (
-                      <span className="text-xs text-gray-400 ml-2">@{identity.club_handle}</span>
+                    {identity.venue_handle && (
+                      <span className="text-xs text-gray-400 ml-2">@{identity.venue_handle}</span>
                     )}
                     {v.location_text && (
                       <div className="text-xs text-gray-400 mt-0.5">{v.location_text}</div>

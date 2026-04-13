@@ -16,7 +16,7 @@
 | **Group** | 用户离开 | `rpc_group_leave` | Group 详情、Dashboard Players | 成员本人 |
 | **Group** | 拒绝邀请 | `rpc_group_reject_invite` | Dashboard Players | 被邀请者 |
 | **Email Invitation** | 拒绝邀请 | `rpc_email_invitation_decline` | `/invitations/[id]` | 被邀请者 |
-| **Club/Venue Admin** | 撤销管理员 | `rpc_club_admin_revoke` | Admin Clubs/Venues | 超级管理员 |
+| **Venue/Venue Admin** | 撤销管理员 | `rpc_venue_admin_revoke` | Admin Venues/Venues | 超级管理员 |
 | **Invite Circle** | 从邀请圈移除 | `rpc_invite_circle_remove_user` | Dashboard Invite Circle | 本人 |
 | **Venue** | 移除场地偏好 | `removeVenuePreference` | Profile、Venue 详情 | 本人 |
 | **Avatar** | 移除头像 | Storage remove + update | Dashboard | 本人 |
@@ -31,7 +31,7 @@
 | Match remove/withdraw | `src/lib/api/matches.ts` | `ParticipantGroups`, `MatchActions`, `MatchCard`, `ParticipantsList` |
 | Group leave/reject | `src/lib/api/groups.ts` | `LeaveGroupButton`, `PlayersPanel` |
 | Email decline | `src/lib/invitations/decline-invitation.ts` | `invitations/[id]/InvitationActions` |
-| Admin revoke | `src/lib/api/clubs.ts` | `admin/clubs/[clubId]`, `admin/venues/[venueId]` |
+| Admin revoke | `src/lib/api/venues.ts` | `admin/venues/[venueId]`, `admin/venues/[venueId]` |
 | Invite Circle remove | `src/lib/api/play-network.ts` | `InviteCirclePanel` |
 | Venue preference | `src/lib/api/identities.ts` | `profile/page`, `venues/[venueId]/page` |
 | Avatar | — | `AvatarUpload` |
@@ -176,28 +176,28 @@ declineInvitation(supabase, invitationId)  // → rpc_email_invitation_decline
 
 ---
 
-## 6. Club / Venue Admin Revoke（撤销管理员）
+## 6. Venue / Venue Admin Revoke（撤销管理员）
 
 ### 6.1 数据库层
 
 | RPC | 调用者 | 目标 | 效果 |
 |-----|--------|------|------|
-| `rpc_club_admin_revoke(p_user_id, p_club_id)` | 超级管理员 | 俱乐部管理员 | 从 `club_admins` 移除 |
-| `rpc_club_admin_revoke(p_user_id, p_venue_id)` | 超级管理员 | 场地管理员 | 从 `venue_admins` 移除（同一 RPC，venue 作为 club 处理） |
+| `rpc_venue_admin_revoke(p_user_id, p_venue_id)` | 超级管理员 | 俱乐部管理员 | 从 `venue_admins` 移除 |
+| `rpc_venue_admin_revoke(p_user_id, p_venue_id)` | 超级管理员 | 场地管理员 | 从 `venue_admins` 移除（同一 RPC，venue 作为 club 处理） |
 
 ### 6.2 API 层
 
 ```ts
-// src/lib/api/clubs.ts
-revokeClubAdmin(supabase, userId, clubId)
-revokeClubAdmin(supabase, userId, venueId)  // venue 使用相同 API
+// src/lib/api/venues.ts
+revokeVenueAdmin(supabase, userId, venueId)
+revokeVenueAdmin(supabase, userId, venueId)  // venue 使用相同 API
 ```
 
 ### 6.3 页面层
 
 | 页面 | 组件 | 行为 |
 |------|------|------|
-| `/admin/clubs/[clubId]` | `ClubAdminsDrawer` / `AdminManager` | 每个管理员旁显示 **Revoke** 按钮 |
+| `/admin/venues/[venueId]` | `VenueAdminsDrawer` / `AdminManager` | 每个管理员旁显示 **Revoke** 按钮 |
 | `/admin/venues/[venueId]` | 同上 | 每个管理员旁显示 **Revoke** 按钮 |
 
 ---
@@ -297,7 +297,7 @@ removeVenuePreference(supabase, identityId, venueId)
 | Group | 用户离开 | `rpc_group_leave` | Group 详情、Dashboard `PlayersPanel` | BK 不可离开 |
 | Group | 拒绝邀请 | `rpc_group_reject_invite` | Dashboard `PlayersPanel` | |
 | Email Invitation | 拒绝邀请 | `rpc_email_invitation_decline` | `/invitations/[id]` | |
-| Club/Venue | 撤销管理员 | `rpc_club_admin_revoke` | Admin Clubs/Venues | |
+| Venue/Venue | 撤销管理员 | `rpc_venue_admin_revoke` | Admin Venues/Venues | |
 | Group | 管理员踢人 | **无** | — | 未实现 |
 | Invite Circle | 移除用户 | `rpc_invite_circle_remove_user` | Dashboard `InviteCirclePanel` | |
 | Venue 偏好 | 移除偏好 | `removeVenuePreference` | Profile、Venue 详情 | |

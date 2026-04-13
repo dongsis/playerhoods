@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { isSuperAdmin, getAllClubs, getMyAdminClubs } from '@/lib/api/clubs'
-import { CreateClubDialog } from '../clubs/CreateClubDialog'
+import { isSuperAdmin, getAllVenues, getMyAdminVenues } from '@/lib/api/venues'
+import { CreateVenueDialog } from '../venues/CreateVenueDialog'
 
 export default async function AdminVenuesPage() {
   const user = await getUser()
@@ -13,11 +13,11 @@ export default async function AdminVenuesPage() {
 
   let venues
   if (superAdmin) {
-    venues = await getAllClubs(supabase)
+    venues = await getAllVenues(supabase)
   } else {
-    const myAdminClubs = await getMyAdminClubs(supabase)
-    if (myAdminClubs.length === 0) redirect('/dashboard')
-    venues = myAdminClubs.map(r => r.club)
+    const myAdminVenues = await getMyAdminVenues(supabase)
+    if (myAdminVenues.length === 0) redirect('/dashboard')
+    venues = myAdminVenues.map(r => r.venue)
   }
 
   return (
@@ -35,7 +35,7 @@ export default async function AdminVenuesPage() {
             {venues.length} venue{venues.length !== 1 ? 's' : ''}
           </p>
         </div>
-        {superAdmin && <CreateClubDialog />}
+        {superAdmin && <CreateVenueDialog />}
       </div>
 
       {venues.length === 0 ? (

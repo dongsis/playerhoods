@@ -18,11 +18,13 @@ DECLARE
   -- Use orc2 as scope
   SCOPE_GID uuid := '17ed4074-6afa-47c7-b9c1-5e110db5859f'; -- orc2
 
-  -- Real club_id
-  CLUB_ID uuid := '3802862a-db80-40e5-bed0-c76e8a631fa8'; -- Whiteoak Tennis Club
+  -- Real venue_id
+  CLUB_ID uuid := '3802862a-db80-40e5-bed0-c76e8a631fa8'; -- Whiteoak Tennis Venue
 
   v_mid uuid;
   v_mp  public.match_participants%rowtype;
+  v_binding public.person_match_proxies%rowtype;
+  v_inv public.email_invitations%rowtype;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _v161_results(
     test_name text,
@@ -30,6 +32,13 @@ BEGIN
     details text,
     match_id uuid
   ) ON COMMIT DROP;
+
+  DELETE FROM public.person_match_proxies
+  WHERE principal_person_id IN (
+    public.resolve_person_id_for_user(ORG_UID),
+    public.resolve_person_id_for_user(P_UID),
+    public.resolve_person_id_for_user(REAL_UID)
+  );
 
   -- ===========================================================================
   -- T00: sanity check ShareGroup helper (should be true for (U3, Real))
@@ -59,7 +68,7 @@ BEGIN
   BEGIN
     INSERT INTO public.matches (
       organizer_id, status,
-      club_id, court_ids,
+      venue_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
       invitation_scope_group_ids,
@@ -123,12 +132,12 @@ BEGIN
   END;
 
   -- ===========================================================================
-  -- T02: ORG MANUAL CONFIRM should set both timestamps and reconcile to confirmed
+  -- T02: Explicit Match Proxy can complete organizer-invite flow to confirmed
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
       organizer_id, status,
-      club_id, court_ids,
+      venue_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
       invitation_scope_group_ids,
@@ -145,16 +154,36 @@ BEGIN
     )
     RETURNING public.matches.id INTO v_mid;
 
-    -- simulate caller = organizer
+    -- organizer invites Real
     PERFORM set_config(
       'request.jwt.claims',
       json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
       true
     );
 
-    -- Composed: admit_user (via invite_user) + delegate_confirm (replaces deprecated manual_confirm_user)
     SELECT * INTO v_mp FROM public.rpc_match_invite_user(v_mid, REAL_UID);
-    PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+
+    -- Real explicitly binds organizer as Match Proxy for participant-side actions
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', REAL_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    SELECT * INTO v_binding FROM public.rpc_match_proxy_request_self(ORG_UID);
+    SELECT * INTO v_inv
+    FROM public.email_invitations
+    WHERE related_type = 'match_proxy_binding'
+      AND related_id = v_binding.binding_id
+    ORDER BY created_at DESC
+    LIMIT 1;
+    PERFORM public.rpc_email_invitation_accept(v_inv.id);
+
+    PERFORM set_config(
+      'request.jwt.claims',
+      json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
+      true
+    );
+    PERFORM public.rpc_match_proxy_confirm_participant(v_mp.id);
 
     SELECT mp.* INTO v_mp
     FROM public.match_participants mp
@@ -168,7 +197,7 @@ BEGIN
     ELSE
       IF v_mp.org_approved_at IS NOT NULL
          AND v_mp.participant_accepted_at IS NOT NULL
-         AND v_mp.participant_accepted_via::text = 'delegate_manual'
+         AND v_mp.participant_accepted_via::text = 'proxy'
       THEN
         INSERT INTO _v161_results(test_name, ok, details, match_id)
         VALUES (
@@ -196,13 +225,12 @@ BEGIN
   END;
 
   -- ===========================================================================
-  -- T03: Delegated manual confirm keeps pending (no org_approved_at)
-  -- Flow: nominate user, then delegate-confirm via rpc_match_delegate_confirm_participant
+  -- T03: Explicit Match Proxy confirm keeps nominated row pending until organizer approval
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
       organizer_id, status,
-      club_id, court_ids,
+      venue_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
       invitation_scope_group_ids,
@@ -212,7 +240,7 @@ BEGIN
       ORG_UID, 'active',
       CLUB_ID, '{}'::uuid[],
       current_date, '12:00'::time, 90,
-      'v161_test_delegate_manual_confirm', 4,
+      'v161_test_proxy_confirm_pending', 4,
       ARRAY[SCOPE_GID]::uuid[],
       true, true, true,
       now()
@@ -227,7 +255,6 @@ BEGIN
     );
     PERFORM public.rpc_match_nominate_user(v_mid, REAL_UID);
 
-    -- U3 delegate-confirms the nominated participant
     SELECT mp.* INTO v_mp
     FROM public.match_participants mp
     WHERE mp.match_id = v_mid AND mp.user_id = REAL_UID
@@ -236,9 +263,28 @@ BEGIN
 
     IF NOT FOUND THEN
       INSERT INTO _v161_results(test_name, ok, details, match_id)
-      VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row after nominate', v_mid);
+      VALUES ('T03 Proxy confirm keeps pending', false, 'no match_participants row after nominate', v_mid);
     ELSE
-      PERFORM public.rpc_match_delegate_confirm_participant(v_mp.id);
+      PERFORM set_config(
+        'request.jwt.claims',
+        json_build_object('sub', REAL_UID::text, 'role', 'authenticated')::text,
+        true
+      );
+      SELECT * INTO v_binding FROM public.rpc_match_proxy_request_self(P_UID);
+      SELECT * INTO v_inv
+      FROM public.email_invitations
+      WHERE related_type = 'match_proxy_binding'
+        AND related_id = v_binding.binding_id
+      ORDER BY created_at DESC
+      LIMIT 1;
+      PERFORM public.rpc_email_invitation_accept(v_inv.id);
+
+      PERFORM set_config(
+        'request.jwt.claims',
+        json_build_object('sub', P_UID::text, 'role', 'authenticated')::text,
+        true
+      );
+      PERFORM public.rpc_match_proxy_confirm_participant(v_mp.id);
 
       SELECT mp.* INTO v_mp
       FROM public.match_participants mp
@@ -248,18 +294,18 @@ BEGIN
 
       IF NOT FOUND THEN
         INSERT INTO _v161_results(test_name, ok, details, match_id)
-        VALUES ('T03 Delegate confirm keeps pending', false, 'no match_participants row after delegate confirm', v_mid);
+        VALUES ('T03 Proxy confirm keeps pending', false, 'no match_participants row after proxy confirm', v_mid);
       ELSIF v_mp.participant_accepted_at IS NOT NULL
-           AND v_mp.participant_accepted_via::text = 'delegate_manual'
+           AND v_mp.participant_accepted_via::text = 'proxy'
            AND v_mp.org_approved_at IS NULL
            AND v_mp.status::text = 'pending'
       THEN
         INSERT INTO _v161_results(test_name, ok, details, match_id)
-        VALUES ('T03 Delegate confirm keeps pending', true, 'ok', v_mid);
+        VALUES ('T03 Proxy confirm keeps pending', true, 'ok', v_mid);
       ELSE
         INSERT INTO _v161_results(test_name, ok, details, match_id)
         VALUES (
-          'T03 Delegate confirm keeps pending',
+          'T03 Proxy confirm keeps pending',
           false,
           'got status='||coalesce(v_mp.status::text,'NULL')
           ||', participant_accepted_at='||coalesce(v_mp.participant_accepted_at::text,'NULL')
@@ -271,7 +317,7 @@ BEGIN
     END IF;
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _v161_results(test_name, ok, details, match_id)
-    VALUES ('T03 Delegate confirm keeps pending', false, 'sqlstate='||SQLSTATE||' err='||SQLERRM, v_mid);
+    VALUES ('T03 Proxy confirm keeps pending', false, 'sqlstate='||SQLSTATE||' err='||SQLERRM, v_mid);
   END;
 
   -- ===========================================================================
@@ -299,13 +345,13 @@ BEGIN
   END;
 
   -- ===========================================================================
-  -- T05: MatchAssociated(any row) includes removed
-  -- - create a match, insert a REMOVED row for REAL, verify helper returns true
+  -- T05: Self-withdraw removed row remains match-associated
+  -- - create a match, insert a self-withdraw removed row for REAL, verify helper returns true
   -- ===========================================================================
   BEGIN
     INSERT INTO public.matches (
       organizer_id, status,
-      club_id, court_ids,
+      venue_id, court_ids,
       match_date, start_time, duration_minutes,
       game_type, required_count,
       invitation_scope_group_ids,
@@ -322,7 +368,7 @@ BEGIN
     )
     RETURNING public.matches.id INTO v_mid;
 
-    -- insert a removed participant row for REAL (status-only world)
+    -- insert a self-withdraw removed participant row for REAL
     INSERT INTO public.match_participants(
       match_id, user_id, status,
       join_method,
@@ -331,20 +377,20 @@ BEGIN
     ) VALUES (
       v_mid, REAL_UID, 'removed',
       'invited',
-      now(), ORG_UID,
-      ORG_UID
+      now(), REAL_UID,
+      REAL_UID
     );
 
     IF public.is_user_match_associated(v_mid, REAL_UID) IS TRUE THEN
       INSERT INTO _v161_results(test_name, ok, details, match_id)
-      VALUES ('T05 MatchAssociated(any row) includes removed', true, 'ok', v_mid);
+      VALUES ('T05 Self-withdraw removed remains associated', true, 'ok', v_mid);
     ELSE
       INSERT INTO _v161_results(test_name, ok, details, match_id)
-      VALUES ('T05 MatchAssociated(any row) includes removed', false, 'is_user_match_associated returned false for removed row', v_mid);
+      VALUES ('T05 Self-withdraw removed remains associated', false, 'expected self-withdraw row to remain associated', v_mid);
     END IF;
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _v161_results(test_name, ok, details, match_id)
-    VALUES ('T05 MatchAssociated(any row) includes removed', false, 'exception: '||SQLERRM, v_mid);
+    VALUES ('T05 Self-withdraw removed remains associated', false, 'exception: '||SQLERRM, v_mid);
   END;
 
   RETURN QUERY

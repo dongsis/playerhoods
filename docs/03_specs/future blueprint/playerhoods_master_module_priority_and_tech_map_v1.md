@@ -15,8 +15,8 @@
 
 当前阶段最应该优先跑通的主链是：
 
-**Club / Venue 试点页  
-→ Club Members  
+**Venue / Venue 试点页  
+→ Venue Members  
 → Invite Circle  
 → Match / Invite / Booking  
 → AI 辅助创建与导入  
@@ -25,12 +25,12 @@
 
 近期最优先的六大块：
 
-1. Club / Venue Network 试点基础
+1. Venue / Venue Network 试点基础
 2. Play Network 主链
 3. AI 操作基础能力
 4. Play Memory / 赛后复盘
 5. Player Showcase 轻量版
-6. Club Operations 试点活动
+6. Venue Operations 试点活动
 
 第二梯队：
 
@@ -43,12 +43,12 @@
 
 | 大模块 | 作用 | 近期优先级 | 为什么现在做 / 不做 |
 |---|---|---:|---|
-| Club & Venue Network | 建立 club / 场地页面与试点入口 | 很高 | 是冷启动底座，没有 club 锚点，后续很难聚合用户 |
+| Venue & Venue Network | 建立 club / 场地页面与试点入口 | 很高 | 是冷启动底座，没有 club 锚点，后续很难聚合用户 |
 | Player Journey | 个人成长记录与里程碑 | 中 | 很重要，但先做轻量版，不必一开始太重 |
 | Player Showcase | 个人展示空间 | 高 | 能帮助弱连接破冰，提升识别度 |
 | Play Network | 找人、存人、组局、长期圈子 | 最高 | 这是当前产品主线和核心价值入口 |
 | Play Memory | 共打记录、照片、结果、复盘 | 高 | 让平台不只是工具，而是有沉淀 |
-| Club Operations | 俱乐部活动组织与分工 | 中高 | 很有价值，但应先从一个场景试点 |
+| Venue Operations | 俱乐部活动组织与分工 | 中高 | 很有价值，但应先从一个场景试点 |
 | Service Ecosystem | 教练、穿线、装备服务生态 | 中 | 先做角色入口，不急着做全套商业化 |
 | AI Capability Layer | 对话创建、截图识别、邮件解析、赛后对话 | 最高 | 能显著降低录入和操作成本，是核心差异化能力 |
 
@@ -59,11 +59,11 @@
 | 排名 | 大块 | 近期目标 |
 |---:|---|---|
 | 1 | Play Network | 先把“找人—存人—邀请—成局”主链做通 |
-| 2 | Club & Venue Network | 先做 1 个 club 试点页和基础 club 数据结构 |
+| 2 | Venue & Venue Network | 先做 1 个 club 试点页和基础 club 数据结构 |
 | 3 | AI Capability Layer | 先做最省操作的 AI 功能：对话建局、截图导入、booking 解析 |
 | 4 | Play Memory | 先做打完球后的记录和赛后复盘 |
 | 5 | Player Showcase | 先做最轻的“我是怎样的球友”展示 |
-| 6 | Club Operations | 先做 1 个 recurring / mixer 活动试点 |
+| 6 | Venue Operations | 先做 1 个 recurring / mixer 活动试点 |
 | 7 | Service Ecosystem | 先做 coach / stringer profile 入口 |
 | 8 | Player Journey 深化 | 后续再加强成长时间线、年终总结等 |
 
@@ -71,24 +71,24 @@
 
 ## 5. 分模块功能与技术地图
 
-### A. Club & Venue Network（俱乐部 / 场地网络）
+### A. Venue & Venue Network（俱乐部 / 场地网络）
 
 | 子功能点 | 近期是否做 | 说明 | 技术方向 | 为什么能为后续打基础 |
 |---|---|---|---|---|
-| Clubs 表 | 立即做 | 存 club 基础信息 | `clubs` 表 + slug + address + geo | 后续 Club Members / 活动 / 教练 / venue page 都依赖它 |
+| Venues 表 | 立即做 | 存 club 基础信息 | `venues` 表 + slug + address + geo | 后续 Venue Members / 活动 / 教练 / venue page 都依赖它 |
 | Venues / Courts 表 | 立即做（可先简） | 场地与 court 信息 | `venues` / `courts` 表 | booking、court record、活动页都需要 |
-| Club Page 模板 | 立即做 | 每个 club 一个聚合入口页 | 动态路由 + 模板渲染 | 未来可扩到 Canada / 全球 |
-| Claim this Club | 稍后 | 让 club manager / organizer 认领页面 | `club_claims` 表 + 角色审批 | 为 club 运营和增长做入口 |
-| Club 图片 | 谨慎做 | 不默认抓官网图 | 用户上传 / 自拍 / 授权 / 合规来源 | 避免版权问题，同时保留扩展空间 |
-| Club Members 聚合入口 | 立即做 | 在 club 页下聚合用户 | `club_identities` + user join flow | 是 Play Network 的入口 |
+| Venue Page 模板 | 立即做 | 每个 club 一个聚合入口页 | 动态路由 + 模板渲染 | 未来可扩到 Canada / 全球 |
+| Claim this Venue | 稍后 | 让 club manager / organizer 认领页面 | `club_claims` 表 + 角色审批 | 为 club 运营和增长做入口 |
+| Venue 图片 | 谨慎做 | 不默认抓官网图 | 用户上传 / 自拍 / 授权 / 合规来源 | 避免版权问题，同时保留扩展空间 |
+| Venue Members 聚合入口 | 立即做 | 在 club 页下聚合用户 | `venue_identities` + user join flow | 是 Play Network 的入口 |
 
 #### 近期结论
 先做：
-- `clubs`
+- `venues`
 - `venues`
 - `courts`
-- `club_identities`
-- `/clubs/[slug]`
+- `venue_identities`
+- `/venues/[slug]`
 
 先不做：
 - 全量全球导入
@@ -101,7 +101,7 @@
 
 | 子功能点 | 近期是否做 | 说明 | 技术方向 | 基础价值 |
 |---|---|---|---|---|
-| Club Members | 立即做 | 同 club 找人池 | 基于 `club_identities` + `profiles` 查询 | 冷启动最关键入口 |
+| Venue Members | 立即做 | 同 club 找人池 | 基于 `venue_identities` + `profiles` 查询 | 冷启动最关键入口 |
 | Invite Circle | 立即做 | 私有、单向、无通知 | 新表 `user_invite_circle` | 比 group 更轻，符合真实场景 |
 | Groups | 保持已有 | 稳定圈子 | 延续现有 groups / members | 不改核心治理 |
 | Non-group Invite | 立即做 | 同 club 可直接 invite | 新增用户设置 + match invite 通道 | 解决“没进 group 也能约” |
@@ -117,7 +117,7 @@
 #### 近期技术建议
 新增：
 - `user_invite_circle`
-- `show_in_club_member_discovery`
+- `show_in_venue_member_discovery`
 - `allow_non_group_invites`
 - `auto_add_played_users_to_invite_circle`
 
@@ -129,10 +129,10 @@
 |---|---|---|---|---|
 | Match Draft | 立即做 | 先建草案，再确认 | `match_draft` 或 draft JSON 层 | AI 创建 match 的落点 |
 | Match 正式创建 | 立即做 | 从草案生成 match | 复用现有 matches / participants | 保持现有核心模型 |
-| Invite to Match | 立即做 | 从 Club Members / Invite Circle 发 invite | 复用现有 match invite 逻辑 | 这是成局核心 |
+| Invite to Match | 立即做 | 从 Venue Members / Invite Circle 发 invite | 复用现有 match invite 逻辑 | 这是成局核心 |
 | Booking Request Draft | 立即做 | AI 帮写订场邮件草稿 | `booking_request_draft` | 让平台走向真实执行 |
 | Booking Record | 立即做 | 保存俱乐部回信后的定场记录 | `booking_records` | 为后续通知、留档、日历同步打基础 |
-| Club Reply Parser | 立即做 | 解析 club 回信 / 截图 | parse pipeline + booking matcher | 降低 organizer 操作成本 |
+| Venue Reply Parser | 立即做 | 解析 club 回信 / 截图 | parse pipeline + booking matcher | 降低 organizer 操作成本 |
 | Participant Update | 立即做 | 场地确认后通知参与者 | `participant_notification_draft` | 把平台真正变成执行平台 |
 
 #### 参与者通知关键环节（Participant Notification Events）
@@ -257,11 +257,11 @@ Player Journey 很重要，但近期不需要重做。可以先由：
 
 ---
 
-### I. Club Operations（俱乐部组织）
+### I. Venue Operations（俱乐部组织）
 
 | 子功能点 | 近期是否做 | 说明 | 技术方向 | 基础价值 |
 |---|---|---|---|---|
-| Club Activity 基础对象 | 立即做（简版） | 一场俱乐部活动 | `club_activities` | 试点 mixer 的底座 |
+| Venue Activity 基础对象 | 立即做（简版） | 一场俱乐部活动 | `club_activities` | 试点 mixer 的底座 |
 | Mixer / Shuffle | 近期做 | 同 level 随机撮合活动 | activity + draw logic | 很适合试点 |
 | Recurring activity | 稍后 | 每周固定活动 | recurrence model | 一旦试点成功很有价值 |
 | Volunteer / organizer roles | 稍后 | 谁负责什么 | roles / assignments | 很重要，但第二阶段 |
@@ -269,7 +269,7 @@ Player Journey 很重要，但近期不需要重做。可以先由：
 | Activity recap | 稍后 | 活动总结与照片 | activity media / summary | 后续增强 |
 
 #### 结论
-Club Operations 不要一开始铺太大。先做：
+Venue Operations 不要一开始铺太大。先做：
 - 一个 club
 - 一个活动类型
 - 一套最小报名与确认流程
@@ -306,8 +306,8 @@ Club Operations 不要一开始铺太大。先做：
 
 | 模块 | 功能点 |
 |---|---|
-| Club & Venue | clubs、venues、courts、club page 基础模板 |
-| Play Network | Club Members、Invite Circle、non-group invite、auto-add after play |
+| Venue & Venue | venues、venues、courts、club page 基础模板 |
+| Play Network | Venue Members、Invite Circle、non-group invite、auto-add after play |
 | Match / Booking | match draft、invite、booking request draft、booking record、参与者通知（成局 / 改时间待确认 / 订场确认） |
 | AI | 对话创建 match draft、截图导入联系人、booking 邮件解析、通知草稿 |
 | Play Memory | played-with history、match note、轻量照片 |
@@ -318,7 +318,7 @@ Club Operations 不要一开始铺太大。先做：
 
 | 模块 | 功能点 |
 |---|---|
-| Club Operations | mixer / shuffle 试点、signup / waitlist |
+| Venue Operations | mixer / shuffle 试点、signup / waitlist |
 | Service Ecosystem | coach profile、lesson request、stringer profile、stringing request |
 | AI | 通讯簿导入、邮箱连接、语音版操作 |
 | Memory / Journey | milestone、more photos、event records |
@@ -334,14 +334,14 @@ Club Operations 不要一开始铺太大。先做：
 - 不急着全量铺功能
 
 重点确认：
-- Club Members
+- Venue Members
 - Invite Circle
 - Groups
 - Match Draft
 - Booking Record
 - Reflection
 - Showcase
-- Club Activity
+- Venue Activity
 - Role Profile
 - AI Draft / Confirm 模式
 
@@ -354,9 +354,9 @@ Club Operations 不要一开始铺太大。先做：
 - 开始沉淀赛后记录
 
 功能：
-- clubs / venues / courts
+- venues / venues / courts
 - club page
-- Club Members
+- Venue Members
 - Invite Circle
 - non-group invite
 - match draft
@@ -420,7 +420,7 @@ Club Operations 不要一开始铺太大。先做：
 | 实体 | 用途 |
 |---|---|
 | `profiles` | 用户基础资料 |
-| `club_identities` | 用户与 club 的归属关系 |
+| `venue_identities` | 用户与 club 的归属关系 |
 | `groups` | 稳定圈子 |
 | `group_members` | group 成员关系 |
 | `matches` | 比赛 / 局 |
@@ -430,7 +430,7 @@ Club Operations 不要一开始铺太大。先做：
 
 | 实体 | 用途 | 优先级 |
 |---|---|---:|
-| `clubs` | 俱乐部基础信息 | 高 |
+| `venues` | 俱乐部基础信息 | 高 |
 | `venues` | 场地地点 | 高 |
 | `courts` | 具体球场 | 高 |
 | `user_invite_circle` | 私有邀请候选池 | 最高 |
@@ -455,7 +455,7 @@ Club Operations 不要一开始铺太大。先做：
 
 | 字段 | 用途 |
 |---|---|
-| `show_in_club_member_discovery` | 是否显示在 Club Members |
+| `show_in_venue_member_discovery` | 是否显示在 Venue Members |
 | `allow_non_group_invites` | 是否允许非 group 邀请 |
 | `auto_add_played_users_to_invite_circle` | 一起打过后是否自动加入 Invite Circle |
 | `headline` | 展示的一句话介绍 |
@@ -475,7 +475,7 @@ Club Operations 不要一开始铺太大。先做：
 | My Game | 个人成长与展示 |
 | My People | 找人、Invite Circle、Groups |
 | My Play | match、记录、照片、复盘 |
-| My Club | club 页面、活动、报名 |
+| My Venue | club 页面、活动、报名 |
 | Services | coach、stringer、service requests |
 | AI / Ask | 对话、导入、解析、创建草案 |
 
@@ -483,7 +483,7 @@ Club Operations 不要一开始铺太大。先做：
 
 | 页面 | 功能 |
 |---|---|
-| Club Members | 搜人、筛选、Save、Invite |
+| Venue Members | 搜人、筛选、Save、Invite |
 | Invite Circle | 管理私人邀请名单 |
 | Groups | 稳定圈子管理 |
 | Played With | 和谁打过球的历史关系页 |
@@ -505,12 +505,12 @@ Club Operations 不要一开始铺太大。先做：
 | Journey | milestone / training focus（后续） |
 | Highlights | 照片 / moments（后续） |
 
-### 9.5 My Club
+### 9.5 My Venue
 
 | 页面 | 功能 |
 |---|---|
-| Club Page | club 基础资料、成员聚合、活动 |
-| Club Activities | mixer / shuffle / recurring 活动 |
+| Venue Page | club 基础资料、成员聚合、活动 |
+| Venue Activities | mixer / shuffle / recurring 活动 |
 | Activity Detail | 报名、候补、通知、总结 |
 
 ### 9.6 Services
@@ -537,7 +537,7 @@ Club Operations 不要一开始铺太大。先做：
 
 ### 10.1 数据层
 建立稳定域模型：
-- clubs / venues / courts
+- venues / venues / courts
 - profiles / club identities
 - groups / matches / participants
 - invite circle / booking / reflection / activities / roles
@@ -557,7 +557,7 @@ Club Operations 不要一开始铺太大。先做：
 - My Game
 - My People
 - My Play
-- My Club
+- My Venue
 - Services
 - AI / Ask
 
@@ -580,9 +580,9 @@ Club Operations 不要一开始铺太大。先做：
 
 ### 当前最值得优先推进的 12 个功能点
 
-1. `clubs / venues / courts`
+1. `venues / venues / courts`
 2. `club page`
-3. `Club Members`
+3. `Venue Members`
 4. `Invite Circle`
 5. `non-group invite`
 6. `auto-add after play`

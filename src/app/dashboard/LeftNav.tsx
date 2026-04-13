@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
-export type DashTab = 'inbox' | 'matches' | 'players' | 'contacts' | 'venues' | 'profile' | 'admin'
+export type DashTab = 'inbox' | 'matches' | 'hoods' | 'groups' | 'venues' | 'gear' | 'profile' | 'admin'
 
 interface Props {
   active: DashTab
@@ -13,17 +13,18 @@ interface Props {
 }
 
 const tabs: { key: DashTab; label: string; icon: string }[] = [
-  { key: 'inbox', label: 'Inbox', icon: '📬' },
-  { key: 'matches', label: 'Matches', icon: '🎾' },
-  { key: 'players', label: 'Players', icon: '👥' },
-  { key: 'contacts', label: 'Contacts', icon: '📇' },
-  { key: 'venues', label: 'Venues', icon: '🏟️' },
-  { key: 'profile', label: 'My Profile', icon: '👤' },
-  { key: 'admin', label: 'Venue Admin', icon: '⚙️' },
+  { key: 'inbox', label: 'Inbox', icon: 'In' },
+  { key: 'matches', label: 'Matches', icon: 'Ma' },
+  { key: 'hoods', label: 'Hoods', icon: 'Hd' },
+  { key: 'groups', label: 'Groups', icon: 'Gr' },
+  { key: 'venues', label: 'Venues', icon: 'Ve' },
+  { key: 'gear', label: 'Gear', icon: 'Ge' },
+  { key: 'profile', label: 'My Profile', icon: 'Me' },
+  { key: 'admin', label: 'Venue Admin', icon: 'Ad' },
 ]
 
 export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
-  const visible = tabs.filter(t => t.key !== 'admin' || isAdmin)
+  const visible = tabs.filter((tab) => tab.key !== 'admin' || isAdmin)
   const router = useRouter()
 
   const handleLogout = async () => {
@@ -33,41 +34,47 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
   }
 
   return (
-    <nav className="flex flex-col gap-1 p-3 h-full">
-      <div className="px-3 py-2 mb-2">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+    <nav className="flex h-full flex-col gap-1 p-3">
+      <div className="mb-2 px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
           Playerhoods
         </span>
       </div>
-      {visible.map(t => {
-        const badge = badges?.[t.key] ?? 0
+
+      {visible.map((tab) => {
+        const badge = badges?.[tab.key] ?? 0
         return (
           <button
-            key={t.key}
-            onClick={() => onTab(t.key)}
+            key={tab.key}
+            onClick={() => onTab(tab.key)}
             className={[
-              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left w-full transition-colors',
-              active === t.key
+              'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors',
+              active === tab.key
                 ? 'bg-gray-900 text-white'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
             ].join(' ')}
           >
-            <span className="text-base leading-none">{t.icon}</span>
-            <span className="flex-1">{t.label}</span>
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-[11px] font-semibold leading-none">
+              {tab.icon}
+            </span>
+            <span className="flex-1">{tab.label}</span>
             {badge > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold bg-blue-500 text-white leading-none">
+              <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-none text-white">
                 {badge > 99 ? '99+' : badge}
               </span>
             )}
           </button>
         )
       })}
-      <div className="mt-auto pt-4 border-t border-gray-100">
+
+      <div className="mt-auto border-t border-gray-100 pt-4">
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left w-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
         >
-          <span className="text-base leading-none">→</span>
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-[11px] font-semibold leading-none">
+            Out
+          </span>
           Log out
         </button>
       </div>

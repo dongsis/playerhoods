@@ -158,7 +158,7 @@ Required. Every match has exactly one sport.
 
 ## 9.3 groups.primary_sport_id
 
-Friend groups SHOULD set. Club groups MAY be NULL.
+Friend groups SHOULD set. Venue groups MAY be NULL.
 
 ## 9.4 user_sports & guest_sports
 
@@ -167,7 +167,7 @@ boundaries.
 
 ------------------------------------------------------------------------
 
-# 10. Club Hub (Option A)
+# 10. Venue Hub (Option A)
 
 ## 10.1 groups.group_kind
 
@@ -177,15 +177,15 @@ Values: - friend - club
 
 ShareGroup applies ONLY to groups where group_kind='friend'.
 
-Club groups never grant trust equivalence.
+Venue groups never grant trust equivalence.
 
-## 10.3 Club Identity Overlay
+## 10.3 Venue Identity Overlay
 
-club_identity table provides alias display inside club context.
+venue_identity table provides alias display inside club context.
 
 display_name is independent global identity.
 
-Club handles are optional overlays, not mandatory identity roots.
+Venue handles are optional overlays, not mandatory identity roots.
 
 ------------------------------------------------------------------------
 

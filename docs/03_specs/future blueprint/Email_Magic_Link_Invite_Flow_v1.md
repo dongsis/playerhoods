@@ -47,7 +47,7 @@
 ### 3.1 Match Invite
 邀请某个 contact player / 外部联系人参加一场 match。
 
-### 3.2 Club Activity Signup
+### 3.2 Venue Activity Signup
 通过邮件邀请某人参加某个 club activity / mixer / shuffle。
 
 ### 3.3 Group Invite

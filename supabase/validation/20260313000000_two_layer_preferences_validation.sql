@@ -4,29 +4,29 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1) Schema: club_identities columns exist
+-- 1) Schema: venue_identities columns exist
 -- -----------------------------------------------------------------------------
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'club_identities'
-      AND column_name = 'visible_in_club_member_discovery'
+    WHERE table_schema = 'public' AND table_name = 'venue_identities'
+      AND column_name = 'visible_in_venue_member_discovery'
   ) THEN
-    RAISE EXCEPTION 'club_identities.visible_in_club_member_discovery missing';
+    RAISE EXCEPTION 'venue_identities.visible_in_venue_member_discovery missing';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'club_identities'
-      AND column_name = 'accept_non_group_invites_in_club'
+    WHERE table_schema = 'public' AND table_name = 'venue_identities'
+      AND column_name = 'accept_non_group_invites_in_venue'
   ) THEN
-    RAISE EXCEPTION 'club_identities.accept_non_group_invites_in_club missing';
+    RAISE EXCEPTION 'venue_identities.accept_non_group_invites_in_venue missing';
   END IF;
-  RAISE NOTICE 'Schema: club_identities preference columns exist';
+  RAISE NOTICE 'Schema: venue_identities preference columns exist';
 END $$;
 
 -- -----------------------------------------------------------------------------
--- 2) rpc_club_members_discovery: two-layer filter in function body
+-- 2) rpc_venue_members_discovery: two-layer filter in function body
 -- -----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -36,23 +36,23 @@ BEGIN
   SELECT pg_get_functiondef(p.oid) INTO v_def
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname = 'public' AND p.proname = 'rpc_club_members_discovery';
-  v_ok := v_def LIKE '%show_in_club_member_discovery = true%'
-      AND v_def LIKE '%COALESCE(ci.visible_in_club_member_discovery, true)%';
+  WHERE n.nspname = 'public' AND p.proname = 'rpc_venue_members_discovery';
+  v_ok := v_def LIKE '%show_in_venue_member_discovery = true%'
+      AND v_def LIKE '%COALESCE(ci.visible_in_venue_member_discovery, true)%';
   IF NOT COALESCE(v_ok, false) THEN
-    RAISE EXCEPTION 'rpc_club_members_discovery must use two-layer discovery filter';
+    RAISE EXCEPTION 'rpc_venue_members_discovery must use two-layer discovery filter';
   END IF;
   RAISE NOTICE 'Discovery: two-layer filter present';
 END $$;
 
 -- -----------------------------------------------------------------------------
 -- 3–6) Discovery behavior (manual setup required)
--- Manual: create club C, users U1–U4 with club_identities. Set:
+-- Manual: create club C, users U1–U4 with venue_identities. Set:
 --   U1: global=true, club=NULL  → discoverable
 --   U2: global=true, club=true  → discoverable
 --   U3: global=false            → not discoverable
 --   U4: global=true, club=false → not discoverable
--- Call rpc_club_members_discovery(C) as club member; verify U1,U2 in; U3,U4 out.
+-- Call rpc_venue_members_discovery(C) as club member; verify U1,U2 in; U3,U4 out.
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
@@ -68,7 +68,7 @@ BEGIN
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public' AND p.proname = 'can_admit_user_to_match';
   v_ok := v_def LIKE '%allow_non_group_invites = true%'
-      AND v_def LIKE '%accept_non_group_invites_in_club%';
+      AND v_def LIKE '%accept_non_group_invites_in_venue%';
   IF NOT COALESCE(v_ok, false) THEN
     RAISE EXCEPTION 'can_admit_user_to_match Path B must use two-layer logic';
   END IF;
@@ -93,8 +93,8 @@ BEGIN
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public' AND p.proname = 'rpc_match_admission_targets';
-  v_ok := v_def LIKE '%show_in_club_member_discovery = true%'
-      AND v_def LIKE '%visible_in_club_member_discovery%';
+  v_ok := v_def LIKE '%show_in_venue_member_discovery = true%'
+      AND v_def LIKE '%visible_in_venue_member_discovery%';
   IF NOT COALESCE(v_ok, false) THEN
     RAISE EXCEPTION 'rpc_match_admission_targets club_members_src must use two-layer discovery';
   END IF;

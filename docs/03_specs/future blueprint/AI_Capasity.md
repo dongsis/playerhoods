@@ -118,7 +118,7 @@ match_draft
 
 draft_id
 
-club_id
+venue_id
 
 proposed_date
 
@@ -220,7 +220,7 @@ Players: 4
 Format: Doubles
 
 Thank you.
-7. Club Reply Parser
+7. Venue Reply Parser
 
 解析俱乐部回复：
 

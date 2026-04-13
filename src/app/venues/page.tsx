@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getAllClubs } from '@/lib/api/clubs'
-import { getMyClubIdentities, getMyVenuePreferences } from '@/lib/api/identities'
+import { getAllVenues } from '@/lib/api/venues'
+import { getMyVenueIdentities, getMyVenuePreferences } from '@/lib/api/identities'
 import { VenueSearch } from './VenueSearch'
 
 export default async function VenuesPage() {
@@ -9,12 +9,12 @@ export default async function VenuesPage() {
   const user = await getUser()
 
   const [venues, identities, venuePrefs] = await Promise.all([
-    getAllClubs(supabase).catch(() => []),
-    user ? getMyClubIdentities(supabase, user.id).catch(() => []) : Promise.resolve([]),
+    getAllVenues(supabase).catch(() => []),
+    user ? getMyVenueIdentities(supabase, user.id).catch(() => []) : Promise.resolve([]),
     user ? getMyVenuePreferences(supabase, user.id).catch(() => []) : Promise.resolve([]),
   ])
 
-  const myClubIds  = identities.map(i => i.club_id)
+  const myVenueIds  = identities.map(i => i.venue_id)
   const mySavedIds = venuePrefs.map(v => v.id)
 
   return (
@@ -30,7 +30,7 @@ export default async function VenuesPage() {
         </p>
       </div>
 
-      <VenueSearch venues={venues} myClubIds={myClubIds} mySavedIds={mySavedIds} />
+      <VenueSearch venues={venues} myVenueIds={myVenueIds} mySavedIds={mySavedIds} />
     </div>
   )
 }

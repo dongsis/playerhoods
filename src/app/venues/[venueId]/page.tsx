@@ -2,15 +2,17 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getClub, getClubCourts } from '@/lib/api/clubs'
+import { getVenue, getVenueCourts } from '@/lib/api/venues'
+import { listSports } from '@/lib/api/sports'
 import {
-  getMyClubIdentities,
+  getMyVenueIdentities,
   getMyVenuePreferences,
   addVenuePreference,
   removeVenuePreference,
 } from '@/lib/api/identities'
+import { getInviteCircleList } from '@/lib/api/play-network'
 import { VenuePreferenceButton } from './VenuePreferenceButton'
-import { ClubMembersSection } from './ClubMembersSection'
+import { VenueMembersSection } from './VenueMembersSection'
 
 interface Props {
   params: Promise<{ venueId: string }>
@@ -21,29 +23,41 @@ export default async function VenueDetailPage({ params }: Props) {
   const user = await getUser()
   const supabase = await createSupabaseServerClient()
 
-  let venue, courts
+  let venue, courts, sports
   try {
-    ;[venue, courts] = await Promise.all([
-      getClub(supabase, venueId),
-      getClubCourts(supabase, venueId),
+    ;[venue, courts, sports] = await Promise.all([
+      getVenue(supabase, venueId),
+      getVenueCourts(supabase, venueId),
+      listSports(supabase),
     ])
   } catch {
     notFound()
   }
 
+  const sportMap = new Map(sports.map((sport) => [sport.id, sport.display_name]))
+  const courtsBySport = sports
+    .map((sport) => ({
+      sport,
+      courts: courts.filter((court) => court.sport_id === sport.id),
+    }))
+    .filter((entry) => entry.courts.length > 0)
+
   let isMember = false
   let isSaved  = false
   let memberHandle: string | null = null
+  let savedPlayerIds: string[] = []
 
   if (user) {
-    const [identities, prefs] = await Promise.all([
-      getMyClubIdentities(supabase, user.id).catch(() => []),
+    const [identities, prefs, inviteCircle] = await Promise.all([
+      getMyVenueIdentities(supabase, user.id).catch(() => []),
       getMyVenuePreferences(supabase, user.id).catch(() => []),
+      getInviteCircleList(supabase).catch(() => []),
     ])
-    const identity = identities.find(i => i.club_id === venueId)
+    const identity = identities.find(i => i.venue_id === venueId)
     isMember = !!identity
-    memberHandle = identity?.club_handle ?? null
+    memberHandle = identity?.venue_handle ?? null
     isSaved  = prefs.some(v => v.id === venueId)
+    savedPlayerIds = inviteCircle.map((row) => row.target_user_id)
   }
 
   async function handleTogglePreference() {
@@ -99,9 +113,9 @@ export default async function VenueDetailPage({ params }: Props) {
         </div>
       </header>
 
-      {/* Club Members discovery — for members only */}
+      {/* Venue Members discovery — for members only */}
       {isMember && user && (
-        <ClubMembersSection clubId={venueId} />
+        <VenueMembersSection venueId={venueId} initialSavedPlayerIds={savedPlayerIds} />
       )}
 
       {/* Notes / description */}
@@ -119,25 +133,59 @@ export default async function VenueDetailPage({ params }: Props) {
         {courts.length === 0 ? (
           <p className="text-sm text-gray-400 italic">No courts listed.</p>
         ) : (
-          <div className="space-y-2">
-            {courts.map(c => (
-              <div
-                key={c.id}
-                className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl border border-gray-100"
-              >
-                <span className="text-sm font-medium text-gray-800">{c.court_code}</span>
-                {c.surface && (
-                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                    {c.surface}
-                  </span>
-                )}
-                {c.notes && (
-                  <span className="text-xs text-gray-400 ml-auto truncate max-w-[200px]">
-                    {c.notes}
-                  </span>
-                )}
+          <div className="space-y-4">
+            {courtsBySport.map(({ sport, courts: sportCourts }) => (
+              <div key={sport.id}>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  {sport.display_name}
+                </p>
+                <div className="space-y-2">
+                  {sportCourts.map((court) => (
+                    <div
+                      key={court.id}
+                      className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl border border-gray-100"
+                    >
+                      <span className="text-sm font-medium text-gray-800">{court.court_code}</span>
+                      {court.surface && (
+                        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                          {court.surface}
+                        </span>
+                      )}
+                      {court.notes && (
+                        <span className="text-xs text-gray-400 ml-auto truncate max-w-[200px]">
+                          {court.notes}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
+            {courtsBySport.length === 0 && (
+              <div className="space-y-2">
+                {courts.map((court) => (
+                  <div
+                    key={court.id}
+                    className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl border border-gray-100"
+                  >
+                    <span className="text-sm font-medium text-gray-800">{court.court_code}</span>
+                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                      {sportMap.get(court.sport_id) ?? `Sport ${court.sport_id}`}
+                    </span>
+                    {court.surface && (
+                      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                        {court.surface}
+                      </span>
+                    )}
+                    {court.notes && (
+                      <span className="text-xs text-gray-400 ml-auto truncate max-w-[200px]">
+                        {court.notes}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>

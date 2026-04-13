@@ -219,8 +219,8 @@ Deprecated fields may remain in schema for compatibility, but they must not be u
 
 ---
 
-### 6.3 Implicit Trust from Club Membership or Discovery
-Club membership, club presence, discovery visibility, or similar convenience layers must not become implied trust or permission.
+### 6.3 Implicit Trust from Venue Membership or Discovery
+Venue membership, club presence, discovery visibility, or similar convenience layers must not become implied trust or permission.
 
 ---
 

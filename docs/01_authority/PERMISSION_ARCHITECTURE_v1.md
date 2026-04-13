@@ -29,7 +29,7 @@
 | `sharegroup_exists` | (user_a, user_b) → bool | 同 do_users_share_group | RLS 用，语义同 do_users_share_group |
 | `is_group_active_member` | (group_id, user_id) → bool | group_members | 是否群组活跃成员 |
 | `is_group_boundary_keeper` | (group_id, user_id) → bool | groups | 是否群组 boundary keeper |
-| `is_club_admin` | (club_id) → bool | club_admins, profiles | 是否俱乐部管理员 |
+| `is_venue_admin` | (venue_id) → bool | venue_admins, profiles | 是否俱乐部管理员 |
 
 **可选 / 合并**：
 - `is_caller_in_match_scope(match_id)` = `is_user_in_match_scope(match_id, auth.uid())` — 可保留为 caller 专用 wrapper
@@ -45,11 +45,10 @@
 | 谓词 | 组合逻辑 | 使用的 Helpers |
 |------|----------|----------------|
 | `can_invite_user` | 组织者 OR (can_participants_invite_users AND 已确认) | is_match_organizer, is_match_participant_confirmed |
-| `can_add_guests` | 组织者 OR (can_participants_add_guests AND 已确认) | is_match_organizer, is_match_participant_confirmed |
 | `can_manage_participants` | 组织者 OR (can_participants_manage_participants AND 已确认) | is_match_organizer, is_match_participant_confirmed |
 | `can_nominate_user` | 非组织者 AND (in_scope OR match_associated) AND can_participants_invite_users | is_match_organizer, is_user_in_match_scope, is_user_match_associated |
 | `can_delegate_confirm_user` | 非组织者 AND (in_scope OR match_associated) | is_match_organizer, is_user_in_match_scope, is_user_match_associated |
-| `can_nominate_guest` | 组织者 OR match_associated | is_match_organizer, is_user_match_associated |
+| `can_nominate_guest` | 组织者 OR (can_participants_invite_users AND (in_scope OR match_associated)) | is_match_organizer, is_user_in_match_scope, is_user_match_associated |
 | `can_invite_target` | 目标 in_scope OR share_group(target, organizer) | is_user_in_match_scope, do_users_share_group, match_organizer_id |
 | `can_group_invite_user` | boundary_keeper OR (active_member AND share_group(caller, target)) | is_group_boundary_keeper, is_group_active_member, do_users_share_group |
 
@@ -70,8 +69,8 @@
 | `rpc_match_nominate_guest` | `can_nominate_guest(match_id, auth.uid())` | guest in roster |
 | `rpc_match_accept_invite` | 自己是参与者 | — |
 | `rpc_match_org_approve_participant` | `is_match_organizer(match_id, auth.uid())` | — |
-| `rpc_match_manual_confirm` | *(deprecated stub)* | — |
-| `rpc_match_manual_confirm_user` | *(deprecated stub)* | — |
+| `manualConfirmParticipant` | App-side composition: `rpc_match_delegate_confirm_participant` + `rpc_match_org_approve_participant` | — |
+| `manualConfirmUser` | App-side composition: `rpc_match_admit_user` + `rpc_match_delegate_confirm_participant` | — |
 | `rpc_match_delegate_confirm_participant` | **User:** `can_delegate_confirm_user`; **Guest:** `is_user_match_associated` | User: `do_users_share_group`; Guest: — |
 | `rpc_match_remove_participant` | `is_match_organizer` OR `can_manage_participants` | — |
 | `rpc_match_user_withdraw` | 自己是参与者 | — |
@@ -83,11 +82,11 @@
 |-----|-------------|-------------|
 | `rpc_group_invite_user` | `can_group_invite_user(group_id, auth.uid(), target_id)` | — |
 
-### Club / Roster / 其他
+### Venue / Roster / 其他
 
 | RPC | Caller Gate |
 |-----|-------------|
-| `rpc_club_admin_grant` | `is_club_admin(club_id)` |
+| `rpc_venue_admin_grant` | `is_venue_admin(venue_id)` |
 | `rpc_roster_guest_contact_links` | 每个 guest 在 caller roster | — |
 
 ---
@@ -96,10 +95,6 @@
 
 ```
 can_invite_user
-  ├── is_match_organizer
-  └── is_match_participant_confirmed
-
-can_add_guests
   ├── is_match_organizer
   └── is_match_participant_confirmed
 
@@ -120,6 +115,8 @@ can_delegate_confirm_user
 
 can_nominate_guest
   ├── is_match_organizer
+  ├── matches.can_participants_invite_users
+  ├── is_user_in_match_scope
   └── is_user_match_associated
 
 can_invite_target
@@ -160,8 +157,8 @@ can_group_invite_user
 
 | 现有 | 归类 |
 |------|------|
-| `is_match_organizer`, `is_user_in_scope_groups`, `is_user_in_match_scope`, `is_user_match_associated`, `do_users_share_group`, `sharegroup_exists`, `is_match_participant_confirmed`, `is_group_active_member`, `is_club_admin` | Helper |
-| `can_add_guests`, `can_invite_users`, `can_manage_participants` | 谓词（已存在） |
+| `is_match_organizer`, `is_user_in_scope_groups`, `is_user_in_match_scope`, `is_user_match_associated`, `do_users_share_group`, `sharegroup_exists`, `is_match_participant_confirmed`, `is_group_active_member`, `is_venue_admin` | Helper |
+| `can_invite_users`, `can_manage_participants` | 谓词（已存在） |
 | `is_caller_in_match_scope`, `is_caller_match_associated` | caller 专用 wrapper，可保留 |
 | `is_match_participant_active` | Helper（与 confirmed 区分：pending+confirmed） |
 | `group_boundary_keeper_id` | Helper（取值） |

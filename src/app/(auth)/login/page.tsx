@@ -96,14 +96,12 @@ export default function LoginPage() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>密码</label>
-            <input
+            <PasswordInput
               data-testid="login-password"
-              type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               autoComplete="current-password"
               required
-              style={inputStyle}
             />
           </div>
           <div style={{ textAlign: 'right', marginBottom: '1.25rem' }}>
@@ -140,26 +138,22 @@ export default function LoginPage() {
           </div>
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>密码（至少 6 位）</label>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={e => setPassword(e.target.value)}
               autoComplete="new-password"
               required
               minLength={6}
-              style={inputStyle}
             />
           </div>
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>确认密码</label>
-            <input
-              type="password"
+            <PasswordInput
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               autoComplete="new-password"
               required
               minLength={6}
-              style={inputStyle}
             />
           </div>
           {error && <p style={errorStyle}>{error}</p>}
@@ -213,6 +207,79 @@ export default function LoginPage() {
   )
 }
 
+type PasswordInputProps = {
+  value: string
+  onChange: React.ChangeEventHandler<HTMLInputElement>
+  autoComplete?: string
+  required?: boolean
+  minLength?: number
+  'data-testid'?: string
+}
+
+function PasswordInput(props: PasswordInputProps) {
+  const [isVisible, setIsVisible] = useState(false)
+
+  return (
+    <div style={passwordFieldStyle}>
+      <input
+        {...props}
+        type={isVisible ? 'text' : 'password'}
+        style={passwordInputStyle}
+      />
+      <button
+        type="button"
+        aria-label={isVisible ? 'Hide password' : 'Show password'}
+        title={isVisible ? 'Hide password' : 'Show password'}
+        onClick={() => setIsVisible(current => !current)}
+        style={passwordToggleStyle}
+      >
+        <EyeIcon isVisible={isVisible} />
+      </button>
+    </div>
+  )
+}
+
+function EyeIcon({ isVisible }: { isVisible: boolean }) {
+  if (isVisible) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M3 3L21 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path
+          d="M10.58 10.58A2 2 0 0013.42 13.42"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+        <path
+          d="M9.88 5.09A10.94 10.94 0 0112 4.91c5 0 9.27 3.11 11 7.09a12.37 12.37 0 01-4.14 5.1"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+        <path
+          d="M6.61 6.61A12.28 12.28 0 001 12c1.16 2.67 3.58 4.93 6.61 6.1A11.4 11.4 0 0012 19.09c1.31 0 2.58-.22 3.77-.62"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+      </svg>
+    )
+  }
+
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M1 12C2.73 8.02 7 4.91 12 4.91S21.27 8.02 23 12c-1.73 3.98-6 7.09-11 7.09S2.73 15.98 1 12z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  )
+}
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '0.5rem 0.6rem',
@@ -220,6 +287,30 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
   border: '1px solid #ccc',
   borderRadius: '4px',
+}
+
+const passwordFieldStyle: React.CSSProperties = {
+  position: 'relative',
+}
+
+const passwordInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  paddingRight: '2.75rem',
+}
+
+const passwordToggleStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '50%',
+  right: '0.55rem',
+  transform: 'translateY(-50%)',
+  border: 'none',
+  background: 'transparent',
+  padding: 0,
+  color: '#666',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 }
 
 const primaryBtnStyle: React.CSSProperties = {

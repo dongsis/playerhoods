@@ -6,7 +6,7 @@
 export {
   formatMatchTime,
   formatTimeWindow,
-  clubDateKey,
+  venueDateKey,
   formatDateHeading,
   formatRelativeTime,
   formatActionType,

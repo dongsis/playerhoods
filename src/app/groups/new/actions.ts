@@ -24,8 +24,6 @@ export async function createGroupAction(input: { name: string; description?: str
     p_description: (input.description ?? '').trim() || null,
   })
 
-  console.log('[createGroupAction] RPC result:', JSON.stringify(data))
-
   if (error) throw error
   if (!data) throw new Error('No data returned from RPC')
 

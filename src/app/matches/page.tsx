@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getMatchListData } from '@/lib/api/matches'
-import { isSuperAdmin, getMyAdminClubs } from '@/lib/api/clubs'
+import { isSuperAdmin, getMyAdminVenues } from '@/lib/api/venues'
 import type { Profile } from '@/lib/types/database'
 import { MatchesShell } from './MatchesShell'
 import { CreateMatchInline } from './CreateMatchInline'
@@ -15,17 +15,17 @@ export default async function MatchesPage() {
   const supabase = await createSupabaseServerClient()
 
   // Fetch all items server-side; inbox/history split is done client-side in MatchesShell
-  const [items, profileRes, superAdmin, myAdminClubs] = await Promise.all([
+  const [items, profileRes, superAdmin, myAdminVenues] = await Promise.all([
     getMatchListData(supabase, user.id),
-    supabase.from('profiles').select('primary_club_id').eq('id', user.id).single(),
+    supabase.from('profiles').select('primary_venue_id').eq('id', user.id).single(),
     isSuperAdmin(supabase),
-    getMyAdminClubs(supabase).catch(() => []),
+    getMyAdminVenues(supabase).catch(() => []),
   ])
 
-  const defaultClubId =
-    (profileRes.data as Pick<Profile, 'primary_club_id'> | null)?.primary_club_id ?? ''
+  const defaultVenueId =
+    (profileRes.data as Pick<Profile, 'primary_venue_id'> | null)?.primary_venue_id ?? ''
 
-  const isAdmin = superAdmin || myAdminClubs.length > 0
+  const isAdmin = superAdmin || myAdminVenues.length > 0
 
   return (
     <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1rem' }}>
@@ -45,7 +45,7 @@ export default async function MatchesPage() {
           {isAdmin && (
             <>
               {' · '}
-              <Link href="/admin/clubs">Club Admin</Link>
+              <Link href="/admin/venues">Venue Admin</Link>
             </>
           )}
         </nav>
@@ -64,7 +64,7 @@ export default async function MatchesPage() {
         }}
       >
         <h2 style={{ marginTop: 0, fontSize: '0.95rem' }}>Create Match</h2>
-        <CreateMatchInline defaultClubId={defaultClubId} />
+        <CreateMatchInline defaultVenueId={defaultVenueId} />
       </section>
     </div>
   )

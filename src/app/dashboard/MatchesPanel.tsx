@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useTransition } from 'react'
+import { Fragment, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { MatchListItem } from '@/lib/api/matches'
@@ -10,16 +10,11 @@ import { formatTimeWindow } from '@/lib/format-time'
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
 import { Avatar } from '@/app/components/Avatar'
 
-// ─── inbox split ─────────────────────────────────────────────────────────────
-
-/** True when the match's start time is in the past (use as "past" check). */
 function isPast(item: MatchListItem, nowIso: string): boolean {
   const { match } = item
-  // Prefer precise UTC timestamp
   if (match.start_at_utc) return match.start_at_utc < nowIso
-  // Fallback: compare date-only (for older matches where start_at_utc was not computed)
   if (match.match_date) return match.match_date < nowIso.slice(0, 10)
-  return false   // no date info → not past
+  return false
 }
 
 function isInboxItem(item: MatchListItem, nowIso: string): boolean {
@@ -27,13 +22,11 @@ function isInboxItem(item: MatchListItem, nowIso: string): boolean {
   return !isPast(item, nowIso)
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function needsUserAction(item: MatchListItem): boolean {
   const mp = item.myParticipant
   if (!mp || mp.status !== 'pending') return false
-  const hasUserAccepted =
-    mp.participant_accepted_at != null
+
+  const hasUserAccepted = mp.participant_accepted_at != null
   const isInvited = mp.join_method === 'invited'
   const isNominated = mp.join_method === 'nominated'
   const isRequested = mp.join_method === 'requested'
@@ -43,26 +36,54 @@ function needsUserAction(item: MatchListItem): boolean {
   return false
 }
 
-// ─── MatchRow ─────────────────────────────────────────────────────────────────
+type MatchRowProps = {
+  item: MatchListItem
+  onViewed?: (matchId: string) => void
+  onDismissAlert?: (matchId: string) => void
+  showAcknowledge?: boolean
+  variant?: 'default' | 'incoming'
+  showRosterNames?: boolean
+}
 
-function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId: string) => void }) {
-  const { match, confirmedCount, pendingCount, isFormed, participants, myParticipant, clubTimezone, clubName } = item
+function toSportLabel(sportName: string | null): string | null {
+  if (!sportName) return null
+  return sportName
+}
+
+function MatchRow({
+  item,
+  onViewed,
+  onDismissAlert,
+  showAcknowledge = false,
+  variant = 'default',
+  showRosterNames = true,
+}: MatchRowProps) {
+  const { match, confirmedCount, pendingCount, isFormed, participants, myParticipant, venueTimezone, venueName, sportName, courtState } = item
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirmError, setConfirmError] = useState<string | null>(null)
 
-  const hasUserAccepted =
-    myParticipant &&
-    myParticipant.participant_accepted_at != null
-  const isInvited =
-    myParticipant?.status === 'pending' && myParticipant?.join_method === 'invited'
-  const isNominated =
-    myParticipant?.status === 'pending' && myParticipant?.join_method === 'nominated'
-  const isRequested =
-    myParticipant?.status === 'pending' && myParticipant?.join_method === 'requested'
-  const needsReconfirmRequested =
-    isRequested && myParticipant?.org_approved_at !== null && !hasUserAccepted
+  const hasUserAccepted = myParticipant?.participant_accepted_at != null
+  const isInvited = myParticipant?.status === 'pending' && myParticipant.join_method === 'invited'
+  const isNominated = myParticipant?.status === 'pending' && myParticipant.join_method === 'nominated'
+  const isRequested = myParticipant?.status === 'pending' && myParticipant.join_method === 'requested'
+  const needsReconfirmRequested = isRequested && myParticipant?.org_approved_at !== null && !hasUserAccepted
+  const isCancelled = match.status === 'cancelled'
   const isRemoved = myParticipant?.status === 'removed'
+  const wasConfirmedByOther =
+    myParticipant?.status === 'confirmed' &&
+    !!myParticipant.manual_confirmed_by &&
+    myParticipant.manual_confirmed_by !== myParticipant.user_id
+  const confirmerName = myParticipant?.manual_confirmed_by_name ?? 'someone'
+  const removalNote = (myParticipant?.removal_note ?? '').toLowerCase()
+  const isSelfWithdraw =
+    Boolean(
+      myParticipant?.removed_by &&
+      myParticipant?.user_id &&
+      myParticipant.removed_by === myParticipant.user_id,
+    ) ||
+    removalNote.includes('declined') ||
+    removalNote.includes('withdraw')
 
   const handleConfirm = () => {
     setConfirmError(null)
@@ -78,14 +99,12 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
   }
 
   const confirmed = participants.filter(p => p.status === 'confirmed')
-  const need = Math.max(match.required_count - confirmedCount, 0)
-
   const names = confirmed.slice(0, 3).map(p => p.display_name)
   const overflow = confirmedCount > 3 ? ` +${confirmedCount - 3}` : ''
+  const rosterMeta: string[] = item.rosterInsight.summaryLabel ? item.rosterInsight.summaryLabel.split(' · ') : []
   const parts: string[] = []
   if (names.length > 0) parts.push(names.join(', ') + overflow)
-  if (pendingCount > 0) parts.push(`⏳ ${pendingCount}`)
-  if (!isFormed && need > 0) parts.push(`need ${need}`)
+  if (item.rosterInsight.summaryLabel) parts.push(item.rosterInsight.summaryLabel)
   const roster = parts.join(' · ') || '—'
 
   const timeStr = formatTimeWindow(
@@ -93,43 +112,129 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
     match.match_date,
     match.start_time,
     match.duration_minutes,
-    clubTimezone ?? 'UTC',
+    venueTimezone ?? 'UTC',
   )
+  const sportLabel = toSportLabel(sportName)
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl border border-gray-100 hover:border-gray-200 transition-colors">
-      <div className="text-xs text-gray-400 w-28 shrink-0 leading-snug">
+    <div
+      className={[
+        'flex items-center gap-3 bg-white transition-colors',
+        variant === 'incoming'
+          ? 'rounded-[22px] border border-slate-200 px-4 py-3.5 shadow-[0_12px_30px_-26px_rgba(15,23,42,0.32)] hover:border-slate-300'
+          : 'rounded-2xl border border-gray-100 px-4 py-3 hover:border-gray-200',
+      ].join(' ')}
+    >
+      <div
+        className={[
+          'shrink-0 leading-snug',
+          variant === 'incoming' ? 'w-32 text-[13px] text-slate-500' : 'w-28 text-xs text-gray-400',
+        ].join(' ')}
+      >
+        {sportLabel && (
+          <div className={variant === 'incoming' ? 'mb-1 font-medium text-slate-700' : 'mb-1 font-medium text-gray-600'}>
+            {sportLabel}
+          </div>
+        )}
         {timeStr || <span className="italic">No time set</span>}
-        {clubName && <div className="text-gray-300 truncate">{clubName}</div>}
+        {venueName && (
+          <div className={variant === 'incoming' ? 'truncate text-slate-300' : 'truncate text-gray-300'}>
+            {venueName}
+          </div>
+        )}
       </div>
       <div className="shrink-0">
-        {isFormed ? (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+        {isCancelled ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+            Match cancelled
+          </span>
+        ) : isFormed ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
             ✓ Formed
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+          <span
+            className={[
+              'inline-flex items-center rounded-full bg-amber-100 text-amber-700',
+              variant === 'incoming' ? 'px-2.5 py-0.5 text-[13px] font-semibold' : 'px-2 py-0.5 text-xs font-medium',
+            ].join(' ')}
+          >
             {confirmedCount}/{match.required_count}
           </span>
         )}
       </div>
-      <div className="flex-1 flex items-center gap-2 min-w-0">
-        <div className="flex shrink-0 gap-0.5">
-          {confirmed.slice(0, 3).map(p => (
-            <Avatar key={p.id} src={p.avatar_url} displayName={p.display_name} size="sm" />
-          ))}
+      {!isCancelled && (
+        <div className="shrink-0">
+          <span
+            className={[
+              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+              courtState.status === 'secured'
+                ? 'bg-emerald-100 text-emerald-700'
+                : courtState.status === 'walk_in'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-amber-100 text-amber-700',
+            ].join(' ')}
+          >
+            {courtState.badgeLabel}
+          </span>
         </div>
-        <span className="text-sm text-gray-600 truncate">{roster}</span>
-      </div>
-      {/* Needs action: invited/nominated not yet accepted, or requested needing re-confirm */}
-      {(isInvited || (isNominated && !hasUserAccepted) || needsReconfirmRequested) && (
+      )}
+      {variant === 'incoming' ? (
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex shrink-0 items-center">
+            {confirmed.slice(0, 3).map(p => (
+              <Avatar
+                key={p.id}
+                src={p.avatar_url}
+                displayName={p.display_name}
+                size="md"
+                className="-ml-1 first:ml-0 ring-2 ring-white"
+              />
+            ))}
+          </div>
+          {rosterMeta.length > 0 && (
+            <div className="flex min-w-0 items-center">
+              <span className="shrink-0 whitespace-nowrap text-sm text-slate-500">
+                {rosterMeta.map((label, index) => (
+                  <Fragment key={label}>
+                    {index > 0 && <span className="px-1 text-slate-300">&middot;</span>}
+                    <span>{label}</span>
+                  </Fragment>
+                ))}
+              </span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center gap-2 min-w-0">
+          <div className="flex shrink-0 gap-0.5">
+            {confirmed.slice(0, 3).map(p => (
+              <Avatar key={p.id} src={p.avatar_url} displayName={p.display_name} size="sm" />
+            ))}
+          </div>
+          <span className="text-sm text-gray-600 truncate">
+            {showRosterNames ? (
+              roster
+            ) : rosterMeta.length > 0 ? (
+              <>
+                {rosterMeta.map((label, index) => (
+                  <Fragment key={label}>
+                    {index > 0 && <span className="px-1 text-gray-300">&middot;</span>}
+                    <span>{label}</span>
+                  </Fragment>
+                ))}
+              </>
+            ) : (
+              '-'
+            )}
+          </span>
+        </div>
+      )}
+
+      {!isCancelled && (isInvited || (isNominated && !hasUserAccepted) || needsReconfirmRequested) && (
         <div className="shrink-0 flex items-center gap-2">
           <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
-            {isNominated
-              ? 'Nominated'
-              : isInvited
-                ? 'Invited'
-                : 'Needs confirm'}
+            {isNominated ? 'Nominated' : isInvited ? 'Invited' : 'Needs confirm'}
           </span>
           <button
             onClick={handleConfirm}
@@ -141,34 +246,57 @@ function MatchRow({ item, onViewed }: { item: MatchListItem; onViewed?: (matchId
           {confirmError && <span className="text-xs text-red-500">{confirmError}</span>}
         </div>
       )}
-      {/* Nominated, already accepted — waiting for organizer approval */}
-      {isNominated && hasUserAccepted && (
+
+      {!isCancelled && isNominated && hasUserAccepted && (
         <span className="shrink-0 text-xs text-blue-600 font-medium whitespace-nowrap">
           Nominated ✓ · Awaiting approval
         </span>
       )}
-      {isRequested && !needsReconfirmRequested && (
+
+      {!isCancelled && isRequested && !needsReconfirmRequested && (
         <span className="shrink-0 text-xs text-amber-600 font-medium whitespace-nowrap">
           Awaiting approval
         </span>
       )}
-      {isRemoved && (
+
+      {!isCancelled && isRemoved && (
         <span className="shrink-0 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-600 rounded-full whitespace-nowrap">
-          Removed
+          {isSelfWithdraw ? 'Withdrawn' : 'No longer invited'}
         </span>
       )}
-      <Link
-        href={`/matches/${match.id}`}
-        onClick={() => onViewed?.(match.id)}
-        className="shrink-0 text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+
+      {!isCancelled && myParticipant?.status === 'waiting_list' && (
+        <span className="shrink-0 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full whitespace-nowrap">
+          Waiting list
+        </span>
+      )}
+
+      {!isCancelled && wasConfirmedByOther && (
+        <span className="shrink-0 text-xs text-emerald-700 font-medium whitespace-nowrap">
+          You&apos;ve been confirmed by {confirmerName}
+        </span>
+      )}
+
+      <div className="shrink-0 flex items-center gap-3">
+        {showAcknowledge && onDismissAlert && (
+      <button
+        onClick={() => onDismissAlert(match.id)}
+        className="text-xs text-gray-500 hover:text-gray-700 font-medium whitespace-nowrap"
       >
-        Details →
-      </Link>
+        Dismiss
+      </button>
+    )}
+        <Link
+          href={`/matches/${match.id}`}
+          onClick={() => onViewed?.(match.id)}
+          className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+        >
+          Details →
+        </Link>
+      </div>
     </div>
   )
 }
-
-// ─── Expiry warning banner ────────────────────────────────────────────────────
 
 function ExpiryBanner({
   item,
@@ -198,7 +326,7 @@ function ExpiryBanner({
   return (
     <div className="mx-1 px-4 py-2 bg-red-50 border-x border-b border-red-100 rounded-b-2xl flex items-center justify-between gap-3">
       <span className="text-xs text-red-600">
-        ⚠ Starts in <strong>{timeLabel}</strong> — still need {need} player{need !== 1 ? 's' : ''}
+        Starts in <strong>{timeLabel}</strong> - still need {need} player{need !== 1 ? 's' : ''}
       </span>
       {confirming ? (
         <span className="flex items-center gap-2">
@@ -229,8 +357,6 @@ function ExpiryBanner({
   )
 }
 
-// ─── Section heading ──────────────────────────────────────────────────────────
-
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
     <div className="flex items-center gap-2 mb-2">
@@ -240,51 +366,60 @@ function SectionHeading({ label, count }: { label: string; count: number }) {
   )
 }
 
-// ─── Main panel ───────────────────────────────────────────────────────────────
-
 const PAGE_SIZE = 20
 
 interface Props {
   items: MatchListItem[]
   userId: string
+  defaultVenueId?: string
   onCancelMatch?: (matchId: string) => Promise<void>
   onViewedMatch?: (matchId: string) => void
+  dismissedAlertMatchIds?: Set<string>
+  onDismissAlert?: (matchId: string) => void
 }
 
-export function MatchesPanel({ items, userId, onCancelMatch, onViewedMatch }: Props) {
+export function MatchesPanel({
+  items,
+  userId,
+  defaultVenueId,
+  onCancelMatch,
+  onViewedMatch,
+  dismissedAlertMatchIds,
+  onDismissAlert,
+}: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'history'>('upcoming')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
 
   const now = useMemo(() => new Date().toISOString(), [])
 
-  const { incoming, lookingFor, removed, history } = useMemo(() => {
+  const { incoming, lookingFor, removed, cancelled, history } = useMemo(() => {
     const incoming: MatchListItem[] = []
     const lookingFor: MatchListItem[] = []
     const removed: MatchListItem[] = []
+    const cancelled: MatchListItem[] = []
     const history: MatchListItem[] = []
 
     for (const item of items) {
       const status = item.myParticipant?.status
-      if (status === 'confirmed') {
+      if (item.match.status === 'cancelled') {
+        if (status && !isPast(item, now)) cancelled.push(item)
+      } else if (status === 'confirmed' || status === 'pending' || status === 'waiting_list') {
         if (isInboxItem(item, now)) incoming.push(item)
         else history.push(item)
-      } else if (status === 'pending') {
-        if (!isPast(item, now)) lookingFor.push(item)
       } else if (status === 'removed') {
-        // Show removal notification only for upcoming active matches
         if (item.match.status === 'active' && !isPast(item, now)) removed.push(item)
       } else if (status == null) {
         if (item.match.status === 'active' && !isPast(item, now)) lookingFor.push(item)
       }
     }
 
-    history.sort((a, b) =>
-      (b.match.start_at_utc ?? '').localeCompare(a.match.start_at_utc ?? '')
-    )
+    history.sort((a, b) => (b.match.start_at_utc ?? '').localeCompare(a.match.start_at_utc ?? ''))
 
-    return { incoming, lookingFor, removed, history }
+    return { incoming, lookingFor, removed, cancelled, history }
   }, [items, now])
 
+  const visibleCancelled = cancelled.filter(item => !dismissedAlertMatchIds?.has(item.match.id))
+  const visibleRemoved = removed.filter(item => !dismissedAlertMatchIds?.has(item.match.id))
   const subTabBtn = (key: 'upcoming' | 'history', label: string, count: number) => (
     <button
       onClick={() => setSubTab(key)}
@@ -311,22 +446,39 @@ export function MatchesPanel({ items, userId, onCancelMatch, onViewedMatch }: Pr
 
       {subTab === 'upcoming' && (
         <>
-          {/* Notifications: pending invites/nominations/re-confirms + removed from match */}
-          {(removed.length > 0 || lookingFor.some(needsUserAction)) && (
+          {(visibleCancelled.length > 0 || visibleRemoved.length > 0 || lookingFor.some(needsUserAction)) && (
             <section>
               <SectionHeading
-                label="Notifications"
+                label="Action Needed"
                 count={
-                  removed.length +
-                  lookingFor.filter(needsUserAction).length
+                  visibleCancelled.length
+                  + visibleRemoved.length
+                  + lookingFor.filter(needsUserAction).length
                 }
               />
               <div className="space-y-2">
                 {lookingFor.filter(needsUserAction).map(item => (
-                  <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} />
+                  <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} showRosterNames={false} />
                 ))}
-                {removed.map(item => (
-                  <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} />
+                {visibleCancelled.map(item => (
+                  <MatchRow
+                    key={item.match.id}
+                    item={item}
+                    onViewed={onViewedMatch}
+                    onDismissAlert={onDismissAlert}
+                    showAcknowledge
+                    showRosterNames={false}
+                  />
+                ))}
+                {visibleRemoved.map(item => (
+                  <MatchRow
+                    key={item.match.id}
+                    item={item}
+                    onViewed={onViewedMatch}
+                    onDismissAlert={onDismissAlert}
+                    showAcknowledge
+                    showRosterNames={false}
+                  />
                 ))}
               </div>
             </section>
@@ -352,9 +504,9 @@ export function MatchesPanel({ items, userId, onCancelMatch, onViewedMatch }: Pr
 
                   return (
                     <div key={item.match.id} className="mb-2">
-                      <MatchRow item={item} onViewed={onViewedMatch} />
+                      <MatchRow item={item} onViewed={onViewedMatch} variant="incoming" />
                       {expiring && onCancelMatch && (
-                        <ExpiryBanner item={item} hoursLeft={hoursLeft!} onCancel={onCancelMatch} />
+                        <ExpiryBanner item={item} hoursLeft={hoursLeft} onCancel={onCancelMatch} />
                       )}
                     </div>
                   )
@@ -377,12 +529,13 @@ export function MatchesPanel({ items, userId, onCancelMatch, onViewedMatch }: Pr
             </section>
           )}
 
-          {/* Create new match */}
           <section className="pt-2">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-              Create a Match
-            </h3>
-            <CreateMatchInline />
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.28)]">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                Create a Match
+              </h3>
+              <CreateMatchInline defaultVenueId={defaultVenueId} />
+            </div>
           </section>
         </>
       )}
