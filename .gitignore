@@ -89,6 +89,8 @@ coverage/
 tmp/
 temp/
 *.tmp
+.tools/
+.codex-start-*.cmd
 # AI runtime files
 ai/inbox/task_for_cursor.md
 ai/inbox/task_for_chatgpt.md

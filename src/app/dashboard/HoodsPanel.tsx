@@ -146,6 +146,7 @@ type Props = {
   groups: GroupWithMembers[]
   myIdentities: (VenueIdentity & { venue: Venue })[]
   sports: Sport[]
+  enabledSportIds: number[]
   onParseScreenshots: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
   onImportScreenshotContacts: (drafts: Array<{
     display_name: string
@@ -153,6 +154,7 @@ type Props = {
     email?: string | null
     source_file_name?: string | null
   }>) => Promise<{ created: number; skipped: number }>
+  onOpenProfile: () => void
 }
 
 const SUPPORTED_SPORTS: SupportedSportCode[] = ['tennis', 'pickleball', 'badminton']
@@ -386,180 +388,6 @@ function getPeopleEmptyState(
   }
 }
 
-function ProxyManagementPanel({
-  rows,
-  loading,
-  error,
-  actingBindingId,
-  onApprove,
-  onDecline,
-  onRevoke,
-}: {
-  rows: MatchProxyDashboardRow[]
-  loading: boolean
-  error: string | null
-  actingBindingId: string | null
-  onApprove: (bindingId: string) => Promise<void>
-  onDecline: (bindingId: string) => Promise<void>
-  onRevoke: (bindingId: string) => Promise<void>
-}) {
-  const pendingRows = rows.filter((row) => row.status === 'pending')
-  const forMeRows = rows.filter((row) => row.relationship_role === 'for_me' && row.status === 'active')
-  const iActForRows = rows.filter((row) => row.relationship_role === 'i_act_for' && row.status === 'active')
-  const historyRows = rows.filter((row) => row.status === 'revoked' || row.status === 'rejected' || row.status === 'expired')
-
-  const renderRow = (row: MatchProxyDashboardRow) => {
-    const isActing = actingBindingId === row.binding_id
-    const statusTone =
-      row.status === 'active'
-        ? 'bg-emerald-50 text-emerald-700'
-        : row.status === 'pending'
-          ? 'bg-amber-50 text-amber-700'
-          : 'bg-slate-100 text-slate-600'
-    const relationshipCopy =
-      row.relationship_role === 'for_me'
-        ? `${row.proxy_name} can act for you`
-        : `You can act for ${row.principal_name}`
-
-    return (
-      <div key={row.binding_id} className="rounded-3xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-sm font-semibold text-slate-900">{relationshipCopy}</h4>
-              <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${statusTone}`}>
-                {row.status}
-              </span>
-            </div>
-            <p className="mt-2 text-xs leading-5 text-slate-500">
-              {row.relationship_role === 'for_me'
-                ? 'Your self-service controls stay active. A proxy can only handle participant-side match actions.'
-                : 'You can only handle participant-side match actions for this person. Organizer controls do not transfer.'}
-            </p>
-            <p className="mt-2 text-xs text-slate-400">
-              Updated {formatRecentDate(row.updated_at) ?? 'recently'}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {row.can_approve && (
-              <button
-                type="button"
-                onClick={() => void onApprove(row.binding_id)}
-                disabled={isActing}
-                className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
-              >
-                {isActing ? 'Working…' : 'Approve'}
-              </button>
-            )}
-            {row.can_decline && (
-              <button
-                type="button"
-                onClick={() => void onDecline(row.binding_id)}
-                disabled={isActing}
-                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
-              >
-                {isActing ? 'Working…' : 'Decline'}
-              </button>
-            )}
-            {row.can_revoke && (
-              <button
-                type="button"
-                onClick={() => void onRevoke(row.binding_id)}
-                disabled={isActing}
-                className="rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:opacity-60"
-              >
-                {isActing ? 'Working…' : 'Revoke'}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const sections: Array<{ title: string; rows: MatchProxyDashboardRow[]; empty: string }> = [
-    {
-      title: 'Pending',
-      rows: pendingRows,
-      empty: 'No pending proxy requests need attention right now.',
-    },
-    {
-      title: 'Who Can Act for Me',
-      rows: forMeRows,
-      empty: 'No active proxies can act for you yet.',
-    },
-    {
-      title: 'I Can Act For',
-      rows: iActForRows,
-      empty: 'You are not currently acting for anyone else.',
-    },
-    {
-      title: 'History',
-      rows: historyRows,
-      empty: 'No historical proxy changes yet.',
-    },
-  ]
-
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          ['Pending Requests', pendingRows.length],
-          ['Active Proxies for Me', forMeRows.length],
-          ['People I Act For', iActForRows.length],
-        ].map(([label, count]) => (
-          <div key={label} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_20px_42px_-34px_rgba(15,23,42,0.34)]">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
-            <div className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{count}</div>
-          </div>
-        ))}
-      </div>
-
-      {error && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-500">
-          Loading proxy relationships…
-        </div>
-      ) : (
-        sections.map((section) => (
-          <section key={section.title} className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_20px_42px_-34px_rgba(15,23,42,0.34)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-semibold tracking-tight text-slate-900">{section.title}</h3>
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  {section.title === 'Pending'
-                    ? 'Only direct proxy changes that need your attention show up here.'
-                    : section.title === 'Who Can Act for Me'
-                      ? 'These people may handle your participant-side match actions, while you still keep full self-service control.'
-                      : section.title === 'I Can Act For'
-                        ? 'These are the people whose participant-side match actions you can currently manage.'
-                        : 'Past decisions stay visible here without creating inbox-style noise.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {section.rows.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                  {section.empty}
-                </div>
-              ) : (
-                section.rows.map(renderRow)
-              )}
-            </div>
-          </section>
-        ))
-      )}
-    </div>
-  )
-}
-
 function AddToGroupDialog({
   groups,
   person,
@@ -578,9 +406,9 @@ function AddToGroupDialog({
       <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">Add to Group</h3>
+            <h3 className="text-lg font-semibold text-slate-900">Add to Shared Group</h3>
             <p className="mt-1 text-sm text-slate-500">
-              Choose where to add {person.displayName}.
+              Choose which Shared Group should include {person.displayName}.
             </p>
           </div>
           <button
@@ -614,7 +442,7 @@ function AddToGroupDialog({
               </span>
               {groupRow.group.primary_sport_id ? (
                 <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
-                  Sport group
+                  Shared Group
                 </span>
               ) : null}
             </button>
@@ -787,7 +615,7 @@ function HoodPersonDrawer({
             </div>
             {person.groupNames.length > 0 && (
               <p className="mt-4 text-sm text-slate-600">
-                From groups: {person.groupNames.join(', ')}
+                From Shared Groups: {person.groupNames.join(', ')}
               </p>
             )}
             {person.sharedMatchCount > 0 && (
@@ -821,7 +649,7 @@ function HoodPersonDrawer({
                 onClick={() => onOpenAddToGroup(person)}
                 className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
               >
-                Add to Group
+                Add to Shared Group
               </button>
               {person.canEditContact && (
                 <p className="w-full text-xs text-slate-500">
@@ -858,7 +686,7 @@ function HoodPersonDrawer({
               Principal keeps full self-service control. Proxy only covers participant-side match actions.
             </p>
             <p className="mt-3 text-sm text-slate-500">
-              Use the Proxy tab for the full management view, including pending, active, and revoked relationships.
+              Full Match Proxy management lives in My Profile, not in Hoods.
             </p>
             {proxyRequestState && (
               <p
@@ -875,7 +703,7 @@ function HoodPersonDrawer({
                 onClick={onOpenProxyManager}
                 className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
               >
-                Open Proxy Tab
+                Open Match Proxy Settings
               </button>
             </div>
             {person.guestId && (
@@ -1004,8 +832,6 @@ function HoodCard({
   onInviteNew: (person: HoodPerson) => void
   pendingInviteMatchId: string | null
 }) {
-  const visibleSourceBadges = getVisibleSourceBadges(person)
-
   return (
     <article className="relative rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.3)] transition hover:border-slate-300">
       <button
@@ -1013,7 +839,7 @@ function HoodCard({
         onClick={() => onOpenDrawer(person)}
         className="w-full text-left"
       >
-        <div className="flex items-start gap-3">
+        <div className="flex items-center gap-3">
           <Avatar
             src={person.avatarUrl}
             displayName={person.displayName}
@@ -1021,25 +847,7 @@ function HoodCard({
             className="h-11 w-11 text-sm"
           />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate text-base font-semibold text-slate-900">{person.displayName}</h3>
-              {shouldShowIdentityBadge(person) && (
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                  {getIdentityLabel(person.identityType)}
-                </span>
-              )}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {visibleSourceBadges.map((badge) => (
-                <span
-                  key={badge}
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${sourceBadgeClass(badge)}`}
-                >
-                  {badge}
-                </span>
-              ))}
-            </div>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{cardMetaLine(person)}</p>
+            <h3 className="truncate text-base font-semibold text-slate-900">{person.displayName}</h3>
           </div>
         </div>
       </button>
@@ -1114,7 +922,7 @@ function HoodCard({
             onClick={() => onOpenMenuAddToGroup(person)}
             className="w-full rounded-2xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
           >
-            Add to Group
+            Add to Shared Group
           </button>
           <button
             type="button"
@@ -1145,19 +953,24 @@ export function HoodsPanel({
   groups,
   myIdentities,
   sports,
+  enabledSportIds,
   onParseScreenshots,
   onImportScreenshotContacts,
+  onOpenProfile,
 }: Props) {
   const router = useRouter()
   const sportOptions = useMemo(
     () =>
       sports
-        .filter((sport): sport is HoodSport => isSupportedSportCode(sport.code))
+        .filter(
+          (sport): sport is HoodSport =>
+            isSupportedSportCode(sport.code) && enabledSportIds.includes(sport.id),
+        )
         .sort(
           (left, right) =>
             SUPPORTED_SPORTS.indexOf(left.code) - SUPPORTED_SPORTS.indexOf(right.code),
         ),
-    [sports],
+    [enabledSportIds, sports],
   )
 
   const [section, setSection] = useState<HoodSection>('hood')
@@ -1193,10 +1006,6 @@ export function HoodsPanel({
   const [contactPhone, setContactPhone] = useState('')
   const [contactNotes, setContactNotes] = useState('')
   const [creatingContact, setCreatingContact] = useState(false)
-  const [proxyRows, setProxyRows] = useState<MatchProxyDashboardRow[]>([])
-  const [proxyLoading, setProxyLoading] = useState(false)
-  const [proxyError, setProxyError] = useState<string | null>(null)
-  const [proxyActionBindingId, setProxyActionBindingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (sportOptions.some((sport) => sport.code === selectedSportCode)) return
@@ -1269,26 +1078,6 @@ export function HoodsPanel({
   useEffect(() => {
     void loadSupportData()
   }, [loadSupportData])
-
-  const loadProxyRows = useCallback(async () => {
-    setProxyLoading(true)
-    setProxyError(null)
-    const supabase = createSupabaseBrowserClient()
-    try {
-      const rows = await getMatchProxyDashboard(supabase)
-      setProxyRows(rows)
-    } catch (loadError) {
-      setProxyRows([])
-      setProxyError((loadError as Error).message)
-    } finally {
-      setProxyLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (section !== 'proxy') return
-    void loadProxyRows()
-  }, [loadProxyRows, section])
 
   useEffect(() => {
     if (!selectedSport) return
@@ -1829,7 +1618,7 @@ export function HoodsPanel({
       } else if (groupDialogPerson.guestId) {
         await addContactPlayerToGroup(supabase, groupId, groupDialogPerson.guestId)
       }
-      setMessage(`${groupDialogPerson.displayName} was added to the group flow.`)
+      setMessage(`${groupDialogPerson.displayName} was added to the Shared Group.`)
       setGroupDialogPerson(null)
       await loadSupportData()
       router.refresh()
@@ -1911,15 +1700,24 @@ export function HoodsPanel({
 
   if (!selectedSport) {
     return (
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-500">
-        No supported sports are configured yet.
+      <div className="rounded-[28px] border border-slate-200 bg-white p-6">
+        <h2 className="text-lg font-semibold tracking-tight text-slate-900">Enable a sport to open Hoods</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Hoods only appear for sports you enable in your profile. Turn on at least one sport in My Profile first.
+        </p>
+        <button
+          type="button"
+          onClick={onOpenProfile}
+          className="mt-4 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Open My Profile
+        </button>
       </div>
     )
   }
 
   const activePeople = section === 'discover' ? filteredDiscoverPeople : filteredHoodPeople
   const showContactTools = section === 'hood' && hoodFilter === 'contacts'
-  const proxyPendingCount = proxyRows.filter((row) => row.status === 'pending').length
 
   return (
     <div className="space-y-5">
@@ -1929,13 +1727,12 @@ export function HoodsPanel({
             key={sport.id}
             type="button"
             onClick={() => {
-              setSection('hood')
               setSelectedSportCode(sport.code)
               setHoodFilter('all')
             }}
             className={[
               'rounded-full px-4 py-2 text-sm font-medium transition',
-              section === 'hood' && selectedSport.code === sport.code
+              selectedSport.code === sport.code
                 ? 'bg-slate-900 text-white'
                 : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50',
             ].join(' ')}
@@ -1943,83 +1740,58 @@ export function HoodsPanel({
             My {sport.display_name} Hood
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => setSection('discover')}
-          className={[
-            'rounded-full px-4 py-2 text-sm font-medium transition',
-            section === 'discover'
-              ? 'bg-slate-900 text-white'
-              : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50',
-          ].join(' ')}
-        >
-          Discover
-        </button>
-        <button
-          type="button"
-          onClick={() => setSection('proxy')}
-          className={[
-            'rounded-full px-4 py-2 text-sm font-medium transition',
-            section === 'proxy'
-              ? 'bg-slate-900 text-white'
-              : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50',
-          ].join(' ')}
-        >
-          <span className="inline-flex items-center gap-2">
-            <span>Proxy</span>
-            {proxyPendingCount > 0 && (
-              <span
-                className={[
-                  'flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none',
-                  section === 'proxy'
-                    ? 'bg-white/20 text-white ring-1 ring-white/20'
-                    : 'bg-blue-500 text-white',
-                ].join(' ')}
-              >
-                {proxyPendingCount > 99 ? '99+' : proxyPendingCount}
-              </span>
-            )}
-          </span>
-        </button>
       </div>
 
       <div className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_20px_42px_-34px_rgba(15,23,42,0.34)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
-              {section === 'discover'
-                ? 'Discover'
-                : section === 'proxy'
-                  ? 'Proxy'
-                  : `My ${selectedSport.display_name} Hood`}
+              My {selectedSport.display_name} Hood
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
               {section === 'discover'
-                ? `Browse ${selectedSport.display_name.toLowerCase()} people who are not yet in this hood.`
-                : section === 'proxy'
-                  ? 'Manage explicit Match Proxy relationships without treating Hoods like a notification center.'
-                  : `People in your ${selectedSport.display_name.toLowerCase()} network, organized without crossing sports.`}
+                ? `Discover people for ${selectedSport.display_name.toLowerCase()} without leaving the hood framework. Search, preview, and invite flows stay consistent with In My Hood.`
+                : `People already in your ${selectedSport.display_name.toLowerCase()} hood. Use filters and details to understand source and context without splitting the page into separate source tabs.`}
             </p>
           </div>
-          {section !== 'proxy' && (
-            <button
-              type="button"
-              onClick={() => navigateToNewMatch(null)}
-              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-            >
-              Create Match
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => navigateToNewMatch(null)}
+            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+          >
+            Create Match
+          </button>
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['hood', 'In My Hood'],
+              ['discover', 'Discover'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setSection(value)}
+                className={[
+                  'rounded-full px-3 py-1.5 text-sm font-medium transition',
+                  section === value
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                ].join(' ')}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           {section === 'hood' ? (
             <div className="flex flex-wrap gap-2">
               {([
                 ['all', 'All'],
                 ['contacts', 'Contacts'],
                 ['saved', 'Saved'],
-                ['group', 'From Groups'],
+                ['group', 'From Shared Groups'],
               ] as const).map(([value, label]) => (
                 <button
                   key={value}
@@ -2038,23 +1810,6 @@ export function HoodsPanel({
             </div>
           ) : section === 'discover' ? (
             <>
-              <div className="flex flex-wrap gap-2">
-                {sportOptions.map((sport) => (
-                  <button
-                    key={sport.id}
-                    type="button"
-                    onClick={() => setSelectedSportCode(sport.code)}
-                    className={[
-                      'rounded-full px-3 py-1.5 text-sm font-medium transition',
-                      selectedSport.code === sport.code
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
-                    ].join(' ')}
-                  >
-                    {sport.display_name}
-                  </button>
-                ))}
-              </div>
               <div className="flex flex-wrap gap-2">
                 {([
                   ['club_members', 'Club Members'],
@@ -2078,15 +1833,13 @@ export function HoodsPanel({
             </>
           ) : null}
 
-          {section !== 'proxy' && (
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search people"
-              className="min-w-[220px] flex-1 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300"
-            />
-          )}
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search people"
+            className="min-w-[220px] flex-1 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300"
+          />
         </div>
       </div>
 
@@ -2225,62 +1978,7 @@ export function HoodsPanel({
         </div>
       )}
 
-      {section === 'proxy' ? (
-        <ProxyManagementPanel
-          rows={proxyRows}
-          loading={proxyLoading}
-          error={proxyError}
-          actingBindingId={proxyActionBindingId}
-          onApprove={async (bindingId) => {
-            const supabase = createSupabaseBrowserClient()
-            setProxyActionBindingId(bindingId)
-            setError(null)
-            setMessage(null)
-            try {
-              await approveMatchProxyBinding(supabase, bindingId)
-              setMessage('Proxy request approved.')
-              await loadProxyRows()
-              router.refresh()
-            } catch (actionError) {
-              setError((actionError as Error).message)
-            } finally {
-              setProxyActionBindingId(null)
-            }
-          }}
-          onDecline={async (bindingId) => {
-            const supabase = createSupabaseBrowserClient()
-            setProxyActionBindingId(bindingId)
-            setError(null)
-            setMessage(null)
-            try {
-              await declineMatchProxyBinding(supabase, bindingId)
-              setMessage('Proxy request declined.')
-              await loadProxyRows()
-              router.refresh()
-            } catch (actionError) {
-              setError((actionError as Error).message)
-            } finally {
-              setProxyActionBindingId(null)
-            }
-          }}
-          onRevoke={async (bindingId) => {
-            const supabase = createSupabaseBrowserClient()
-            setProxyActionBindingId(bindingId)
-            setError(null)
-            setMessage(null)
-            try {
-              await revokeMatchProxyBindingSelf(supabase, bindingId)
-              setMessage('Proxy binding revoked.')
-              await loadProxyRows()
-              router.refresh()
-            } catch (actionError) {
-              setError((actionError as Error).message)
-            } finally {
-              setProxyActionBindingId(null)
-            }
-          }}
-        />
-      ) : loading ? (
+      {loading ? (
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-500">
           Loading hood...
         </div>
@@ -2330,8 +2028,8 @@ export function HoodsPanel({
         onOpenAddToGroup={(person) => setGroupDialogPerson(person)}
         onOpenInvite={(person) => setActiveInviteKey(person.key)}
         onOpenProxyManager={() => {
-          setSection('proxy')
           setActiveDrawerKey(null)
+          onOpenProfile()
         }}
       />
 
