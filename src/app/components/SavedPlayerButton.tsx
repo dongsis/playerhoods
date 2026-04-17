@@ -50,7 +50,7 @@ export function SavedPlayerButton({
   }
 
   const className = compact
-    ? 'shrink-0 px-2.5 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-50'
+    ? 'shrink-0 rounded-xl border border-slate-100 px-4 py-2 text-[11px] font-bold text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-600 disabled:opacity-50'
     : 'shrink-0 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-50'
 
   if (saved && !error) {

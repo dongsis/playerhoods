@@ -44,15 +44,12 @@ function isDoublesMatch(gameType: string | null | undefined): boolean {
 function normalizeDoublesFormat(
   match: Pick<Match, 'game_type' | 'doubles_format'>,
 ): MatchRosterDoublesFormat | null {
-  if (!isDoublesMatch(match.game_type)) {
-    return null
-  }
-
   switch (match.doubles_format) {
     case 'mens_doubles':
     case 'womens_doubles':
-    case 'mixed_doubles':
       return match.doubles_format
+    case 'mixed_doubles':
+      return isDoublesMatch(match.game_type) ? match.doubles_format : 'open'
     case 'open':
     default:
       return 'open'
@@ -60,17 +57,19 @@ function normalizeDoublesFormat(
 }
 
 export function formatDoublesFormatLabel(
+  gameType: Match['game_type'] | null | undefined,
   doublesFormat: Match['doubles_format'] | null | undefined,
 ): string | null {
+  const isSingles = (gameType ?? '').toLowerCase() === 'singles'
   switch (doublesFormat) {
     case 'mens_doubles':
-      return "Men's doubles"
+      return isSingles ? "Men's singles" : "Men's doubles"
     case 'womens_doubles':
-      return "Women's doubles"
+      return isSingles ? "Women's singles" : "Women's doubles"
     case 'mixed_doubles':
-      return 'Mixed doubles'
+      return isSingles ? 'Open singles' : 'Mixed doubles'
     case 'open':
-      return 'Open doubles'
+      return isSingles ? 'Open singles' : 'Open doubles'
     default:
       return null
   }
@@ -222,7 +221,7 @@ export function deriveMatchRosterInsight(
     waitingCount: waiting.length,
     removedCount: removed.length,
     openSpots,
-    formatLabel: formatDoublesFormatLabel(doublesFormat),
+    formatLabel: formatDoublesFormatLabel(match.game_type, doublesFormat),
     compositionLabel: buildCompositionLabel(genderCounts),
     neededLabel,
     summaryLabel: summarySegments.join(' · '),

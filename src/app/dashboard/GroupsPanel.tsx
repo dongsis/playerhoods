@@ -2,18 +2,30 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { PendingGroupInvite, GroupWithMembers } from '@/lib/api/players'
+import {
+  acceptGroupInvite,
+  acceptGroupJoinRequest,
+  declineGroupJoinRequest,
+  rejectGroupInvite,
+} from '@/lib/api/groups'
 import type { Sport } from '@/lib/types/database'
 
 type Props = {
   groups: GroupWithMembers[]
   pendingInvites: PendingGroupInvite[]
   sports: Sport[]
+  showBackToDashboard?: boolean
 }
 
-export function GroupsPanel({ groups, pendingInvites, sports }: Props) {
+export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboard = false }: Props) {
+  const router = useRouter()
   const [keeperNames, setKeeperNames] = useState<Map<string, string>>(new Map())
+  const [pendingActionKey, setPendingActionKey] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const keeperIds = Array.from(new Set(groups.map((group) => group.group.boundary_keeper_id)))
@@ -48,32 +60,87 @@ export function GroupsPanel({ groups, pendingInvites, sports }: Props) {
     [sports],
   )
 
+  const handlePendingDecision = async (invite: PendingGroupInvite, decision: 'accept' | 'decline') => {
+    const actionKey = `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:${decision}`
+    setPendingActionKey(actionKey)
+    setFeedback(null)
+    setError(null)
+    const supabase = createSupabaseBrowserClient()
+
+    try {
+      if (invite.pendingKind === 'approval_request') {
+        if (!invite.requestId) throw new Error('Missing join request id')
+        if (decision === 'accept') {
+          await acceptGroupJoinRequest(supabase, invite.requestId)
+          setFeedback(`Joined ${invite.groupName}.`)
+        } else {
+          await declineGroupJoinRequest(supabase, invite.requestId)
+          setFeedback(`Declined ${invite.groupName}.`)
+        }
+      } else if (decision === 'accept') {
+        await acceptGroupInvite(supabase, invite.groupId)
+        setFeedback(`Joined ${invite.groupName}.`)
+      } else {
+        await rejectGroupInvite(supabase, invite.groupId)
+        setFeedback(`Declined ${invite.groupName}.`)
+      }
+
+      router.refresh()
+    } catch (actionError) {
+      const message =
+        (actionError as { message?: string })?.message ??
+        (decision === 'accept' ? 'Failed to accept group request' : 'Failed to decline group request')
+      setError(message)
+    } finally {
+      setPendingActionKey(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_20px_42px_-34px_rgba(15,23,42,0.34)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
             <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Groups</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Shared Groups are the place for membership, communication, and longer-term organization. They are separate from Hoods, which stay focused on the people pool.
-            </p>
           </div>
-          <Link
-            href="/groups/new"
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
-            New Shared Group
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {showBackToDashboard ? (
+              <Link
+                href="/dashboard"
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                回主面板
+              </Link>
+            ) : null}
+            <Link
+              href="/groups/new"
+              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+            >
+              New Shared Group
+            </Link>
+          </div>
         </div>
       </section>
 
+      {feedback && (
+        <section className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
+          {feedback}
+        </section>
+      )}
+
+      {error && (
+        <section className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+          {error}
+        </section>
+      )}
+
       {pendingInvites.length > 0 && (
         <section className="rounded-[30px] border border-amber-200 bg-amber-50 p-5 shadow-[0_20px_42px_-34px_rgba(15,23,42,0.18)]">
-          <h2 className="text-lg font-semibold tracking-tight text-amber-950">Pending group invites</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-amber-950">Pending</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {pendingInvites.map((invite) => (
               <div
-                key={invite.groupId}
+                key={`${invite.pendingKind}:${invite.requestId ?? invite.groupId}`}
                 className="rounded-[24px] border border-amber-200 bg-white/85 p-4"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -84,16 +151,38 @@ export function GroupsPanel({ groups, pendingInvites, sports }: Props) {
                     </div>
                     {invite.invitedByName && (
                       <div className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-400">
-                        Invited by {invite.invitedByName}
+                        {invite.pendingKind === 'approval_request' ? 'Requested by ' : 'Invited by '}
+                        {invite.invitedByName}
                       </div>
                     )}
                   </div>
-                  <Link
-                    href={`/groups/${invite.groupId}`}
-                    className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-900">
+                    {invite.pendingKind === 'approval_request' ? 'Approval' : 'Invite'}
+                  </span>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handlePendingDecision(invite, 'accept')}
+                    disabled={pendingActionKey === `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:accept`}
+                    className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
                   >
-                    Review
-                  </Link>
+                    {pendingActionKey === `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:accept`
+                      ? 'Working...'
+                      : invite.pendingKind === 'approval_request'
+                        ? 'Join'
+                        : 'Accept'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handlePendingDecision(invite, 'decline')}
+                    disabled={pendingActionKey === `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:decline`}
+                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {pendingActionKey === `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:decline`
+                      ? 'Working...'
+                      : 'Decline'}
+                  </button>
                 </div>
               </div>
             ))}
@@ -103,7 +192,7 @@ export function GroupsPanel({ groups, pendingInvites, sports }: Props) {
 
       {groups.length === 0 ? (
         <section className="rounded-[30px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-          No Shared Groups yet. Create one when you need a shared space for members, discussion, and match coordination.
+          No groups yet.
         </section>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -129,7 +218,7 @@ export function GroupsPanel({ groups, pendingInvites, sports }: Props) {
                       </span>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-slate-500">
-                      {group.description?.trim() || 'A shared space for members, communication, and group-level match coordination.'}
+                      {group.description?.trim() || 'Shared group.'}
                     </p>
                   </div>
                 </div>
@@ -150,10 +239,8 @@ export function GroupsPanel({ groups, pendingInvites, sports }: Props) {
                     <dd className="mt-1 text-sm text-slate-700">{keeperName}</dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Latest summary</dt>
-                    <dd className="mt-1 text-sm text-slate-700">
-                      Open the group to manage announcements, members, and shared details.
-                    </dd>
+                    <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Status</dt>
+                    <dd className="mt-1 text-sm text-slate-700">Open to manage.</dd>
                   </div>
                 </dl>
 

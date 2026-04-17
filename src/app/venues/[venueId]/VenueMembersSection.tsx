@@ -16,7 +16,7 @@ interface Props {
 export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
   const [members, setMembers] = useState<VenueMemberDiscoveryRow[]>([])
   const [savedPlayerIds, setSavedPlayerIds] = useState<Set<string>>(
-    () => new Set(initialSavedPlayerIds)
+    () => new Set(initialSavedPlayerIds),
   )
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -56,33 +56,33 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
   }
 
   if (loading && members.length === 0) {
-    return <p className="text-sm text-gray-400">Loading venue members…</p>
+    return <p className="text-sm text-gray-400">Loading venue members...</p>
   }
 
   return (
     <section className="mb-6">
-      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
         Venue Members
       </h2>
-      <p className="text-sm text-gray-500 mb-3">
-        Discover registered players at this venue and save them to your private Saved Players list for future match invites.
+      <p className="mb-3 text-sm text-gray-500">
+        Discover registered people at this venue and save them into your hood for future match invites.
       </p>
       <input
         type="text"
-        placeholder="Search by name or handle…"
+        placeholder="Search by name or handle..."
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        className="w-full max-w-xs px-3 py-2 text-sm border border-gray-200 rounded-xl mb-3"
+        className="mb-3 w-full max-w-xs rounded-xl border border-gray-200 px-3 py-2 text-sm"
       />
-      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       {members.length === 0 ? (
-        <p className="text-sm text-gray-400 italic">No members found.</p>
+        <p className="text-sm italic text-gray-400">No members found.</p>
       ) : (
         <div className="space-y-2">
           {members.map((member) => (
             <div
               key={member.user_id}
-              className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl border border-gray-100"
+              className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3"
             >
               <PlayerProfileTrigger targetUserId={member.user_id} className="rounded-full">
                 <Avatar
@@ -91,8 +91,8 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
                   size="md"
                 />
               </PlayerProfileTrigger>
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium text-gray-800 truncate block">
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-gray-800">
                   {member.display_name || member.venue_handle || 'Unknown'}
                 </span>
                 {member.venue_handle && (

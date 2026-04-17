@@ -13,6 +13,11 @@ export type IdentityLink = {
 }
 
 export type GroupMemberStatus = 'pending' | 'active' | 'removed'
+export type GroupJoinRequestStatus = 'pending' | 'accepted' | 'declined' | 'revoked'
+export type SharedGroupJoinPreference =
+  | 'approval_required_all'
+  | 'auto_join_enabled_sports'
+  | 'auto_join_all'
 export type MatchStatus = 'active' | 'cancelled' | 'archived'
 export type MatchAdmissionMode = 'invite' | 'request'
 export type MatchParticipantStatus = 'pending' | 'confirmed' | 'waiting_list' | 'removed'
@@ -26,6 +31,7 @@ export type GearCollectionType = 'owned' | 'wishlist'
 export type GearCategory = 'rackets' | 'shoes' | 'apparel' | 'strings' | 'accessories' | 'other'
 export type GearImageKind = 'item' | 'setup_photo'
 export type GearShowcaseSourceType = 'owned_item' | 'wishlist_item' | 'photo'
+export type AvailabilityStatus = 'available' | 'busy' | 'away' | 'inactive'
 
 export type Json =
   | string
@@ -48,7 +54,9 @@ export type Profile = {
   avatar_url: string | null
   gender: 'male' | 'female' | 'unspecified' | null
   level: string | null
+  availability_status: AvailabilityStatus
   availability_note: string | null
+  availability_until: string | null
   plays_singles: boolean
   plays_doubles: boolean
   primary_venue_id: string | null
@@ -66,6 +74,8 @@ export type Profile = {
   show_in_venue_member_discovery?: boolean
   /** Phase 1: Global master switch — allow direct invites from venue members */
   allow_non_group_invites?: boolean
+  /** Shared Groups: whether group adds require approval or can auto-join by sport/global preference */
+  shared_group_join_preference?: SharedGroupJoinPreference
   /** Shared profile layer: friendly openness signal for new games */
   looking_to_play?: string | null
   /** Shared profile layer: lightweight recurring time windows */
@@ -151,11 +161,14 @@ export type Match = {
   doubles_format: MatchDoublesFormat | null
   required_count: number
   invitation_scope_group_ids: string[] | null
+  invitation_scope_user_ids: string[] | null
   can_participants_invite_users: boolean
   can_participants_add_guests: boolean  // legacy guest_add flag; canonical Contact Player nomination no longer uses it
   can_participants_manage_participants: boolean
+  organizer_note: string | null
   court_plan_mode: MatchCourtPlanMode
   court_note: string | null
+  required_court_count: number
   final_court_label: string | null
   finalized_by_user_id: string | null
   finalized_at: string | null
@@ -163,6 +176,31 @@ export type Match = {
   start_at_utc: string | null
   created_at: string
   sport_id: number  // v1.6.3: FK sports; NOT NULL DEFAULT 1 (tennis)
+  recurring_series_id: string | null
+  recurring_instance_index: number | null
+}
+
+export type RecurringMatchSeries = {
+  id: string
+  organizer_id: string
+  name: string
+  status: 'active' | 'paused' | 'archived'
+  sport_id: number
+  venue_id: string | null
+  game_type: string | null
+  doubles_format: MatchDoublesFormat | null
+  required_count: number
+  required_court_count: number
+  match_weekday: number
+  start_date: string
+  start_time: string | null
+  duration_minutes: number | null
+  court_plan_mode: MatchCourtPlanMode
+  organizer_note: string | null
+  invitation_scope_group_ids: string[] | null
+  invitation_scope_user_ids: string[] | null
+  weeks_ahead_count: number
+  created_at: string
 }
 
 export type MatchCourt = {
@@ -178,13 +216,30 @@ export type MatchCourt = {
   created_at: string
 }
 
+export type MatchCourtOfferStatus = 'proposed' | 'selected' | 'not_selected' | 'released'
+
+export type MatchCourtOffer = {
+  id: string
+  match_id: string
+  volunteer_user_id: string
+  court_label: string
+  note: string | null
+  status: MatchCourtOfferStatus
+  created_at: string
+  updated_at: string
+}
+
 export type Guest = {
   id: string
   display_name: string
   notes: string | null
   email: string | null
   phone: string | null
+  gender: 'male' | 'female' | 'unspecified'
   status: 'active' | 'inactive'
+  availability_status: AvailabilityStatus
+  availability_note: string | null
+  availability_until: string | null
   created_by: string
   created_at: string
   person_id?: string | null
@@ -260,6 +315,22 @@ export type GroupContact = {
   created_by: string
   created_at: string
   removed_at: string | null
+}
+
+export type GroupJoinRequest = {
+  id: string
+  group_id: string
+  sport_id: number | null
+  requester_user_id: string
+  target_user_id: string
+  status: GroupJoinRequestStatus
+  note: string | null
+  group_name_snapshot: string
+  sport_name_snapshot: string | null
+  requester_display_name_snapshot: string | null
+  created_at: string
+  responded_at: string | null
+  revoked_at: string | null
 }
 
 // v1.6.2-lite: Personal Roster bookmark (user-scoped favorites)
@@ -439,6 +510,51 @@ export type MatchParticipantAction = {
   created_at: string
 }
 
+export type MatchMessage = {
+  id: string
+  match_id: string
+  author_user_id: string
+  body: string
+  created_at: string
+  updated_at: string | null
+  deleted_at: string | null
+}
+
+export type GroupMessage = {
+  id: string
+  group_id: string
+  author_user_id: string
+  body: string
+  created_at: string
+  updated_at: string | null
+  deleted_at: string | null
+}
+
+export type GroupResourceTag = 'Rules' | 'Fees' | 'Schedule' | 'Venue' | 'Photo' | 'Other'
+
+export type GroupResource = {
+  id: string
+  group_id: string
+  owner_user_id: string
+  resource_type: 'file' | 'link'
+  title: string
+  tag: GroupResourceTag
+  storage_bucket: string | null
+  storage_path: string | null
+  public_url: string | null
+  link_url: string | null
+  mime_type: string | null
+  byte_size: number | null
+  is_pinned: boolean
+  pinned_at: string | null
+  archived_at: string | null
+  last_active_at: string
+  related_match_id: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
 export type Notification = {
   id: string
   recipient_user_id: string
@@ -563,10 +679,22 @@ export interface Database {
         Update: Partial<Match>
         Relationships: []
       }
+      recurring_match_series: {
+        Row: RecurringMatchSeries
+        Insert: Partial<RecurringMatchSeries> & { organizer_id: string; name: string; sport_id: number; match_weekday: number; start_date: string }
+        Update: Partial<RecurringMatchSeries>
+        Relationships: []
+      }
       match_courts: {
         Row: MatchCourt
         Insert: Partial<MatchCourt> & { match_id: string; slot_index: number; court_label: string; created_by: string }
         Update: Partial<MatchCourt>
+        Relationships: []
+      }
+      match_court_offers: {
+        Row: MatchCourtOffer
+        Insert: Partial<MatchCourtOffer> & { match_id: string; volunteer_user_id: string; court_label: string }
+        Update: Partial<MatchCourtOffer>
         Relationships: []
       }
       gear_items: {
@@ -629,6 +757,24 @@ export interface Database {
         Update: Partial<GroupContact>
         Relationships: []
       }
+      group_join_requests: {
+        Row: GroupJoinRequest
+        Insert: Partial<GroupJoinRequest> & { group_id: string; requester_user_id: string; target_user_id: string; status: GroupJoinRequestStatus; group_name_snapshot: string }
+        Update: Partial<GroupJoinRequest>
+        Relationships: []
+      }
+      group_messages: {
+        Row: GroupMessage
+        Insert: Partial<GroupMessage> & { group_id: string; author_user_id: string; body: string }
+        Update: Partial<GroupMessage>
+        Relationships: []
+      }
+      group_resources: {
+        Row: GroupResource
+        Insert: Partial<GroupResource> & { group_id: string; owner_user_id: string; resource_type: 'file' | 'link'; title: string; tag: GroupResourceTag }
+        Update: Partial<GroupResource>
+        Relationships: []
+      }
       guests: {
         Row: Guest
         Insert: Partial<Guest> & { display_name: string; created_by: string }
@@ -645,6 +791,12 @@ export interface Database {
         Row: MatchParticipantAction
         Insert: Partial<MatchParticipantAction> & { match_participant_id: string; action_type: string; created_by: string }
         Update: Partial<MatchParticipantAction>
+        Relationships: []
+      }
+      match_messages: {
+        Row: MatchMessage
+        Insert: Partial<MatchMessage> & { match_id: string; author_user_id: string; body: string }
+        Update: Partial<MatchMessage>
         Relationships: []
       }
       notifications: {
@@ -746,10 +898,52 @@ export interface Database {
           p_contact_phone?: string | null
           p_show_in_venue_member_discovery?: boolean | null
           p_allow_non_group_invites?: boolean | null
+          p_shared_group_join_preference?: SharedGroupJoinPreference | null
           p_looking_to_play?: string | null
           p_preferred_play_times?: string[] | null
+          p_gender?: string | null
+          p_availability_status?: AvailabilityStatus | null
+          p_availability_note?: string | null
+          p_availability_until?: string | null
         }
         Returns: void
+      }
+      rpc_group_add_member: {
+        Args: { p_group_id: string; p_target_user_id: string; p_note?: string | null }
+        Returns: {
+          result: 'already_member' | 'already_pending' | 'direct_add_success' | 'approval_required_request_created' | 'not_allowed'
+          group_id: string
+          target_user_id: string
+          request_id: string | null
+          message: string
+        }[]
+      }
+      rpc_group_join_request_accept: {
+        Args: { p_request_id: string }
+        Returns: GroupJoinRequest
+      }
+      rpc_group_join_request_decline: {
+        Args: { p_request_id: string }
+        Returns: GroupJoinRequest
+      }
+      rpc_group_join_request_revoke: {
+        Args: { p_request_id: string }
+        Returns: GroupJoinRequest
+      }
+      rpc_group_join_requests_for_user: {
+        Args: Record<string, never>
+        Returns: {
+          id: string
+          group_id: string
+          group_name_snapshot: string
+          sport_id: number | null
+          sport_name_snapshot: string | null
+          requester_user_id: string
+          requester_display_name_snapshot: string | null
+          created_at: string
+          note: string | null
+          status: GroupJoinRequestStatus
+        }[]
       }
       rpc_user_sport_profile_upsert: {
         Args: {
@@ -898,8 +1092,28 @@ export interface Database {
         Returns: void
       }
       rpc_group_update: {
-        Args: { p_group_id: string; p_name: string; p_description?: string | null }
+        Args: { p_group_id: string; p_name: string; p_description?: string | null; p_primary_sport_id?: number | null }
         Returns: void
+      }
+      rpc_recurring_match_series_create: {
+        Args: {
+          p_name: string
+          p_sport_id: number
+          p_venue_id?: string | null
+          p_game_type?: string | null
+          p_doubles_format?: string | null
+          p_required_count?: number
+          p_required_court_count?: number
+          p_start_date?: string | null
+          p_start_time?: string | null
+          p_duration_minutes?: number | null
+          p_court_plan_mode?: string | null
+          p_organizer_note?: string | null
+          p_invitation_scope_group_ids?: string[] | null
+          p_invitation_scope_user_ids?: string[] | null
+          p_weeks_ahead_count?: number
+        }
+        Returns: RecurringMatchSeries
       }
       rpc_match_create: {
         Args: {
@@ -910,6 +1124,7 @@ export interface Database {
           p_duration_minutes?: number | null
           p_venue_id?: string | null
           p_invitation_scope_group_ids?: string[] | null
+          p_invitation_scope_user_ids?: string[] | null
           p_can_participants_invite_users?: boolean
           p_can_participants_add_guests?: boolean
           p_can_participants_manage_participants?: boolean
@@ -957,7 +1172,16 @@ export interface Database {
       }
       // v1.6.2-lite: Roster guest RPCs
       rpc_roster_guest_create: {
-        Args: { p_display_name: string; p_email?: string | null; p_phone?: string | null; p_notes?: string | null }
+        Args: {
+          p_display_name: string
+          p_email?: string | null
+          p_phone?: string | null
+          p_notes?: string | null
+          p_gender?: 'male' | 'female' | 'unspecified' | null
+          p_availability_status?: AvailabilityStatus | null
+          p_availability_note?: string | null
+          p_availability_until?: string | null
+        }
         Returns: Guest
       }
       rpc_roster_guest_list: {
@@ -966,7 +1190,19 @@ export interface Database {
       }
       rpc_contact_player_resolution: {
         Args: Record<string, never>
-        Returns: { guest_id: string; display_name: string; email: string | null; phone: string | null; notes: string | null; linked_user_id: string | null; resolution_state: string }[]
+        Returns: {
+          guest_id: string
+          display_name: string
+          email: string | null
+          phone: string | null
+          notes: string | null
+          gender: 'male' | 'female' | 'unspecified' | null
+          availability_status: AvailabilityStatus | null
+          availability_note: string | null
+          availability_until: string | null
+          linked_user_id: string | null
+          resolution_state: string
+        }[]
       }
       rpc_roster_guest_contact_links: {
         Args: { p_guest_ids: string[] }
@@ -1041,6 +1277,10 @@ export interface Database {
         Args: { p_group_id: string }
         Returns: { group_contact_id: string; guest_id: string; person_id: string; display_name: string; avatar_url: string | null; membership_type: string; created_by: string; created_at: string }[]
       }
+      rpc_group_resources_archive_stale: {
+        Args: { p_group_id: string }
+        Returns: number
+      }
       rpc_contact_player_save: {
         Args: { p_guest_id: string; p_source?: string; p_group_id?: string | null; p_match_id?: string | null }
         Returns: PersonRelationship
@@ -1098,6 +1338,10 @@ export interface Database {
       rpc_match_accept_group_invite: {
         Args: { p_match_id: string }
         Returns: MatchParticipant
+      }
+      rpc_match_revoke_group_invite: {
+        Args: { p_match_id: string; p_group_id: string }
+        Returns: { group_id: string; group_name: string; status: string; created_at: string; revoked_at: string | null }[]
       }
       rpc_match_admit_user: {
         Args: { p_match_id: string; p_target_user_id: string }

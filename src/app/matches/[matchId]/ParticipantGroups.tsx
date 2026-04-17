@@ -9,12 +9,10 @@ import {
   proxyDeclineParticipant,
   proxyWithdrawParticipant,
   removeParticipant,
-  inviteUserToMatch,
   userWithdraw,
 } from '@/lib/api/matches'
 import { processDeliveriesAction } from './process-deliveries-action'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
-import { Avatar } from '@/app/components/Avatar'
 import { SavedPlayerButton } from '@/app/components/SavedPlayerButton'
 import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
@@ -27,6 +25,7 @@ interface Props {
   // Organizer receives full participants list (confirmed + pending + removed).
   participants: MatchParticipantEnriched[]
   isOrganizer: boolean
+  requiredCount: number
   // Count from match_formed view — used to display "Pending (N)" for non-organizer
   pendingCount: number
   waitingCount?: number
@@ -86,7 +85,7 @@ function ConfirmationBadge({
   confirmed,
   title,
 }: {
-  label: 'Host' | 'Participant'
+  label: 'Host' | 'Player'
   confirmed: boolean
   title: string
 }) {
@@ -97,10 +96,10 @@ function ConfirmationBadge({
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '0.24rem',
-        color: '#111827',
-        fontSize: '0.78rem',
-        fontWeight: 500,
+        gap: '0.18rem',
+        color: '#64748b',
+        fontSize: '0.58rem',
+        fontWeight: 700,
         lineHeight: 1.2,
         whiteSpace: 'nowrap',
       }}
@@ -109,8 +108,8 @@ function ConfirmationBadge({
       <span
         aria-hidden="true"
         style={{
-          color: confirmed ? '#15803d' : '#98a2b3',
-          fontSize: '0.95rem',
+          color: confirmed ? '#5ca0a0' : '#cbd5e1',
+          fontSize: '0.74rem',
           lineHeight: 1,
           transform: 'translateY(-0.02rem)',
         }}
@@ -118,6 +117,45 @@ function ConfirmationBadge({
         {confirmed ? '✓' : '○'}
       </span>
     </span>
+  )
+}
+
+function ParticipantAvatar({
+  displayName,
+  avatarUrl,
+  registered,
+}: {
+  displayName: string
+  avatarUrl: string | null
+  registered: boolean
+}) {
+  const initial = displayName.charAt(0).toUpperCase() || '?'
+
+  return (
+    <div
+      title={displayName}
+      style={{
+        width: '2.2rem',
+        height: '2.2rem',
+        borderRadius: '999px',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: registered ? '#5ca0a0' : '#f1f5f9',
+        color: registered ? '#fff' : '#64748b',
+        border: registered ? '2px solid #ffffff' : '2px dashed #e2e8f0',
+        boxShadow: registered ? '0 8px 16px rgba(15, 118, 110, 0.08)' : 'none',
+        fontSize: '0.7rem',
+        fontWeight: 700,
+      }}
+    >
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <span>{initial}</span>
+      )}
+    </div>
   )
 }
 
@@ -257,11 +295,10 @@ function ParticipantRow({
 
   const canSelfWithdraw =
     isActive &&
-    !isOrganizer &&
     p.user_id === myUserId &&
     (p.status === 'pending' || p.status === 'confirmed' || p.status === 'waiting_list')
   const relationshipBadges = [
-    isGuest ? 'Contact Player' : null,
+    isGuest ? 'Contact' : null,
     isGuest && p.saved_by_viewer ? 'Saved by you' : null,
     p.proxy_manageable_by_viewer ? 'Proxy for' : null,
   ].filter((badge): badge is string => badge !== null)
@@ -279,10 +316,6 @@ function ParticipantRow({
     (p.status === 'confirmed'
       || p.status === 'waiting_list'
       || (p.status === 'pending' && (pendingState?.participantConfirmed ?? false)))
-
-  // Invite back a removed participant (organizer only; uses rpc_match_invite_user)
-  const canInviteBack =
-    isOrganizer && isActive && p.status === 'removed' && p.user_id !== null
 
   const canRemoveParticipant = canOrganizerRemoveParticipant || canRemovePendingParticipant
 
@@ -318,7 +351,7 @@ function ParticipantRow({
     if (nominator) {
       timelineEvents.push({
         key: 'nominated',
-        label: `Nominated by ${nominator}`,
+        label: `Invited by ${nominator}`,
         at: p.created_at,
       })
     }
@@ -350,20 +383,20 @@ function ParticipantRow({
         key: 'player-confirmed-delegated',
         label:
           p.participant_accepted_via === 'proxy'
-            ? (confirmer ? `Participant confirmed by ${confirmer} on their behalf` : 'Participant confirmed by proxy')
-            : (confirmer ? `Participant confirmed by ${confirmer}` : 'Participant confirmed'),
+            ? (confirmer ? `Player confirmed by ${confirmer} on their behalf` : 'Player confirmed by proxy')
+            : (confirmer ? `Player confirmed by ${confirmer}` : 'Player confirmed'),
         at: p.participant_accepted_at,
       })
     } else if (p.user_id !== null) {
       timelineEvents.push({
         key: 'player-confirmed',
-        label: `Participant confirmed by ${isMe ? 'You' : p.display_name}`,
+        label: `Player confirmed by ${isMe ? 'You' : p.display_name}`,
         at: p.participant_accepted_at,
       })
     } else {
       timelineEvents.push({
         key: 'player-confirmed',
-        label: 'Participant confirmed',
+        label: 'Player confirmed',
         at: p.participant_accepted_at,
       })
     }
@@ -439,28 +472,6 @@ function ParticipantRow({
           },
         }
       : null,
-    canRemoveParticipant
-      ? {
-          key: 'remove',
-          label: 'Remove participant',
-          style: dangerMenuActionStyle,
-          onClick: () => {
-            setMenuOpen(false)
-            setActiveDialog('remove')
-          },
-        }
-      : null,
-    canInviteBack
-      ? {
-          key: 'invite-back',
-          label: 'Invite back',
-          style: primaryMenuActionStyle,
-          onClick: () => {
-            setMenuOpen(false)
-            act(() => inviteUserToMatch(supabase, matchId, p.user_id!))
-          },
-        }
-      : null,
   ].filter((item): item is {
     key: string
     label: string
@@ -471,31 +482,49 @@ function ParticipantRow({
   const showParticipantMenu = timelineEvents.length > 0 || actionButtons.length > 0
 
   return (
-      <div style={{ padding: '0.5rem 0', borderBottom: '1px solid #f5f5f5' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+      <div style={{ padding: '0.52rem 0', borderBottom: '1px solid #f8fafc' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.6rem' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.7rem', minWidth: 0, flex: 1 }}>
         {canViewProfile ? (
           <PlayerProfileTrigger targetUserId={p.user_id!} className="rounded-full">
-            <Avatar
-              src={p.avatar_url}
+            <ParticipantAvatar
+              avatarUrl={p.avatar_url ?? null}
               displayName={p.display_name}
-              size="md"
-              className="mt-0.5"
+              registered={!isGuest}
             />
           </PlayerProfileTrigger>
         ) : (
-          <Avatar
-            src={p.avatar_url}
+          <ParticipantAvatar
+            avatarUrl={p.avatar_url ?? null}
             displayName={p.display_name}
-            size="md"
-            className="mt-0.5"
+            registered={!isGuest}
           />
         )}
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.12rem' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ fontWeight: isMe ? 700 : 500, fontSize: '0.96rem', color: '#111827' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.8rem', color: isGuest ? '#64748b' : '#0f172a', letterSpacing: '-0.01em' }}>
                 {p.display_name}
               </span>
+
+              {isMe ? (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '0.1rem 0.34rem',
+                    borderRadius: '6px',
+                    background: '#f1f5f9',
+                    color: '#94a3b8',
+                    fontSize: '0.5rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  You
+                </span>
+              ) : null}
 
               {relationshipBadges.map((badge) => (
                 <span
@@ -503,28 +532,22 @@ function ParticipantRow({
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    padding: '0.12rem 0.42rem',
+                    padding: '0.1rem 0.34rem',
                     borderRadius: '999px',
-                    background: badge === 'Proxy for' ? '#eef2ff' : '#f4f4f5',
-                    color: badge === 'Proxy for' ? '#4338ca' : '#52525b',
-                    fontSize: '0.7rem',
-                    fontWeight: 600,
+                    background: badge === 'Proxy for' ? '#eef2ff' : '#f8fafc',
+                    color: badge === 'Proxy for' ? '#4338ca' : '#94a3b8',
+                    fontSize: '0.56rem',
+                    fontWeight: 700,
                   }}
                 >
                   {badge}
                 </span>
               ))}
             </div>
-
-            {isMe && !isHostRow && (
-              <span style={{ fontSize: '0.72rem', color: '#98a2b3', fontWeight: 500 }}>
-                You
-              </span>
-            )}
           </div>
 
           {!isHostRow && (pendingState || p.status === 'confirmed') && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginTop: '0.28rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginTop: '0.18rem' }}>
               <ConfirmationBadge
                 label="Host"
                 confirmed={pendingState ? pendingState.hostConfirmed : true}
@@ -533,42 +556,43 @@ function ParticipantRow({
                   : 'Host confirmed'}
               />
               <ConfirmationBadge
-                label="Participant"
+                label="Player"
                 confirmed={pendingState ? pendingState.participantConfirmed : true}
                 title={pendingState
-                  ? (pendingState.participantConfirmed ? 'Participant confirmed attendance' : 'Participant not yet confirmed attendance')
-                  : 'Participant confirmed attendance'}
+                  ? (pendingState.participantConfirmed ? 'Player confirmed attendance' : 'Player not yet confirmed attendance')
+                  : 'Player confirmed attendance'}
               />
             </div>
           )}
 
           {isWaitingListParticipant && (
-            <div style={{ marginTop: '0.32rem', display: 'flex', flexWrap: 'wrap', gap: '0.45rem', alignItems: 'center' }}>
+            <div style={{ marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center' }}>
               <span
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  padding: '0.1rem 0.45rem',
+                  padding: '0.1rem 0.42rem',
                   borderRadius: '999px',
                   background: '#fff7ed',
                   color: '#b45309',
-                  fontSize: '0.72rem',
+                  fontSize: '0.58rem',
                   fontWeight: 600,
                 }}
               >
                 Waiting list
               </span>
-              <span style={{ fontSize: '0.74rem', color: '#667085' }}>
+              <span style={{ fontSize: '0.64rem', color: '#94a3b8' }}>
                 Fully confirmed, waiting for an open spot.
                 {p.waiting_list_at ? ` Since ${formatEventTimestamp(p.waiting_list_at)}` : ''}
               </span>
             </div>
           )}
         </div>
+        </div>
 
         {/* Organizer / participant action controls */}
         {(canSavePlayer || canSaveContactPlayer || showParticipantMenu) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0, paddingTop: '0.06rem' }}>
             {canSavePlayer && (
               <SavedPlayerButton
                 targetUserId={p.user_id!}
@@ -586,7 +610,7 @@ function ParticipantRow({
                 source="shared_match"
                 matchId={matchId}
                 compact
-                saveLabel="Save"
+                saveLabel="Save player"
               />
             )}
 
@@ -597,7 +621,7 @@ function ParticipantRow({
                 disabled={isPending}
                 style={inlinePrimaryActionStyle}
               >
-                Confirm this participant
+                Confirm this player
               </button>
             )}
 
@@ -617,17 +641,18 @@ function ParticipantRow({
                 ref={menuButtonRef}
                 type="button"
                 onClick={() => setMenuOpen((open) => !open)}
-                aria-label="More participant actions"
+                aria-label="More player actions"
                 disabled={isPending}
                 style={{
                   background: '#fff',
-                  color: '#555',
-                  border: '1px solid #ddd',
-                  padding: '0.15rem 0.5rem',
-                  fontSize: '0.95rem',
+                  color: '#cbd5e1',
+                  border: '1px solid #e2e8f0',
+                  padding: '0.12rem 0.42rem',
+                  fontSize: '0.92rem',
                   borderRadius: '999px',
                   cursor: isPending ? 'wait' : 'pointer',
                   lineHeight: 1,
+                  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
                 }}
               >
                 ...
@@ -643,9 +668,9 @@ function ParticipantRow({
                     width: '320px',
                     maxWidth: 'calc(100vw - 24px)',
                     background: '#fff',
-                    border: '1px solid #ddd',
-                    borderRadius: '12px',
-                    boxShadow: '0 12px 28px rgba(0,0,0,0.12)',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '18px',
+                    boxShadow: '0 20px 40px rgba(15, 23, 42, 0.12)',
                     padding: '0.8rem',
                     zIndex: 60,
                   }}
@@ -693,11 +718,11 @@ function ParticipantRow({
       {activeDialog === 'remove' && (
         <div style={dialogOverlayStyle}>
           <div style={dialogCardStyle}>
-            <h4 style={dialogTitleStyle}>Remove this participant?</h4>
+            <h4 style={dialogTitleStyle}>Remove this player?</h4>
             <p style={dialogBodyStyle}>
               {isOrganizer
-                ? 'This will remove the participant from the match.'
-                : 'Remove this participant from the match?'}
+                ? 'Removes them from the match.'
+                : 'Remove this player?'}
             </p>
             <div style={dialogActionsStyle}>
               <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
@@ -724,7 +749,7 @@ function ParticipantRow({
                 }}
                 style={dangerButtonStyle}
               >
-                Remove participant
+                Remove player
               </button>
             </div>
           </div>
@@ -737,8 +762,8 @@ function ParticipantRow({
             <h4 style={dialogTitleStyle}>{withdrawLabel}?</h4>
             <p style={dialogBodyStyle}>
               {p.status === 'confirmed'
-                ? 'You will be removed from this match.'
-                : 'This will remove your current participation from the match.'}
+                ? 'You will leave this match.'
+                : 'This removes your participation.'}
             </p>
             <div style={dialogActionsStyle}>
               <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
@@ -764,7 +789,7 @@ function ParticipantRow({
           <div style={dialogCardStyle}>
             <h4 style={dialogTitleStyle}>{proxyDeclineLabel}?</h4>
             <p style={dialogBodyStyle}>
-              This will record a proxy decline for this participant. They still keep full control and can manage their own participation directly.
+              Record a proxy decline.
             </p>
             <div style={dialogActionsStyle}>
               <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
@@ -790,7 +815,7 @@ function ParticipantRow({
           <div style={dialogCardStyle}>
             <h4 style={dialogTitleStyle}>{proxyWithdrawLabel}?</h4>
             <p style={dialogBodyStyle}>
-              This will record a proxy withdrawal for this participant. They still keep full control and can manage their own participation directly.
+              Record a proxy withdrawal.
             </p>
             <div style={dialogActionsStyle}>
               <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
@@ -934,16 +959,25 @@ const dangerButtonStyle: React.CSSProperties = {
   fontSize: '0.8rem',
 }
 
+const participantGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+  columnGap: '1.5rem',
+  rowGap: '0',
+}
+
 function Section({
   title,
   badge,
   badgeColor,
+  extraLabel,
   children,
   defaultOpen = true,
 }: {
   title: string
   badge: number
   badgeColor: string
+  extraLabel?: string | null
   children: React.ReactNode
   defaultOpen?: boolean
 }) {
@@ -959,10 +993,39 @@ function Section({
   }
 
   return (
-    <div style={{ marginBottom: '1.25rem' }}>
-      <h4 style={{ margin: '0 0 0.45rem', fontSize: '0.92rem', color: badgeColor, fontWeight: 600 }}>
+    <div style={{ marginBottom: '0.6rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: '0.28rem',
+          marginBottom: '0.18rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <h4
+          style={{
+            margin: 0,
+            fontSize: '0.82rem',
+            color: badgeColor,
+            fontWeight: 700,
+            letterSpacing: '-0.01em',
+          }}
+        >
         {title} · {badge}
       </h4>
+        {extraLabel ? (
+          <span
+            style={{
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              color: badgeColor,
+            }}
+          >
+            {extraLabel}
+          </span>
+        ) : null}
+      </div>
       {children}
     </div>
   )
@@ -973,6 +1036,7 @@ export function ParticipantGroups({
   matchStatus,
   participants,
   isOrganizer,
+  requiredCount,
   pendingCount,
   waitingCount,
   myUserId,
@@ -1033,21 +1097,33 @@ export function ParticipantGroups({
   return (
     <div>
       {/* Confirmed — visible to all */}
-      <Section title="Confirmed" badge={confirmed.length} badgeColor="#2d8a4e">
-        {confirmed.length === 0
-          ? <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None yet.</p>
-          : confirmed.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)
-        }
+      <Section
+        title="Confirmed"
+        badge={confirmed.length}
+        badgeColor="#2d8a4e"
+        extraLabel={confirmed.length >= requiredCount ? 'Full' : null}
+      >
+        {confirmed.length === 0 ? (
+          <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None yet.</p>
+        ) : (
+          <div style={participantGridStyle}>
+            {confirmed.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          </div>
+        )}
       </Section>
 
       {/* Pending — visible here when the current page model allows the row through. */}
       {pending.length > 0 && isOrganizer ? (
         <Section title="Waiting for confirmation" badge={pending.length} badgeColor="#d97706">
-          {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          <div style={participantGridStyle}>
+            {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          </div>
         </Section>
       ) : pending.length > 0 ? (
         <Section title="Waiting for confirmation" badge={pending.length} badgeColor="#d97706">
-          {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          <div style={participantGridStyle}>
+            {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          </div>
         </Section>
       ) : null}
 
@@ -1056,7 +1132,9 @@ export function ParticipantGroups({
           {waiting.length === 0 ? (
             <p style={{ color: '#98a2b3', fontSize: '0.82rem' }}>Waiting list exists, but details are hidden for your current role.</p>
           ) : (
-            waiting.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)
+            <div style={participantGridStyle}>
+              {waiting.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+            </div>
           )}
         </Section>
       )}
@@ -1064,7 +1142,9 @@ export function ParticipantGroups({
       {/* Removed — organizer only (§3.3). Always expanded for clarity. */}
       {isOrganizer && removed.length > 0 && (
         <Section title="Removed" badge={removed.length} badgeColor="#999">
-          {removed.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          <div style={participantGridStyle}>
+            {removed.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          </div>
         </Section>
       )}
     </div>

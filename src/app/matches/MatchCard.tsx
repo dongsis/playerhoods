@@ -50,8 +50,9 @@ export function MatchCard({ item, userId }: Props) {
 
   const cta = computeCardCTA({
     matchStatus: match.status,
-    // v1.5: use invitation_scope_group_ids instead of deprecated admissionMode
-    hasScope: (match.invitation_scope_group_ids ?? []).length > 0,
+    hasScope:
+      (match.invitation_scope_group_ids ?? []).length > 0
+      || (match.invitation_scope_user_ids ?? []).length > 0,
     myParticipant,
     isOrganizer,
     pendingApprovals,

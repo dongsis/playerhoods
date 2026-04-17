@@ -1,16 +1,21 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
+import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
+import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
+import type { CreateRecurringMatchSeriesInput, RecurringDirectInviteInput } from '@/lib/api/recurring-matches'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   admissionTargetsToScopeUsers,
   createMatch,
   getAdmissionTargets,
+  getMatchListData,
   getVenues,
   getCourts,
   getMatchParticipants,
+  inviteGroupToMatch,
   inviteUserToMatch,
   nominateGuest,
   type ScopeUser,
@@ -19,13 +24,10 @@ import { getGroups, getGroupMembers } from '@/lib/api/groups'
 import { listSports } from '@/lib/api/sports'
 import { getInviteCircleList, getVenueInvitableMembers } from '@/lib/api/play-network'
 import { getContactPlayerResolution } from '@/lib/api/roster'
-import type { Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
+import { getAvailabilityStatusLabel } from '@/lib/profile-options'
+import type { AvailabilityStatus, Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
 
-type TooltipState =
-  | { kind: 'recruit-help' }
-  | { kind: 'invite-help' }
-  | { kind: 'group-members'; groupId: string }
-  | null
+type TooltipState = { kind: 'group-members'; groupId: string } | null
 
 type GroupMemberPreview = {
   count: number
@@ -42,6 +44,9 @@ type InviteCandidate = {
   sourceLabel: string
   sourceLabels: string[]
   gender: 'male' | 'female' | 'unspecified' | null
+  availabilityStatus: AvailabilityStatus | null
+  availabilityNote?: string | null
+  availabilityUntil?: string | null
   userId?: string
   guestId?: string
   email?: string | null
@@ -55,19 +60,28 @@ type UserInviteCandidateSeed = {
   source: InviteCandidateSource
   sourceLabel: string
   gender?: 'male' | 'female' | 'unspecified' | null
+  availabilityStatus?: AvailabilityStatus | null
+  availabilityNote?: string | null
+  availabilityUntil?: string | null
 }
 
 type CandidatePreviewState = {
   candidate: InviteCandidate
 }
 
+type CourtSlotSelection = {
+  enabled: boolean
+  courtId: string
+  manualLabel: string
+}
+
 const INVITE_SOURCE_CONFIG: Array<{
   source: InviteCandidateSource
   label: string
 }> = [
-  { source: 'frequent_players', label: 'Frequent Players' },
-  { source: 'contact_players', label: 'Contact Players' },
-  { source: 'saved_players', label: 'Saved Players' },
+  { source: 'frequent_players', label: 'Played With' },
+  { source: 'contact_players', label: 'Contacts' },
+  { source: 'saved_players', label: 'Saved' },
   { source: 'club_members', label: 'Club Members' },
 ]
 
@@ -98,7 +112,7 @@ const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'secured', label: 'Court already secured' },
   { value: 'walk_in', label: 'Walk-in / no advance booking' },
   { value: 'self_book_later', label: 'Host will book it later' },
-  { value: 'needs_help_booking', label: 'Participants can help secure a court' },
+  { value: 'needs_help_booking', label: 'Players can help secure a court' },
 ]
 
 const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
@@ -108,67 +122,469 @@ const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'mixed_doubles', label: 'Mixed doubles' },
 ]
 
-function TooltipCard({
-  title,
-  lines,
+const SINGLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
+  { value: 'open', label: 'Open singles' },
+  { value: 'mens_doubles', label: "Men's singles" },
+  { value: 'womens_doubles', label: "Women's singles" },
+]
+
+type ReviewInviteItem = {
+  label: string
+  members?: string[]
+}
+
+type OrganizerNotePresetItem = {
+  id: string
+  chip: string
+  full: string
+  exclusiveGroup?: 'access' | 'fees'
+}
+
+type OrganizerNotePresetGroup = {
+  label: string
+  items: OrganizerNotePresetItem[]
+}
+
+const ORGANIZER_NOTE_PRESETS: OrganizerNotePresetGroup[] = [
+  {
+    label: 'Access',
+    items: [
+      { id: 'members_only', chip: 'Members only', full: 'Members only.', exclusiveGroup: 'access' },
+      { id: 'guests_welcome', chip: 'Guests welcome', full: 'Guests are welcome.', exclusiveGroup: 'access' },
+    ],
+  },
+  {
+    label: 'Fees',
+    items: [
+      { id: 'no_court_fee', chip: 'No court fee', full: 'No court fee to share.', exclusiveGroup: 'fees' },
+      { id: 'guest_fee_applies', chip: 'Guest fee applies', full: 'Guest fee applies.' },
+      { id: 'share_court_fee', chip: 'Share court fee', full: 'Please share the court fee.', exclusiveGroup: 'fees' },
+    ],
+  },
+  {
+    label: 'Time',
+    items: [
+      { id: 'early', chip: 'Early', full: 'Please arrive a little early.' },
+      { id: 'ontime', chip: 'On time', full: 'Please be on court and ready at start time.' },
+    ],
+  },
+  {
+    label: 'Gear',
+    items: [
+      { id: 'balls', chip: 'Balls', full: 'One player please bring new balls.' },
+      { id: 'water', chip: 'Water', full: 'Please bring water.' },
+    ],
+  },
+  {
+    label: 'After',
+    items: [
+      { id: 'drink', chip: 'Beer/Coffee', full: 'Let’s grab a beer or coffee after.' },
+      { id: 'meal', chip: 'Meal', full: 'Anyone up for a meal after?' },
+      { id: 'photo', chip: 'Photo', full: 'Let’s take a nice court photo.' },
+    ],
+  },
+  {
+    label: 'Chat',
+    items: [
+      { id: 'chat', chip: 'Check chat', full: 'Check chat for updates.' },
+    ],
+  },
+]
+
+const ORGANIZER_NOTE_PRESET_GROUP_SENTENCES = new Map(
+  ORGANIZER_NOTE_PRESETS.flatMap((group) => {
+    const grouped = group.items
+      .filter((item) => item.exclusiveGroup)
+      .reduce<Record<string, string[]>>((acc, item) => {
+        const key = item.exclusiveGroup as string
+        acc[key] ??= []
+        acc[key].push(item.full)
+        return acc
+      }, {})
+
+    return Object.entries(grouped).map(([key, values]) => [key, values] as const)
+  }),
+)
+
+function parseOrganizerNoteSentences(text: string) {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+function applyOrganizerNotePreset(text: string, item: OrganizerNotePresetItem) {
+  const sentences = parseOrganizerNoteSentences(text)
+  const groupSentences = item.exclusiveGroup
+    ? (ORGANIZER_NOTE_PRESET_GROUP_SENTENCES.get(item.exclusiveGroup) ?? [])
+    : []
+
+  const nextSentences = sentences.filter((sentence) => {
+    if (sentence === item.full) return false
+    if (groupSentences.includes(sentence)) return false
+    return true
+  })
+
+  nextSentences.push(item.full)
+  return nextSentences.join('\n')
+}
+
+function formatReviewDate(dateStr: string) {
+  if (!dateStr) return 'Not selected'
+  const value = new Date(`${dateStr}T00:00:00`)
+  if (Number.isNaN(value.getTime())) return dateStr
+  return new Intl.DateTimeFormat('en-CA', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(value)
+}
+
+function formatReviewTime(timeValue: string) {
+  if (!timeValue) return 'Not selected'
+  return TIME_SLOTS.find((slot) => slot.value === timeValue)?.label ?? timeValue
+}
+
+function formatReviewTimeRange(timeValue: string, durationMinutes: number) {
+  if (!timeValue) return 'Not selected'
+  const [hoursPart, minutesPart] = timeValue.split(':')
+  const hours = Number.parseInt(hoursPart ?? '', 10)
+  const minutes = Number.parseInt(minutesPart ?? '', 10)
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return formatReviewTime(timeValue)
+
+  const start = new Date(2000, 0, 1, hours, minutes, 0, 0)
+  const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+
+  return `${formatter.format(start)} - ${formatter.format(end)}`
+}
+
+function capitalizeLabel(value: string) {
+  return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value
+}
+
+function buildRecurringSeriesName({
+  sportLabel,
+  venueLabel,
+  gameType,
 }: {
-  title?: string
-  lines: string[]
+  sportLabel: string
+  venueLabel: string
+  gameType: string
 }) {
+  const parts = [`Weekly ${sportLabel}`]
+  if (gameType) {
+    parts.push(capitalizeLabel(gameType))
+  }
+  if (venueLabel && venueLabel !== 'Venue TBD') {
+    parts.push(`at ${venueLabel}`)
+  }
+  return parts.join(' ')
+}
+
+function getAvailabilityPriority(status: AvailabilityStatus | null | undefined) {
+  switch (status) {
+    case 'busy':
+      return 1
+    case 'away':
+      return 2
+    case 'inactive':
+      return 3
+    case 'available':
+    default:
+      return 0
+  }
+}
+
+function formatAvailabilityUntil(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('en-CA', {
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
+}
+
+function getAvailabilityWarning(candidate: {
+  availabilityStatus: AvailabilityStatus | null
+  availabilityNote?: string | null
+  availabilityUntil?: string | null
+}) {
+  const label = getAvailabilityStatusLabel(candidate.availabilityStatus)
+  const untilLabel = formatAvailabilityUntil(candidate.availabilityUntil)
+
+  switch (candidate.availabilityStatus) {
+    case 'busy':
+      return {
+        level: 'busy' as const,
+        label: label ?? 'Busy',
+        message: candidate.availabilityNote?.trim()
+          || (untilLabel ? `Busy lately, maybe back to normal around ${untilLabel}.` : 'Busy lately, may be harder to join.'),
+      }
+    case 'away':
+      return {
+        level: 'away' as const,
+        label: label ?? 'Away',
+        message: candidate.availabilityNote?.trim()
+          || (untilLabel ? `Away until around ${untilLabel}.` : 'Temporarily unavailable.'),
+      }
+    case 'inactive':
+      return {
+        level: 'inactive' as const,
+        label: label ?? 'Inactive',
+        message: candidate.availabilityNote?.trim()
+          || 'Not actively participating right now.',
+      }
+    default:
+      return null
+  }
+}
+
+function normalizeCreateError(error: unknown) {
+  const message = (error as { message?: string })?.message?.trim()
+  if (!message) return 'Failed to create match'
+  if (message.includes('new row violates row-level security policy for table "recurring_match_series"')) {
+    return 'Recurring match creation was blocked. Please try again once, and if it still fails we should refresh the page.'
+  }
+  return message
+}
+
+function ReviewMatchModal({
+  open,
+  recurring,
+  recurringCount,
+  sportLabel,
+  venueLabel,
+  gameTypeLabel,
+  formatLabel,
+  dateLabel,
+  timeRangeLabel,
+  durationLabel,
+  courtLabel,
+  courtSecured,
+  neededLabel,
+  directInviteItems,
+  requestItems,
+  organizerNote,
+  error,
+  posting,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  recurring: boolean
+  recurringCount: number
+  sportLabel: string
+  venueLabel: string
+  gameTypeLabel: string
+  formatLabel: string
+  dateLabel: string
+  timeRangeLabel: string
+  durationLabel: string
+  courtLabel: string
+  courtSecured: boolean
+  neededLabel: string
+  directInviteItems: ReviewInviteItem[]
+  requestItems: ReviewInviteItem[]
+  organizerNote: string
+  error: string | null
+  posting: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  if (!open) return null
+
   return (
     <div
-      style={{
-        position: 'absolute',
-        top: 'calc(100% + 0.45rem)',
-        left: 0,
-        minWidth: '220px',
-        maxWidth: '280px',
-        padding: '0.7rem 0.8rem',
-        borderRadius: '12px',
-        border: '1px solid #d1d5db',
-        background: '#fff',
-        boxShadow: '0 12px 30px rgba(15, 23, 42, 0.14)',
-        zIndex: 30,
-      }}
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/30 p-4"
     >
-      {title && (
-        <p style={{ margin: '0 0 0.35rem', fontSize: '0.78rem', fontWeight: 600, color: '#111827' }}>
-          {title}
-        </p>
-      )}
-      {lines.map((line, index) => (
-        <p key={`${line}-${index}`} style={{ margin: index === lines.length - 1 ? 0 : '0 0 0.25rem', fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.45 }}>
-          {line}
-        </p>
-      ))}
+      <div
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-[480px] overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)]"
+      >
+        <div className="border-b border-slate-50 px-6 pb-4 pt-6">
+          <h3 className="text-xl font-bold text-slate-800">{recurring ? 'Review Recurring Match' : 'Review Match'}</h3>
+          <p className="mt-1 text-sm text-slate-400">
+            {recurring
+              ? `Everything looks good? Create ${recurringCount} weekly match instances now.`
+              : 'Everything looks good? Post it now.'}
+          </p>
+        </div>
+
+        <div className="space-y-6 px-6 pb-6 pt-5">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Sport</p>
+              <p className="mt-0.5 text-base font-semibold text-slate-800">{sportLabel}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Venue</p>
+              <p className="mt-0.5 text-base font-semibold text-slate-800">{venueLabel}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Game Type</p>
+              <p className="mt-0.5 text-base font-semibold capitalize text-slate-800">{gameTypeLabel}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Format</p>
+              <p className="mt-0.5 text-base font-semibold text-slate-800">{formatLabel}</p>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100" />
+
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Date &amp; Time</p>
+              <p className="mt-0.5 text-base font-semibold text-slate-800">
+                {dateLabel} <span className="mx-1 text-slate-300">|</span> {timeRangeLabel}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Duration</p>
+              <p className="mt-0.5 text-base font-semibold text-slate-800">{durationLabel}</p>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100" />
+
+          <div className="grid grid-cols-2 gap-x-8">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Court</p>
+              <p className="mt-0.5 text-base font-semibold text-slate-800">
+                {courtLabel}
+                {courtSecured ? <span className="ml-1 text-xs font-bold text-green-500">● SECURED</span> : null}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Needed</p>
+              <p className="mt-0.5 text-base font-semibold text-slate-800">{neededLabel}</p>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100" />
+
+          {recurring ? (
+            <>
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+                <p className="text-xs font-bold uppercase tracking-[0.05em] text-indigo-400">Recurring Setup</p>
+                <p className="mt-1 text-sm font-medium text-indigo-700">
+                  Creates {recurringCount} weekly match instances. Players sign up for each week separately.
+                </p>
+              </div>
+              <div className="border-t border-slate-100" />
+            </>
+          ) : null}
+
+          <div className="space-y-4">
+            <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Invitations Summary</p>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Directly Invited</span>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-3">
+                {directInviteItems.length > 0 ? directInviteItems.map((item) => (
+                  <span
+                    key={`review-direct-${item.label}`}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-orange-100 bg-orange-50 px-2.5 py-1 text-[13px] font-medium text-orange-600"
+                  >
+                    <span className="font-semibold">{item.label}</span>
+                    {item.members && item.members.length > 0 ? (
+                      <span className="truncate text-[11px] font-medium text-orange-400">
+                        · {item.members.join(', ')}
+                      </span>
+                    ) : null}
+                  </span>
+                )) : (
+                  <span className="pl-0 text-sm text-slate-300">None</span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Open to Request</span>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-3">
+                {requestItems.length > 0 ? requestItems.map((item) => (
+                  <span
+                    key={`review-request-${item.label}`}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-green-100 bg-green-50 px-2.5 py-1 text-[13px] font-medium text-green-600"
+                  >
+                    <span className="font-semibold">{item.label}</span>
+                    {item.members && item.members.length > 0 ? (
+                      <span className="truncate text-[11px] font-medium text-green-400">
+                        · {item.members.join(', ')}
+                      </span>
+                    ) : null}
+                  </span>
+                )) : (
+                  <span className="pl-0 text-sm text-slate-300">None</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {organizerNote.trim() ? (
+            <>
+              <div className="border-t border-slate-100" />
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Organizer Note</p>
+                <p className="mt-2 whitespace-pre-line rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-600">
+                  {organizerNote.trim()}
+                </p>
+              </div>
+            </>
+          ) : null}
+
+          <div className="space-y-3 pt-2">
+            {error ? (
+              <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {error}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={posting}
+              className="w-full rounded-2xl bg-orange-500 py-4 text-lg font-bold text-white transition hover:-translate-y-[1px] hover:bg-orange-600 hover:shadow-[0_10px_15px_-3px_rgba(249,115,22,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {posting ? (recurring ? 'Creating...' : 'Posting...') : (recurring ? 'Create Recurring Match' : 'Post Match Now')}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={posting}
+              className="w-full py-2 text-sm font-semibold text-slate-400 transition-colors hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Wait, I need to edit
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
-function getCandidateGenderBadge(gender: InviteCandidate['gender']) {
-  if (gender === 'male') return 'M'
-  if (gender === 'female') return 'F'
-  return 'U'
-}
-
-function getCandidateButtonColors(gender: InviteCandidate['gender'], selected: boolean) {
-  if (selected) {
-    if (gender === 'male') {
-      return { border: '#93c5fd', background: '#dbeafe', color: '#1d4ed8' }
-    }
-    if (gender === 'female') {
-      return { border: '#f9a8d4', background: '#fce7f3', color: '#be185d' }
-    }
-    return { border: '#cbd5e1', background: '#e2e8f0', color: '#334155' }
-  }
-
-  if (gender === 'male') {
-    return { border: '#bfdbfe', background: '#f8fbff', color: '#1e3a8a' }
-  }
-  if (gender === 'female') {
-    return { border: '#fbcfe8', background: '#fff8fb', color: '#9d174d' }
-  }
-  return { border: '#d1d5db', background: '#fff', color: '#374151' }
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || 'P'
 }
 
 function CandidatePreviewModal({
@@ -238,7 +654,6 @@ function CandidatePreviewModal({
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.35rem',
               padding: '0.3rem 0.55rem',
               borderRadius: '999px',
               border: '1px solid #d1d5db',
@@ -247,12 +662,7 @@ function CandidatePreviewModal({
               fontSize: '0.76rem',
             }}
           >
-            <strong style={{ fontSize: '0.72rem' }}>{getCandidateGenderBadge(candidate.gender)}</strong>
-            {candidate.gender === 'male'
-              ? 'Male'
-              : candidate.gender === 'female'
-                ? 'Female'
-                : 'Gender unspecified'}
+            {candidate.kind === 'contact' ? 'Contact' : 'Registered player'}
           </span>
           {candidate.sourceLabels.length > 1 && (
             <span
@@ -327,7 +737,15 @@ function CandidatePreviewModal({
   )
 }
 
-function MiniCalendar({ selected, onSelect }: { selected: string; onSelect: (d: string) => void }) {
+function MiniCalendar({
+  selected,
+  onSelect,
+  dateIndicators,
+}: {
+  selected: string
+  onSelect: (d: string) => void
+  dateIndicators: Record<string, Array<'confirmed' | 'waiting'>>
+}) {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
@@ -342,7 +760,7 @@ function MiniCalendar({ selected, onSelect }: { selected: string; onSelect: (d: 
     return cells
   }, [year, month])
 
-  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
   const toDateStr = (d: number) => {
     const mm = (month + 1).toString().padStart(2, '0')
@@ -363,40 +781,80 @@ function MiniCalendar({ selected, onSelect }: { selected: string; onSelect: (d: 
   }
 
   return (
-    <div style={{ userSelect: 'none', maxWidth: '220px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-        <button type="button" onClick={prevMonth} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.85rem', padding: '0' }}>&lt;</button>
-        <strong style={{ fontSize: '0.8rem' }}>{monthNames[month]} {year}</strong>
-        <button type="button" onClick={nextMonth} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.85rem', padding: '0' }}>&gt;</button>
+    <div className="max-w-[220px] select-none">
+      <div className="mb-3 flex items-center justify-between px-1">
+        <span className="text-[13px] font-bold text-gray-700">
+          {monthNames[month]} {year}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] text-gray-500 transition hover:bg-orange-50 hover:text-orange-500"
+            aria-label="Previous month"
+          >
+            &lt;
+          </button>
+          <button
+            type="button"
+            onClick={nextMonth}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] text-gray-500 transition hover:bg-orange-50 hover:text-orange-500"
+            aria-label="Next month"
+          >
+            &gt;
+          </button>
+        </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', textAlign: 'center', fontSize: '0.7rem' }}>
-        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
-          <div key={d} style={{ fontWeight: 'bold', padding: '0.15rem', color: '#666' }}>{d}</div>
+
+      <div className="mb-1.5 grid grid-cols-7 text-center text-[9px] font-semibold uppercase tracking-wide text-gray-400">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => (
+          <span key={label}>{label}</span>
         ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5">
         {days.map((d, i) => {
-          if (d === null) return <div key={`e-${i}`} />
+          if (d === null) return <div key={`e-${i}`} className="aspect-square" />
           const dateStr = toDateStr(d)
           const isSelected = dateStr === selected
           const isToday = dateStr === todayStr
           const isPast = dateStr < todayStr
+          const indicators = dateIndicators[dateStr] ?? []
           return (
             <button
               key={dateStr}
               type="button"
               onClick={() => !isPast && onSelect(dateStr)}
               disabled={isPast}
-              style={{
-                padding: '0.2rem',
-                border: isToday ? '1px solid #333' : '1px solid transparent',
-                background: isSelected ? '#333' : 'transparent',
-                color: isSelected ? 'white' : isPast ? '#ccc' : '#333',
-                cursor: isPast ? 'default' : 'pointer',
-                borderRadius: '2px',
-                fontSize: '0.7rem',
-                lineHeight: '1.2',
-              }}
+              className={[
+                'relative aspect-square rounded-full text-[11px] transition',
+                isSelected
+                  ? 'bg-orange-500 font-semibold text-white shadow-[0_8px_20px_rgba(249,115,22,0.28)]'
+                  : isPast
+                    ? 'cursor-not-allowed text-gray-300'
+                    : isToday
+                      ? 'border border-orange-200 bg-orange-50 text-orange-600 hover:bg-orange-100'
+                      : 'text-gray-600 hover:bg-orange-100',
+              ].join(' ')}
             >
-              {d}
+              <span className="flex h-full w-full flex-col items-center justify-center">
+                <span>{d}</span>
+                {indicators.length > 0 && indicators.length <= 3 ? (
+                  <span className="mt-0.5 flex items-center gap-0.5">
+                    {indicators.map((indicator, index) => (
+                      <span
+                        key={`${dateStr}-indicator-${index}`}
+                        className={[
+                          'inline-block h-1.5 w-1.5 rounded-full',
+                          indicator === 'confirmed' ? 'bg-green-500' : 'bg-slate-300',
+                        ].join(' ')}
+                      />
+                    ))}
+                  </span>
+                ) : (
+                  <span className="mt-0.5 inline-block h-1.5 w-1.5 opacity-0" />
+                )}
+              </span>
             </button>
           )
         })}
@@ -407,6 +865,8 @@ function MiniCalendar({ selected, onSelect }: { selected: string; onSelect: (d: 
 
 export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string }) {
   const searchParams = useSearchParams()
+  const [createExpanded, setCreateExpanded] = useState(false)
+  const [matchMode, setMatchMode] = useState<'one-time' | 'recurring'>('one-time')
   const [requiredCount, setRequiredCount] = useState(4)
   const [matchDate, setMatchDate] = useState('')
   const [startTime, setStartTime] = useState('')
@@ -415,9 +875,17 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   const [doublesFormat, setDoublesFormat] = useState<MatchDoublesFormat>('open')
   const [venueId, setVenueId] = useState(defaultVenueId || '')
   const [scopeGroupIds, setScopeGroupIds] = useState<string[]>([])
-  const [courtPlanMode, setCourtPlanMode] = useState<MatchCourtPlanMode>('self_book_later')
+  const [scopeUserIds, setScopeUserIds] = useState<string[]>([])
+  const [invitedGroupIds, setInvitedGroupIds] = useState<string[]>([])
+  const [courtPlanMode, setCourtPlanMode] = useState<MatchCourtPlanMode>('secured')
   const [courtPlanNote, setCourtPlanNote] = useState('')
-  const [finalCourtLabel, setFinalCourtLabel] = useState('')
+  const [courtCount, setCourtCount] = useState(1)
+  const [courtPlanMenuOpen, setCourtPlanMenuOpen] = useState(false)
+  const [organizerNote, setOrganizerNote] = useState('')
+  const [organizerNoteExpanded, setOrganizerNoteExpanded] = useState(false)
+  const [courtSlots, setCourtSlots] = useState<CourtSlotSelection[]>([
+    { enabled: true, courtId: '', manualLabel: '' },
+  ])
 
   const [sportId, setSportId] = useState(1)  // default tennis
   const [sports, setSports] = useState<Sport[]>([])
@@ -426,6 +894,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   const [venues, setVenues] = useState<Venue[]>([])
   const [courts, setCourts] = useState<Court[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [calendarIndicators, setCalendarIndicators] = useState<Record<string, Array<'confirmed' | 'waiting'>>>({})
   const [frequentPlayers, setFrequentPlayers] = useState<UserInviteCandidateSeed[]>([])
   const [savedPlayers, setSavedPlayers] = useState<UserInviteCandidateSeed[]>([])
   const [clubMembers, setClubMembers] = useState<UserInviteCandidateSeed[]>([])
@@ -439,38 +908,19 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   const [inviteLoading, setInviteLoading] = useState(false)
   const [openMatchLoading, setOpenMatchLoading] = useState(false)
   const [submitMode, setSubmitMode] = useState<'create' | 'invite' | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [selectionMode, setSelectionMode] = useState<'invite' | 'request' | null>(null)
   const [tooltip, setTooltip] = useState<TooltipState>(null)
-  const [showMorePlayers, setShowMorePlayers] = useState(false)
-  const [candidatePreview, setCandidatePreview] = useState<CandidatePreviewState | null>(null)
   const [prefillConsumed, setPrefillConsumed] = useState(false)
+  const courtPlanMenuRef = useRef<HTMLDivElement | null>(null)
+  const organizerNoteRef = useRef<HTMLTextAreaElement | null>(null)
   const router = useRouter()
 
   const prefillSportId = searchParams.get('createSport')
   const prefillInviteUserId = searchParams.get('inviteUserId')
   const prefillInviteGuestId = searchParams.get('inviteGuestId')
-
-  const selectedGroupPreview = useMemo(() => {
-    const members: { id: string; name: string }[] = []
-    const seen = new Set<string>()
-
-    scopeGroupIds.forEach((groupId) => {
-      const preview = groupMembersById[groupId]
-      preview?.members.forEach((member) => {
-        if (!member.id || seen.has(member.id)) return
-        seen.add(member.id)
-        members.push(member)
-      })
-    })
-
-    return {
-      count: members.length,
-      members,
-      visibleNames: members.slice(0, 6).map((member) => member.name),
-      hiddenCount: Math.max(members.length - 6, 0),
-    }
-  }, [groupMembersById, scopeGroupIds])
 
   const availableInviteOptions = useMemo(() => {
     const combined = new Map<string, InviteCandidate>()
@@ -507,6 +957,9 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       sourceLabel: member.sourceLabel,
       sourceLabels: [member.sourceLabel],
       gender: member.gender ?? null,
+      availabilityStatus: member.availabilityStatus ?? 'available',
+      availabilityNote: member.availabilityNote ?? null,
+      availabilityUntil: member.availabilityUntil ?? null,
       userId: member.userId,
     }))
 
@@ -514,6 +967,12 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     contactPlayers.forEach(upsert)
 
     return Array.from(combined.values()).sort((left, right) => {
+      const leftAvailabilityPriority = getAvailabilityPriority(left.availabilityStatus)
+      const rightAvailabilityPriority = getAvailabilityPriority(right.availabilityStatus)
+      if (leftAvailabilityPriority !== rightAvailabilityPriority) {
+        return leftAvailabilityPriority - rightAvailabilityPriority
+      }
+
       const leftPriority = INVITE_SOURCE_PRIORITY.get(left.source) ?? Number.MAX_SAFE_INTEGER
       const rightPriority = INVITE_SOURCE_PRIORITY.get(right.source) ?? Number.MAX_SAFE_INTEGER
       if (leftPriority !== rightPriority) return leftPriority - rightPriority
@@ -521,14 +980,31 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     })
   }, [clubMembers, contactPlayers, currentUserId, frequentPlayers, savedPlayers])
 
+  const requestScopeUserCandidates = useMemo(
+    () =>
+      availableInviteOptions.filter(
+        (candidate) => candidate.kind === 'user' && candidate.userId && !selectedDirectInviteKeys.has(candidate.key),
+      ),
+    [availableInviteOptions, selectedDirectInviteKeys],
+  )
+
+  const filteredInviteOptions = useMemo(() => {
+    const baseCandidates = availableInviteOptions.filter((candidate) => !scopeUserIds.includes(candidate.userId ?? ''))
+    return baseCandidates
+  }, [availableInviteOptions, scopeUserIds])
+
+  const filteredInviteGroups = useMemo(() => {
+    return groups.filter((group) => !scopeGroupIds.includes(group.id) && !invitedGroupIds.includes(group.id))
+  }, [groups, invitedGroupIds, scopeGroupIds])
+
   const visibleInviteCandidates = useMemo(
-    () => availableInviteOptions.slice(0, 8),
-    [availableInviteOptions],
+    () => filteredInviteOptions.slice(0, 8),
+    [filteredInviteOptions],
   )
 
   const hiddenInviteCandidates = useMemo(
-    () => availableInviteOptions.slice(8),
-    [availableInviteOptions],
+    () => filteredInviteOptions.slice(8),
+    [filteredInviteOptions],
   )
 
   const selectedInvitePlayers = useMemo(() => {
@@ -536,19 +1012,142 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     return availableInviteOptions.filter((member) => selected.has(member.key))
   }, [availableInviteOptions, selectedDirectInviteKeys])
 
+  const selectedInviteWarnings = useMemo(
+    () =>
+      selectedInvitePlayers
+        .map((candidate) => ({
+          candidate,
+          warning: getAvailabilityWarning(candidate),
+        }))
+        .filter((item): item is { candidate: InviteCandidate; warning: NonNullable<ReturnType<typeof getAvailabilityWarning>> } => Boolean(item.warning)),
+    [selectedInvitePlayers],
+  )
+
   const inviteCandidatesBySource = useMemo(
     () =>
       INVITE_SOURCE_CONFIG.map((section) => ({
         ...section,
-        candidates: availableInviteOptions.filter((candidate) => candidate.source === section.source),
+        candidates: filteredInviteOptions.filter((candidate) => candidate.source === section.source),
       })).filter((section) => section.candidates.length > 0),
-    [availableInviteOptions],
+    [filteredInviteOptions],
   )
 
-  const selectedGroupNames = useMemo(
-    () => groups.filter((group) => scopeGroupIds.includes(group.id)).map((group) => group.name),
+  const filteredRequestGroups = useMemo(() => {
+    return groups.filter((group) => !invitedGroupIds.includes(group.id))
+  }, [groups, invitedGroupIds])
+
+  const filteredRequestUsers = useMemo(() => {
+    return requestScopeUserCandidates
+  }, [requestScopeUserCandidates])
+
+  const shouldShowHoodPanelButton = useMemo(() => {
+    if (selectionMode === 'invite') {
+      return filteredInviteOptions.length > 20
+    }
+    if (selectionMode === 'request') {
+      return filteredRequestUsers.length > 20
+    }
+    return false
+  }, [filteredInviteOptions.length, filteredRequestUsers.length, selectionMode])
+
+  const selectedInvitedGroups = useMemo(
+    () => groups.filter((group) => invitedGroupIds.includes(group.id)),
+    [groups, invitedGroupIds],
+  )
+
+  const selectedScopeGroups = useMemo(
+    () => groups.filter((group) => scopeGroupIds.includes(group.id)),
     [groups, scopeGroupIds],
   )
+
+  const selectedScopeUsers = useMemo(
+    () =>
+      availableInviteOptions.filter(
+        (candidate) => candidate.kind === 'user' && candidate.userId && scopeUserIds.includes(candidate.userId),
+      ),
+    [availableInviteOptions, scopeUserIds],
+  )
+
+  const visibleCourtSlots = useMemo(
+    () => courtSlots.slice(0, courtCount),
+    [courtCount, courtSlots],
+  )
+
+  const selectedCourtIds = useMemo(
+    () =>
+      visibleCourtSlots
+        .filter((slot) => slot.enabled && slot.courtId)
+        .map((slot) => slot.courtId),
+    [visibleCourtSlots],
+  )
+
+  const selectedCourtLabels = useMemo(
+    () =>
+      selectedCourtIds
+        .map((courtId) => courts.find((court) => court.id === courtId)?.court_code ?? '')
+        .filter((label) => label.length > 0),
+    [courts, selectedCourtIds],
+  )
+
+  const selectedSport = useMemo(
+    () => sports.find((sport) => sport.id === sportId),
+    [sportId, sports],
+  )
+
+  const selectedVenue = useMemo(
+    () => venues.find((venue) => venue.id === venueId),
+    [venueId, venues],
+  )
+  const recurringWeeksAheadCount = 4
+  const recurringSeriesName = useMemo(
+    () =>
+      buildRecurringSeriesName({
+        sportLabel: selectedSport?.display_name ?? 'Tennis',
+        venueLabel: selectedVenue?.name ?? 'Venue TBD',
+        gameType,
+      }),
+    [gameType, selectedSport?.display_name, selectedVenue?.name],
+  )
+
+  const selectedFormatLabel = useMemo(() => {
+    const source = gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS
+    return source.find((option) => option.value === doublesFormat)?.label ?? 'Not selected'
+  }, [doublesFormat, gameType])
+
+  const reviewCourtSummary = useMemo(() => {
+    if (courtPlanMode !== 'secured') {
+      return COURT_PLAN_OPTIONS.find((option) => option.value === courtPlanMode)?.label ?? 'Not selected'
+    }
+    if (selectedCourtLabels.length > 0) return selectedCourtLabels.join(', ')
+    return 'Not selected'
+  }, [courtPlanMode, selectedCourtLabels])
+
+  const reviewDirectInviteLabels = useMemo(
+    () => [
+      ...selectedInvitePlayers.map((member) => ({ label: member.name })),
+      ...selectedInvitedGroups.map((group) => ({
+        label: group.name,
+        members: groupMembersById[group.id]?.members.map((member) => member.name) ?? [],
+      })),
+    ],
+    [groupMembersById, selectedInvitePlayers, selectedInvitedGroups],
+  )
+
+  const reviewRequestItems = useMemo(
+    () => [
+      ...selectedScopeUsers.map((candidate) => ({ label: candidate.name })),
+      ...selectedScopeGroups.map((group) => ({
+        label: group.name,
+        members: groupMembersById[group.id]?.members.map((member) => member.name) ?? [],
+      })),
+    ],
+    [groupMembersById, selectedScopeGroups, selectedScopeUsers],
+  )
+
+  const summaryIsEmpty = selectedInvitePlayers.length === 0
+    && selectedInvitedGroups.length === 0
+    && selectedScopeUsers.length === 0
+    && selectedScopeGroups.length === 0
 
   const inviteSourceSummary = useMemo(() => {
     return {
@@ -559,25 +1158,112 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     }
   }, [clubMembers, contactPlayers, currentUserId, frequentPlayers, savedPlayers])
 
+  const organizerNoteSentences = useMemo(
+    () => new Set(parseOrganizerNoteSentences(organizerNote)),
+    [organizerNote],
+  )
+
+  useEffect(() => {
+    setRequiredCount(gameType === 'singles' ? 2 : 4)
+  }, [gameType])
+
+  useEffect(() => {
+    if (gameType === 'singles' && doublesFormat === 'mixed_doubles') {
+      setDoublesFormat('open')
+    }
+  }, [doublesFormat, gameType])
+
+  useEffect(() => {
+    if (courtPlanMode === 'secured' && courtPlanNote) {
+      setCourtPlanNote('')
+    }
+  }, [courtPlanMode, courtPlanNote])
+
+  useEffect(() => {
+    const normalizedCount = Math.min(Math.max(courtCount, 1), 6)
+    if (normalizedCount !== courtCount) {
+      setCourtCount(normalizedCount)
+      return
+    }
+
+    const availableCourtIds = new Set(courts.map((court) => court.id))
+    setCourtSlots((prev) =>
+      Array.from({ length: normalizedCount }, (_, index) => {
+        const existing = prev[index]
+        if (!existing) {
+          return { enabled: true, courtId: '', manualLabel: '' }
+        }
+        return {
+          enabled: existing.enabled,
+          courtId: existing.courtId && availableCourtIds.has(existing.courtId) ? existing.courtId : '',
+          manualLabel: existing.manualLabel,
+        }
+      }),
+    )
+  }, [courtCount, courts])
+
+  useEffect(() => {
+    if (courtPlanMode !== 'secured') {
+      setCourtPlanMenuOpen(false)
+    }
+  }, [courtPlanMode])
+
+  useEffect(() => {
+    if (!courtPlanMenuOpen) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!courtPlanMenuRef.current?.contains(event.target as Node)) {
+        setCourtPlanMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+    }
+  }, [courtPlanMenuOpen])
+
   useEffect(() => {
     const supabase = createSupabaseBrowserClient()
-    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null)).catch(console.error)
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        const nextUserId = data.user?.id ?? null
+        setCurrentUserId(nextUserId)
+      })
+      .catch(console.error)
     getInviteCircleList(supabase)
       .then(async (rows) => {
         const targetUserIds = Array.from(new Set(rows.map((row) => row.target_user_id).filter(Boolean)))
-        const profileMap = new Map<string, { display_name: string | null; gender: 'male' | 'female' | 'unspecified' | null }>()
+        const profileMap = new Map<string, {
+          display_name: string | null
+          gender: 'male' | 'female' | 'unspecified' | null
+          availability_status: AvailabilityStatus | null
+          availability_note: string | null
+          availability_until: string | null
+        }>()
 
         if (targetUserIds.length > 0) {
           const { data: profiles, error: profilesError } = await supabase
             .from('profiles')
-            .select('id, display_name, gender')
+            .select('id, display_name, gender, availability_status, availability_note, availability_until')
             .in('id', targetUserIds)
           if (profilesError) throw profilesError
-          ;((profiles ?? []) as Array<{ id: string; display_name: string | null; gender: 'male' | 'female' | 'unspecified' | null }>)
+          ;((profiles ?? []) as Array<{
+            id: string
+            display_name: string | null
+            gender: 'male' | 'female' | 'unspecified' | null
+            availability_status: AvailabilityStatus | null
+            availability_note: string | null
+            availability_until: string | null
+          }>)
             .forEach((profile) => {
               profileMap.set(profile.id, {
                 display_name: profile.display_name,
                 gender: profile.gender,
+                availability_status: profile.availability_status,
+                availability_note: profile.availability_note,
+                availability_until: profile.availability_until,
               })
             })
         }
@@ -591,8 +1277,11 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             userId: row.target_user_id,
             name: profile?.display_name?.trim() || row.target_display_name?.trim() || 'Unknown',
             source: row.source === 'played_with_auto' ? 'frequent_players' : 'saved_players',
-            sourceLabel: row.source === 'played_with_auto' ? 'Frequent Players' : 'Saved Players',
+            sourceLabel: row.source === 'played_with_auto' ? 'Played With' : 'Saved',
             gender: profile?.gender ?? null,
+            availabilityStatus: profile?.availability_status ?? 'available',
+            availabilityNote: profile?.availability_note ?? null,
+            availabilityUntil: profile?.availability_until ?? null,
           }
 
           if (row.source === 'played_with_auto') {
@@ -616,9 +1305,12 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
               kind: 'contact',
               name: row.display_name.trim() || 'Contact Player',
               source: 'contact_players',
-              sourceLabel: 'Contact Players',
-              sourceLabels: ['Contact Players'],
-              gender: null,
+              sourceLabel: 'Contacts',
+              sourceLabels: ['Contacts'],
+              gender: row.gender ?? null,
+              availabilityStatus: row.availability_status ?? 'available',
+              availabilityNote: row.availability_note ?? null,
+              availabilityUntil: row.availability_until ?? null,
               guestId: row.guest_id,
               email: row.email,
               phone: row.phone,
@@ -662,13 +1354,6 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   }, [venueId, sportId])
 
   useEffect(() => {
-    if (courtPlanMode !== 'secured') return
-    if (finalCourtLabel.trim()) return
-    if (courts.length === 0) return
-    setFinalCourtLabel(courts[0].court_code)
-  }, [courtPlanMode, courts, finalCourtLabel])
-
-  useEffect(() => {
     if (!venueId) {
       setClubMembers([])
       return
@@ -678,19 +1363,35 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     getVenueInvitableMembers(supabase, venueId, currentUserId)
       .then(async (rows) => {
         const userIds = Array.from(new Set(rows.map((row) => row.user_id)))
-        const profileMap = new Map<string, { display_name: string | null; gender: 'male' | 'female' | 'unspecified' | null }>()
+        const profileMap = new Map<string, {
+          display_name: string | null
+          gender: 'male' | 'female' | 'unspecified' | null
+          availability_status: AvailabilityStatus | null
+          availability_note: string | null
+          availability_until: string | null
+        }>()
 
         if (userIds.length > 0) {
           const { data: profiles, error: profilesError } = await supabase
             .from('profiles')
-            .select('id, display_name, gender')
+            .select('id, display_name, gender, availability_status, availability_note, availability_until')
             .in('id', userIds)
           if (profilesError) throw profilesError
-          ;((profiles ?? []) as Array<{ id: string; display_name: string | null; gender: 'male' | 'female' | 'unspecified' | null }>)
+          ;((profiles ?? []) as Array<{
+            id: string
+            display_name: string | null
+            gender: 'male' | 'female' | 'unspecified' | null
+            availability_status: AvailabilityStatus | null
+            availability_note: string | null
+            availability_until: string | null
+          }>)
             .forEach((profile) => {
               profileMap.set(profile.id, {
                 display_name: profile.display_name,
                 gender: profile.gender,
+                availability_status: profile.availability_status,
+                availability_note: profile.availability_note,
+                availability_until: profile.availability_until,
               })
             })
         }
@@ -704,6 +1405,9 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
               source: 'club_members',
               sourceLabel: 'Club Members',
               gender: profile?.gender ?? null,
+              availabilityStatus: profile?.availability_status ?? 'available',
+              availabilityNote: profile?.availability_note ?? null,
+              availabilityUntil: profile?.availability_until ?? null,
             }
           }),
         )
@@ -713,6 +1417,54 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         setClubMembers([])
       })
   }, [currentUserId, venueId])
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setCalendarIndicators({})
+      return
+    }
+
+    const supabase = createSupabaseBrowserClient()
+    let cancelled = false
+
+    getMatchListData(supabase, currentUserId)
+      .then((items) => {
+        if (cancelled) return
+
+        const nextIndicators: Record<string, Array<'confirmed' | 'waiting'>> = {}
+
+        items.forEach((item) => {
+          const matchDate = item.match.match_date
+          const myStatus = item.myParticipant?.status
+          if (!matchDate || item.match.status !== 'active' || !myStatus) return
+
+          const currentIndicators = nextIndicators[matchDate] ?? []
+          if (currentIndicators.length >= 4) {
+            nextIndicators[matchDate] = currentIndicators
+            return
+          }
+
+          if (myStatus === 'confirmed') {
+            nextIndicators[matchDate] = [...currentIndicators, 'confirmed']
+            return
+          }
+
+          if (myStatus === 'pending' || myStatus === 'waiting_list') {
+            nextIndicators[matchDate] = [...currentIndicators, 'waiting']
+          }
+        })
+
+        setCalendarIndicators(nextIndicators)
+      })
+      .catch((calendarError) => {
+        console.error('[CreateMatchInline] calendar indicators:', calendarError)
+        if (!cancelled) setCalendarIndicators({})
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentUserId])
 
   useEffect(() => {
     if (!defaultVenueId) return
@@ -779,34 +1531,119 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     setSubmitMode(mode)
 
     const supabase = createSupabaseBrowserClient()
+    const selectedCourtLabels = visibleCourtSlots
+      .filter((slot) => slot.enabled)
+      .map((slot) => {
+        if (courts.length > 0) {
+          return courts.find((court) => court.id === slot.courtId)?.court_code ?? ''
+        }
+        return slot.manualLabel.trim()
+      })
+      .filter((label) => label.length > 0)
+    const securedCourtLabels = courtPlanMode === 'secured'
+      ? selectedCourtLabels
+      : []
 
     try {
+      if (matchMode === 'recurring' && !matchDate) {
+        setError('Please choose the first match date for the recurring series.')
+        return
+      }
+
+      if (courtPlanMode === 'secured' && securedCourtLabels.length === 0) {
+        setError('Please choose at least one court.')
+        return
+      }
+
+      if (new Set(securedCourtLabels).size !== securedCourtLabels.length) {
+        setError('Please choose different courts for each selected slot.')
+        return
+      }
+
+      const selectedCandidates = availableInviteOptions.filter((candidate) => selectedDirectInviteKeys.has(candidate.key))
+      const recurringInvites: RecurringDirectInviteInput[] = []
+      selectedCandidates.forEach((candidate) => {
+        if (candidate.kind === 'user' && candidate.userId) {
+          recurringInvites.push({ kind: 'user', userId: candidate.userId })
+        } else if (candidate.kind === 'contact' && candidate.guestId) {
+          recurringInvites.push({ kind: 'contact', guestId: candidate.guestId })
+        }
+      })
+
+      if (matchMode === 'recurring') {
+        const recurringInput: CreateRecurringMatchSeriesInput = {
+          name: recurringSeriesName,
+          sport_id: sportId,
+          venue_id: venueId || undefined,
+          game_type: gameType || undefined,
+          doubles_format: doublesFormat,
+          required_count: requiredCount,
+          required_court_count: courtCount,
+          start_date: matchDate,
+          start_time: startTime ? `${startTime}:00` : undefined,
+          duration_minutes: durationMinutes || undefined,
+          court_plan_mode: courtPlanMode,
+          court_note: courtPlanMode === 'secured' ? null : (courtPlanNote.trim() || null),
+          final_court_label: courtPlanMode === 'secured' ? (securedCourtLabels[0] ?? null) : null,
+          court_labels: courtPlanMode === 'secured' ? securedCourtLabels : [],
+          organizer_note: organizerNote.trim() || null,
+          invitation_scope_group_ids: scopeGroupIds.length > 0 ? scopeGroupIds : undefined,
+          invitation_scope_user_ids: scopeUserIds,
+          invited_group_ids: invitedGroupIds,
+          direct_invites: recurringInvites,
+          weeks_ahead_count: recurringWeeksAheadCount,
+        }
+
+        const result = await createRecurringMatchSeriesAction(recurringInput)
+        router.push(`/recurring-matches/${result.seriesId}`)
+        return
+      }
+
       const match = await createMatch(supabase, {
         required_count: requiredCount,
+        required_court_count: courtCount,
         match_date: matchDate || undefined,
         start_time: startTime ? `${startTime}:00` : undefined,
         duration_minutes: durationMinutes || undefined,
         game_type: gameType || undefined,
-        doubles_format: gameType === 'doubles' ? doublesFormat : null,
+        doubles_format: doublesFormat,
         venue_id: venueId || undefined,
         sport_id: sportId,
         invitation_scope_group_ids: scopeGroupIds.length > 0 ? scopeGroupIds : undefined,
+        invitation_scope_user_ids: scopeUserIds,
         can_participants_invite_users: true,
         can_participants_manage_participants: false,
         court_plan_mode: courtPlanMode,
-        court_note: courtPlanNote.trim() || null,
-        final_court_label: courtPlanMode === 'secured' ? (finalCourtLabel.trim() || null) : null,
+        court_note: courtPlanMode === 'secured' ? null : (courtPlanNote.trim() || null),
+        final_court_label: courtPlanMode === 'secured' ? (securedCourtLabels[0] ?? null) : null,
+        court_labels: courtPlanMode === 'secured' ? securedCourtLabels : [],
+        organizer_note: organizerNote.trim() || null,
       })
-      const selectedCandidates = availableInviteOptions.filter((candidate) => selectedDirectInviteKeys.has(candidate.key))
+      let shouldProcessQueuedDeliveries = false
       for (const candidate of selectedCandidates) {
         try {
           if (candidate.kind === 'user' && candidate.userId) {
             await inviteUserToMatch(supabase, match.id, candidate.userId)
           } else if (candidate.kind === 'contact' && candidate.guestId) {
             await nominateGuest(supabase, match.id, candidate.guestId)
+            shouldProcessQueuedDeliveries = true
           }
         } catch (inviteError) {
           console.error(`[CreateMatchInline] direct invite ${candidate.key}:`, inviteError)
+        }
+      }
+      for (const groupId of invitedGroupIds) {
+        try {
+          await inviteGroupToMatch(supabase, match.id, groupId)
+        } catch (groupInviteError) {
+          console.error(`[CreateMatchInline] group invite ${groupId}:`, groupInviteError)
+        }
+      }
+      if (shouldProcessQueuedDeliveries) {
+        try {
+          await processDeliveriesAction()
+        } catch (deliveryError) {
+          console.error('[CreateMatchInline] process queued deliveries:', deliveryError)
         }
       }
       if (mode === 'invite') {
@@ -820,7 +1657,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
 
       router.push(`/matches/${match.id}`)
     } catch (err: unknown) {
-      setError((err as { message?: string })?.message || 'Failed to create match')
+      setError(normalizeCreateError(err))
     } finally {
       setLoading(false)
       setSubmitMode(null)
@@ -829,7 +1666,97 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setCourtPlanMenuOpen(false)
+    setError(null)
+
+    const selectedCourtLabels = visibleCourtSlots
+      .filter((slot) => slot.enabled)
+      .map((slot) => {
+        if (courts.length > 0) {
+          return courts.find((court) => court.id === slot.courtId)?.court_code ?? ''
+        }
+        return slot.manualLabel.trim()
+      })
+      .filter((label) => label.length > 0)
+
+    if (!venueId) {
+      setError('Please choose a venue.')
+      return
+    }
+
+    if (!matchDate) {
+      setError(matchMode === 'recurring'
+        ? 'Please choose the first match date for the recurring series.'
+        : 'Please choose a match date.')
+      return
+    }
+
+    if (!startTime) {
+      setError('Please choose a start time.')
+      return
+    }
+
+    if (courtPlanMode === 'secured' && selectedCourtLabels.length === 0) {
+      setError('Please choose at least one court.')
+      return
+    }
+
+    if (new Set(selectedCourtLabels).size !== selectedCourtLabels.length) {
+      setError('Please choose different courts for each selected slot.')
+      return
+    }
+
+    setReviewOpen(true)
+  }
+
+  const handleConfirmCreate = async () => {
     await createMatchFlow('create')
+  }
+
+  const updateCourtSlot = (slotIndex: number, updates: Partial<CourtSlotSelection>) => {
+    setCourtSlots((prev) =>
+      prev.map((slot, index) => (
+        index === slotIndex
+          ? { ...slot, ...updates }
+          : slot
+      )),
+    )
+  }
+
+  const toggleCourtSelection = (courtId: string) => {
+    const normalizedCount = Math.min(Math.max(courtCount, 1), 6)
+    setCourtSlots((prev) => {
+      const currentSelected = prev
+        .slice(0, normalizedCount)
+        .filter((slot) => slot.enabled && slot.courtId)
+        .map((slot) => slot.courtId)
+      const alreadySelected = currentSelected.includes(courtId)
+
+      if (!alreadySelected && currentSelected.length >= normalizedCount) {
+        setError(`You can select up to ${normalizedCount} court${normalizedCount === 1 ? '' : 's'}.`)
+        return prev
+      }
+
+      const nextSelected = alreadySelected
+        ? currentSelected.filter((id) => id !== courtId)
+        : [...currentSelected, courtId]
+
+      setError((currentError) =>
+        currentError?.startsWith('You can select up to ') ? null : currentError,
+      )
+
+      return Array.from({ length: normalizedCount }, (_, index) => ({
+        enabled: index < nextSelected.length,
+        courtId: nextSelected[index] ?? '',
+        manualLabel: prev[index]?.manualLabel ?? '',
+      }))
+    })
+  }
+
+  const appendOrganizerNote = (item: OrganizerNotePresetItem) => {
+    setOrganizerNote((prev) => applyOrganizerNotePreset(prev, item))
+    setOrganizerNoteExpanded(true)
+    queueMicrotask(() => organizerNoteRef.current?.focus())
   }
 
   const handleInviteSelected = async () => {
@@ -923,113 +1850,172 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
 
   const renderInviteCandidateButton = (candidate: InviteCandidate, compact = false) => {
     const isSelected = selectedDirectInviteKeys.has(candidate.key)
-    const colors = getCandidateButtonColors(candidate.gender, isSelected)
+    const availabilityWarning = getAvailabilityWarning(candidate)
+    const availabilityClasses =
+      availabilityWarning?.level === 'busy'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : availabilityWarning?.level === 'away'
+          ? 'border-orange-200 bg-orange-50 text-orange-700'
+          : availabilityWarning?.level === 'inactive'
+            ? 'border-rose-200 bg-rose-50 text-rose-700'
+            : 'border-gray-200 bg-white text-gray-600'
+    const stateClasses = isSelected
+      ? availabilityWarning
+        ? `${availabilityClasses} ring-2 ring-orange-200`
+        : 'border-orange-200 bg-orange-50 text-orange-600 ring-2 ring-orange-100'
+      : availabilityClasses
+
+    return (
+      <button
+        key={candidate.key}
+        type="button"
+        onClick={() => toggleDirectInviteCandidate(candidate)}
+        aria-pressed={isSelected}
+        title={
+          availabilityWarning
+            ? `${candidate.name}: ${candidate.sourceLabels.join(', ')} • ${availabilityWarning.label}. ${availabilityWarning.message}`
+            : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`
+        }
+        className={[
+          'inline-flex items-center gap-1.5 rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600',
+          compact ? 'px-3 py-2 text-[11px]' : 'px-3 py-2 text-[11px]',
+          stateClasses,
+        ].join(' ')}
+      >
+        <span className="truncate">{candidate.name}</span>
+        {availabilityWarning ? (
+          <span
+            className={[
+              'rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]',
+              availabilityWarning.level === 'busy'
+                ? 'bg-amber-100 text-amber-700'
+                : availabilityWarning.level === 'away'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'bg-rose-100 text-rose-700',
+            ].join(' ')}
+          >
+            {availabilityWarning.label}
+          </span>
+        ) : null}
+      </button>
+    )
+  }
+
+  const renderGroupSelector = (
+    group: Group,
+    selected: boolean,
+    onToggle: () => void,
+    tone: 'indigo' | 'green',
+  ) => {
+    const toneClasses =
+      tone === 'green'
+        ? selected
+          ? 'border-green-200 bg-green-50 text-green-700'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-green-200 hover:bg-green-50 hover:text-green-700'
+        : selected
+          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700'
+
+    const memberPreview = groupMembersById[group.id]
 
     return (
       <div
-        key={candidate.key}
-        style={{
-          display: 'flex',
-          alignItems: 'stretch',
-          gap: '0.35rem',
-        }}
+        key={group.id}
+        className="relative inline-flex"
+        onMouseEnter={() => setTooltip({ kind: 'group-members', groupId: group.id })}
+        onMouseLeave={() =>
+          setTooltip((current) =>
+            current?.kind === 'group-members' && current.groupId === group.id ? null : current,
+          )
+        }
       >
         <button
           type="button"
-          onClick={() => toggleDirectInviteCandidate(candidate)}
-          onContextMenu={(event) => {
-            event.preventDefault()
-            setCandidatePreview({ candidate })
-          }}
-          aria-pressed={isSelected}
-          title={`${candidate.name}: ${candidate.sourceLabels.join(', ')}`}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: compact ? '0.42rem' : '0.55rem',
-            minWidth: compact ? 'auto' : '160px',
-            maxWidth: '100%',
-            padding: compact ? '0.42rem 0.68rem' : '0.52rem 0.75rem',
-            borderRadius: '999px',
-            border: `1px solid ${colors.border}`,
-            background: colors.background,
-            color: colors.color,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
+          onClick={onToggle}
+          className={[
+            'inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-medium shadow-sm transition',
+            toneClasses,
+          ].join(' ')}
+          aria-pressed={selected}
         >
-          <span
-            aria-hidden="true"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '1.25rem',
-              height: '1.25rem',
-              borderRadius: '999px',
-              border: `1px solid ${colors.border}`,
-              background: '#fff',
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              color: colors.color,
-              flexShrink: 0,
-            }}
-          >
-            {getCandidateGenderBadge(candidate.gender)}
+          <span>{group.name}</span>
+          <span className="rounded bg-green-100 px-1 py-0.5 text-[9px] font-bold text-green-800">
+            Group
           </span>
-          <span style={{ fontSize: compact ? '0.78rem' : '0.84rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {candidate.name}
-          </span>
-          {isSelected && (
-            <span aria-hidden="true" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-              Selected
-            </span>
-          )}
         </button>
-        <button
-          type="button"
-          onClick={() => setCandidatePreview({ candidate })}
-          aria-label={`View ${candidate.name} details`}
-          title={`View ${candidate.name} details`}
-          style={{
-            borderRadius: '999px',
-            border: '1px solid #d1d5db',
-            background: '#fff',
-            color: '#6b7280',
-            padding: compact ? '0.42rem 0.58rem' : '0.5rem 0.66rem',
-            fontSize: compact ? '0.72rem' : '0.76rem',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          Info
-        </button>
+
+        {tooltip?.kind === 'group-members' && tooltip.groupId === group.id && (
+          <div className="absolute left-0 top-[calc(100%+0.45rem)] z-30 min-w-[220px] max-w-[280px] rounded-xl border border-gray-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
+            <p className="mb-1 text-xs font-semibold text-gray-900">
+              {(memberPreview?.count ?? 0)} member{(memberPreview?.count ?? 0) === 1 ? '' : 's'}
+            </p>
+            {(memberPreview?.members.length
+              ? memberPreview.members.map((member) => member.name)
+              : ['No active members yet.']
+            ).map((line, index, lines) => (
+              <p
+                key={`${line}-${index}`}
+                className={index === lines.length - 1 ? 'text-xs leading-5 text-gray-600' : 'mb-1 text-xs leading-5 text-gray-600'}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
+    )
+  }
+
+  const renderRequestScopeCandidateButton = (candidate: InviteCandidate) => {
+    if (candidate.kind !== 'user' || !candidate.userId) return null
+
+    const isSelected = scopeUserIds.includes(candidate.userId)
+
+    return (
+      <button
+        key={`request-${candidate.key}`}
+        type="button"
+        onClick={() =>
+          setScopeUserIds((prev) =>
+            prev.includes(candidate.userId as string)
+              ? prev.filter((id) => id !== candidate.userId)
+              : [...prev, candidate.userId as string],
+          )
+        }
+        aria-pressed={isSelected}
+        title={`${candidate.name}: ${candidate.sourceLabels.join(', ')}`}
+        className={[
+          'inline-flex items-center rounded-full border bg-white px-3 py-2 text-[11px] text-gray-600 shadow-sm transition hover:-translate-y-0.5 hover:border-green-300 hover:bg-green-50 hover:text-green-600',
+          isSelected ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200',
+        ].join(' ')}
+      >
+        <span className="truncate">{candidate.name}</span>
+      </button>
     )
   }
 
   if (createdMatchId) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div className="flex flex-col gap-4">
         <div>
-          <h4 style={{ margin: 0, fontSize: '1rem' }}>Invite Player</h4>
-          <p style={{ margin: '0.35rem 0 0', fontSize: '0.9rem', color: '#666' }}>
+          <h4 className="m-0 text-base font-semibold text-gray-900">Invite Player</h4>
+          <p className="mt-1 text-sm text-gray-500">
             Match created. Pick players to invite, then open the match once they are recorded as pending.
           </p>
         </div>
 
         {inviteTargets.length === 0 ? (
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: '16px', padding: '0.9rem 1rem', color: '#666', fontSize: '0.9rem' }}>
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm text-gray-500">
             No eligible players are available to invite right now.
           </div>
         ) : (
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: '16px', padding: '0.9rem 1rem' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem 1rem' }}>
-              {inviteTargets.map(user => (
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4">
+            <div className="flex flex-wrap gap-x-4 gap-y-3">
+              {inviteTargets.map((user) => (
                 <label
                   key={user.id}
                   title={`${user.display_name}: ${user.sourceLabel}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.9rem', cursor: 'pointer' }}
+                  className="flex cursor-pointer items-center gap-2 text-sm text-gray-700"
                 >
                   <input
                     type="checkbox"
@@ -1050,20 +2036,20 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
           </div>
         )}
 
-        {inviteNotice && <p style={{ color: '#166534', margin: 0, fontSize: '0.9rem' }}>{inviteNotice}</p>}
+        {inviteNotice && <p className="m-0 text-sm text-green-700">{inviteNotice}</p>}
         {invitedNames.length > 0 && (
-          <p style={{ margin: 0, fontSize: '0.9rem', color: '#4b5563' }}>
+          <p className="m-0 text-sm text-gray-600">
             Pending on this match: {invitedNames.join(', ')}
           </p>
         )}
-        {error && <p style={{ color: 'red', margin: 0 }}>{error}</p>}
+        {error && <p className="m-0 text-sm text-red-600">{error}</p>}
 
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div className="flex flex-wrap gap-3">
           <button
             type="button"
             onClick={handleInviteSelected}
             disabled={selectedPostCreateInviteIds.size === 0 || inviteLoading}
-            style={{ padding: '0.6rem 1.2rem' }}
+            className="rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {inviteLoading ? 'Inviting...' : `Invite selected (${selectedPostCreateInviteIds.size})`}
           </button>
@@ -1071,7 +2057,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             type="button"
             onClick={() => { void handleOpenMatch() }}
             disabled={inviteLoading || openMatchLoading}
-            style={{ padding: '0.6rem 1.2rem', border: '1px solid #d1d5db', borderRadius: '10px', background: '#fff' }}
+            className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {openMatchLoading ? 'Opening...' : 'Open match'}
           </button>
@@ -1082,89 +2068,177 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
 
   return (
     <>
-    <form onSubmit={handleSubmit}>
-      {/* Row 1: Sport + Game type + Required count */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-        <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Sport</label>
-          <select value={sportId} onChange={e => setSportId(parseInt(e.target.value))} style={{ width: '100%', padding: '0.4rem' }}>
-            {sports.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}
-          </select>
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Game Type</label>
-          <select value={gameType} onChange={e => setGameType(e.target.value)} style={{ width: '100%', padding: '0.4rem' }}>
-            <option value="singles">Singles</option>
-            <option value="doubles">Doubles</option>
-          </select>
-        </div>
-        <div style={{ width: '100px' }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Players</label>
-          <input type="number" min={1} max={20} value={requiredCount} onChange={e => setRequiredCount(parseInt(e.target.value) || 4)} style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }} />
-        </div>
-      </div>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+        <button
+          type="button"
+          onClick={() => setCreateExpanded((expanded) => !expanded)}
+          className="flex w-full items-center justify-between px-6 py-5 text-left transition hover:bg-slate-50/60"
+        >
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Create a Match</p>
+          </div>
+          <span
+            className={`text-sm text-slate-400 transition-transform ${createExpanded ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          >
+            v
+          </span>
+        </button>
 
-      {gameType === 'doubles' && (
-        <div style={{ marginBottom: '1rem', maxWidth: '260px' }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Doubles Format</label>
-          <select value={doublesFormat} onChange={e => setDoublesFormat(e.target.value as MatchDoublesFormat)} style={{ width: '100%', padding: '0.4rem' }}>
-            {DOUBLES_FORMAT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <p style={{ margin: '0.35rem 0 0', fontSize: '0.76rem', color: '#667085' }}>
-            This guides ideal roster balance and waiting-list autofill, but the host can still override it later.
+        {createExpanded ? (
+          <div className="space-y-6 border-t border-slate-100 px-6 pb-6 pt-6">
+      <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Match Type</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setMatchMode('one-time')}
+            className={[
+              'rounded-2xl border px-4 py-3 text-sm font-semibold transition',
+              matchMode === 'one-time'
+                ? 'border-orange-200 bg-white text-orange-600 shadow-sm'
+                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700',
+            ].join(' ')}
+          >
+            One-time Match
+          </button>
+          <button
+            type="button"
+            onClick={() => setMatchMode('recurring')}
+            className={[
+              'rounded-2xl border px-4 py-3 text-sm font-semibold transition',
+              matchMode === 'recurring'
+                ? 'border-orange-200 bg-white text-orange-600 shadow-sm'
+                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700',
+            ].join(' ')}
+          >
+            Recurring Match
+          </button>
+        </div>
+        {matchMode === 'recurring' ? (
+          <p className="mt-2 text-xs text-slate-500">
+            This creates the next {recurringWeeksAheadCount} weekly match instances with shared defaults.
           </p>
-        </div>
-      )}
+        ) : null}
+      </section>
 
-      {/* Row 2: Calendar + Time */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-        <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Date</label>
-          <MiniCalendar selected={matchDate} onSelect={setMatchDate} />
-          {matchDate && (
-            <div style={{ marginTop: '0.25rem', fontSize: '0.85rem' }}>
-              Selected: <strong>{matchDate}</strong>
-              <button type="button" onClick={() => setMatchDate('')} style={{ marginLeft: '0.5rem', border: 'none', background: 'none', color: '#999', cursor: 'pointer', fontSize: '0.8rem' }}>clear</button>
-            </div>
-          )}
+      <section className="rounded-2xl bg-white">
+        <div className="mb-3 flex items-center">
+          <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-600">
+            1
+          </div>
+          <h3 className="text-lg font-semibold text-gray-700">General Information</h3>
         </div>
-        <div style={{ width: '140px' }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Start Time</label>
-          <select value={startTime} onChange={e => setStartTime(e.target.value)} style={{ width: '100%', padding: '0.4rem' }}>
-            <option value="">-- Select --</option>
-            {TIME_SLOTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <div style={{ marginTop: '0.5rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Duration</label>
-            <select value={durationMinutes} onChange={e => setDurationMinutes(parseInt(e.target.value))} style={{ width: '100%', padding: '0.4rem' }}>
-              {[30, 45, 60, 90, 120].map(m => <option key={m} value={m}>{m} min</option>)}
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Sport</label>
+            <select
+              value={sportId}
+              onChange={(e) => setSportId(parseInt(e.target.value, 10))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+            >
+              {sports.map((sport) => (
+                <option key={sport.id} value={sport.id}>
+                  {sport.display_name}
+                </option>
+              ))}
             </select>
           </div>
-        </div>
-      </div>
 
-      {/* Row 3: Venue + Court plan */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-        <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>Venue</label>
-          <select value={venueId} onChange={e => setVenueId(e.target.value)} style={{ width: '100%', padding: '0.4rem' }}>
-            <option value="">-- Select Venue --</option>
-            {venues.map(venue => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
-          </select>
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem' }}>
-            Court Plan
-          </label>
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Venue</label>
+            <select
+              value={venueId}
+              onChange={(e) => setVenueId(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+            >
+              <option value="">Select venue</option>
+              {venues.map((venue) => (
+                <option key={venue.id} value={venue.id}>
+                  {venue.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Game Type</label>
+            <select
+              value={gameType}
+              onChange={(e) => setGameType(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+            >
+              <option value="doubles">Doubles</option>
+              <option value="singles">Singles</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Format</label>
+            <select
+              value={doublesFormat}
+              onChange={(e) => setDoublesFormat(e.target.value as MatchDoublesFormat)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+            >
+              {(gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Players</label>
+                <input
+                  type="number"
+                  min={gameType === 'singles' ? 2 : 4}
+                  step={1}
+                  value={requiredCount}
+                  onChange={(e) => {
+                    const fallbackValue = gameType === 'singles' ? 2 : 4
+                    const nextValue = Number.parseInt(e.target.value, 10)
+                    if (Number.isNaN(nextValue)) {
+                      setRequiredCount(fallbackValue)
+                      return
+                    }
+                    setRequiredCount(Math.max(1, nextValue))
+                  }}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Court Qty</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={6}
+                  step={1}
+                  value={courtCount}
+                  onChange={(e) => {
+                    const nextValue = Number.parseInt(e.target.value, 10)
+                    if (Number.isNaN(nextValue)) {
+                      setCourtCount(1)
+                      return
+                    }
+                    setCourtCount(Math.min(6, Math.max(1, nextValue)))
+                  }}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Booking Status</label>
             <select
               value={courtPlanMode}
-              onChange={e => setCourtPlanMode(e.target.value as MatchCourtPlanMode)}
-              style={{ width: '100%', padding: '0.4rem' }}
+              onChange={(e) => setCourtPlanMode(e.target.value as MatchCourtPlanMode)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
             >
               {COURT_PLAN_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1172,433 +2246,506 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                 </option>
               ))}
             </select>
-
-            {courtPlanMode === 'secured' && (
-              courts.length > 0 ? (
-                <select
-                  value={finalCourtLabel}
-                  onChange={e => setFinalCourtLabel(e.target.value)}
-                  style={{ width: '100%', padding: '0.4rem' }}
-                >
-                  <option value="">Court secured (no label yet)</option>
-                  {courts.map((court) => (
-                    <option key={court.id} value={court.court_code}>
-                      {court.court_code}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={finalCourtLabel}
-                  onChange={e => setFinalCourtLabel(e.target.value)}
-                  placeholder="Court 2"
-                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
-                />
-              )
-            )}
-
-            <input
-              type="text"
-              value={courtPlanNote}
-              onChange={e => setCourtPlanNote(e.target.value)}
-              placeholder={
-                courtPlanMode === 'walk_in'
-                  ? 'Walk-in only, meet early'
-                  : courtPlanMode === 'self_book_later'
-                    ? 'Host will confirm the court later'
-                  : courtPlanMode === 'needs_help_booking'
-                    ? 'Use the match message area to coordinate court booking'
-                    : 'Optional court note'
-              }
-              style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Row 4: Add players */}
-      <div
-        style={{
-          marginBottom: '1rem',
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.3fr) minmax(220px, 1fr)',
-          gap: '1rem',
-          alignItems: 'start',
-        }}
-      >
-        <div>
-          <h4 style={{ margin: '0 0 0.85rem', fontSize: '0.95rem', fontWeight: 500, color: '#111827' }}>Add Players</h4>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem' }}>Add player(s)</label>
-                <div
-                  style={{ position: 'relative', display: 'inline-flex' }}
-                  onMouseEnter={() => setTooltip({ kind: 'invite-help' })}
-                  onMouseLeave={() => setTooltip((current) => (current?.kind === 'invite-help' ? null : current))}
-                >
-                  <button
-                    type="button"
-                    aria-label="How invite player works"
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      borderRadius: '999px',
-                      border: '1px solid #d1d5db',
-                      background: '#fff',
-                      color: '#6b7280',
-                      fontSize: '0.72rem',
-                      lineHeight: 1,
-                      cursor: 'default',
-                      padding: 0,
-                    }}
-                  >
-                    ?
-                  </button>
-                  {tooltip?.kind === 'invite-help' && (
-                    <TooltipCard lines={['Choose from Frequent Players, Contact Players, Saved Players, and Club Members to build direct invites before the match is created. Use Info for a quick preview.']} />
-                  )}
-                </div>
-              </div>
-              <p style={{ margin: '0 0 0.45rem', fontSize: '0.75rem', color: '#667085' }}>
-                Frequent Players ({inviteSourceSummary.frequentPlayers}), Contact Players ({inviteSourceSummary.contactPlayers}), Saved Players ({inviteSourceSummary.savedPlayers}), Club Members ({inviteSourceSummary.clubMembers})
-              </p>
-              <p style={{ margin: '0 0 0.6rem', fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.45 }}>
-                Click a name to add or remove a direct invite. Use the secondary Info action to open a quick profile or contact preview.
-              </p>
-              {availableInviteOptions.length === 0 ? (
-                <div
-                  style={{
-                    border: '1px dashed #d1d5db',
-                    borderRadius: '12px',
-                    padding: '0.8rem',
-                    color: '#6b7280',
-                    fontSize: '0.82rem',
-                    background: '#fcfcfd',
-                  }}
-                >
-                  No players available for direct invites yet.
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.55rem' }}>
-                    {visibleInviteCandidates.map((candidate) => renderInviteCandidateButton(candidate))}
-                  </div>
-                  {hiddenInviteCandidates.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowMorePlayers(true)}
-                      style={{
-                        marginTop: '0.75rem',
-                        border: '2px solid #c9cdd4',
-                        background: '#f8fafc',
-                        color: '#6b7280',
-                        borderRadius: '0',
-                        padding: '0.45rem 0.8rem',
-                        fontSize: '0.82rem',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      More Players
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
           </div>
 
-          <div style={{ marginTop: '1.35rem' }}>
+          {courtPlanMode === 'secured' ? (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.45rem' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem' }}>Player recruit group</label>
-                <div
-                  style={{ position: 'relative', display: 'inline-flex' }}
-                  onMouseEnter={() => setTooltip({ kind: 'recruit-help' })}
-                  onMouseLeave={() => setTooltip((current) => (current?.kind === 'recruit-help' ? null : current))}
-                >
+              <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Court Booked</label>
+              {courts.length > 0 ? (
+                <div ref={courtPlanMenuRef} className="relative">
                   <button
                     type="button"
-                    aria-label="What is a player recruit group?"
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      borderRadius: '999px',
-                      border: '1px solid #d1d5db',
-                      background: '#fff',
-                      color: '#6b7280',
-                      fontSize: '0.72rem',
-                      lineHeight: 1,
-                      cursor: 'default',
-                      padding: 0,
-                    }}
+                    onClick={() => setCourtPlanMenuOpen((open) => !open)}
+                    className={[
+                      'flex w-full items-center justify-between rounded-lg border bg-white px-3 py-2.5 text-[13px] outline-none transition',
+                      courtPlanMenuOpen
+                        ? 'border-orange-400 ring-4 ring-orange-100'
+                        : 'border-gray-200 hover:border-orange-200',
+                    ].join(' ')}
                   >
-                    ?
-                  </button>
-                  {tooltip?.kind === 'recruit-help' && (
-                    <TooltipCard lines={['Players in selected groups can see this match and request to join.']} />
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                {groups.map(g => (
-                  <div
-                    key={g.id}
-                    style={{ position: 'relative', display: 'inline-flex' }}
-                    onMouseEnter={() => setTooltip({ kind: 'group-members', groupId: g.id })}
-                    onMouseLeave={() =>
-                      setTooltip((current) =>
-                        current?.kind === 'group-members' && current.groupId === g.id ? null : current,
-                      )
-                    }
-                  >
-                    <label
-                      style={{
-                        fontSize: '0.85rem',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.35rem 0.75rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '999px',
-                        background: scopeGroupIds.includes(g.id) ? '#f8fafc' : '#fff',
-                      }}
+                    <span className={selectedCourtLabels.length > 0 ? 'text-gray-700' : 'text-gray-400'}>
+                      {selectedCourtLabels.length > 0 ? selectedCourtLabels.join(', ') : 'Select your booked court'}
+                    </span>
+                    <svg
+                      className={`h-4 w-4 text-gray-400 transition ${courtPlanMenuOpen ? 'rotate-180' : ''}`}
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      aria-hidden="true"
                     >
+                      <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {courtPlanMenuOpen ? (
+                    <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-lg">
+                      {courts.slice(0, 6).map((court) => {
+                        const checked = selectedCourtIds.includes(court.id)
+                        return (
+                          <label
+                            key={court.id}
+                            className="flex cursor-pointer items-center gap-2 border-b border-gray-200 px-3 py-2 text-sm text-gray-700 transition last:border-b-0 hover:bg-blue-50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleCourtSelection(court.id)}
+                              className="h-4 w-4 rounded border-gray-400 text-orange-500 focus:ring-orange-400"
+                            />
+                            <span>{court.court_code}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Choose up to {courtCount} booked court{courtCount === 1 ? '' : 's'}.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
+                  <p className="text-[11px] text-gray-400">Choose the court(s) you&apos;ve already booked.</p>
+                  {visibleCourtSlots.map((slot, index) => (
+                    <div key={`court-slot-${index}`} className="flex items-center gap-3">
                       <input
                         type="checkbox"
-                        checked={scopeGroupIds.includes(g.id)}
-                        onChange={e => {
-                          if (e.target.checked) setScopeGroupIds(prev => [...prev, g.id])
-                          else setScopeGroupIds(prev => prev.filter(id => id !== g.id))
-                        }}
+                        checked={slot.enabled}
+                        onChange={(e) => updateCourtSlot(index, { enabled: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
                       />
-                      {g.name}
-                    </label>
-                    {tooltip?.kind === 'group-members' && tooltip.groupId === g.id && (
-                      <TooltipCard
-                        title={`${groupMembersById[g.id]?.count ?? 0} member${(groupMembersById[g.id]?.count ?? 0) === 1 ? '' : 's'}`}
-                        lines={
-                          groupMembersById[g.id]?.members.length
-                            ? groupMembersById[g.id].members.map((member) => member.name)
-                            : ['No active members yet.']
-                        }
+                      <input
+                        type="text"
+                        value={slot.manualLabel}
+                        onChange={(e) => updateCourtSlot(index, { manualLabel: e.target.value })}
+                        disabled={!slot.enabled}
+                        placeholder={`CRT${index + 1}`}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100 disabled:bg-gray-50 disabled:text-gray-400"
                       />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-          <div
-            style={{
-              minHeight: '108px',
-              border: '1px solid #d1d5db',
-              borderRadius: '16px',
-              padding: '0.85rem 1rem',
-              background: '#fff',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-              <div>
-                <p style={{ margin: 0, fontSize: '0.78rem', color: '#6b7280' }}>
-                  Direct invites
-                </p>
-                <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: '#9ca3af' }}>
-                  Invites will be sent to these players after the match is created.
-                </p>
-              </div>
-              {selectedInvitePlayers.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedDirectInviteKeys(new Set())}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: '#6b7280',
-                    fontSize: '0.72rem',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
-                  Clear all
-                </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-            {selectedInvitePlayers.length > 0 ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginTop: '0.6rem' }}>
-                {selectedInvitePlayers.map((member) => (
-                  <button
-                    key={member.key}
-                    type="button"
-                    onClick={() => {
-                      setSelectedDirectInviteKeys((prev) => {
-                        const next = new Set(prev)
-                        next.delete(member.key)
-                        return next
-                      })
-                    }}
-                    aria-label={`Remove ${member.name} from direct invites`}
-                    title={`${member.name}: ${member.sourceLabels.join(', ')}`}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      padding: '0.38rem 0.65rem',
-                      borderRadius: '999px',
-                      border: '1px solid #bfdbfe',
-                      background: '#eff6ff',
-                      color: '#1d4ed8',
-                      fontSize: '0.8rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <span>{member.name}</span>
-                    <span aria-hidden="true" style={{ fontSize: '0.9rem', lineHeight: 1 }}>x</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p style={{ margin: '0.6rem 0 0', fontSize: '0.82rem', color: '#9ca3af' }}>
-                No direct invites selected yet.
-              </p>
-            )}
-          </div>
-
-          <div
-            style={{
-              minHeight: '108px',
-              border: '1px solid #d1d5db',
-              borderRadius: '16px',
-              padding: '0.85rem 1rem',
-              background: '#fff',
-            }}
-          >
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#6b7280' }}>
-              Visible to
-            </p>
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: '#9ca3af' }}>
-              These players can see the match and request to join.
-            </p>
-            {selectedGroupNames.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.6rem' }}>
-                {selectedGroupNames.map((groupName) => (
-                  <span
-                    key={groupName}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      padding: '0.34rem 0.6rem',
-                      borderRadius: '999px',
-                      border: '1px solid #d1d5db',
-                      background: '#f9fafb',
-                      color: '#4b5563',
-                      fontSize: '0.78rem',
-                    }}
-                  >
-                    {groupName}
-                  </span>
-                ))}
-              </div>
-            )}
-            {selectedGroupPreview.visibleNames.length > 0 ? (
-              <p style={{ margin: '0.55rem 0 0', fontSize: '0.82rem', color: '#4b5563', lineHeight: 1.5 }}>
-                {selectedGroupPreview.visibleNames.join(', ')}
-                {selectedGroupPreview.hiddenCount > 0 ? ` +${selectedGroupPreview.hiddenCount} more` : ''}
-              </p>
-            ) : (
-              <p style={{ margin: '0.6rem 0 0', fontSize: '0.82rem', color: '#9ca3af' }}>
-                No visibility groups selected yet.
-              </p>
-            )}
-          </div>
+          ) : null}
         </div>
-      </div>
 
-      {showMorePlayers && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowMorePlayers(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.28)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
-            zIndex: 60,
-          }}
-        >
-          <div
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              width: 'min(760px, 100%)',
-              maxHeight: 'min(80vh, 720px)',
-              overflowY: 'auto',
-              borderRadius: '20px',
-              background: '#fff',
-              border: '1px solid #e5e7eb',
-              boxShadow: '0 24px 60px rgba(15, 23, 42, 0.18)',
-              padding: '1.1rem 1.15rem',
-              display: 'grid',
-              gap: '1rem',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-              <div>
-                <h4 style={{ margin: 0, fontSize: '1rem', color: '#111827' }}>More Players</h4>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.82rem', color: '#6b7280' }}>
-                  Select or deselect direct invites from each source. Use Info for a quick preview.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowMorePlayers(false)}
-                aria-label="Close more players"
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  color: '#6b7280',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
+      </section>
+
+      <section className="rounded-2xl bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+        <div className="mb-6 flex items-center">
+          <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-600">
+            2
+          </div>
+          <h3 className="text-lg font-semibold text-gray-700">Schedule</h3>
+        </div>
+
+        <div className="flex flex-col gap-8 md:flex-row">
+          <div className="w-full md:w-[38%]">
+            <MiniCalendar selected={matchDate} onSelect={setMatchDate} dateIndicators={calendarIndicators} />
+          </div>
+
+          <div className="flex w-full flex-col justify-center gap-6 md:w-[62%]">
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Start Time</label>
+              <select
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
               >
-                x
-              </button>
+                <option value="">Select start time</option>
+                {TIME_SLOTS.map((slot) => (
+                  <option key={slot.value} value={slot.value}>
+                    {slot.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div style={{ display: 'grid', gap: '0.95rem' }}>
-              {inviteCandidatesBySource.map((section) => (
-                <section key={section.source} style={{ display: 'grid', gap: '0.55rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-                    <h5 style={{ margin: 0, fontSize: '0.86rem', color: '#374151' }}>{section.label}</h5>
-                    <span style={{ fontSize: '0.74rem', color: '#9ca3af' }}>{section.candidates.length}</span>
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Duration</label>
+              <select
+                value={durationMinutes}
+                onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10))}
+                className="w-full rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+              >
+                {[30, 45, 60, 90, 120].map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {minutes} min
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <div className="flex items-center">
+            <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-600">3</div>
+            <h3 className="text-lg font-semibold text-gray-700">Players &amp; Requests</h3>
+          </div>
+          <div className="rounded-full bg-gray-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+            Players Needed: <span className="text-orange-500">{requiredCount}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-6 md:flex-row">
+          <div className="w-full space-y-3 md:w-1/4">
+            <div className="mb-1 flex items-center text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+              Add By
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectionMode('invite')}
+              className={[
+                'flex h-[60px] w-full items-center gap-3 rounded-xl border-2 px-4 text-left transition active:scale-[0.98]',
+                selectionMode === 'invite'
+                  ? 'border-orange-200 bg-orange-50 ring-2 ring-orange-500/80'
+                  : 'border-orange-100 text-orange-600 hover:border-orange-200 hover:bg-orange-50',
+              ].join(' ')}
+            >
+              <span className="text-lg">+</span>
+              <span className="text-xs font-bold">Direct Invite</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectionMode('request')}
+              className={[
+                'flex h-[60px] w-full items-center gap-3 rounded-xl border-2 px-4 text-left transition active:scale-[0.98]',
+                selectionMode === 'request'
+                  ? 'border-green-200 bg-green-50 ring-2 ring-green-500/80'
+                  : 'border-green-50 text-green-600 hover:border-green-100 hover:bg-green-50',
+              ].join(' ')}
+            >
+              <span className="text-lg">+</span>
+              <span className="whitespace-nowrap text-xs font-bold">Open for Request</span>
+            </button>
+          </div>
+
+          <div className="w-full md:w-2/5">
+            <div className="mb-4 flex items-center text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+              Select Target
+            </div>
+            <div className="flex min-h-[200px] flex-col rounded-2xl border border-gray-100 bg-gray-50 p-4">
+              {!selectionMode ? (
+                <div className="flex flex-1 items-center justify-center px-6 text-center">
+                  <p className="text-xs italic leading-relaxed text-gray-300">
+                    Choose an action on the left to add people or groups.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col">
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {selectionMode === 'invite' && (
+                      <>
+                        {filteredInviteOptions.map((candidate) => renderInviteCandidateButton(candidate))}
+                        {filteredInviteGroups.map((group) =>
+                          renderGroupSelector(
+                            group,
+                            invitedGroupIds.includes(group.id),
+                            () =>
+                              setInvitedGroupIds((prev) =>
+                                prev.includes(group.id)
+                                  ? prev.filter((id) => id !== group.id)
+                                  : [...prev, group.id],
+                              ),
+                            'indigo',
+                          ),
+                        )}
+                      </>
+                    )}
+
+                    {selectionMode === 'request' && (
+                      <>
+                        {filteredRequestUsers.map((candidate) => renderRequestScopeCandidateButton(candidate))}
+                        {filteredRequestGroups.map((group) =>
+                          renderGroupSelector(
+                            group,
+                            scopeGroupIds.includes(group.id),
+                            () =>
+                              setScopeGroupIds((prev) =>
+                                prev.includes(group.id)
+                                  ? prev.filter((id) => id !== group.id)
+                                  : [...prev, group.id],
+                              ),
+                            'green',
+                          ),
+                        )}
+                      </>
+                    )}
+
+                    {selectionMode === 'invite' && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 && (
+                      <div className="w-full rounded-lg border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-xs text-gray-300">No candidates found.</div>
+                    )}
+                    {selectionMode === 'request' && filteredRequestUsers.length === 0 && filteredRequestGroups.length === 0 && (
+                      <div className="w-full rounded-lg border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-xs text-gray-300">No candidates found.</div>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    {section.candidates.map((candidate) => renderInviteCandidateButton(candidate, true))}
+
+                  {shouldShowHoodPanelButton ? (
+                    <div className="mt-auto">
+                      <button type="button" className="w-full rounded-lg border border-gray-200 bg-white py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 transition hover:text-orange-500">
+                        Hood Panel
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="w-full md:w-1/3">
+            <div className="mb-4 flex items-center text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+              Summary
+            </div>
+            <div className="min-h-[200px] rounded-xl bg-[#fafafa] p-4">
+              {summaryIsEmpty ? (
+                <div className="py-10 text-center opacity-20">
+                  <div className="mb-2 text-3xl">[]</div>
+                  <p className="text-[10px]">Empty</p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {(selectedInvitePlayers.length > 0 || selectedInvitedGroups.length > 0) && (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                        <span className="text-[9px] font-black uppercase tracking-tight text-gray-400">Direct Invited</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedInvitePlayers.map((member) => (
+                          <button
+                            key={member.key}
+                            type="button"
+                            onClick={() => setSelectedDirectInviteKeys((prev) => {
+                              const next = new Set(prev)
+                              next.delete(member.key)
+                              return next
+                            })}
+                            className="flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 text-[10px] font-bold text-orange-700"
+                          >
+                            <span>{member.name}</span>
+                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+                          </button>
+                        ))}
+                        {selectedInvitedGroups.map((group) => (
+                          <button
+                            key={group.id}
+                            type="button"
+                            onClick={() => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id))}
+                            className="flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 text-[10px] font-bold text-orange-700"
+                          >
+                            <span>{group.name}</span>
+                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {selectedInviteWarnings.length > 0 ? (
+                        <div className="mt-3 space-y-2 rounded-xl border border-amber-100 bg-white px-3 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                            <span className="text-[9px] font-black uppercase tracking-tight text-gray-400">Availability heads-up</span>
+                          </div>
+                          <div className="space-y-2">
+                            {selectedInviteWarnings.map(({ candidate, warning }) => (
+                              <div
+                                key={`summary-warning-${candidate.key}`}
+                                className={[
+                                  'rounded-lg border px-2.5 py-2 text-[10px]',
+                                  warning.level === 'busy'
+                                    ? 'border-amber-100 bg-amber-50 text-amber-700'
+                                    : warning.level === 'away'
+                                      ? 'border-orange-100 bg-orange-50 text-orange-700'
+                                      : 'border-rose-100 bg-rose-50 text-rose-700',
+                                ].join(' ')}
+                              >
+                                <p className="font-bold">
+                                  {candidate.name} · {warning.label}
+                                </p>
+                                <p className="mt-0.5 leading-4 opacity-90">{warning.message}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {(selectedScopeUsers.length > 0 || selectedScopeGroups.length > 0) && (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                        <span className="text-[9px] font-black uppercase tracking-tight text-gray-400">Open to Request</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedScopeUsers.map((candidate) => (
+                          <button
+                            key={`summary-request-${candidate.key}`}
+                            type="button"
+                            onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
+                            className="flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700"
+                          >
+                            <span>{candidate.name}</span>
+                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+                          </button>
+                        ))}
+                        {selectedScopeGroups.map((group) => (
+                          <button
+                            key={`summary-request-group-${group.id}`}
+                            type="button"
+                            onClick={() => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id))}
+                            className="flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700"
+                          >
+                            <span>{group.name}</span>
+                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white">
+        <button
+          type="button"
+          onClick={() => setOrganizerNoteExpanded((expanded) => !expanded)}
+          className="flex w-full items-center justify-between rounded-xl p-1 text-left transition hover:bg-gray-50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-sm font-bold text-orange-600">
+              4
+            </div>
+            <h3 className="text-lg font-semibold text-gray-700">Organizer Note</h3>
+            {organizerNote.trim() && !organizerNoteExpanded ? (
+              <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-600">
+                Saved
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            {!organizerNoteExpanded && !organizerNote.trim() ? (
+              <span className="text-xs font-bold text-orange-500">+ Add Note</span>
+            ) : null}
+            <span
+              className={`text-sm text-slate-400 transition-transform ${organizerNoteExpanded ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            >
+              v
+            </span>
+          </div>
+        </button>
+
+        {organizerNoteExpanded ? (
+          <div className="mt-4 space-y-4 rounded-2xl border border-gray-100 bg-gray-50/80 p-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {ORGANIZER_NOTE_PRESETS.map((group) => (
+                <div key={group.label} className="flex items-center gap-2 border-r border-gray-200 pr-4 last:border-r-0 last:pr-0">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{group.label}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.items.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => appendOrganizerNote(item)}
+                        className={[
+                          'rounded-md border px-2 py-1 text-[11px] font-bold shadow-sm transition active:scale-95',
+                          organizerNoteSentences.has(item.full)
+                            ? 'border-orange-300 bg-orange-50 text-orange-600'
+                            : 'border-gray-200 bg-white text-slate-500 hover:border-orange-400 hover:text-orange-500',
+                        ].join(' ')}
+                      >
+                        {item.chip}
+                      </button>
+                    ))}
                   </div>
-                </section>
+                </div>
               ))}
             </div>
+
+            <div className="relative">
+              <textarea
+                ref={organizerNoteRef}
+                value={organizerNote}
+                onChange={(e) => setOrganizerNote(e.target.value)}
+                placeholder="Anything else for the group?"
+                className="h-[100px] w-full resize-none rounded-xl border border-gray-200 bg-white p-3 text-sm leading-relaxed text-slate-700 shadow-inner outline-none transition placeholder:text-slate-300 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/5"
+              />
+              {organizerNote.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => setOrganizerNote('')}
+                  className="absolute right-2 top-2 rounded-md border border-gray-100 bg-white/90 p-1 text-xs text-slate-400 shadow-sm transition hover:text-slate-600"
+                >
+                  x
+                </button>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setOrganizerNoteExpanded(false)}
+              className="flex w-full items-center justify-center border-t border-gray-100 pt-2 text-[11px] font-bold text-slate-400 transition hover:text-orange-500"
+            >
+              Confirm
+            </button>
           </div>
-        </div>
-      )}
+        ) : null}
+      </section>
 
-      {error && <p style={{ color: 'red', marginBottom: '0.5rem' }}>{error}</p>}
+            {!reviewOpen && error && (
+              <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {error}
+              </p>
+            )}
 
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-        <button type="submit" disabled={loading} style={{ padding: '0.5rem 1.5rem' }}>
-          {loading && submitMode === 'create' ? 'Creating...' : 'Create Match'}
-        </button>
-      </div>
+            <div className="mb-20 flex flex-col gap-4 md:flex-row">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-xl bg-orange-500 px-6 py-4 text-lg font-bold text-white shadow-[0_18px_40px_-24px_rgba(249,115,22,0.65)] transition hover:bg-orange-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading && submitMode === 'create'
+                  ? (matchMode === 'recurring' ? 'Creating...' : 'Posting...')
+                  : (matchMode === 'recurring' ? 'Review & Create Recurring Match' : 'Review & Post Match')}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </section>
     </form>
-    <CandidatePreviewModal preview={candidatePreview} onClose={() => setCandidatePreview(null)} />
+    <ReviewMatchModal
+      open={reviewOpen}
+      recurring={matchMode === 'recurring'}
+      recurringCount={recurringWeeksAheadCount}
+      sportLabel={selectedSport?.display_name ?? 'Not selected'}
+      venueLabel={selectedVenue?.name ?? 'Not selected'}
+      gameTypeLabel={gameType}
+      formatLabel={selectedFormatLabel}
+      dateLabel={formatReviewDate(matchDate)}
+      timeRangeLabel={formatReviewTimeRange(startTime, durationMinutes)}
+      durationLabel={`${durationMinutes} Min`}
+      courtLabel={reviewCourtSummary}
+      courtSecured={courtPlanMode === 'secured'}
+      neededLabel={`${requiredCount} Players`}
+      directInviteItems={reviewDirectInviteLabels}
+      requestItems={reviewRequestItems}
+      organizerNote={organizerNote}
+      error={reviewOpen ? error : null}
+      posting={loading && submitMode === 'create'}
+      onClose={() => {
+        setReviewOpen(false)
+        setError(null)
+      }}
+      onConfirm={handleConfirmCreate}
+    />
     </>
   )
 }

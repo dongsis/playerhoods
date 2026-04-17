@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Guest } from '@/lib/types/database'
+import type { AvailabilityStatus, Database, Guest } from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -10,6 +10,10 @@ export type ContactPlayerResolved = {
   email: string | null
   phone: string | null
   notes: string | null
+  gender: 'male' | 'female' | 'unspecified' | null
+  availability_status: AvailabilityStatus | null
+  availability_note: string | null
+  availability_until: string | null
   linked_user_id: string | null
   resolution_state: 'contact_only' | 'linked_user'
 }
@@ -36,6 +40,10 @@ export async function createRosterGuest(
     email?: string | null
     phone?: string | null
     notes?: string | null
+    gender?: 'male' | 'female' | 'unspecified' | null
+    availability_status?: AvailabilityStatus | null
+    availability_note?: string | null
+    availability_until?: string | null
   }
 ): Promise<Guest> {
   const { data, error } = await supabase.rpc('rpc_roster_guest_create', {
@@ -43,6 +51,10 @@ export async function createRosterGuest(
     p_email: params.email ?? null,
     p_phone: params.phone ?? null,
     p_notes: params.notes ?? null,
+    p_gender: params.gender ?? null,
+    p_availability_status: params.availability_status ?? null,
+    p_availability_note: params.availability_note ?? null,
+    p_availability_until: params.availability_until ?? null,
   })
   if (error) throw error
   return data as Guest

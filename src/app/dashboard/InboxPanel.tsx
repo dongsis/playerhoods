@@ -8,18 +8,23 @@ import {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
-  type NotificationWithActor,
+  type NotificationWithContext,
 } from '@/lib/api/notifications'
+import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 
 const KIND_LABELS: Record<string, string> = {
   match_cancelled: 'Match cancelled',
   invited: 'You were invited',
-  nominated: 'You were nominated',
+  nominated: 'You were invited',
   removed: 'No longer invited',
-  delegate_target_confirmed: 'Your nominee was confirmed',
-  delegate_target_removed: 'Your nominee was removed',
+  delegate_target_confirmed: 'Your invited person was confirmed',
+  delegate_target_removed: 'Your invited person was removed',
   court_plan_updated: 'Court plan updated',
   waiting_list_promoted: 'You are now in the match',
+  group_added: 'You were added to a group',
+  group_join_request: 'Group approval requested',
+  group_join_request_accepted: 'Group request accepted',
+  group_join_request_declined: 'Group request declined',
 }
 
 function formatTime(iso: string): string {
@@ -33,7 +38,7 @@ function formatTime(iso: string): string {
 }
 
 export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) => void }) {
-  const [items, setItems] = useState<NotificationWithActor[]>([])
+  const [items, setItems] = useState<NotificationWithContext[]>([])
   const [loading, setLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const router = useRouter()
@@ -60,7 +65,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
     load()
   }, [])
 
-  const handleRead = async (n: NotificationWithActor) => {
+  const handleRead = async (n: NotificationWithContext) => {
     if (n.read_at) return
     const supabase = createSupabaseBrowserClient()
     try {
@@ -86,6 +91,13 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
     } catch (e) {
       console.error('[Inbox] markAllRead:', e)
     }
+  }
+
+  const getLabel = (notification: NotificationWithContext) => {
+    if (notification.kind === 'removed' && notification.participant_snapshot) {
+      return getMatchParticipantRemovalCopy(notification.participant_snapshot).badgeLabel
+    }
+    return KIND_LABELS[notification.kind] ?? notification.kind
   }
 
   return (
@@ -119,7 +131,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-gray-900">
-                    {KIND_LABELS[n.kind] ?? n.kind}
+                    {getLabel(n)}
                   </span>
                   {n.actor_name && (
                     <span className="text-xs text-gray-500">by {n.actor_name}</span>

@@ -71,7 +71,7 @@ export function DisplayNameEditForm({ displayName, onSave }: Props) {
 
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className={error ? 'text-rose-500' : saved ? 'text-emerald-600' : 'text-slate-400'}>
-          {error ?? (saved ? 'Saved' : 'Use the name other players will recognize.')}
+          {error ?? (saved ? 'Saved' : 'Shown to other players.')}
         </span>
         <span className="text-slate-400">{trimmedValue.length}/50</span>
       </div>

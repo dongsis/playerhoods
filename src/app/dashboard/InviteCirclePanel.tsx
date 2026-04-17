@@ -61,26 +61,26 @@ export function InviteCirclePanel({
   }
 
   if (loading && items.length === 0) {
-    return <p className="text-sm text-gray-400">Loading saved players…</p>
+    return <p className="text-sm text-gray-400">Loading saved people...</p>
   }
 
   return (
     <div className="mb-6">
-      <h3 className="text-sm font-semibold text-gray-700 mb-2">Saved Players</h3>
-      <p className="text-xs text-gray-500 mb-3">
-        Your private shortlist of registered players. Saving is silent, does not create a group, and keeps contact players on their separate guest path.
+      <h3 className="mb-2 text-sm font-semibold text-gray-700">Saved In My Hood</h3>
+      <p className="mb-3 text-xs text-gray-500">
+        Registered people you have saved into your hood. Saving is silent, does not create a Shared Group, and keeps contact people on their separate contact path.
       </p>
-      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       {items.length === 0 ? (
-        <p className="text-sm text-gray-400 italic">
-          No saved players yet. Save people from venue members, groups, or shared matches to build your future invite pool.
+        <p className="text-sm italic text-gray-400">
+          No saved people yet. Save people from venues, Shared Groups, or shared matches to build your future invite pool.
         </p>
       ) : (
         <div className="space-y-2">
           {items.map((item) => (
             <div
               key={item.id}
-              className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl border border-gray-100"
+              className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3"
             >
               <PlayerProfileTrigger targetUserId={item.target_user_id} className="rounded-full">
                 <Avatar
@@ -89,12 +89,12 @@ export function InviteCirclePanel({
                   size="md"
                 />
               </PlayerProfileTrigger>
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium text-gray-800 truncate block">
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-gray-800">
                   {item.target_display_name || 'Unknown'}
                 </span>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="text-[11px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
                     {getInviteCircleSourceLabel(item.source)}
                   </span>
                   <span className="text-[11px] text-gray-400">
@@ -106,9 +106,9 @@ export function InviteCirclePanel({
                 type="button"
                 onClick={() => handleRemove(item.target_user_id)}
                 disabled={!!removingId}
-                className="shrink-0 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
               >
-                {removingId === item.target_user_id ? 'Removing…' : 'Remove'}
+                {removingId === item.target_user_id ? 'Removing...' : 'Remove'}
               </button>
             </div>
           ))}

@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import {
+  cancelMatch,
   rebalanceMatchRosterAfterEdit,
   removeParticipant,
+  sendMatchMessage,
   setMatchCourts,
   updateMatchCourtPlan,
   updateMatchDetails,
@@ -21,7 +23,9 @@ export type MatchUpdateInput = {
   duration_minutes?: number | null
   required_count?: number | null
   invitation_scope_group_ids?: string[] | null
+  invitation_scope_user_ids?: string[] | null
   doubles_format?: MatchDoublesFormat | null
+  organizer_note?: string | null
 }
 
 export type MatchCourtPlanUpdateInput = {
@@ -110,6 +114,47 @@ export async function updateMatchCourtPlanAction(matchId: string, data: MatchCou
     finalCourtLabel: data.final_court_label ?? null,
     courtNote: data.court_note ?? null,
   })
+  revalidateMatchSurfaces(matchId)
+}
+
+export async function updateMatchOrganizerNoteAction(matchId: string, organizerNote: string | null) {
+  const supabase = await createSupabaseServerClient()
+  await updateMatchDetails(supabase, matchId, {
+    organizer_note: organizerNote?.trim() || null,
+  })
+  revalidateMatchSurfaces(matchId)
+}
+
+export async function postMatchMessageAction(matchId: string, body: string) {
+  const supabase = await createSupabaseServerClient()
+  const user = await getUser()
+  if (!user) {
+    throw new Error('not_authenticated')
+  }
+
+  await sendMatchMessage(supabase, matchId, user.id, body)
+  revalidateMatchSurfaces(matchId)
+}
+
+export async function cancelMatchWithReasonAction(matchId: string, reason: string) {
+  const supabase = await createSupabaseServerClient()
+  const user = await getUser()
+  if (!user) {
+    throw new Error('not_authenticated')
+  }
+
+  const trimmedReason = reason.trim()
+  if (!trimmedReason) {
+    throw new Error('cancel_reason_required')
+  }
+
+  await cancelMatch(supabase, matchId)
+  await sendMatchMessage(
+    supabase,
+    matchId,
+    user.id,
+    `Match cancelled by host. Reason: ${trimmedReason}`,
+  )
   revalidateMatchSurfaces(matchId)
 }
 

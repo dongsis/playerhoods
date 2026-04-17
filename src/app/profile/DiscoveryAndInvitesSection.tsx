@@ -3,15 +3,18 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { VenueIdentity, Venue } from '@/lib/types/database'
+import { SHARED_GROUP_JOIN_PREFERENCE_OPTIONS } from '@/lib/profile-options'
 
 interface Props {
   showTitle?: boolean
   showInVenueMemberDiscovery: boolean
   allowNonGroupInvites: boolean
+  sharedGroupJoinPreference: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
   identities: (VenueIdentity & { venue: Venue })[]
   onSaveGlobal: (params: {
     show_in_venue_member_discovery?: boolean
     allow_non_group_invites?: boolean
+    shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
   }) => Promise<void>
   onSetVenuePreferences: (venueId: string, params: {
     visible_in_venue_member_discovery?: 'true' | 'false' | 'inherit'
@@ -23,6 +26,7 @@ export function DiscoveryAndInvitesSection({
   showTitle = true,
   showInVenueMemberDiscovery,
   allowNonGroupInvites,
+  sharedGroupJoinPreference,
   identities,
   onSaveGlobal,
   onSetVenuePreferences,
@@ -30,6 +34,7 @@ export function DiscoveryAndInvitesSection({
   const router = useRouter()
   const [showInDiscovery, setShowInDiscovery] = useState(showInVenueMemberDiscovery)
   const [allowDirectInvites, setAllowDirectInvites] = useState(allowNonGroupInvites)
+  const [groupJoinPreference, setGroupJoinPreference] = useState(sharedGroupJoinPreference)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [venuePending, setVenuePending] = useState<string | null>(null)
@@ -52,18 +57,21 @@ export function DiscoveryAndInvitesSection({
   useEffect(() => {
     setShowInDiscovery(showInVenueMemberDiscovery)
     setAllowDirectInvites(allowNonGroupInvites)
+    setGroupJoinPreference(sharedGroupJoinPreference)
     lastSavedSnapshotRef.current = JSON.stringify({
       show_in_venue_member_discovery: showInVenueMemberDiscovery,
       allow_non_group_invites: allowNonGroupInvites,
+      shared_group_join_preference: sharedGroupJoinPreference,
     })
     setGlobalSaveState('idle')
-  }, [allowNonGroupInvites, showInVenueMemberDiscovery])
+  }, [allowNonGroupInvites, sharedGroupJoinPreference, showInVenueMemberDiscovery])
 
   const effectiveAllowDirectInvites = showInDiscovery ? allowDirectInvites : false
 
   const currentSnapshot = JSON.stringify({
     show_in_venue_member_discovery: showInDiscovery,
     allow_non_group_invites: effectiveAllowDirectInvites,
+    shared_group_join_preference: groupJoinPreference,
   })
 
   useEffect(() => {
@@ -86,6 +94,7 @@ export function DiscoveryAndInvitesSection({
           await onSaveGlobal({
             show_in_venue_member_discovery: showInDiscovery,
             allow_non_group_invites: effectiveAllowDirectInvites,
+            shared_group_join_preference: groupJoinPreference,
           })
           lastSavedSnapshotRef.current = currentSnapshot
           router.refresh()
@@ -103,7 +112,7 @@ export function DiscoveryAndInvitesSection({
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [currentSnapshot, effectiveAllowDirectInvites, onSaveGlobal, router, showInDiscovery, startTransition])
+  }, [currentSnapshot, effectiveAllowDirectInvites, groupJoinPreference, onSaveGlobal, router, showInDiscovery, startTransition])
 
   const handleSetVisible = (venueId: string, value: 'true' | 'false') => {
     setVenuePending(venueId)
@@ -145,13 +154,12 @@ export function DiscoveryAndInvitesSection({
         ? 'Saved'
         : globalSaveState === 'error'
           ? 'Could not save'
-          : 'Changes save automatically'
+          : 'Auto-save on'
 
   return (
     <div>
       {showTitle && <h2 style={{ marginTop: 0 }}>Discovery & Invites</h2>}
 
-      {/* Capability 1: Show me in Venue Members */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
           <input
@@ -162,14 +170,11 @@ export function DiscoveryAndInvitesSection({
           />
           <div>
             <strong>Show me in Venue Members</strong>
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#666' }}>
-              Show or hide yourself in Venue Members.
-            </p>
           </div>
         </label>
         {!showInDiscovery && identities.length > 0 && (
           <p style={{ margin: '0.5rem 0 0 1.75rem', fontSize: '0.82rem', color: '#888' }}>
-            Turn this on first to set venues individually.
+            Turn this on to set venues.
           </p>
         )}
         {identities.length > 0 && (
@@ -199,7 +204,6 @@ export function DiscoveryAndInvitesSection({
         )}
       </div>
 
-      {/* Capability 2: Allow direct invites */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label
           style={{
@@ -219,9 +223,6 @@ export function DiscoveryAndInvitesSection({
           />
           <div>
             <strong>Allow direct invites from venue members</strong>
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#666' }}>
-              Let venue members outside your groups invite you.
-            </p>
           </div>
         </label>
         {!showInDiscovery && identities.length > 0 && (
@@ -231,7 +232,7 @@ export function DiscoveryAndInvitesSection({
         )}
         {showInDiscovery && !allowDirectInvites && identities.length > 0 && (
           <p style={{ margin: '0.5rem 0 0 1.75rem', fontSize: '0.82rem', color: '#888' }}>
-            Turn this on first to set venues individually.
+            Turn this on to set venues.
           </p>
         )}
         {identities.length > 0 && (
@@ -259,6 +260,41 @@ export function DiscoveryAndInvitesSection({
             ))}
           </div>
         )}
+      </div>
+
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label style={{ display: 'block' }}>
+          <strong>Shared Group join preference</strong>
+        </label>
+        <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+          {SHARED_GROUP_JOIN_PREFERENCE_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              style={{
+                display: 'flex',
+                gap: '0.65rem',
+                alignItems: 'flex-start',
+                border: groupJoinPreference === option.value ? '1px solid #1f2937' : '1px solid #e5e7eb',
+                background: groupJoinPreference === option.value ? '#f8fafc' : '#fff',
+                borderRadius: '14px',
+                padding: '0.75rem 0.85rem',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="shared_group_join_preference"
+                value={option.value}
+                checked={groupJoinPreference === option.value}
+                onChange={() => setGroupJoinPreference(option.value)}
+                style={{ marginTop: '0.2rem' }}
+              />
+              <span style={{ fontSize: '0.9rem', lineHeight: 1.5, color: '#111827' }}>
+                {option.label}
+              </span>
+            </label>
+          ))}
+        </div>
       </div>
 
       {error && <p style={{ color: 'red', fontSize: '0.85rem', margin: '0.5rem 0 0' }}>{error}</p>}

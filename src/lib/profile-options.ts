@@ -24,6 +24,28 @@ export const CURRENT_FREQUENCY_OPTIONS = [
   { value: 'multiple_times_a_week', label: 'Multiple times a week' },
 ] as const
 
+export const SHARED_GROUP_JOIN_PREFERENCE_OPTIONS = [
+  {
+    value: 'approval_required_all',
+    label: 'Approval required',
+  },
+  {
+    value: 'auto_join_enabled_sports',
+    label: 'Auto-join my sports',
+  },
+  {
+    value: 'auto_join_all',
+    label: 'Auto-join all sports',
+  },
+] as const
+
+export const AVAILABILITY_STATUS_OPTIONS = [
+  { value: 'available', label: 'Available' },
+  { value: 'busy', label: 'Busy' },
+  { value: 'away', label: 'Away' },
+  { value: 'inactive', label: 'Inactive' },
+] as const
+
 export function getLookingToPlayLabel(value: string | null | undefined): string | null {
   return LOOKING_TO_PLAY_OPTIONS.find((option) => option.value === value)?.label ?? null
 }
@@ -34,6 +56,14 @@ export function getPreferredPlayTimeLabel(value: string | null | undefined): str
 
 export function getCurrentFrequencyLabel(value: string | null | undefined): string | null {
   return CURRENT_FREQUENCY_OPTIONS.find((option) => option.value === value)?.label ?? null
+}
+
+export function getSharedGroupJoinPreferenceLabel(value: string | null | undefined): string | null {
+  return SHARED_GROUP_JOIN_PREFERENCE_OPTIONS.find((option) => option.value === value)?.label ?? null
+}
+
+export function getAvailabilityStatusLabel(value: string | null | undefined): string | null {
+  return AVAILABILITY_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? null
 }
 
 export function getSportFormatOptions(sportCode: string): { value: string; label: string }[] {

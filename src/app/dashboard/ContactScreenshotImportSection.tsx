@@ -237,10 +237,7 @@ export function ContactScreenshotImportSection({
       <div style={{ display: 'grid', gap: '0.35rem', marginBottom: '0.85rem' }}>
         <strong style={{ fontSize: '0.95rem' }}>Import from Screenshot</strong>
         <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>
-          Best results come from clear screenshots that show names with phone numbers or emails in a simple list.
-        </p>
-        <p style={{ margin: 0, fontSize: '0.78rem', color: '#888' }}>
-          This is a review-and-confirm flow. Nothing is imported until you confirm selected contacts.
+          Use a clear list with names and phone or email.
         </p>
       </div>
 
@@ -418,7 +415,7 @@ export function ContactScreenshotImportSection({
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <p style={{ margin: 0, fontSize: '0.78rem', color: '#666' }}>
-              Only selected rows will be imported as Contact Players. They will not become users, group members, or match participants.
+              Only selected rows will be imported.
             </p>
             <button type="button" onClick={handleImport} disabled={importing || selectedCount === 0 || selectableDraftIds.length === 0} style={{ padding: '0.5rem 1rem' }}>
               {importing ? 'Importing...' : 'Import selected contacts'}

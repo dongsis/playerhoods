@@ -17,6 +17,7 @@ type DashboardPageViewProps = {
   onSaveGlobalPreferences: (params: {
     show_in_venue_member_discovery?: boolean
     allow_non_group_invites?: boolean
+    shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
   }) => Promise<void>
   onSetVenuePreferences: (venueId: string, params: {
     visible_in_venue_member_discovery?: 'true' | 'false' | 'inherit'

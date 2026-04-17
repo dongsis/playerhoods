@@ -73,6 +73,9 @@ export async function updateDashboardProfileAction(formData: FormData) {
     contact_phone: formData.has('contact_phone') ? (formData.get('contact_phone') as string) ?? '' : undefined,
     looking_to_play: formData.has('looking_to_play') ? ((formData.get('looking_to_play') as string) ?? '') : undefined,
     preferred_play_times: preferredPlayTimesPresent ? preferredPlayTimes : undefined,
+    availability_status: formData.has('availability_status') ? ((formData.get('availability_status') as 'available' | 'busy' | 'away' | 'inactive') ?? 'available') : undefined,
+    availability_note: formData.has('availability_note') ? ((formData.get('availability_note') as string) ?? '') : undefined,
+    availability_until: formData.has('availability_until') ? ((formData.get('availability_until') as string) ?? '') : undefined,
   })
 
   revalidateProfileSurfaces()
@@ -172,6 +175,7 @@ export async function leaveDashboardVenueAction(venueId: string) {
 export async function saveDashboardGlobalPreferencesAction(params: {
   show_in_venue_member_discovery?: boolean
   allow_non_group_invites?: boolean
+  shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
 }) {
   const supabase = await createSupabaseServerClient()
   await updateProfile(supabase, params)

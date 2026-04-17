@@ -34,11 +34,18 @@ export function LeaveGroupButton({ groupId }: { groupId: string }) {
       <button
         onClick={handleLeave}
         disabled={loading}
-        style={{ color: 'red' }}
+        style={{
+          border: 'none',
+          background: 'transparent',
+          color: '#b42318',
+          padding: 0,
+          fontSize: '0.84rem',
+          fontWeight: 700,
+        }}
       >
         {loading ? 'Leaving...' : 'Leave Group'}
       </button>
-      {error && <span style={{ color: 'red', marginLeft: '0.5rem' }}>{error}</span>}
+      {error && <span style={{ color: '#b42318', marginLeft: '0.5rem', fontSize: '0.78rem' }}>{error}</span>}
     </div>
   )
 }

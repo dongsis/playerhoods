@@ -37,7 +37,7 @@ export function InviteGroupForm({ matchId, groups, invitedGroups }: Props) {
       setGroupId('')
       router.refresh()
     } catch (submitError) {
-      setError((submitError as { message?: string })?.message ?? 'Failed to invite group')
+      setError((submitError as { message?: string })?.message ?? 'Failed to invite Shared Group')
     } finally {
       setLoading(false)
     }
@@ -45,6 +45,10 @@ export function InviteGroupForm({ matchId, groups, invitedGroups }: Props) {
 
   return (
     <div style={{ display: 'grid', gap: '0.6rem' }}>
+      <p style={{ color: '#667085', fontSize: '0.75rem', margin: 0 }}>
+        {invitedGroups.length > 0 ? `${invitedGroups.length} Shared Groups invited` : 'No Shared Groups invited'}
+      </p>
+
       {invitedGroups.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
           {invitedGroups.map((group) => (
@@ -69,7 +73,7 @@ export function InviteGroupForm({ matchId, groups, invitedGroups }: Props) {
 
       {availableGroups.length === 0 ? (
         <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
-          No additional registered groups are available for this sport.
+          No Shared Groups available.
         </p>
       ) : (
         <form onSubmit={handleSubmit}>
@@ -80,7 +84,7 @@ export function InviteGroupForm({ matchId, groups, invitedGroups }: Props) {
               required
               style={{ padding: '0.4rem 0.5rem', flex: 1, minWidth: '180px', fontSize: '0.9rem' }}
             >
-              <option value="">— Select a group —</option>
+              <option value="">Select a Shared Group</option>
               {availableGroups.map((group) => (
                 <option key={group.id} value={group.id}>
                   {group.name}
@@ -88,15 +92,12 @@ export function InviteGroupForm({ matchId, groups, invitedGroups }: Props) {
               ))}
             </select>
             <button type="submit" disabled={loading || !groupId} style={{ padding: '0.4rem 0.8rem' }}>
-              {loading ? 'Inviting…' : 'Invite Group'}
+              {loading ? 'Inviting...' : 'Invite'}
             </button>
           </div>
         </form>
       )}
 
-      <p style={{ color: '#667085', fontSize: '0.75rem', margin: 0 }}>
-        Group invitations stay low-noise: only registered members of an invited group see the accept action.
-      </p>
       {error && <p style={{ color: 'red', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
       {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: 0 }}>Invited {success}.</p>}
     </div>

@@ -47,7 +47,7 @@ export function SaveContactPlayerButton({
   }
 
   const className = compact
-    ? 'shrink-0 px-2.5 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-50'
+    ? 'shrink-0 rounded-xl border border-[#5ca0a0]/20 px-4 py-2 text-[11px] font-bold text-[#5ca0a0] transition-all hover:bg-[#5ca0a0]/5 disabled:opacity-50'
     : 'shrink-0 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-50'
 
   if (saved && !error) {

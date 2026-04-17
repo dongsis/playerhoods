@@ -31,11 +31,11 @@ export default async function InvitationPage({ params }: Props) {
     ? <><strong>{inv.inviter_display_name}</strong> requested permission to help manage your match participation.</>
     : <><strong>{inv.inviter_display_name}</strong> invited you to join a match.</>
   const summaryText = isMatchProxyBinding
-    ? 'If you accept, this person can confirm, decline, or withdraw your match participation on your behalf. You still keep full control of your own participation.'
+    ? 'If you accept, this person can help manage your participation.'
     : matchStr
   const pendingText = isMatchProxyBinding
-    ? 'Use this private verification link to approve or reject this Match Proxy request. You do not need a PlayerHoods account to respond.'
-    : 'Use this private invitation link to accept or decline this match invitation. You do not need a PlayerHoods account to respond.'
+    ? 'You can approve or decline here.'
+    : 'You can accept or decline here.'
 
   return (
     <div style={{ maxWidth: 480, margin: '2rem auto', padding: '0 1rem' }}>
@@ -60,7 +60,7 @@ export default async function InvitationPage({ params }: Props) {
           )}
           {!isMatchProxyBinding && (
             <p style={{ margin: '0.6rem 0 0', color: '#166534', fontSize: '0.82rem' }}>
-              Want to keep playing with friends here? Joining the PlayerHoods community is optional, and you can do it anytime later.
+              You can join PlayerHoods later.
             </p>
           )}
         </div>
@@ -73,7 +73,7 @@ export default async function InvitationPage({ params }: Props) {
           </p>
           {!isMatchProxyBinding && (
             <p style={{ margin: '0.6rem 0 0', color: '#92400e', fontSize: '0.82rem' }}>
-              You&apos;re still welcome to join the PlayerHoods community later if you&apos;d like to stay connected and play with friends.
+              You can join PlayerHoods later.
             </p>
           )}
         </div>
@@ -110,12 +110,9 @@ export default async function InvitationPage({ params }: Props) {
           </div>
           {!isMatchProxyBinding && (
             <>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
-                If you enjoy playing with this group, you&apos;re also welcome to join the PlayerHoods community later and organize more games with friends.
-              </p>
               <p style={{ margin: 0, fontSize: '0.82rem' }}>
                 <Link href="/login?mode=register" style={{ color: '#0369a1' }}>
-                  Optional: join PlayerHoods later
+                  Join PlayerHoods later
                 </Link>
               </p>
             </>

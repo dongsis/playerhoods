@@ -55,17 +55,9 @@ export default async function MatchesPage() {
       <MatchesShell items={items} userId={user.id} />
 
       {/* Create match */}
-      <section
-        style={{
-          padding: '1rem',
-          border: '1px solid #ddd',
-          borderRadius: '6px',
-          marginTop: '2rem',
-        }}
-      >
-        <h2 style={{ marginTop: 0, fontSize: '0.95rem' }}>Create Match</h2>
+      <div style={{ marginTop: '2rem' }}>
         <CreateMatchInline defaultVenueId={defaultVenueId} />
-      </section>
+      </div>
     </div>
   )
 }

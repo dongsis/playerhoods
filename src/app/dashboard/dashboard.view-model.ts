@@ -7,6 +7,9 @@ type DashboardProfile = Pick<
   | 'first_name'
   | 'last_name'
   | 'gender'
+  | 'availability_status'
+  | 'availability_note'
+  | 'availability_until'
   | 'primary_venue_id'
   | 'contact_channel'
   | 'contact_email'
@@ -14,6 +17,7 @@ type DashboardProfile = Pick<
   | 'avatar_url'
   | 'show_in_venue_member_discovery'
   | 'allow_non_group_invites'
+  | 'shared_group_join_preference'
   | 'looking_to_play'
   | 'preferred_play_times'
 >
@@ -45,6 +49,9 @@ const EMPTY_PROFILE: DashboardProfile = {
   first_name: null,
   last_name: null,
   gender: 'unspecified',
+  availability_status: 'available',
+  availability_note: null,
+  availability_until: null,
   primary_venue_id: null,
   contact_channel: 'email',
   contact_email: null,
@@ -52,6 +59,7 @@ const EMPTY_PROFILE: DashboardProfile = {
   avatar_url: null,
   show_in_venue_member_discovery: true,
   allow_non_group_invites: true,
+  shared_group_join_preference: 'approval_required_all',
   looking_to_play: null,
   preferred_play_times: [],
 }

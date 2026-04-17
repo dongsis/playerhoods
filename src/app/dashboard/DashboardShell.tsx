@@ -31,6 +31,9 @@ interface Props {
     | 'first_name'
     | 'last_name'
     | 'gender'
+    | 'availability_status'
+    | 'availability_note'
+    | 'availability_until'
     | 'primary_venue_id'
     | 'contact_channel'
     | 'contact_email'
@@ -38,6 +41,7 @@ interface Props {
     | 'avatar_url'
     | 'show_in_venue_member_discovery'
     | 'allow_non_group_invites'
+    | 'shared_group_join_preference'
     | 'looking_to_play'
     | 'preferred_play_times'
   >
@@ -63,6 +67,7 @@ interface Props {
   onSaveGlobalPreferences: (params: {
     show_in_venue_member_discovery?: boolean
     allow_non_group_invites?: boolean
+    shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
   }) => Promise<void>
   onSetVenuePreferences: (venueId: string, params: {
     visible_in_venue_member_discovery?: 'true' | 'false' | 'inherit'
@@ -112,6 +117,10 @@ const DASH_TABS: DashTab[] = ['inbox', 'matches', 'hoods', 'groups', 'venues', '
 
 function isDashTab(value: string | null): value is DashTab {
   return value !== null && DASH_TABS.includes(value as DashTab)
+}
+
+function getDismissedMatchStorageKey(userId: string) {
+  return `dashboard:dismissed-match-alerts:${userId}`
 }
 
 export function DashboardShell({
@@ -171,8 +180,43 @@ export function DashboardShell({
     if (requestedTab === 'contacts') return 'hoods'
     return isDashTab(requestedTab) ? requestedTab : 'matches'
   })
+  const [viewedMatchIds, setViewedMatchIds] = useState<Set<string>>(new Set())
   const [dismissedMatchIds, setDismissedMatchIds] = useState<Set<string>>(new Set())
+  const [dismissedMatchIdsReady, setDismissedMatchIdsReady] = useState(false)
   const [inboxBadge, setInboxBadge] = useState(inboxUnreadCount ?? 0)
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(getDismissedMatchStorageKey(userId))
+      if (stored) {
+        const parsed = JSON.parse(stored) as string[]
+        if (Array.isArray(parsed)) {
+          setDismissedMatchIds(new Set(parsed))
+        }
+      }
+    } catch (error) {
+      console.warn('[DashboardShell] restore dismissed match alerts failed:', error)
+    } finally {
+      setDismissedMatchIdsReady(true)
+    }
+  }, [userId])
+
+  useEffect(() => {
+    if (!dismissedMatchIdsReady) return
+    try {
+      window.localStorage.setItem(
+        getDismissedMatchStorageKey(userId),
+        JSON.stringify(Array.from(dismissedMatchIds)),
+      )
+    } catch (error) {
+      console.warn('[DashboardShell] persist dismissed match alerts failed:', error)
+    }
+  }, [dismissedMatchIds, dismissedMatchIdsReady, userId])
+
+  const suppressedMatchIds = useMemo(
+    () => new Set([...viewedMatchIds, ...dismissedMatchIds]),
+    [dismissedMatchIds, viewedMatchIds],
+  )
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams.toString())
@@ -192,7 +236,7 @@ export function DashboardShell({
     const nowIso = new Date().toISOString()
     let matchesBadge = 0
     for (const item of items) {
-      if (dismissedMatchIds.has(item.match.id)) continue
+      if (suppressedMatchIds.has(item.match.id)) continue
       const mp = item.myParticipant
       if (!mp) continue
       const past = item.match.start_at_utc
@@ -234,7 +278,7 @@ export function DashboardShell({
       groups: groupsBadge,
       profile: profileBadge,
     }
-  }, [items, playersData.pendingGroupInvites.length, playersData.proxyPendingCount, dismissedMatchIds, inboxBadge])
+  }, [items, playersData.pendingGroupInvites.length, playersData.proxyPendingCount, suppressedMatchIds, inboxBadge])
 
   const mainWidthClass = activeTab === 'profile' || activeTab === 'gear' || activeTab === 'hoods' || activeTab === 'groups'
     ? 'max-w-6xl'
@@ -263,9 +307,9 @@ export function DashboardShell({
           userId={userId}
           defaultVenueId={profile.primary_venue_id ?? ''}
           onCancelMatch={onCancelMatch}
-          dismissedAlertMatchIds={dismissedMatchIds}
+          dismissedAlertMatchIds={suppressedMatchIds}
           onViewedMatch={matchId =>
-            setDismissedMatchIds(prev => new Set([...prev, matchId]))
+            setViewedMatchIds(prev => new Set([...prev, matchId]))
           }
           onDismissAlert={matchId =>
             setDismissedMatchIds(prev => new Set([...prev, matchId]))

@@ -4,11 +4,14 @@ import type {
   Match,
   MatchSummary,
   MatchCourt,
+  MatchCourtOffer,
+  MatchCourtOfferStatus,
   MatchCourtPlanMode,
   MatchDoublesFormat,
   MatchParticipant,
   MatchParticipantWithDetails,
   MatchParticipantAction,
+  MatchMessage,
   MatchParticipantActionWithProfile,
   MatchFormed,
   PersonMatchProxy,
@@ -23,6 +26,8 @@ import { deriveMatchCourtStatus, type MatchCourtState } from '@/lib/utils/match-
 import { deriveMatchRosterInsight, normalizeMatchGender, type MatchRosterInsight } from '@/lib/utils/match-roster'
 
 type Client = SupabaseClient<Database>
+
+export type { MatchCourtOffer, MatchCourtOfferStatus }
 
 function logMatchDetailSoftFailure(matchId: string, label: string, error: unknown) {
   console.warn(`[MatchDetail] ${label} soft-failed for match ${matchId}:`, error)
@@ -58,6 +63,12 @@ export type ActivityItem = {
   created_at: string
 }
 
+export type MatchMessageEnriched = MatchMessage & {
+  author_name: string
+  author_avatar_url: string | null
+  is_organizer_author: boolean
+}
+
 export type MatchListItem = {
   match: Match
   venueTimezone: string | null
@@ -85,6 +96,7 @@ export type MatchDetailData = {
   pendingCount: number
   waitingCount: number
   activities: ActivityItem[]
+  messages: MatchMessageEnriched[]
   organizerName: string
   scopeGroups: { id: string; name: string }[]
   groupInvitations: MatchGroupInvite[]
@@ -128,7 +140,7 @@ function getDisplayName(
 ): string {
   if (guestId) {
     const guest = guestMap.get(guestId)
-    return guest ? `${guest.display_name} (Not registered)` : 'Not registered'
+    return guest?.display_name?.trim() || 'Contact Player'
   }
   if (userId) {
     const p = profileMap.get(userId)
@@ -417,7 +429,9 @@ export async function updateMatchDetails(
     duration_minutes?: number | null
     required_count?: number | null
     invitation_scope_group_ids?: string[] | null
+    invitation_scope_user_ids?: string[] | null
     doubles_format?: MatchDoublesFormat | null
+    organizer_note?: string | null
   }
 ): Promise<void> {
   const updateData: Record<string, unknown> = {}
@@ -426,10 +440,112 @@ export async function updateMatchDetails(
   if (data.duration_minutes !== undefined) updateData.duration_minutes = data.duration_minutes
   if (data.required_count !== undefined) updateData.required_count = data.required_count
   if (data.invitation_scope_group_ids !== undefined) updateData.invitation_scope_group_ids = data.invitation_scope_group_ids
+  if (data.invitation_scope_user_ids !== undefined) updateData.invitation_scope_user_ids = data.invitation_scope_user_ids
   if (data.doubles_format !== undefined) updateData.doubles_format = data.doubles_format
+  if (data.organizer_note !== undefined) updateData.organizer_note = data.organizer_note
   if (Object.keys(updateData).length === 0) return
   const { error } = await supabase.from('matches').update(updateData).eq('id', matchId)
   if (error) throw error
+}
+
+export async function getMatchCourtOffers(supabase: Client, matchId: string) {
+  const { data, error } = await supabase
+    .from('match_court_offers')
+    .select('*')
+    .eq('match_id', matchId)
+    .neq('status', 'released')
+    .order('updated_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as MatchCourtOffer[]
+}
+
+export async function submitMatchCourtOffer(
+  supabase: Client,
+  matchId: string,
+  courtLabel: string,
+  note?: string | null,
+) {
+  const { data, error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_court_submit_offer',
+      args: { p_match_id: string; p_court_label: string; p_note: string | null }
+    ) => Promise<{ data: MatchCourtOffer | null; error: Error | null }>
+  }).rpc('rpc_match_court_submit_offer', {
+    p_match_id: matchId,
+    p_court_label: courtLabel,
+    p_note: note ?? null,
+  })
+
+  if (error) throw error
+  return data as MatchCourtOffer
+}
+
+export async function updateMatchCourtOffer(
+  supabase: Client,
+  offerId: string,
+  data: {
+    court_label?: string
+    note?: string | null
+    status?: MatchCourtOfferStatus
+  },
+) {
+  const updateData: Record<string, unknown> = {}
+  if (data.court_label !== undefined) updateData.court_label = data.court_label.trim()
+  if (data.note !== undefined) updateData.note = data.note?.trim() || null
+  if (data.status !== undefined) updateData.status = data.status
+
+  const { data: updated, error } = await supabase
+    .from('match_court_offers')
+    .update(updateData)
+    .eq('id', offerId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return updated as MatchCourtOffer
+}
+
+export async function releaseMatchCourtOffer(supabase: Client, offerId: string) {
+  return updateMatchCourtOffer(supabase, offerId, { status: 'released' })
+}
+
+export async function selectMatchCourtOffer(supabase: Client, matchId: string, offerId: string) {
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_court_select_offer',
+      args: { p_match_id: string; p_offer_id: string }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_court_select_offer', {
+    p_match_id: matchId,
+    p_offer_id: offerId,
+  })
+  if (error) throw error
+}
+
+export async function sendMatchMessage(
+  supabase: Client,
+  matchId: string,
+  authorUserId: string,
+  body: string,
+): Promise<MatchMessage> {
+  const trimmedBody = body.trim()
+  if (!trimmedBody) {
+    throw new Error('message_body_required')
+  }
+
+  const { data, error } = await supabase
+    .from('match_messages')
+    .insert({
+      match_id: matchId,
+      author_user_id: authorUserId,
+      body: trimmedBody,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as MatchMessage
 }
 
 export async function updateMatchCourtPlan(
@@ -440,11 +556,18 @@ export async function updateMatchCourtPlan(
     court_plan_mode: MatchCourtPlanMode
     court_note?: string | null
     final_court_label?: string | null
+    court_labels?: string[] | null
   },
 ): Promise<void> {
+  const normalizedCourtLabels =
+    data.court_plan_mode === 'secured'
+      ? (data.court_labels ?? [])
+          .map((label) => label?.trim())
+          .filter((label): label is string => Boolean(label))
+      : []
   const finalCourtLabel =
     data.court_plan_mode === 'secured'
-      ? (data.final_court_label?.trim() || null)
+      ? normalizedCourtLabels[0] ?? (data.final_court_label?.trim() || null)
       : null
 
   const updateData: Record<string, unknown> = {
@@ -458,7 +581,7 @@ export async function updateMatchCourtPlan(
   const { error } = await supabase.from('matches').update(updateData).eq('id', matchId)
   if (error) throw error
 
-  await setMatchCourts(supabase, matchId, finalCourtLabel ? [finalCourtLabel] : [], userId)
+  await setMatchCourts(supabase, matchId, normalizedCourtLabels.length > 0 ? normalizedCourtLabels : (finalCourtLabel ? [finalCourtLabel] : []), userId)
 }
 
 /**
@@ -719,6 +842,15 @@ export async function inviteGroupToMatch(supabase: Client, matchId: string, grou
   return ((data ?? [])[0] ?? null) as MatchGroupInvite | null
 }
 
+export async function revokeGroupInvite(supabase: Client, matchId: string, groupId: string): Promise<MatchGroupInvite | null> {
+  const { data, error } = await supabase.rpc('rpc_match_revoke_group_invite', {
+    p_match_id: matchId,
+    p_group_id: groupId,
+  })
+  if (error) throw error
+  return ((data ?? [])[0] ?? null) as MatchGroupInvite | null
+}
+
 export async function getMatchGroupInvitations(supabase: Client, matchId: string): Promise<MatchGroupInvite[]> {
   const { data, error } = await supabase.rpc('rpc_match_group_invitations', {
     p_match_id: matchId,
@@ -804,13 +936,19 @@ export async function createMatch(
     venue_id?: string
     court_slots?: { court_label: string }[]
     invitation_scope_group_ids?: string[]
+    invitation_scope_user_ids?: string[]
     can_participants_invite_users?: boolean
     can_participants_manage_participants?: boolean
     sport_id?: number  // v1.6.3: rpc_match_create doesn't accept p_sport_id; we update after create
     court_plan_mode?: MatchCourtPlanMode
     court_note?: string | null
+    required_court_count?: number
     final_court_label?: string | null
+    court_labels?: string[] | null
     doubles_format?: MatchDoublesFormat | null
+    organizer_note?: string | null
+    recurring_series_id?: string | null
+    recurring_instance_index?: number | null
   }
 ) {
   // Only pass explicitly-set values; omitted args use RPC/DB defaults as single source of truth
@@ -822,6 +960,11 @@ export async function createMatch(
   if (data.duration_minutes != null) args.p_duration_minutes = data.duration_minutes
   if (data.venue_id) args.p_venue_id = data.venue_id
   if (data.invitation_scope_group_ids?.length) args.p_invitation_scope_group_ids = data.invitation_scope_group_ids
+  // Always pass the direct-user scope when this caller knows about it so PostgREST
+  // resolves the newer rpc_match_create signature instead of the legacy overload.
+  if (Object.prototype.hasOwnProperty.call(data, 'invitation_scope_user_ids')) {
+    args.p_invitation_scope_user_ids = data.invitation_scope_user_ids ?? []
+  }
   if (data.can_participants_invite_users != null) args.p_can_participants_invite_users = data.can_participants_invite_users
   if (data.can_participants_manage_participants != null) args.p_can_participants_manage_participants = data.can_participants_manage_participants
 
@@ -830,9 +973,31 @@ export async function createMatch(
   if (error) throw error
   const created = match as Match
 
+  // The latest request-scope overload of rpc_match_create currently inserts the
+  // organizer participant without reconciling status. Reconcile it here so the
+  // organizer lands as confirmed immediately after creation.
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    const { data: organizerParticipant, error: organizerParticipantError } = await supabase
+      .from('match_participants')
+      .select('id')
+      .eq('match_id', created.id)
+      .eq('user_id', user.id)
+      .is('removed_at', null)
+      .maybeSingle()
+    if (organizerParticipantError) throw organizerParticipantError
+    if (organizerParticipant?.id) {
+      const { error: reconcileError } = await (supabase as Client & {
+        rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: Error | null }>
+      }).rpc('match_participant_reconcile_status', {
+        p_mp_id: organizerParticipant.id,
+      })
+      if (reconcileError) throw reconcileError
+    }
+  }
+
   // Insert court slots into match_courts table
   if (data.court_slots?.length) {
-    const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       const rows = data.court_slots.map((slot, i) => ({
         match_id: created.id,
@@ -866,17 +1031,52 @@ export async function createMatch(
     created.doubles_format = data.doubles_format
   }
 
+  if (data.organizer_note !== undefined) {
+    const organizerNote = data.organizer_note?.trim() || null
+    const { error: organizerNoteError } = await supabase
+      .from('matches')
+      .update({ organizer_note: organizerNote })
+      .eq('id', created.id)
+    if (organizerNoteError) throw organizerNoteError
+    created.organizer_note = organizerNote
+  }
+
+  if (data.required_court_count !== undefined) {
+    const requiredCourtCount = Math.min(6, Math.max(1, data.required_court_count))
+    const { error: requiredCourtCountError } = await supabase
+      .from('matches')
+      .update({ required_court_count: requiredCourtCount })
+      .eq('id', created.id)
+    if (requiredCourtCountError) throw requiredCourtCountError
+    created.required_court_count = requiredCourtCount
+  }
+
+  if (data.recurring_series_id !== undefined || data.recurring_instance_index !== undefined) {
+    const { error: recurringError } = await supabase
+      .from('matches')
+      .update({
+        recurring_series_id: data.recurring_series_id ?? null,
+        recurring_instance_index: data.recurring_instance_index ?? null,
+      })
+      .eq('id', created.id)
+    if (recurringError) throw recurringError
+    created.recurring_series_id = data.recurring_series_id ?? null
+    created.recurring_instance_index = data.recurring_instance_index ?? null
+  }
+
   if (data.court_plan_mode) {
-    const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       await updateMatchCourtPlan(supabase, created.id, user.id, {
         court_plan_mode: data.court_plan_mode,
         court_note: data.court_note ?? null,
         final_court_label: data.final_court_label ?? null,
+        court_labels: data.court_labels ?? data.court_slots?.map((slot) => slot.court_label) ?? null,
       })
       created.court_plan_mode = data.court_plan_mode
       created.court_note = data.court_note ?? null
-      created.final_court_label = data.court_plan_mode === 'secured' ? (data.final_court_label?.trim() || null) : null
+      created.final_court_label = data.court_plan_mode === 'secured'
+        ? ((data.court_labels ?? data.court_slots?.map((slot) => slot.court_label) ?? []).find((label) => label?.trim())?.trim() || (data.final_court_label?.trim() || null))
+        : null
       created.finalized_by_user_id = data.court_plan_mode === 'secured' ? user.id : null
       created.finalized_at = data.court_plan_mode === 'secured' ? new Date().toISOString() : null
     }
@@ -957,7 +1157,7 @@ function resolveNameFromMaps(
   profileMap: Map<string, string>,
   guestMap: Map<string, string>,
 ): string {
-  if (guestId) return `${guestMap.get(guestId) ?? 'Not registered'} (Not registered)`
+  if (guestId) return guestMap.get(guestId)?.trim() || 'Contact Player'
   if (!userId) return 'Unknown'
   if (venueId) {
     const handle = identityMap.get(`${venueId}:${userId}`)
@@ -1368,6 +1568,43 @@ export async function getMatchDetailData(
   const myParticipant = userId
     ? (enriched.find(p => p.user_id === userId || participantLinkedToUser.get(p.id) === userId) ?? null)
     : null
+  const canAccessCommunication = Boolean(
+    userId &&
+    (
+      isOrganizer ||
+      (
+        myParticipant &&
+        myParticipant.removed_at === null &&
+        ['pending', 'confirmed', 'waiting_list'].includes(myParticipant.status)
+      )
+    ),
+  )
+  let messages: MatchMessageEnriched[] = []
+
+  if (canAccessCommunication) {
+    const { data: messagesData, error: messagesError } = await supabase
+      .from('match_messages')
+      .select('*')
+      .eq('match_id', matchId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+
+    if (messagesError) {
+      logMatchDetailSoftFailure(matchId, 'match_messages', messagesError)
+    } else {
+      const rawMessages = (messagesData ?? []) as MatchMessage[]
+      messages = rawMessages.map((message) => {
+        const authorProfile = profileDisplayMap.get(message.author_user_id)
+        return {
+          ...message,
+          author_name: resolve(message.author_user_id, null),
+          author_avatar_url: authorProfile?.avatar_url ?? null,
+          is_organizer_author: message.author_user_id === match.organizer_id,
+        }
+      })
+    }
+  }
+
   const myParticipantNeedsReconfirm = Boolean(
     myParticipant
     && myParticipant.status === 'pending'
@@ -1390,6 +1627,7 @@ export async function getMatchDetailData(
     pendingCount: isOrganizer ? pending.length : ((formedRes.error ? null : formedRes.data?.pending_count) ?? pending.length),
     waitingCount: isOrganizer ? waiting.length : ((formedRes.error ? null : formedRes.data?.waiting_count) ?? waiting.length),
     activities,
+    messages,
     organizerName: resolve(match.organizer_id, null),
     scopeGroups,
     groupInvitations,
@@ -1413,15 +1651,15 @@ export type ScopeUser = {
 function getAdmissionTargetSourceLabel(source: string): string {
   switch (source) {
     case 'invite_circle':
-      return 'Saved Players'
+      return 'Saved'
     case 'roster_contacts':
-      return 'My Contact Players'
+      return 'Contacts'
     case 'saved_contact':
-      return 'Saved Contact Players'
+      return 'Saved contacts'
     case 'group_contact':
-      return 'Group Contact Players'
+      return 'Shared Group contacts'
     case 'groups':
-      return 'Groups'
+      return 'Shared Groups'
     case 'club_members':
       return 'Venue members'
     case 'reentry':

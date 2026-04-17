@@ -1,4 +1,9 @@
-import { admissionTargetsToContactPlayers, admissionTargetsToScopeUsers, type ActivityItem } from '@/lib/api/matches'
+import {
+  admissionTargetsToContactPlayers,
+  admissionTargetsToScopeUsers,
+  type ActivityItem,
+  type MatchMessageEnriched,
+} from '@/lib/api/matches'
 import { deriveMatchCourtStatus, type MatchCourtState } from '@/lib/utils/match-court'
 import type { MatchRosterInsight } from '@/lib/utils/match-roster'
 import { formatTimeWindow } from '@/lib/utils/format-time'
@@ -33,6 +38,7 @@ export type MatchDetailPageViewModel = {
   participants: MatchDetailLoaderData['detail']['participants']
   participantsForDisplay: MatchDetailLoaderData['detail']['participants']
   activities: ActivityItem[]
+  messages: MatchMessageEnriched[]
   courtState: MatchCourtState
   myParticipant: MatchDetailLoaderData['detail']['myParticipant']
   myParticipantNeedsReconfirm: boolean
@@ -56,6 +62,9 @@ export type MatchDetailPageViewModel = {
   showNominateGuestSection: boolean
   showOrganizerAdminSection: boolean
   showOrganizerEditSection: boolean
+  canAccessCommunication: boolean
+  canPostCommunication: boolean
+  canEditOrganizerNote: boolean
 }
 
 export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData): MatchDetailPageViewModel {
@@ -73,6 +82,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     waitingCount,
     rosterInsight,
     activities,
+    messages,
     organizerName,
     scopeGroups,
     groupInvitations,
@@ -119,6 +129,18 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
           !participant.participant_accepted_at
         ))
 
+  const canAccessCommunication = Boolean(
+    user?.id &&
+    (
+      isOrganizer ||
+      (
+        myParticipant &&
+        myParticipant.removed_at === null &&
+        ['pending', 'confirmed', 'waiting_list'].includes(myParticipant.status)
+      )
+    ),
+  )
+
   return {
     matchId,
     userId: user?.id ?? null,
@@ -136,6 +158,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     participants,
     participantsForDisplay,
     activities,
+    messages,
     courtState,
     myParticipant,
     myParticipantNeedsReconfirm,
@@ -165,5 +188,8 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     showNominateGuestSection: match.status === 'active' && canNominateGuest && !isOrganizer,
     showOrganizerAdminSection: match.status === 'active' && isOrganizer,
     showOrganizerEditSection: match.status === 'active' && isOrganizer,
+    canAccessCommunication,
+    canPostCommunication: canAccessCommunication,
+    canEditOrganizerNote: match.status === 'active' && isOrganizer,
   }
 }

@@ -1,7 +1,10 @@
 import {
+  cancelMatchWithReasonAction,
   removeMatchParticipantAction,
+  postMatchMessageAction,
   updateMatchCourtPlanAction,
   updateMatchDetailsAction,
+  updateMatchOrganizerNoteAction,
 } from './match-detail.actions'
 import { MatchDetailPageView } from './MatchDetailPageView'
 import { loadMatchDetailPageData } from './match-detail.loader'
@@ -26,6 +29,9 @@ export default async function MatchDetailPage({ params }: Props) {
     <MatchDetailPageView
       viewModel={viewModel}
       onUpdateMatchDetails={updateMatchDetailsAction.bind(null, matchId, viewModel.venueName, matchSnapshot)}
+      onUpdateOrganizerNote={updateMatchOrganizerNoteAction.bind(null, matchId)}
+      onPostMessage={postMatchMessageAction.bind(null, matchId)}
+      onCancelMatch={cancelMatchWithReasonAction.bind(null, matchId)}
       onSaveCourtPlan={updateMatchCourtPlanAction.bind(null, matchId)}
       onRemoveParticipant={removeMatchParticipantAction.bind(null, matchId)}
     />

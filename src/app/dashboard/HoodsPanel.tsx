@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import type { GroupContactWithDisplay } from '@/lib/api/groups'
 import {
   addContactPlayerToGroup,
@@ -46,7 +47,9 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import { setGuestSports } from '@/lib/api/sports'
+import { AVAILABILITY_STATUS_OPTIONS } from '@/lib/profile-options'
 import type {
+  AvailabilityStatus,
   Sport,
   Venue,
   VenueIdentity,
@@ -394,12 +397,14 @@ function AddToGroupDialog({
   onClose,
   onConfirm,
   pending,
+  emptyMessage,
 }: {
   groups: GroupWithMembers[]
   person: HoodPerson
   onClose: () => void
   onConfirm: (groupId: string) => Promise<void>
   pending: boolean
+  emptyMessage: string
 }) {
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/30 p-4">
@@ -423,7 +428,7 @@ function AddToGroupDialog({
         <div className="mt-4 space-y-2">
           {groups.length === 0 && (
             <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              No groups available yet.
+              {emptyMessage}
             </p>
           )}
           {groups.map((groupRow) => (
@@ -653,7 +658,7 @@ function HoodPersonDrawer({
               </button>
               {person.canEditContact && (
                 <p className="w-full text-xs text-slate-500">
-                  Edit Contact is routed through the Contacts tab in this version.
+                  Edit Contact stays in the detail flow for now.
                 </p>
               )}
             </div>
@@ -683,7 +688,7 @@ function HoodPersonDrawer({
           <section className="rounded-3xl border border-slate-200 bg-white p-5">
             <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Proxy</h3>
             <p className="mt-3 text-sm text-slate-600">
-              Principal keeps full self-service control. Proxy only covers participant-side match actions.
+                  Principal keeps full self-service control. Proxy only covers player-side match actions.
             </p>
             <p className="mt-3 text-sm text-slate-500">
               Full Match Proxy management lives in My Profile, not in Hoods.
@@ -1005,6 +1010,9 @@ export function HoodsPanel({
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [contactNotes, setContactNotes] = useState('')
+  const [contactAvailabilityStatus, setContactAvailabilityStatus] = useState<AvailabilityStatus>('available')
+  const [contactAvailabilityNote, setContactAvailabilityNote] = useState('')
+  const [contactAvailabilityUntil, setContactAvailabilityUntil] = useState('')
   const [creatingContact, setCreatingContact] = useState(false)
 
   useEffect(() => {
@@ -1016,6 +1024,35 @@ export function HoodsPanel({
     () => sportOptions.find((sport) => sport.code === selectedSportCode) ?? sportOptions[0] ?? null,
     [selectedSportCode, sportOptions],
   )
+
+  const addToGroupOptions = useMemo(() => {
+    if (!groupDialogPerson) return groups
+
+    if (groupDialogPerson.userId) {
+      return groups.filter((groupRow) =>
+        groupRow.members.some((member) => member.userId === userId),
+      )
+    }
+
+    if (groupDialogPerson.guestId) {
+      return groups.filter((groupRow) =>
+        groupRow.members.some((member) => member.userId === userId),
+      )
+    }
+
+    return []
+  }, [groupDialogPerson, groups, userId])
+
+  const addToGroupEmptyMessage = useMemo(() => {
+    if (!groupDialogPerson) return 'No groups available yet.'
+    if (groupDialogPerson.userId) {
+      return 'You can only add registered players to Shared Groups where you are already an active member.'
+    }
+    if (groupDialogPerson.guestId) {
+      return 'You can add contacts to Shared Groups where you are already an active member.'
+    }
+    return 'No groups available yet.'
+  }, [groupDialogPerson])
 
   const loadSupportData = useCallback(async () => {
     setLoading(true)
@@ -1595,6 +1632,7 @@ export function HoodsPanel({
         await inviteUserToMatch(supabase, matchId, person.userId)
       } else if (person.guestId) {
         await nominateGuest(supabase, matchId, person.guestId)
+        await processDeliveriesAction()
       }
       setMessage(`${person.displayName} was invited to the match.`)
       setActiveInviteKey(null)
@@ -1609,6 +1647,11 @@ export function HoodsPanel({
   const handleAddToGroup = useCallback(async (groupId: string) => {
     if (!groupDialogPerson) return
     const supabase = createSupabaseBrowserClient()
+    const normalizeGroupError = (message?: string) => {
+      if (message === 'not_authorized') return 'You need to be an active member of this Shared Group.'
+      if (message === 'guest_not_accessible') return 'You can only add contact players you can already view.'
+      return message ?? 'Could not add this person to the Shared Group.'
+    }
     setGroupPending(true)
     setError(null)
     setMessage(null)
@@ -1623,7 +1666,7 @@ export function HoodsPanel({
       await loadSupportData()
       router.refresh()
     } catch (groupError) {
-      setError((groupError as Error).message)
+      setError(normalizeGroupError((groupError as Error).message))
     } finally {
       setGroupPending(false)
     }
@@ -1637,6 +1680,8 @@ export function HoodsPanel({
     const email = contactEmail.trim().toLowerCase() || null
     const phone = contactPhone.trim() || null
     const notes = contactNotes.trim() || null
+    const availabilityNote = contactAvailabilityNote.trim() || null
+    const availabilityUntil = contactAvailabilityUntil || null
 
     if (!displayName) {
       setError('Contact name is required.')
@@ -1657,6 +1702,9 @@ export function HoodsPanel({
         email,
         phone,
         notes,
+        availability_status: contactAvailabilityStatus,
+        availability_note: availabilityNote,
+        availability_until: availabilityUntil,
       })
       await setGuestSports(supabase, newGuest.id, [selectedSport.code])
       setMessage(`${displayName} was added to your ${selectedSport.display_name} contacts.`)
@@ -1664,6 +1712,9 @@ export function HoodsPanel({
       setContactEmail('')
       setContactPhone('')
       setContactNotes('')
+      setContactAvailabilityStatus('available')
+      setContactAvailabilityNote('')
+      setContactAvailabilityUntil('')
       setContactComposerMode(null)
       await loadSupportData()
       router.refresh()
@@ -1672,7 +1723,7 @@ export function HoodsPanel({
     } finally {
       setCreatingContact(false)
     }
-  }, [contactDisplayName, contactEmail, contactNotes, contactPhone, loadSupportData, router, selectedSport])
+  }, [contactAvailabilityNote, contactAvailabilityStatus, contactAvailabilityUntil, contactDisplayName, contactEmail, contactNotes, contactPhone, loadSupportData, router, selectedSport])
 
   const handleScreenshotImported = useCallback(async () => {
     if (!selectedSport) return
@@ -1864,9 +1915,7 @@ export function HoodsPanel({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h3 className="text-lg font-semibold tracking-tight text-slate-900">Contact Tools</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Add or import contact people into your {selectedSport.display_name.toLowerCase()} hood, then manage them as person cards below.
-              </p>
+              <p className="mt-1 text-sm text-slate-500">Add or import contacts.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -1949,10 +1998,41 @@ export function HoodsPanel({
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
                 />
               </label>
+              <label className="text-sm text-slate-600">
+                <span className="mb-1 block">Availability</span>
+                <select
+                  value={contactAvailabilityStatus}
+                  onChange={(event) => setContactAvailabilityStatus(event.target.value as AvailabilityStatus)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
+                >
+                  {AVAILABILITY_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm text-slate-600">
+                <span className="mb-1 block">Availability note</span>
+                <input
+                  type="text"
+                  value={contactAvailabilityNote}
+                  onChange={(event) => setContactAvailabilityNote(event.target.value)}
+                  placeholder="On vacation, exam season..."
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
+                />
+              </label>
+              <label className="text-sm text-slate-600 md:col-span-2">
+                <span className="mb-1 block">Available again</span>
+                <input
+                  type="date"
+                  value={contactAvailabilityUntil}
+                  onChange={(event) => setContactAvailabilityUntil(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 md:max-w-[240px]"
+                />
+              </label>
               <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-slate-500">
-                  This contact will be added to your {selectedSport.display_name.toLowerCase()} hood.
-                </p>
+                <p className="text-xs text-slate-500">Adds to your hood.</p>
                 <button
                   type="submit"
                   disabled={creatingContact}
@@ -2035,11 +2115,12 @@ export function HoodsPanel({
 
       {groupDialogPerson && (
         <AddToGroupDialog
-          groups={groups}
+          groups={addToGroupOptions}
           person={groupDialogPerson}
           onClose={() => setGroupDialogPerson(null)}
           onConfirm={handleAddToGroup}
           pending={groupPending}
+          emptyMessage={addToGroupEmptyMessage}
         />
       )}
     </div>

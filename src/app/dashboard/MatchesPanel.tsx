@@ -7,8 +7,8 @@ import type { MatchListItem } from '@/lib/api/matches'
 import { acceptMatchInvite } from '@/lib/api/matches'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
+import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
-import { Avatar } from '@/app/components/Avatar'
 
 function isPast(item: MatchListItem, nowIso: string): boolean {
   const { match } = item
@@ -36,6 +36,25 @@ function needsUserAction(item: MatchListItem): boolean {
   return false
 }
 
+function shouldLiveInMyMatches(item: MatchListItem): boolean {
+  const mp = item.myParticipant
+  if (!mp) return false
+
+  if (mp.status === 'confirmed' || mp.status === 'waiting_list') {
+    return true
+  }
+
+  if (mp.status !== 'pending') {
+    return false
+  }
+
+  if (needsUserAction(item)) {
+    return false
+  }
+
+  return true
+}
+
 type MatchRowProps = {
   item: MatchListItem
   onViewed?: (matchId: string) => void
@@ -50,6 +69,94 @@ function toSportLabel(sportName: string | null): string | null {
   return sportName
 }
 
+function ParticipantPreviewAvatar({
+  displayName,
+  avatarUrl,
+  registered,
+  zIndex,
+}: {
+  displayName: string
+  avatarUrl: string | null
+  registered: boolean
+  zIndex: number
+}) {
+  const initial = displayName.charAt(0).toUpperCase() || '?'
+
+  return (
+    <div
+      className={[
+        'relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[11px] font-bold shadow-sm',
+        registered
+          ? 'bg-[#5ca0a0] text-white'
+          : 'border-dashed border-slate-300 bg-slate-100 text-slate-500',
+      ].join(' ')}
+      style={{ zIndex }}
+      title={displayName}
+    >
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <span>{initial}</span>
+      )}
+    </div>
+  )
+}
+
+function ParticipantRosterSummary({
+  participants,
+  rosterMeta,
+  confirmedCount,
+}: {
+  participants: MatchListItem['participants']
+  rosterMeta: string[]
+  confirmedCount: number
+}) {
+  const confirmed = participants.filter((participant) => participant.status === 'confirmed')
+  const visibleParticipants = confirmed.slice(0, 4)
+  const overflow = confirmedCount > visibleParticipants.length ? ` +${confirmedCount - visibleParticipants.length}` : ''
+  const metaLine = rosterMeta.join(' · ')
+
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <div className="flex shrink-0 -space-x-2">
+        {visibleParticipants.map((participant, index) => (
+          <ParticipantPreviewAvatar
+            key={participant.id}
+            displayName={participant.display_name}
+            avatarUrl={participant.avatar_url ?? null}
+            registered={Boolean(participant.user_id)}
+            zIndex={10 - index}
+          />
+        ))}
+      </div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-slate-700">
+          {visibleParticipants.length > 0 ? (
+            <>
+              {visibleParticipants.map((participant) => (
+                <span key={participant.id} className="inline-flex min-w-0 items-center gap-1">
+                  <span className="truncate">{participant.display_name}</span>
+                  {!participant.user_id ? (
+                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                      Contact
+                    </span>
+                  ) : null}
+                </span>
+              ))}
+              {overflow ? <span className="text-slate-400">{overflow}</span> : null}
+            </>
+          ) : (
+            <span className="text-slate-400">No confirmed players yet</span>
+          )}
+        </div>
+        {metaLine ? (
+          <div className="truncate text-xs text-slate-400">{metaLine}</div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function MatchRow({
   item,
   onViewed,
@@ -58,7 +165,18 @@ function MatchRow({
   variant = 'default',
   showRosterNames = true,
 }: MatchRowProps) {
-  const { match, confirmedCount, pendingCount, isFormed, participants, myParticipant, venueTimezone, venueName, sportName, courtState } = item
+  const {
+    match,
+    confirmedCount,
+    pendingCount,
+    isFormed,
+    participants,
+    myParticipant,
+    venueTimezone,
+    venueName,
+    sportName,
+    courtState,
+  } = item
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirmError, setConfirmError] = useState<string | null>(null)
@@ -75,15 +193,7 @@ function MatchRow({
     !!myParticipant.manual_confirmed_by &&
     myParticipant.manual_confirmed_by !== myParticipant.user_id
   const confirmerName = myParticipant?.manual_confirmed_by_name ?? 'someone'
-  const removalNote = (myParticipant?.removal_note ?? '').toLowerCase()
-  const isSelfWithdraw =
-    Boolean(
-      myParticipant?.removed_by &&
-      myParticipant?.user_id &&
-      myParticipant.removed_by === myParticipant.user_id,
-    ) ||
-    removalNote.includes('declined') ||
-    removalNote.includes('withdraw')
+  const removalCopy = myParticipant ? getMatchParticipantRemovalCopy(myParticipant) : null
 
   const handleConfirm = () => {
     setConfirmError(null)
@@ -99,13 +209,16 @@ function MatchRow({
   }
 
   const confirmed = participants.filter(p => p.status === 'confirmed')
-  const names = confirmed.slice(0, 3).map(p => p.display_name)
-  const overflow = confirmedCount > 3 ? ` +${confirmedCount - 3}` : ''
+  const names = confirmed.slice(0, 4).map(p => p.display_name)
+  const overflow = confirmedCount > 4 ? ` +${confirmedCount - 4}` : ''
   const rosterMeta: string[] = item.rosterInsight.summaryLabel ? item.rosterInsight.summaryLabel.split(' · ') : []
   const parts: string[] = []
   if (names.length > 0) parts.push(names.join(', ') + overflow)
   if (item.rosterInsight.summaryLabel) parts.push(item.rosterInsight.summaryLabel)
   const roster = parts.join(' · ') || '—'
+  const rosterPeopleLine = names.length > 0 ? names.join(', ') + overflow : 'No confirmed players yet'
+  const rosterNeedLine = item.rosterInsight.neededLabel
+  const rosterDetailLine = rosterNeedLine ? `${rosterPeopleLine} · ${rosterNeedLine}` : rosterPeopleLine
 
   const timeStr = formatTimeWindow(
     match.start_at_utc,
@@ -115,6 +228,40 @@ function MatchRow({
     venueTimezone ?? 'UTC',
   )
   const sportLabel = toSportLabel(sportName)
+
+  const statusBadge = isCancelled ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+      Match cancelled
+    </span>
+  ) : isFormed ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+      Formed
+    </span>
+  ) : (
+    <span
+      className={[
+        'inline-flex items-center rounded-full bg-amber-100 text-amber-700',
+        variant === 'incoming' ? 'px-2.5 py-0.5 text-[13px] font-semibold' : 'px-2 py-0.5 text-xs font-medium',
+      ].join(' ')}
+    >
+      {confirmedCount}/{match.required_count}
+    </span>
+  )
+
+  const courtBadge = !isCancelled ? (
+    <span
+      className={[
+        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+        courtState.status === 'secured'
+          ? 'bg-emerald-100 text-emerald-700'
+          : courtState.status === 'walk_in'
+            ? 'bg-blue-100 text-blue-700'
+            : 'bg-amber-100 text-amber-700',
+      ].join(' ')}
+    >
+      {courtState.badgeLabel}
+    </span>
+  ) : null
 
   return (
     <div
@@ -143,105 +290,57 @@ function MatchRow({
           </div>
         )}
       </div>
-      <div className="shrink-0">
-        {isCancelled ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-            Match cancelled
-          </span>
-        ) : isFormed ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-            ✓ Formed
-          </span>
-        ) : (
-          <span
-            className={[
-              'inline-flex items-center rounded-full bg-amber-100 text-amber-700',
-              variant === 'incoming' ? 'px-2.5 py-0.5 text-[13px] font-semibold' : 'px-2 py-0.5 text-xs font-medium',
-            ].join(' ')}
-          >
-            {confirmedCount}/{match.required_count}
-          </span>
-        )}
-      </div>
-      {!isCancelled && (
-        <div className="shrink-0">
-          <span
-            className={[
-              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-              courtState.status === 'secured'
-                ? 'bg-emerald-100 text-emerald-700'
-                : courtState.status === 'walk_in'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'bg-amber-100 text-amber-700',
-            ].join(' ')}
-          >
-            {courtState.badgeLabel}
-          </span>
-        </div>
-      )}
+
       {variant === 'incoming' ? (
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="flex shrink-0 items-center">
-            {confirmed.slice(0, 3).map(p => (
-              <Avatar
-                key={p.id}
-                src={p.avatar_url}
-                displayName={p.display_name}
-                size="md"
-                className="-ml-1 first:ml-0 ring-2 ring-white"
-              />
-            ))}
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {statusBadge}
+            {courtBadge}
           </div>
-          {rosterMeta.length > 0 && (
-            <div className="flex min-w-0 items-center">
-              <span className="shrink-0 whitespace-nowrap text-sm text-slate-500">
-                {rosterMeta.map((label, index) => (
-                  <Fragment key={label}>
-                    {index > 0 && <span className="px-1 text-slate-300">&middot;</span>}
-                    <span>{label}</span>
-                  </Fragment>
-                ))}
-              </span>
-            </div>
-          )}
+          <ParticipantRosterSummary
+            participants={participants}
+            rosterMeta={rosterMeta}
+            confirmedCount={confirmedCount}
+          />
         </div>
       ) : (
-        <div className="flex-1 flex items-center gap-2 min-w-0">
-          <div className="flex shrink-0 gap-0.5">
-            {confirmed.slice(0, 3).map(p => (
-              <Avatar key={p.id} src={p.avatar_url} displayName={p.display_name} size="sm" />
-            ))}
-          </div>
-          <span className="text-sm text-gray-600 truncate">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {statusBadge}
+          {courtBadge}
+          <div className="min-w-0 flex-1">
             {showRosterNames ? (
-              roster
+              <ParticipantRosterSummary
+                participants={participants}
+                rosterMeta={rosterMeta}
+                confirmedCount={confirmedCount}
+              />
             ) : rosterMeta.length > 0 ? (
-              <>
+              <span className="truncate text-sm text-gray-600">
                 {rosterMeta.map((label, index) => (
                   <Fragment key={label}>
                     {index > 0 && <span className="px-1 text-gray-300">&middot;</span>}
                     <span>{label}</span>
                   </Fragment>
                 ))}
-              </>
+              </span>
             ) : (
-              '-'
+              <span className="text-sm text-gray-400">-</span>
             )}
-          </span>
+          </div>
         </div>
       )}
 
       {!isCancelled && (isInvited || (isNominated && !hasUserAccepted) || needsReconfirmRequested) && (
         <div className="shrink-0 flex items-center gap-2">
           <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
-            {isNominated ? 'Nominated' : isInvited ? 'Invited' : 'Needs confirm'}
+            {isNominated ? 'Invited' : isInvited ? 'Invited' : 'Needs confirm'}
           </span>
           <button
             onClick={handleConfirm}
             disabled={isPending}
             className="px-2.5 py-0.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
           >
-            {isPending ? '…' : 'Confirm'}
+            {isPending ? '...' : 'Confirm'}
           </button>
           {confirmError && <span className="text-xs text-red-500">{confirmError}</span>}
         </div>
@@ -249,7 +348,7 @@ function MatchRow({
 
       {!isCancelled && isNominated && hasUserAccepted && (
         <span className="shrink-0 text-xs text-blue-600 font-medium whitespace-nowrap">
-          Nominated ✓ · Awaiting approval
+          Invited and waiting for approval
         </span>
       )}
 
@@ -260,36 +359,36 @@ function MatchRow({
       )}
 
       {!isCancelled && isRemoved && (
-        <span className="shrink-0 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-600 rounded-full whitespace-nowrap">
-          {isSelfWithdraw ? 'Withdrawn' : 'No longer invited'}
+        <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 whitespace-nowrap">
+          {removalCopy?.badgeLabel ?? 'No longer invited'}
         </span>
       )}
 
       {!isCancelled && myParticipant?.status === 'waiting_list' && (
-        <span className="shrink-0 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full whitespace-nowrap">
+        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 whitespace-nowrap">
           Waiting list
         </span>
       )}
 
       {!isCancelled && wasConfirmedByOther && (
-        <span className="shrink-0 text-xs text-emerald-700 font-medium whitespace-nowrap">
+        <span className="shrink-0 text-xs font-medium text-emerald-700 whitespace-nowrap">
           You&apos;ve been confirmed by {confirmerName}
         </span>
       )}
 
       <div className="shrink-0 flex items-center gap-3">
         {showAcknowledge && onDismissAlert && (
-      <button
-        onClick={() => onDismissAlert(match.id)}
-        className="text-xs text-gray-500 hover:text-gray-700 font-medium whitespace-nowrap"
-      >
-        Dismiss
-      </button>
-    )}
+          <button
+            onClick={() => onDismissAlert(match.id)}
+            className="text-xs font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap"
+          >
+            Dismiss
+          </button>
+        )}
         <Link
           href={`/matches/${match.id}`}
           onClick={() => onViewed?.(match.id)}
-          className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+          className="text-xs font-medium text-blue-600 hover:text-blue-800 whitespace-nowrap"
         >
           Details →
         </Link>
@@ -324,23 +423,23 @@ function ExpiryBanner({
   }
 
   return (
-    <div className="mx-1 px-4 py-2 bg-red-50 border-x border-b border-red-100 rounded-b-2xl flex items-center justify-between gap-3">
+    <div className="mx-1 flex items-center justify-between gap-3 rounded-b-2xl border-x border-b border-red-100 bg-red-50 px-4 py-2">
       <span className="text-xs text-red-600">
         Starts in <strong>{timeLabel}</strong> - still need {need} player{need !== 1 ? 's' : ''}
       </span>
       {confirming ? (
         <span className="flex items-center gap-2">
-          <span className="text-xs text-red-700 font-medium">Cancel this match?</span>
+          <span className="text-xs font-medium text-red-700">Cancel this match?</span>
           <button
             onClick={handleCancel}
             disabled={isPending}
-            className="px-2 py-0.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+            className="rounded-lg bg-red-600 px-2 py-0.5 text-xs text-white hover:bg-red-700 disabled:opacity-50"
           >
-            {isPending ? '…' : 'Yes, cancel'}
+            {isPending ? '...' : 'Yes, cancel'}
           </button>
           <button
             onClick={() => setConfirming(false)}
-            className="px-2 py-0.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-2 py-0.5 text-xs hover:bg-gray-50"
           >
             Keep
           </button>
@@ -348,7 +447,7 @@ function ExpiryBanner({
       ) : (
         <button
           onClick={() => setConfirming(true)}
-          className="text-xs text-red-600 hover:text-red-800 font-medium whitespace-nowrap"
+          className="text-xs font-medium text-red-600 hover:text-red-800 whitespace-nowrap"
         >
           Cancel match
         </button>
@@ -359,8 +458,8 @@ function ExpiryBanner({
 
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
-    <div className="flex items-center gap-2 mb-2">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{label}</h3>
+    <div className="mb-2 flex items-center gap-2">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</h3>
       <span className="text-xs text-gray-300">{count}</span>
     </div>
   )
@@ -401,30 +500,41 @@ export function MatchesPanel({
 
     for (const item of items) {
       const status = item.myParticipant?.status
+      const isOrganizer = item.match.organizer_id === userId
+      const dismissed = dismissedAlertMatchIds?.has(item.match.id) ?? false
+
       if (item.match.status === 'cancelled') {
-        if (status && !isPast(item, now)) cancelled.push(item)
-      } else if (status === 'confirmed' || status === 'pending' || status === 'waiting_list') {
+        if (status && !isPast(item, now) && !dismissed) cancelled.push(item)
+        else history.push(item)
+      } else if (shouldLiveInMyMatches(item)) {
         if (isInboxItem(item, now)) incoming.push(item)
         else history.push(item)
-      } else if (status === 'removed') {
-        if (item.match.status === 'active' && !isPast(item, now)) removed.push(item)
-      } else if (status == null) {
+      } else if (status === 'pending') {
         if (item.match.status === 'active' && !isPast(item, now)) lookingFor.push(item)
+        else history.push(item)
+      } else if (status === 'removed') {
+        if (item.match.status === 'active' && !isPast(item, now) && !dismissed) removed.push(item)
+        else history.push(item)
+      } else if (status == null) {
+        if (item.match.status === 'active' && !isPast(item, now)) {
+          if (isOrganizer) incoming.push(item)
+          else lookingFor.push(item)
+        }
       }
     }
 
     history.sort((a, b) => (b.match.start_at_utc ?? '').localeCompare(a.match.start_at_utc ?? ''))
 
     return { incoming, lookingFor, removed, cancelled, history }
-  }, [items, now])
+  }, [dismissedAlertMatchIds, items, now])
 
-  const visibleCancelled = cancelled.filter(item => !dismissedAlertMatchIds?.has(item.match.id))
-  const visibleRemoved = removed.filter(item => !dismissedAlertMatchIds?.has(item.match.id))
+  const visibleCancelled = cancelled
+  const visibleRemoved = removed
   const subTabBtn = (key: 'upcoming' | 'history', label: string, count: number) => (
     <button
       onClick={() => setSubTab(key)}
       className={[
-        'pb-2 text-sm font-medium border-b-2 transition-colors',
+        'border-b-2 pb-2 text-sm font-medium transition-colors',
         subTab === key
           ? 'border-gray-900 text-gray-900'
           : 'border-transparent text-gray-400 hover:text-gray-700',
@@ -451,9 +561,9 @@ export function MatchesPanel({
               <SectionHeading
                 label="Action Needed"
                 count={
-                  visibleCancelled.length
-                  + visibleRemoved.length
-                  + lookingFor.filter(needsUserAction).length
+                  visibleCancelled.length +
+                  visibleRemoved.length +
+                  lookingFor.filter(needsUserAction).length
                 }
               />
               <div className="space-y-2">
@@ -487,7 +597,7 @@ export function MatchesPanel({
           <section>
             <SectionHeading label="My Matches" count={incoming.length} />
             {incoming.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">No upcoming matches.</p>
+              <p className="text-sm italic text-gray-400">No upcoming matches.</p>
             ) : (
               <div>
                 {incoming.map(item => {
@@ -530,12 +640,7 @@ export function MatchesPanel({
           )}
 
           <section className="pt-2">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.28)]">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                Create a Match
-              </h3>
-              <CreateMatchInline defaultVenueId={defaultVenueId} />
-            </div>
+            <CreateMatchInline defaultVenueId={defaultVenueId} />
           </section>
         </>
       )}
@@ -543,7 +648,7 @@ export function MatchesPanel({
       {subTab === 'history' && (
         <section>
           {history.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No match history.</p>
+            <p className="text-sm italic text-gray-400">No match history.</p>
           ) : (
             <>
               <div className="space-y-2">
@@ -554,7 +659,7 @@ export function MatchesPanel({
               {historyShown < history.length && (
                 <button
                   onClick={() => setHistoryShown(n => n + PAGE_SIZE)}
-                  className="mt-4 w-full py-2 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                  className="mt-4 w-full rounded-xl border border-gray-200 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
                 >
                   Load more ({history.length - historyShown} remaining)
                 </button>

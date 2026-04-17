@@ -1,5 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Group, GroupContact, GroupMember, GroupMemberWithProfile, ProfileDisplay } from '@/lib/types/database'
+import type {
+  Database,
+  Group,
+  GroupContact,
+  GroupJoinRequest,
+  GroupMessage,
+  GroupResource,
+  GroupResourceTag,
+  GroupMember,
+  GroupMemberWithProfile,
+  ProfileDisplay,
+} from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -84,8 +95,10 @@ export type MyPendingGroupInvite = {
   groupName: string
   primarySportId: number | null
   createdAt: string | null
+  requestId: string | null
   invitedBy: string | null
   invitedByName: string | null
+  pendingKind: 'invite' | 'approval_request'
 }
 
 /**
@@ -112,29 +125,45 @@ export async function listMyPendingGroupInvites(
     created_at: string | null
     invited_by: string | null
   }[]
+  const { data: requestData, error: requestError } = await supabase.rpc('rpc_group_join_requests_for_user')
+  if (requestError) throw requestError
 
-  if (rows.length === 0) return []
+  const requestRows = (requestData ?? []) as {
+    id: string
+    group_id: string
+    group_name_snapshot: string
+    sport_id: number | null
+    sport_name_snapshot: string | null
+    requester_user_id: string
+    requester_display_name_snapshot: string | null
+    created_at: string
+    note: string | null
+    status: GroupJoinRequest['status']
+  }[]
 
-  // Fetch basic group info for the invited group_ids
   const groupIds = Array.from(new Set(rows.map(r => r.group_id)))
-  const { data: groupsData, error: groupsError } = await supabase
-    .from('groups')
-    .select('id, name, primary_sport_id')
-    .in('id', groupIds)
+  let groupMetaMap = new Map<string, { name: string; primarySportId: number | null }>()
+  if (groupIds.length > 0) {
+    const { data: groupsData, error: groupsError } = await supabase
+      .from('groups')
+      .select('id, name, primary_sport_id')
+      .in('id', groupIds)
 
-  if (groupsError) throw groupsError
+    if (groupsError) throw groupsError
 
-  const groupMetaMap = new Map<string, { name: string; primarySportId: number | null }>(
-    ((groupsData ?? []) as { id: string; name: string; primary_sport_id: number | null }[]).map((group) => [
-      group.id,
-      { name: group.name, primarySportId: group.primary_sport_id },
-    ]),
-  )
+    groupMetaMap = new Map<string, { name: string; primarySportId: number | null }>(
+      ((groupsData ?? []) as { id: string; name: string; primary_sport_id: number | null }[]).map((group) => [
+        group.id,
+        { name: group.name, primarySportId: group.primary_sport_id },
+      ]),
+    )
+  }
 
-  // Fetch inviter display names (optional)
-  const inviterIds = Array.from(
-    new Set(rows.map(r => r.invited_by).filter((id): id is string => !!id))
-  )
+  const inviterIds = Array.from(new Set([
+    ...rows.map((row) => row.invited_by).filter((id): id is string => !!id),
+    ...requestRows.map((row) => row.requester_user_id).filter((id): id is string => !!id),
+  ]))
+
   let inviterNameMap = new Map<string, string>()
   if (inviterIds.length > 0) {
     const { data: inviterData, error: inviterError } = await supabase
@@ -145,37 +174,41 @@ export async function listMyPendingGroupInvites(
     if (inviterError) throw inviterError
 
     inviterNameMap = new Map(
-      ((inviterData ?? []) as { id: string; display_name: string }[]).map(p => [
-        p.id,
-        p.display_name,
-      ])
+      ((inviterData ?? []) as { id: string; display_name: string }[]).map((profile) => [
+        profile.id,
+        profile.display_name,
+      ]),
     )
   }
 
-  // Deduplicate by group_id; keep the earliest invite we saw for each group
-  const byGroup = new Map<
-    string,
-    { createdAt: string | null; invitedBy: string | null }
-  >()
-  for (const row of rows) {
-    if (!byGroup.has(row.group_id)) {
-      byGroup.set(row.group_id, { createdAt: row.created_at, invitedBy: row.invited_by })
-    }
-  }
-
   const result: MyPendingGroupInvite[] = []
-  for (const [groupId, meta] of byGroup.entries()) {
+
+  for (const row of rows) {
     result.push({
-      groupId,
-      groupName: groupMetaMap.get(groupId)?.name ?? groupId,
-      primarySportId: groupMetaMap.get(groupId)?.primarySportId ?? null,
-      createdAt: meta.createdAt,
-      invitedBy: meta.invitedBy,
-      invitedByName: meta.invitedBy ? inviterNameMap.get(meta.invitedBy) ?? null : null,
+      groupId: row.group_id,
+      groupName: groupMetaMap.get(row.group_id)?.name ?? row.group_id,
+      primarySportId: groupMetaMap.get(row.group_id)?.primarySportId ?? null,
+      createdAt: row.created_at,
+      requestId: null,
+      invitedBy: row.invited_by,
+      invitedByName: row.invited_by ? inviterNameMap.get(row.invited_by) ?? null : null,
+      pendingKind: 'invite',
     })
   }
 
-  // Sort newest first (optional, but stable for UI)
+  for (const row of requestRows) {
+    result.push({
+      groupId: row.group_id,
+      groupName: row.group_name_snapshot,
+      primarySportId: row.sport_id,
+      createdAt: row.created_at,
+      requestId: row.id,
+      invitedBy: row.requester_user_id,
+      invitedByName: row.requester_display_name_snapshot ?? inviterNameMap.get(row.requester_user_id) ?? null,
+      pendingKind: 'approval_request',
+    })
+  }
+
   result.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
   return result
 }
@@ -214,12 +247,13 @@ export async function leaveGroup(supabase: Client, groupId: string) {
 export async function updateGroup(
   supabase: Client,
   groupId: string,
-  data: { name: string; description?: string | null }
+  data: { name: string; description?: string | null; primary_sport_id?: number | null }
 ) {
   const { error } = await supabase.rpc('rpc_group_update', {
     p_group_id: groupId,
     p_name: data.name.trim(),
     p_description: data.description != null ? String(data.description).trim() || null : null,
+    p_primary_sport_id: data.primary_sport_id ?? null,
   })
   if (error) throw error
 }
@@ -248,12 +282,17 @@ export async function getInvitableUsers(
   supabase: Client,
   groupId: string,
 ): Promise<{ id: string; display_name: string }[]> {
-  const [membersRes, usersRes] = await Promise.all([
+  const [membersRes, pendingRequestsRes, usersRes] = await Promise.all([
     supabase
       .from('group_members')
       .select('user_id')
       .eq('group_id', groupId)
       .neq('status', 'removed'),
+    supabase
+      .from('group_join_requests')
+      .select('target_user_id')
+      .eq('group_id', groupId)
+      .eq('status', 'pending'),
     supabase
       .from('profile_display')
       .select('id, display_name')
@@ -261,19 +300,99 @@ export async function getInvitableUsers(
   ])
 
   const existingIds = new Set((membersRes.data ?? []).map(m => m.user_id))
+  for (const request of ((pendingRequestsRes.data ?? []) as { target_user_id: string }[])) {
+    existingIds.add(request.target_user_id)
+  }
+
   return ((usersRes.data ?? []) as { id: string; display_name: string }[])
     .filter(u => !existingIds.has(u.id))
 }
 
-/** Invite user to group. Handles re-invite of removed members. */
+export type GroupAddMemberResult = {
+  result: 'already_member' | 'already_pending' | 'direct_add_success' | 'approval_required_request_created' | 'not_allowed'
+  group_id: string
+  target_user_id: string
+  request_id: string | null
+  message: string
+}
+
+export async function addMemberToGroup(
+  supabase: Client,
+  groupId: string,
+  userId: string,
+  note?: string,
+): Promise<GroupAddMemberResult> {
+  const { data, error } = await supabase.rpc('rpc_group_add_member', {
+    p_group_id: groupId,
+    p_target_user_id: userId,
+    p_note: note ?? null,
+  })
+  if (error) throw error
+  const row = (data as GroupAddMemberResult[] | null)?.[0]
+  if (!row) throw new Error('Failed to add member to Shared Group')
+  return row
+}
+
+/** Backward-compatible alias for older callers still using the legacy name. */
 export async function inviteUserToGroup(
   supabase: Client,
   groupId: string,
-  userId: string
+  userId: string,
 ) {
-  const { error } = await supabase.rpc('rpc_group_invite_user', {
-    p_group_id: groupId,
-    p_user_id: userId,
+  await addMemberToGroup(supabase, groupId, userId)
+}
+
+export type GroupJoinRequestSummary = GroupJoinRequest & {
+  requester_name: string | null
+}
+
+export async function listGroupJoinRequests(
+  supabase: Client,
+  groupId: string,
+): Promise<GroupJoinRequestSummary[]> {
+  const { data, error } = await supabase
+    .from('group_join_requests')
+    .select('*')
+    .eq('group_id', groupId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  const rows = (data ?? []) as GroupJoinRequest[]
+  if (rows.length === 0) return []
+
+  const requesterIds = Array.from(new Set(rows.map((row) => row.requester_user_id)))
+  const { data: requesterProfiles, error: requesterError } = await supabase
+    .from('profile_display')
+    .select('id, display_name')
+    .in('id', requesterIds)
+
+  if (requesterError) throw requesterError
+
+  const requesterMap = new Map(
+    ((requesterProfiles ?? []) as { id: string; display_name: string }[]).map((profile) => [
+      profile.id,
+      profile.display_name,
+    ]),
+  )
+
+  return rows.map((row) => ({
+    ...row,
+    requester_name: row.requester_display_name_snapshot ?? requesterMap.get(row.requester_user_id) ?? null,
+  }))
+}
+
+export async function acceptGroupJoinRequest(supabase: Client, requestId: string) {
+  const { error } = await supabase.rpc('rpc_group_join_request_accept', {
+    p_request_id: requestId,
+  })
+  if (error) throw error
+}
+
+export async function declineGroupJoinRequest(supabase: Client, requestId: string) {
+  const { error } = await supabase.rpc('rpc_group_join_request_decline', {
+    p_request_id: requestId,
   })
   if (error) throw error
 }
@@ -348,4 +467,330 @@ export async function getGroupContacts(
     created_by_name: creatorNameMap.get(contact.created_by) ?? null,
     saved_by_viewer: savedPersonIds.has(contact.person_id),
   }))
+}
+
+export type GroupMessageEnriched = GroupMessage & {
+  author_name: string
+  author_avatar_url: string | null
+  is_keeper_author: boolean
+}
+
+export type GroupResourceEnriched = GroupResource & {
+  owner_name: string | null
+}
+
+function ensureGroupResourceTitle(title: string) {
+  const trimmed = title.trim()
+  if (!trimmed) {
+    throw new Error('resource_title_required')
+  }
+  if (trimmed.length > 120) {
+    throw new Error('resource_title_too_long')
+  }
+  return trimmed
+}
+
+function ensureGroupResourceTag(tag: GroupResourceTag): GroupResourceTag {
+  const validTags = new Set<GroupResourceTag>(['Rules', 'Fees', 'Schedule', 'Venue', 'Photo', 'Other'])
+  if (!validTags.has(tag)) {
+    throw new Error('invalid_resource_tag')
+  }
+  return tag
+}
+
+async function getGroupResourceCounts(supabase: Client, groupId: string) {
+  const { data, error } = await supabase
+    .from('group_resources')
+    .select('id, is_pinned, archived_at')
+    .eq('group_id', groupId)
+    .is('deleted_at', null)
+
+  if (error) throw error
+
+  const rows = (data ?? []) as Pick<GroupResource, 'id' | 'is_pinned' | 'archived_at'>[]
+  return {
+    activeCount: rows.filter((row) => row.archived_at == null).length,
+    pinnedCount: rows.filter((row) => row.archived_at == null && row.is_pinned).length,
+  }
+}
+
+export async function listGroupMessages(
+  supabase: Client,
+  groupId: string,
+  keeperUserId: string | null,
+): Promise<GroupMessageEnriched[]> {
+  const { data, error } = await supabase
+    .from('group_messages')
+    .select('*')
+    .eq('group_id', groupId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+
+  const messages = (data ?? []) as GroupMessage[]
+  if (messages.length === 0) return []
+
+  const authorIds = Array.from(new Set(messages.map((message) => message.author_user_id)))
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profile_display')
+    .select('id, display_name, avatar_url')
+    .in('id', authorIds)
+
+  if (profilesError) throw profilesError
+
+  const profileMap = new Map(
+    ((profiles ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[]).map((profile) => [
+      profile.id,
+      profile,
+    ]),
+  )
+
+  return messages.map((message) => {
+    const profile = profileMap.get(message.author_user_id)
+    return {
+      ...message,
+      author_name: profile?.display_name?.trim() || 'Group member',
+      author_avatar_url: profile?.avatar_url ?? null,
+      is_keeper_author: keeperUserId != null && message.author_user_id === keeperUserId,
+    }
+  })
+}
+
+export async function postGroupMessage(
+  supabase: Client,
+  groupId: string,
+  authorUserId: string,
+  body: string,
+): Promise<GroupMessage> {
+  const trimmedBody = body.trim()
+  if (!trimmedBody) {
+    throw new Error('message_body_required')
+  }
+
+  const { data, error } = await supabase
+    .from('group_messages')
+    .insert({
+      group_id: groupId,
+      author_user_id: authorUserId,
+      body: trimmedBody,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as GroupMessage
+}
+
+export async function listGroupResources(
+  supabase: Client,
+  groupId: string,
+): Promise<GroupResourceEnriched[]> {
+  await supabase.rpc('rpc_group_resources_archive_stale', {
+    p_group_id: groupId,
+  })
+
+  const { data, error } = await supabase
+    .from('group_resources')
+    .select('*')
+    .eq('group_id', groupId)
+    .is('deleted_at', null)
+    .order('is_pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  const resources = (data ?? []) as GroupResource[]
+  if (resources.length === 0) return []
+
+  const ownerIds = Array.from(new Set(resources.map((resource) => resource.owner_user_id)))
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profile_display')
+    .select('id, display_name')
+    .in('id', ownerIds)
+
+  if (profilesError) throw profilesError
+
+  const ownerNameMap = new Map(
+    ((profiles ?? []) as { id: string; display_name: string | null }[]).map((profile) => [
+      profile.id,
+      profile.display_name ?? null,
+    ]),
+  )
+
+  return resources.map((resource) => ({
+    ...resource,
+    owner_name: ownerNameMap.get(resource.owner_user_id) ?? null,
+  }))
+}
+
+export async function createGroupLinkResource(
+  supabase: Client,
+  groupId: string,
+  ownerUserId: string,
+  data: {
+    title: string
+    tag: GroupResourceTag
+    link_url: string
+  },
+): Promise<GroupResource> {
+  const title = ensureGroupResourceTitle(data.title)
+  const tag = ensureGroupResourceTag(data.tag)
+  let linkUrl: string
+
+  try {
+    linkUrl = new URL(data.link_url.trim()).toString()
+  } catch {
+    throw new Error('invalid_resource_link')
+  }
+
+  const counts = await getGroupResourceCounts(supabase, groupId)
+  if (counts.activeCount >= 15) {
+    throw new Error('group_resource_limit_reached')
+  }
+
+  const { data: resource, error } = await supabase
+    .from('group_resources')
+    .insert({
+      group_id: groupId,
+      owner_user_id: ownerUserId,
+      resource_type: 'link',
+      title,
+      tag,
+      link_url: linkUrl,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return resource as GroupResource
+}
+
+export async function createGroupFileResource(
+  supabase: Client,
+  groupId: string,
+  ownerUserId: string,
+  data: {
+    title: string
+    tag: GroupResourceTag
+    storage_bucket: string
+    storage_path: string
+    public_url: string
+    mime_type: string | null
+    byte_size: number | null
+  },
+): Promise<GroupResource> {
+  const title = ensureGroupResourceTitle(data.title)
+  const tag = ensureGroupResourceTag(data.tag)
+
+  const counts = await getGroupResourceCounts(supabase, groupId)
+  if (counts.activeCount >= 15) {
+    throw new Error('group_resource_limit_reached')
+  }
+
+  const { data: resource, error } = await supabase
+    .from('group_resources')
+    .insert({
+      group_id: groupId,
+      owner_user_id: ownerUserId,
+      resource_type: 'file',
+      title,
+      tag,
+      storage_bucket: data.storage_bucket,
+      storage_path: data.storage_path,
+      public_url: data.public_url,
+      mime_type: data.mime_type,
+      byte_size: data.byte_size,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return resource as GroupResource
+}
+
+export async function setGroupResourcePinned(
+  supabase: Client,
+  resourceId: string,
+  isPinned: boolean,
+): Promise<GroupResource> {
+  const { data: existing, error: existingError } = await supabase
+    .from('group_resources')
+    .select('*')
+    .eq('id', resourceId)
+    .is('deleted_at', null)
+    .single()
+
+  if (existingError) throw existingError
+
+  const resource = existing as GroupResource
+  if (resource.archived_at != null && isPinned) {
+    throw new Error('cannot_pin_archived_resource')
+  }
+
+  if (isPinned) {
+    const counts = await getGroupResourceCounts(supabase, resource.group_id)
+    const nextPinnedCount = resource.is_pinned ? counts.pinnedCount : counts.pinnedCount + 1
+    if (nextPinnedCount > 3) {
+      throw new Error('group_pinned_resource_limit_reached')
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('group_resources')
+    .update({
+      is_pinned: isPinned,
+      pinned_at: isPinned ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+      last_active_at: new Date().toISOString(),
+    })
+    .eq('id', resourceId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as GroupResource
+}
+
+export async function setGroupResourceArchived(
+  supabase: Client,
+  resourceId: string,
+  archived: boolean,
+): Promise<GroupResource> {
+  const nextValues: Partial<GroupResource> = {
+    archived_at: archived ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+    last_active_at: new Date().toISOString(),
+  }
+  if (archived) {
+    nextValues.is_pinned = false
+    nextValues.pinned_at = null
+  }
+
+  const { data, error } = await supabase
+    .from('group_resources')
+    .update(nextValues)
+    .eq('id', resourceId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as GroupResource
+}
+
+export async function deleteGroupResource(
+  supabase: Client,
+  resourceId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('group_resources')
+    .update({
+      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      is_pinned: false,
+      pinned_at: null,
+    })
+    .eq('id', resourceId)
+
+  if (error) throw error
 }

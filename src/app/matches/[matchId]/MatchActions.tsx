@@ -9,8 +9,8 @@ import {
   acceptGroupMatchInvite,
 } from '@/lib/api/matches'
 import type { MatchParticipant } from '@/lib/types/database'
+import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 
-// v1.5 CTA state machine (§4 of Match Detail Blueprint)
 interface Props {
   matchId: string
   isOrganizer: boolean
@@ -49,43 +49,40 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
   const isRemoved = mp?.status === 'removed'
   const isPending = mp?.status === 'pending'
   const isWaitingList = mp?.status === 'waiting_list'
-  // v1.5: use status field (written by reconcile) as the authoritative confirmed signal
   const isConfirmedDerived = mp?.status === 'confirmed'
   const hasGroupInvite = myGroupInvites.length > 0
   const invitedGroupNames = myGroupInvites.map((invite) => invite.group_name)
+  const primaryButtonStyle = {
+    background: '#2d8a4e',
+    color: 'white',
+    border: 'none',
+    padding: '0.5rem 1rem',
+    marginRight: '0.5rem',
+  } as const
 
-  // Organizer has no self-service CTA (admin actions are in the Organizer Admin section)
   if (isOrganizer) return null
 
-  // ── §3.3 / §4.1 Removed ──────────────────────────────────────────────────
-  // Removed person sees notice + can request-to-join if still in scope
   if (isRemoved) {
-    const note = mp.removal_note ?? ''
-    const normalizedNote = note.toLowerCase()
-    const isSelfWithdraw =
-      (mp.removed_by !== null && mp.user_id !== null && mp.removed_by === mp.user_id)
-      || normalizedNote.includes('declined')
-      || normalizedNote.includes('withdraw')
+    const removalCopy = getMatchParticipantRemovalCopy(mp)
 
     return (
       <div>
         <p style={{ color: '#c00', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-          {isSelfWithdraw
-            ? 'You have Withdrawn from this match.'
-            : 'No longer invited.'}
+          {removalCopy.sentenceLabel}
         </p>
-        {!isSelfWithdraw && (
+        {!removalCopy.isSelfWithdraw && (
           hasGroupInvite ? (
             <>
               <button
                 data-testid="accept-group-invite"
                 onClick={() => handleAction(() => acceptGroupMatchInvite(supabase, matchId))}
                 disabled={loading}
+                style={primaryButtonStyle}
               >
-                {loading ? 'Accepting...' : 'Accept Group Invite'}
+                {loading ? 'Accepting...' : 'Accept Invite'}
               </button>
               <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.4rem' }}>
-                Invited via {invitedGroupNames.join(', ')}. Accepting creates your participant row immediately.
+                Invited via {invitedGroupNames.join(', ')}.
               </p>
             </>
           ) : inScope ? (
@@ -98,12 +95,12 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
                 {loading ? 'Requesting...' : 'Request to Join'}
               </button>
               <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.4rem' }}>
-                Your request will need host confirmation.
+                Host confirmation required.
               </p>
             </>
           ) : (
             <p style={{ fontSize: '0.9rem', color: '#666' }}>
-              Contact the host for a new invitation.
+              Need an invite.
             </p>
           )
         )}
@@ -112,7 +109,6 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     )
   }
 
-  // ── §4.1 Non-participant ──────────────────────────────────────────────────
   if (!mp) {
     if (hasGroupInvite) {
       return (
@@ -121,12 +117,13 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
             data-testid="accept-group-invite"
             onClick={() => handleAction(() => acceptGroupMatchInvite(supabase, matchId))}
             disabled={loading}
+            style={primaryButtonStyle}
           >
-            {loading ? 'Accepting...' : 'Accept Group Invite'}
+            {loading ? 'Accepting...' : 'Accept Invite'}
           </button>
           {error && <p style={{ color: 'red' }}>{error}</p>}
           <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
-            Invited via {invitedGroupNames.join(', ')}. This uses the host-approved invite path, so no extra host approval is needed.
+            Invited via {invitedGroupNames.join(', ')}.
           </p>
         </div>
       )
@@ -143,19 +140,17 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
           </button>
           {error && <p style={{ color: 'red' }}>{error}</p>}
           <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
-            Your request will need host confirmation.
+            Host confirmation required.
           </p>
         </div>
       )
     }
-    return <p style={{ fontSize: '0.9rem', color: '#666' }}>Not in scope. Need an invite from the host.</p>
+    return <p style={{ fontSize: '0.9rem', color: '#666' }}>Not in scope.</p>
   }
 
-  // ── §4.2 / §4.3 Pending participant ──────────────────────────────────────
   if (isPending) {
     const hasUserAccepted = mp.participant_accepted_at != null
     const isInvited = mp.join_method === 'invited'
-    // v1.5: join_method='nominated' (new), or v1.3 legacy: 'requested' + nominated_by set
     const isNominated = mp.join_method === 'nominated' ||
       (mp.join_method === 'requested' && mp.nominated_by != null)
     const isSelfRequested = mp.join_method === 'requested' && mp.nominated_by == null
@@ -168,62 +163,45 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
 
     return (
       <div>
-        {/* §4.2: Accept — invited/nominated who haven't yet accepted */}
         {!needsReconfirm && !hasUserAccepted && (isInvited || isNominated) && (
           <button
             onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
             disabled={loading}
-            style={{ background: 'green', color: 'white', border: 'none', padding: '0.5rem 1rem', marginRight: '0.5rem' }}
+            style={primaryButtonStyle}
           >
-            {loading ? 'Accepting...' : isNominated ? 'Accept Nomination' : 'Accept Invite'}
+            {loading ? 'Accepting...' : 'Accept Invite'}
           </button>
         )}
 
-        {/* Re-confirm after match edit: self-requested, org already approved, accepted_at cleared */}
         {needsReconfirm && (
           <button
             onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
             disabled={loading}
-            style={{ background: '#2d8a4e', color: 'white', border: 'none', padding: '0.5rem 1rem', marginRight: '0.5rem' }}
+            style={primaryButtonStyle}
           >
             {loading ? 'Confirming...' : 'Confirm Attendance'}
           </button>
         )}
 
-        {/* Status info */}
         <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
           {needsReconfirm && (
-            <span>Match details have changed. Please confirm you can still attend.</span>
+            <span>Match updated. Confirm again.</span>
           )}
           {!needsReconfirm && (
             <>
-              {isSelfRequested && (
-                <span>
-                  {mp.org_approved_at
-                    ? 'Waiting for host confirmation.'
-                    : 'Waiting for host confirmation.'}
-                </span>
-              )}
+              {isSelfRequested && <span>Waiting for host confirmation.</span>}
               {isInvited && (
                 <span>
                   {hasUserAccepted
-                    ? (mp.org_approved_at
-                        ? 'Both confirmed — reconciling...'
-                        : 'Accepted. Waiting for host confirmation.')
-                    : (mp.org_approved_at
-                        ? 'Host confirmed. Accept to confirm.'
-                        : 'Waiting for your acceptance and host confirmation.')}
+                    ? (mp.org_approved_at ? 'Confirmed.' : 'Accepted. Waiting for host confirmation.')
+                    : (mp.org_approved_at ? 'Host confirmed. Accept to join.' : 'Accept to join.')}
                 </span>
               )}
               {isNominated && (
                 <span>
                   {hasUserAccepted
-                    ? (mp.org_approved_at
-                        ? 'Both confirmed — reconciling...'
-                        : 'You accepted. Waiting for host confirmation.')
-                    : (mp.org_approved_at
-                        ? 'Host confirmed. Accept to confirm.'
-                        : 'You were nominated. Accept and wait for host confirmation.')}
+                    ? (mp.org_approved_at ? 'Confirmed.' : 'You accepted. Waiting for host confirmation.')
+                    : (mp.org_approved_at ? 'Host confirmed. Accept to join.' : 'Accept to join.')}
                 </span>
               )}
             </>
@@ -234,7 +212,6 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     )
   }
 
-  // ── §4.4 Confirmed participant ────────────────────────────────────────────
   if (isWaitingList) {
     return (
       <div>
@@ -242,7 +219,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
           You&apos;re on the waiting list.
         </p>
         <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
-          You&apos;re fully confirmed and will be notified if a spot opens up.
+          You&apos;ll be notified if a spot opens.
         </p>
       </div>
     )

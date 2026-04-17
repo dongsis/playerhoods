@@ -39,10 +39,23 @@ export function AcceptInviteButton({ groupId }: Props) {
 
   return (
     <div>
-      <button onClick={handleAccept} disabled={loading} style={{ marginRight: '0.5rem' }}>
+      <button
+        onClick={handleAccept}
+        disabled={loading}
+        style={{
+          border: 'none',
+          borderRadius: '12px',
+          background: '#0f172a',
+          color: '#fff',
+          padding: '0.7rem 0.95rem',
+          fontSize: '0.88rem',
+          fontWeight: 700,
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
         {loading ? 'Accepting...' : 'Accept Invite'}
       </button>
-      {error && <span style={{ color: 'red' }}>{error}</span>}
+      {error && <span style={{ color: '#b42318', marginLeft: '0.5rem', fontSize: '0.78rem' }}>{error}</span>}
     </div>
   )
 }

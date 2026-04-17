@@ -31,7 +31,7 @@ export function NominateUserForm({ matchId, scopeUsers }: Props) {
       setUserId('')
       router.refresh()
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Failed to nominate')
+      setError(submitError instanceof Error ? submitError.message : 'Failed to invite person')
     } finally {
       setLoading(false)
     }
@@ -40,7 +40,7 @@ export function NominateUserForm({ matchId, scopeUsers }: Props) {
   if (scopeUsers.length === 0) {
     return (
       <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
-        No eligible registered players are available from Saved Players, groups, venue members, or match re-entry.
+        No registered players available.
       </p>
     )
   }
@@ -54,7 +54,7 @@ export function NominateUserForm({ matchId, scopeUsers }: Props) {
           required
           style={{ padding: '0.4rem 0.5rem', flex: 1, minWidth: '160px', fontSize: '0.9rem' }}
         >
-          <option value="">— Select a player —</option>
+          <option value="">Select a person</option>
           {scopeUsers.map((user) => (
             <option
               key={user.id}
@@ -66,14 +66,11 @@ export function NominateUserForm({ matchId, scopeUsers }: Props) {
           ))}
         </select>
         <button type="submit" disabled={loading || !userId} style={{ padding: '0.4rem 0.8rem' }}>
-          {loading ? 'Nominating…' : 'Nominate'}
+          {loading ? 'Inviting...' : 'Invite'}
         </button>
       </div>
-      <p title="Hover a player entry to see whether they came from Saved Players, groups, venue members, or re-entry." style={{ color: '#667085', fontSize: '0.75rem', margin: '0.4rem 0 0' }}>
-        Saved Players stay private. Nomination still follows the normal user participant flow: they accept, then the host confirms.
-      </p>
       {error && <p style={{ color: 'red', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>{error}</p>}
-      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Nominated! They must accept, then the host confirms the spot.</p>}
+      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Person invited.</p>}
     </form>
   )
 }

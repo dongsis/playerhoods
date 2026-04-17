@@ -1,5 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Venue, VenueIdentity, VenueHandleCheckResult, Group, GroupMember } from '@/lib/types/database'
+import type {
+  AvailabilityStatus,
+  Database,
+  Group,
+  GroupMember,
+  SharedGroupJoinPreference,
+  Venue,
+  VenueHandleCheckResult,
+  VenueIdentity,
+} from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -32,8 +41,12 @@ export async function updateProfile(
     contact_phone?: string | null
     show_in_venue_member_discovery?: boolean
     allow_non_group_invites?: boolean
+    shared_group_join_preference?: SharedGroupJoinPreference
     looking_to_play?: string | null
     preferred_play_times?: string[]
+    availability_status?: AvailabilityStatus | null
+    availability_note?: string | null
+    availability_until?: string | null
   }
 ): Promise<void> {
   const rpcParams: Record<string, unknown> = {
@@ -45,9 +58,13 @@ export async function updateProfile(
   if (params.contact_phone !== undefined) rpcParams.p_contact_phone = params.contact_phone
   if (params.show_in_venue_member_discovery !== undefined) rpcParams.p_show_in_venue_member_discovery = params.show_in_venue_member_discovery
   if (params.allow_non_group_invites !== undefined) rpcParams.p_allow_non_group_invites = params.allow_non_group_invites
+  if (params.shared_group_join_preference !== undefined) rpcParams.p_shared_group_join_preference = params.shared_group_join_preference
   if (params.looking_to_play !== undefined) rpcParams.p_looking_to_play = params.looking_to_play
   if (params.preferred_play_times !== undefined) rpcParams.p_preferred_play_times = params.preferred_play_times
   if (params.gender !== undefined) rpcParams.p_gender = params.gender
+  if (params.availability_status !== undefined) rpcParams.p_availability_status = params.availability_status
+  if (params.availability_note !== undefined) rpcParams.p_availability_note = params.availability_note
+  if (params.availability_until !== undefined) rpcParams.p_availability_until = params.availability_until
   const { error } = await supabase.rpc('rpc_profile_update', rpcParams)
   if (error) throw error
 }

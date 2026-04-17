@@ -136,7 +136,7 @@ export function formatActionType(type: string): string {
     decline:               'declined invite for',
     remove:                'removed',
     add_guest_org:         'added guest',
-    add_guest_participant: 'added guest',
+  add_guest_participant: 'added player',
     // v1.3 past-tense aliases (legacy)
     invited:               'invited',
     nominated:             'nominated',

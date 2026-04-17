@@ -4,12 +4,21 @@ import type { ReactNode } from 'react'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile, VenueIdentity, Venue, Sport, UserSportProfile } from '@/lib/types/database'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import {
+  approveMatchProxyBinding,
+  declineMatchProxyBinding,
+  getMatchProxyDashboard,
+  revokeMatchProxyBindingSelf,
+  type MatchProxyDashboardRow,
+} from '@/lib/api/matches'
 import { AvatarUpload } from './AvatarUpload'
 import { DisplayNameEditForm } from '@/app/profile/DisplayNameEditForm'
 import { SportsPreferenceForm } from '@/app/profile/SportsPreferenceForm'
 import { DiscoveryAndInvitesSection } from '@/app/profile/DiscoveryAndInvitesSection'
 import { SportProfilesEditor } from '@/app/profile/SportProfilesEditor'
 import {
+  AVAILABILITY_STATUS_OPTIONS,
   LOOKING_TO_PLAY_OPTIONS,
   PREFERRED_PLAY_TIME_OPTIONS,
 } from '@/lib/profile-options'
@@ -20,6 +29,9 @@ type ProfileData = Pick<
   | 'first_name'
   | 'last_name'
   | 'gender'
+  | 'availability_status'
+  | 'availability_note'
+  | 'availability_until'
   | 'primary_venue_id'
   | 'contact_channel'
   | 'contact_email'
@@ -27,6 +39,7 @@ type ProfileData = Pick<
   | 'avatar_url'
   | 'show_in_venue_member_discovery'
   | 'allow_non_group_invites'
+  | 'shared_group_join_preference'
   | 'looking_to_play'
   | 'preferred_play_times'
 >
@@ -56,6 +69,7 @@ interface Props {
   onSaveGlobalPreferences: (params: {
     show_in_venue_member_discovery?: boolean
     allow_non_group_invites?: boolean
+    shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
   }) => Promise<void>
   onSetVenuePreferences: (venueId: string, params: VenuePreferenceParams) => Promise<void>
   onSetSports: (codes: string[]) => Promise<void>
@@ -145,6 +159,269 @@ function normalizeActionError(error: unknown, fallback: string): string {
   return fallback
 }
 
+function formatProxyDate(value: string | null | undefined): string {
+  if (!value) return 'recently'
+  try {
+    return new Date(value).toLocaleDateString()
+  } catch {
+    return 'recently'
+  }
+}
+
+function MatchProxySection() {
+  const router = useRouter()
+  const [rows, setRows] = useState<MatchProxyDashboardRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [actingBindingId, setActingBindingId] = useState<string | null>(null)
+
+  const loadRows = async () => {
+    setLoading(true)
+    setError(null)
+    const supabase = createSupabaseBrowserClient()
+    try {
+      const nextRows = await getMatchProxyDashboard(supabase)
+      setRows(nextRows)
+    } catch (loadError) {
+      setRows([])
+      setError(normalizeActionError(loadError, 'Failed to load Match Proxy settings'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadRows()
+  }, [])
+
+  const pendingRows = rows.filter((row) => row.status === 'pending')
+  const forMeRows = rows.filter((row) => row.relationship_role === 'for_me' && row.status === 'active')
+  const iActForRows = rows.filter((row) => row.relationship_role === 'i_act_for' && row.status === 'active')
+  const historyRows = rows.filter((row) => row.status === 'revoked' || row.status === 'rejected' || row.status === 'expired')
+
+  const sections: Array<{ title: string; rows: MatchProxyDashboardRow[]; empty: string }> = [
+    {
+      title: 'Pending',
+      rows: pendingRows,
+      empty: 'No pending Match Proxy requests need attention right now.',
+    },
+    {
+      title: 'Who Can Act for Me',
+      rows: forMeRows,
+      empty: 'No active Match Proxy relationships are enabled for you yet.',
+    },
+    {
+      title: 'I Can Act For',
+      rows: iActForRows,
+      empty: 'You are not currently acting as Match Proxy for anyone else.',
+    },
+    {
+      title: 'History',
+      rows: historyRows,
+      empty: 'No prior Match Proxy decisions yet.',
+    },
+  ]
+
+  const handleApprove = async (bindingId: string) => {
+    const supabase = createSupabaseBrowserClient()
+    setActingBindingId(bindingId)
+    setError(null)
+    setMessage(null)
+    try {
+      await approveMatchProxyBinding(supabase, bindingId)
+      setMessage('Match Proxy request approved.')
+      await loadRows()
+      router.refresh()
+    } catch (actionError) {
+      setError(normalizeActionError(actionError, 'Failed to approve Match Proxy request'))
+    } finally {
+      setActingBindingId(null)
+    }
+  }
+
+  const handleDecline = async (bindingId: string) => {
+    const supabase = createSupabaseBrowserClient()
+    setActingBindingId(bindingId)
+    setError(null)
+    setMessage(null)
+    try {
+      await declineMatchProxyBinding(supabase, bindingId)
+      setMessage('Match Proxy request declined.')
+      await loadRows()
+      router.refresh()
+    } catch (actionError) {
+      setError(normalizeActionError(actionError, 'Failed to decline Match Proxy request'))
+    } finally {
+      setActingBindingId(null)
+    }
+  }
+
+  const handleRevoke = async (bindingId: string) => {
+    const supabase = createSupabaseBrowserClient()
+    setActingBindingId(bindingId)
+    setError(null)
+    setMessage(null)
+    try {
+      await revokeMatchProxyBindingSelf(supabase, bindingId)
+      setMessage('Match Proxy relationship revoked.')
+      await loadRows()
+      router.refresh()
+    } catch (actionError) {
+      setError(normalizeActionError(actionError, 'Failed to revoke Match Proxy relationship'))
+    } finally {
+      setActingBindingId(null)
+    }
+  }
+
+  return (
+    <section
+      id="match-proxy"
+      className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.28)] sm:p-8"
+    >
+      <div className="max-w-2xl">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Match Proxy</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Match Proxy is managed from My Profile because it is a long-term relationship setting, not part of the main Hoods browsing task.
+        </p>
+      </div>
+
+      <div className="mt-6 grid gap-4 md:grid-cols-3">
+        {[
+          ['Pending requests', pendingRows.length],
+          ['Active proxies for me', forMeRows.length],
+          ['People I can act for', iActForRows.length],
+        ].map(([label, count]) => (
+          <div
+            key={label}
+            className="rounded-[26px] border border-slate-200 bg-slate-50/85 p-5"
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+            <div className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{count}</div>
+          </div>
+        ))}
+      </div>
+
+      {message && (
+        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {message}
+        </div>
+      )}
+      {error && (
+        <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="mt-5 rounded-[26px] border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+          Loading Match Proxy settings...
+        </div>
+      ) : (
+        <div className="mt-6 space-y-4">
+          {sections.map((section) => (
+            <section
+              key={section.title}
+              className="rounded-[28px] border border-slate-200 bg-slate-50/65 p-5"
+            >
+              <div>
+                <h3 className="text-lg font-semibold tracking-tight text-slate-900">{section.title}</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  {section.title === 'Pending'
+                    ? 'Only direct Match Proxy changes that need your attention appear here.'
+                    : section.title === 'Who Can Act for Me'
+                      ? 'These people can manage player-side match actions for you while your own controls stay fully active.'
+                      : section.title === 'I Can Act For'
+                        ? 'These are the people whose player-side match actions you can currently manage.'
+                        : 'Past Match Proxy decisions stay visible here without turning Hoods into a notification center.'}
+                </p>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {section.rows.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
+                    {section.empty}
+                  </div>
+                ) : (
+                  section.rows.map((row) => {
+                    const isActing = actingBindingId === row.binding_id
+                    const statusTone =
+                      row.status === 'active'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : row.status === 'pending'
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-slate-100 text-slate-600'
+                    const relationshipCopy =
+                      row.relationship_role === 'for_me'
+                        ? `${row.proxy_name} can act for you`
+                        : `You can act for ${row.principal_name}`
+
+                    return (
+                      <div key={row.binding_id} className="rounded-3xl border border-slate-200 bg-white p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-sm font-semibold text-slate-900">{relationshipCopy}</h4>
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${statusTone}`}>
+                                {row.status}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-slate-500">
+                              {row.relationship_role === 'for_me'
+                                ? 'A Match Proxy can only handle player-side match actions. Organizer powers do not transfer.'
+                                : 'You can only handle player-side match actions for this person. Organizer powers do not transfer.'}
+                            </p>
+                            <p className="mt-2 text-xs text-slate-400">
+                              Updated {formatProxyDate(row.updated_at)}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            {row.can_approve && (
+                              <button
+                                type="button"
+                                onClick={() => void handleApprove(row.binding_id)}
+                                disabled={isActing}
+                                className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
+                              >
+                                {isActing ? 'Working...' : 'Approve'}
+                              </button>
+                            )}
+                            {row.can_decline && (
+                              <button
+                                type="button"
+                                onClick={() => void handleDecline(row.binding_id)}
+                                disabled={isActing}
+                                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
+                              >
+                                {isActing ? 'Working...' : 'Decline'}
+                              </button>
+                            )}
+                            {row.can_revoke && (
+                              <button
+                                type="button"
+                                onClick={() => void handleRevoke(row.binding_id)}
+                                disabled={isActing}
+                                className="rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:opacity-60"
+                              >
+                                {isActing ? 'Working...' : 'Revoke'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function ProfilePanel({
   userId,
   profile,
@@ -179,6 +456,9 @@ export function ProfilePanel({
   const [firstName, setFirstName] = useState(profile.first_name ?? '')
   const [lastName, setLastName] = useState(profile.last_name ?? '')
   const [gender, setGender] = useState<Profile['gender']>(profile.gender ?? 'unspecified')
+  const [availabilityStatus, setAvailabilityStatus] = useState<Profile['availability_status']>(profile.availability_status ?? 'available')
+  const [availabilityNote, setAvailabilityNote] = useState(profile.availability_note ?? '')
+  const [availabilityUntil, setAvailabilityUntil] = useState(profile.availability_until ?? '')
   const [contactEmail, setContactEmail] = useState(profile.contact_email ?? '')
   const [contactPhone, setContactPhone] = useState(profile.contact_phone ?? '')
   const [contactChannel, setContactChannel] = useState<'email' | 'sms'>(profile.contact_channel === 'sms' ? 'sms' : 'email')
@@ -242,6 +522,9 @@ export function ProfilePanel({
     first_name: firstName,
     last_name: lastName,
     gender,
+    availability_status: availabilityStatus,
+    availability_note: availabilityNote,
+    availability_until: availabilityUntil,
     contact_email: contactEmail,
     contact_phone: contactPhone,
     contact_channel: contactChannel,
@@ -253,6 +536,9 @@ export function ProfilePanel({
     const nextFirstName = profile.first_name ?? ''
     const nextLastName = profile.last_name ?? ''
     const nextGender = profile.gender ?? 'unspecified'
+    const nextAvailabilityStatus = profile.availability_status ?? 'available'
+    const nextAvailabilityNote = profile.availability_note ?? ''
+    const nextAvailabilityUntil = profile.availability_until ?? ''
     const nextContactEmail = profile.contact_email ?? ''
     const nextContactPhone = profile.contact_phone ?? ''
     const nextContactChannel = profile.contact_channel === 'sms' ? 'sms' : 'email'
@@ -262,6 +548,9 @@ export function ProfilePanel({
     setFirstName(nextFirstName)
     setLastName(nextLastName)
     setGender(nextGender)
+    setAvailabilityStatus(nextAvailabilityStatus)
+    setAvailabilityNote(nextAvailabilityNote)
+    setAvailabilityUntil(nextAvailabilityUntil)
     setContactEmail(nextContactEmail)
     setContactPhone(nextContactPhone)
     setContactChannel(nextContactChannel)
@@ -271,6 +560,9 @@ export function ProfilePanel({
       first_name: nextFirstName,
       last_name: nextLastName,
       gender: nextGender,
+      availability_status: nextAvailabilityStatus,
+      availability_note: nextAvailabilityNote,
+      availability_until: nextAvailabilityUntil,
       contact_email: nextContactEmail,
       contact_phone: nextContactPhone,
       contact_channel: nextContactChannel,
@@ -282,6 +574,9 @@ export function ProfilePanel({
     profile.first_name,
     profile.last_name,
     profile.gender,
+    profile.availability_status,
+    profile.availability_note,
+    profile.availability_until,
     profile.contact_email,
     profile.contact_phone,
     profile.contact_channel,
@@ -305,6 +600,9 @@ export function ProfilePanel({
       formData.set('first_name', firstName)
       formData.set('last_name', lastName)
       formData.set('gender', gender ?? 'unspecified')
+      formData.set('availability_status', availabilityStatus ?? 'available')
+      formData.set('availability_note', availabilityNote)
+      formData.set('availability_until', availabilityUntil)
       formData.set('contact_email', contactEmail)
       formData.set('contact_phone', contactPhone)
       formData.set('contact_channel', contactChannel)
@@ -329,7 +627,7 @@ export function ProfilePanel({
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [contactChannel, contactEmail, contactPhone, currentSnapshot, firstName, gender, lastName, lookingToPlay, onUpdateProfile, preferredPlayTimes, startTransition])
+  }, [availabilityNote, availabilityStatus, availabilityUntil, contactChannel, contactEmail, contactPhone, currentSnapshot, firstName, gender, lastName, lookingToPlay, onUpdateProfile, preferredPlayTimes, startTransition])
 
   const autoSaveLabel =
     autoSaveState === 'saving' || isPending
@@ -507,21 +805,61 @@ export function ProfilePanel({
                       />
                     </div>
                   </div>
-                  <div className="mt-4 max-w-[220px]">
-                    <FieldLabel>Gender</FieldLabel>
-                    <select
-                      name="gender"
-                      value={gender ?? 'unspecified'}
-                      onChange={e => setGender((e.target.value as Profile['gender']) ?? 'unspecified')}
-                      className={inputClass}
-                    >
-                      <option value="unspecified">Unspecified</option>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                    </select>
-                    <p className="mt-2 text-sm text-slate-500">
-                      Used only as lightweight roster guidance for men&apos;s, women&apos;s, and mixed doubles.
-                    </p>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <FieldLabel>Gender</FieldLabel>
+                      <select
+                        name="gender"
+                        value={gender ?? 'unspecified'}
+                        onChange={e => setGender((e.target.value as Profile['gender']) ?? 'unspecified')}
+                        className={inputClass}
+                      >
+                        <option value="unspecified">Unspecified</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                      </select>
+                      <p className="mt-2 text-sm text-slate-500">
+                        Used only as lightweight roster guidance for men&apos;s, women&apos;s, and mixed doubles.
+                      </p>
+                    </div>
+                    <div>
+                      <FieldLabel>Availability</FieldLabel>
+                      <select
+                        name="availability_status"
+                        value={availabilityStatus ?? 'available'}
+                        onChange={e => setAvailabilityStatus((e.target.value as Profile['availability_status']) ?? 'available')}
+                        className={inputClass}
+                      >
+                        {AVAILABILITY_STATUS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-2 text-sm text-slate-500">
+                        A soft signal for how likely you are to be available for matches lately.
+                      </p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <FieldLabel>Availability note</FieldLabel>
+                      <input
+                        name="availability_note"
+                        value={availabilityNote}
+                        onChange={e => setAvailabilityNote(e.target.value)}
+                        placeholder="On vacation, exam season, hard to commit right now..."
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="max-w-[220px]">
+                      <FieldLabel>Available again</FieldLabel>
+                      <input
+                        type="date"
+                        name="availability_until"
+                        value={availabilityUntil}
+                        onChange={e => setAvailabilityUntil(e.target.value)}
+                        className={inputClass}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -598,7 +936,7 @@ export function ProfilePanel({
             {sports.length > 0 && (
               <PanelCard
                 title="Sport profiles"
-                description="Each sport gets its own playing profile, competition context, and gear notes."
+                description="One profile per sport."
               >
                 <SportProfilesEditor
                   sports={sports}
@@ -619,7 +957,7 @@ export function ProfilePanel({
               />
             </PanelCard>
 
-            <PanelCard title="Invitation contact" description="Choose how invitations reach you.">
+            <PanelCard title="Invitation contact" description="Choose how invites reach you.">
               <div className="space-y-4">
                 <div className="flex flex-wrap gap-3">
                   <button
@@ -682,6 +1020,8 @@ export function ProfilePanel({
           </div>
         </div>
       </section>
+
+      <MatchProxySection />
 
       <div className="space-y-6">
         <SectionCard title="Venues">
@@ -881,6 +1221,7 @@ export function ProfilePanel({
             showTitle={false}
             showInVenueMemberDiscovery={profile.show_in_venue_member_discovery ?? true}
             allowNonGroupInvites={profile.allow_non_group_invites ?? true}
+            sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'approval_required_all'}
             identities={myIdentities}
             onSaveGlobal={onSaveGlobalPreferences}
             onSetVenuePreferences={onSetVenuePreferences}

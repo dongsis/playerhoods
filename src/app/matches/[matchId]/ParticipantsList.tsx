@@ -99,7 +99,7 @@ export function ParticipantsList({
                   <strong>{getDisplayName(p)}</strong>
                   {p.nominated_by && (
                     <span style={{ fontSize: '0.8rem', color: '#888', marginLeft: '0.5rem' }}>
-                      (nominated)
+                      (invited)
                     </span>
                   )}
                   <br />
