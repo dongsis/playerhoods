@@ -53,6 +53,7 @@ export function CreateVenueDialog() {
         const supabase = createSupabaseBrowserClient()
         await createVenue(supabase, {
           name: (formData.get('name') as string).trim(),
+          abbreviation: (formData.get('abbreviation') as string)?.trim() || undefined,
           location_text: (formData.get('location_text') as string)?.trim() || undefined,
           timezone: (formData.get('timezone') as string) || 'America/Toronto',
           notes: (formData.get('notes') as string)?.trim() || undefined,
@@ -127,6 +128,18 @@ export function CreateVenueDialog() {
                 <input
                   name="name"
                   required
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Abbreviation
+                </label>
+                <input
+                  name="abbreviation"
+                  placeholder="ORTC"
                   style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
                 />
               </div>

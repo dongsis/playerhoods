@@ -27,6 +27,7 @@ export type MatchCourtPlanMode = 'secured' | 'walk_in' | 'self_book_later' | 'ne
 export type MatchCourtStatus = 'open' | 'secured' | 'walk_in' | 'cancelled'
 export type VenueKind = 'club' | 'park' | 'community_centre' | 'condo' | 'school' | 'private_facility'
 export type VenueAccessType = 'public' | 'members' | 'private' | 'restricted'
+export type VenueRelationshipType = 'member' | 'guest' | 'starred'
 export type GearCollectionType = 'owned' | 'wishlist'
 export type GearCategory = 'rackets' | 'shoes' | 'apparel' | 'strings' | 'accessories' | 'other'
 export type GearImageKind = 'item' | 'setup_photo'
@@ -85,6 +86,7 @@ export type Profile = {
 export type Venue = {
   id: string
   name: string
+  abbreviation: string | null
   location_text: string | null
   notes: string | null
   timezone: string
@@ -119,6 +121,9 @@ export type Group = {
   created_by: string
   created_at: string
   primary_sport_id: number | null  // v1.6.3: FK sports; NULL = multi-sport/unspecified
+  venue_id: string | null
+  open_to_club_members: boolean
+  icon_key: string
 }
 
 export type GroupMember = {
@@ -178,6 +183,7 @@ export type Match = {
   sport_id: number  // v1.6.3: FK sports; NOT NULL DEFAULT 1 (tennis)
   recurring_series_id: string | null
   recurring_instance_index: number | null
+  lineup_snapshot: Json | null
 }
 
 export type RecurringMatchSeries = {
@@ -594,13 +600,11 @@ export type MatchSummary = Match & {
   pending_names: string[]
 }
 
-// Venue identity (per-venue handle)
+// App-level venue membership shape used by UI panels.
 export type VenueIdentity = {
   id: string
   venue_id: string
   user_id: string
-  venue_handle: string
-  venue_handle_norm: string
   created_at: string
   /** Layer 2: Venue-scoped discovery override. NULL = no override (treat as true). */
   visible_in_venue_member_discovery?: boolean | null
@@ -608,9 +612,13 @@ export type VenueIdentity = {
   accept_non_group_invites_in_venue?: boolean | null
 }
 
-export type VenueHandleCheckResult = {
-  available: boolean
-  suggestions: string[]
+export type VenueUserRelationship = {
+  id: string
+  venue_id: string
+  user_id: string
+  relationship_type: VenueRelationshipType
+  created_at: string
+  updated_at: string
 }
 
 // RPC return type for user search
@@ -644,9 +652,18 @@ export interface Database {
       }
       venue_identities: {
         Row: VenueIdentity
-        // venue_handle_norm is GENERATED ALWAYS — excluded from Insert/Update
-        Insert: Partial<Omit<VenueIdentity, 'venue_handle_norm'>> & { venue_id: string; user_id: string; venue_handle: string }
-        Update: Partial<Omit<VenueIdentity, 'venue_handle_norm'>>
+        Insert: Partial<VenueIdentity> & { venue_id: string; user_id: string }
+        Update: Partial<VenueIdentity>
+        Relationships: []
+      }
+      venue_user_relationships: {
+        Row: VenueUserRelationship
+        Insert: Partial<VenueUserRelationship> & {
+          venue_id: string
+          user_id: string
+          relationship_type: VenueRelationshipType
+        }
+        Update: Partial<VenueUserRelationship>
         Relationships: []
       }
       courts: {
@@ -969,6 +986,7 @@ export interface Database {
           user_id: string
           display_name: string | null
           avatar_url: string | null
+          gender: 'male' | 'female' | 'unspecified' | null
           looking_to_play: string | null
           preferred_play_times: string[] | null
           sport_profiles: unknown
@@ -995,25 +1013,34 @@ export interface Database {
         Args: { p_avatar_url: string }
         Returns: void
       }
-      rpc_venue_handle_check: {
-        Args: { p_venue_id: string; p_handle: string }
-        Returns: VenueHandleCheckResult[]
-      }
-      rpc_venue_join: {
-        Args: { p_venue_id: string; p_handle: string }
-        Returns: void
-      }
-      rpc_venue_leave: {
+      rpc_venue_member_join_v2: {
         Args: { p_venue_id: string }
         Returns: void
       }
-      rpc_venue_handle_set: {
-        Args: { p_venue_id: string; p_new_handle: string }
+      rpc_venue_member_leave_v2: {
+        Args: { p_venue_id: string }
         Returns: void
       }
       rpc_profile_set_primary_venue: {
         Args: { p_venue_id: string }
         Returns: void
+      }
+      rpc_venue_relationship_set: {
+        Args: { p_venue_id: string; p_relationship_type: VenueRelationshipType }
+        Returns: VenueUserRelationship
+      }
+      rpc_venue_relationship_remove: {
+        Args: { p_venue_id: string; p_relationship_type: VenueRelationshipType }
+        Returns: boolean
+      }
+      rpc_venue_people_discovery_v2: {
+        Args: { p_venue_id: string; p_search?: string | null }
+        Returns: {
+          user_id: string
+          display_name: string | null
+          avatar_url: string | null
+          relationship_type: VenueRelationshipType
+        }[]
       }
       is_venue_admin: {
         Args: { p_venue_id: string }
@@ -1076,7 +1103,12 @@ export interface Database {
         Returns: void
       }
       rpc_group_create: {
-        Args: { p_name: string; p_description?: string | null }
+        Args: {
+          p_name: string
+          p_description?: string | null
+          p_primary_sport_id?: number | null
+          p_icon_key?: string | null
+        }
         Returns: Group
       }
       rpc_group_invite_user: {
@@ -1092,7 +1124,14 @@ export interface Database {
         Returns: void
       }
       rpc_group_update: {
-        Args: { p_group_id: string; p_name: string; p_description?: string | null; p_primary_sport_id?: number | null }
+        Args: {
+          p_group_id: string
+          p_name: string
+          p_description?: string | null
+          p_primary_sport_id?: number | null
+          p_open_to_club_members?: boolean | null
+          p_icon_key?: string | null
+        }
         Returns: void
       }
       rpc_recurring_match_series_create: {
@@ -1157,7 +1196,7 @@ export interface Database {
         Returns: MatchParticipant
       }
       rpc_match_remove_participant: {
-        Args: { p_match_participant_id: string }
+        Args: { p_match_participant_id: string; p_note?: string | null }
         Returns: MatchParticipant
       }
       // v1.7: Guest / Contact Player flows
@@ -1173,6 +1212,20 @@ export interface Database {
       // v1.6.2-lite: Roster guest RPCs
       rpc_roster_guest_create: {
         Args: {
+          p_display_name: string
+          p_email?: string | null
+          p_phone?: string | null
+          p_notes?: string | null
+          p_gender?: 'male' | 'female' | 'unspecified' | null
+          p_availability_status?: AvailabilityStatus | null
+          p_availability_note?: string | null
+          p_availability_until?: string | null
+        }
+        Returns: Guest
+      }
+      rpc_roster_guest_update: {
+        Args: {
+          p_guest_id: string
           p_display_name: string
           p_email?: string | null
           p_phone?: string | null
@@ -1305,7 +1358,7 @@ export interface Database {
       // Phase 1 Play Network Core
       rpc_venue_members_discovery: {
         Args: { p_venue_id: string; p_search?: string | null }
-        Returns: { user_id: string; display_name: string | null; avatar_url: string | null; venue_handle: string | null }[]
+        Returns: { user_id: string; display_name: string | null; avatar_url: string | null }[]
       }
       rpc_invite_circle_list: {
         Args: Record<string, never>
@@ -1321,7 +1374,7 @@ export interface Database {
       }
       rpc_match_admission_targets: {
         Args: { p_match_id: string; p_search?: string | null }
-        Returns: { target_kind: string; target_id: string; display_name: string | null; avatar_url: string | null; venue_handle: string | null; source: string; action_kind: string; can_admit: boolean; eligible_via: string | null; sort_name: string | null; contact_email: string | null }[]
+        Returns: { target_kind: string; target_id: string; display_name: string | null; avatar_url: string | null; source: string; action_kind: string; can_admit: boolean; eligible_via: string | null; sort_name: string | null; contact_email: string | null }[]
       }
       rpc_match_invite_group: {
         Args: { p_match_id: string; p_group_id: string }

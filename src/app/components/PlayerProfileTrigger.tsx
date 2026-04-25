@@ -19,7 +19,7 @@ export function PlayerProfileTrigger({
   const [open, setOpen] = useState(false)
   const buttonClassName = children
     ? `inline-flex items-center justify-center bg-transparent border-0 p-0 cursor-pointer ${className}`.trim()
-    : className || 'inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-medium text-slate-500 transition hover:border-slate-300 hover:text-slate-700'
+    : className || 'text-body-sub inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700'
 
   return (
     <>

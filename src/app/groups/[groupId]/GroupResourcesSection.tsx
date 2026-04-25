@@ -213,9 +213,6 @@ export function GroupResourcesSection({
           >
             Resources
           </div>
-          <div style={{ marginTop: '0.2rem', color: '#94a3b8', fontSize: '0.74rem' }}>
-            Max 3 pinned. Max 15 active.
-          </div>
         </div>
         {canManage ? (
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -345,8 +342,8 @@ export function GroupResourcesSection({
       ) : null}
 
       <div style={{ display: 'grid', gap: '0.85rem' }}>
-        <ResourceBlock title="Pinned" emptyText="No pinned resources." resources={pinnedResources} canManage={canManage} onSetPinned={onSetPinned} onSetArchived={onSetArchived} onDelete={handleDelete} />
-        <ResourceBlock title="Recent" emptyText={activeCount === 0 ? 'No resources yet.' : 'No recent resources.'} resources={recentResources} canManage={canManage} onSetPinned={onSetPinned} onSetArchived={onSetArchived} onDelete={handleDelete} />
+        <ResourceBlock title={null} emptyText="No pinned resources." resources={pinnedResources} canManage={canManage} onSetPinned={onSetPinned} onSetArchived={onSetArchived} onDelete={handleDelete} />
+        <ResourceBlock title={null} emptyText={activeCount === 0 ? 'No resources yet.' : 'No recent resources.'} resources={recentResources} canManage={canManage} onSetPinned={onSetPinned} onSetArchived={onSetArchived} onDelete={handleDelete} />
 
         <div>
           <button

@@ -25,6 +25,7 @@ import { listSports } from '@/lib/api/sports'
 import { getInviteCircleList, getVenueInvitableMembers } from '@/lib/api/play-network'
 import { getContactPlayerResolution } from '@/lib/api/roster'
 import { getAvailabilityStatusLabel } from '@/lib/profile-options'
+import { getVenueDisplayName } from '@/lib/venues/display'
 import type { AvailabilityStatus, Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
 
 type TooltipState = { kind: 'group-members'; groupId: string } | null
@@ -108,6 +109,13 @@ function buildTimeSlots(): { label: string; value: string }[] {
 
 const TIME_SLOTS = buildTimeSlots()
 
+const DS_CARD = 'rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]'
+const DS_SECTION_TITLE = 'text-h2 text-[#1E293B]'
+const DS_STEP = 'text-title-main flex h-8 w-8 items-center justify-center rounded-full bg-[#FFF7ED] font-black text-[#C25E46]'
+const DS_LABEL = 'text-label mb-1 block'
+const DS_FIELD =
+  'text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10'
+
 const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'secured', label: 'Court already secured' },
   { value: 'walk_in', label: 'Walk-in / no advance booking' },
@@ -126,6 +134,22 @@ const SINGLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open singles' },
   { value: 'mens_doubles', label: "Men's singles" },
   { value: 'womens_doubles', label: "Women's singles" },
+]
+
+const COMBINED_GAME_TYPE_OPTIONS: Array<{
+  value: string
+  label: string
+  gameType: 'singles' | 'doubles'
+  format: MatchDoublesFormat
+  requiredCount: number
+}> = [
+  { value: 'double_open', label: 'Double - Open', gameType: 'doubles', format: 'open', requiredCount: 4 },
+  { value: 'double_man', label: 'Double - Man', gameType: 'doubles', format: 'mens_doubles', requiredCount: 4 },
+  { value: 'double_woman', label: 'Double - Woman', gameType: 'doubles', format: 'womens_doubles', requiredCount: 4 },
+  { value: 'double_mixed', label: 'Double - Mixed', gameType: 'doubles', format: 'mixed_doubles', requiredCount: 4 },
+  { value: 'single_open', label: 'Single - Open', gameType: 'singles', format: 'open', requiredCount: 2 },
+  { value: 'single_man', label: 'Single - Man', gameType: 'singles', format: 'mens_doubles', requiredCount: 2 },
+  { value: 'single_woman', label: 'Single - Woman', gameType: 'singles', format: 'womens_doubles', requiredCount: 2 },
 ]
 
 type ReviewInviteItem = {
@@ -301,6 +325,20 @@ function getAvailabilityPriority(status: AvailabilityStatus | null | undefined) 
   }
 }
 
+function getAvailabilityDotClass(status: AvailabilityStatus | null | undefined) {
+  switch (status) {
+    case 'busy':
+      return 'bg-amber-400'
+    case 'away':
+      return 'bg-orange-400'
+    case 'inactive':
+      return 'bg-slate-300'
+    case 'available':
+    default:
+      return 'bg-emerald-500'
+  }
+}
+
 function formatAvailabilityUntil(value: string | null | undefined) {
   if (!value) return null
   const date = new Date(`${value}T00:00:00`)
@@ -405,15 +443,15 @@ function ReviewMatchModal({
       role="dialog"
       aria-modal="true"
       onClick={onClose}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/30 p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-[#1E293B]/28 p-4"
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-[480px] overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)]"
+        className="w-full max-w-[480px] overflow-hidden rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_18px_44px_-18px_rgba(15,23,42,0.18)]"
       >
-        <div className="border-b border-slate-50 px-6 pb-4 pt-6">
-          <h3 className="text-xl font-bold text-slate-800">{recurring ? 'Review Recurring Match' : 'Review Match'}</h3>
-          <p className="mt-1 text-sm text-slate-400">
+        <div className="border-b border-[#F1F5F9] px-6 pb-4 pt-6">
+          <h3 className="text-h2 text-[#1E293B]">{recurring ? 'Review Recurring Match' : 'Review Match'}</h3>
+          <p className="text-body-sub mt-1 text-[#64748B]">
             {recurring
               ? `Everything looks good? Create ${recurringCount} weekly match instances now.`
               : 'Everything looks good? Post it now.'}
@@ -423,91 +461,91 @@ function ReviewMatchModal({
         <div className="space-y-6 px-6 pb-6 pt-5">
           <div className="grid grid-cols-2 gap-x-8 gap-y-5">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Sport</p>
-              <p className="mt-0.5 text-base font-semibold text-slate-800">{sportLabel}</p>
+              <p className="text-label">Sport</p>
+              <p className="text-title-main mt-0.5 text-[#1E293B]">{sportLabel}</p>
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Venue</p>
-              <p className="mt-0.5 text-base font-semibold text-slate-800">{venueLabel}</p>
+              <p className="text-label">Venue</p>
+              <p className="text-title-main mt-0.5 text-[#1E293B]">{venueLabel}</p>
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Game Type</p>
-              <p className="mt-0.5 text-base font-semibold capitalize text-slate-800">{gameTypeLabel}</p>
+              <p className="text-label">Game Type</p>
+              <p className="text-title-main mt-0.5 capitalize text-[#1E293B]">{gameTypeLabel}</p>
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Format</p>
-              <p className="mt-0.5 text-base font-semibold text-slate-800">{formatLabel}</p>
+              <p className="text-label">Format</p>
+              <p className="text-title-main mt-0.5 text-[#1E293B]">{formatLabel}</p>
             </div>
           </div>
 
-          <div className="border-t border-slate-100" />
+          <div className="border-t border-[#F1F5F9]" />
 
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Date &amp; Time</p>
-              <p className="mt-0.5 text-base font-semibold text-slate-800">
-                {dateLabel} <span className="mx-1 text-slate-300">|</span> {timeRangeLabel}
+              <p className="text-label">Date &amp; Time</p>
+              <p className="text-title-main mt-0.5 text-[#1E293B]">
+                {dateLabel} <span className="mx-1 text-[#CBD5E1]">|</span> {timeRangeLabel}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Duration</p>
-              <p className="mt-0.5 text-base font-semibold text-slate-800">{durationLabel}</p>
+              <p className="text-label">Duration</p>
+              <p className="text-title-main mt-0.5 text-[#1E293B]">{durationLabel}</p>
             </div>
           </div>
 
-          <div className="border-t border-slate-100" />
+          <div className="border-t border-[#F1F5F9]" />
 
           <div className="grid grid-cols-2 gap-x-8">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Court</p>
-              <p className="mt-0.5 text-base font-semibold text-slate-800">
+              <p className="text-label text-[#94A3B8]">Court</p>
+              <p className="text-title-main mt-0.5 text-[#1E293B]">
                 {courtLabel}
-                {courtSecured ? <span className="ml-1 text-xs font-bold text-green-500">● SECURED</span> : null}
+                {courtSecured ? <span className="text-body-sub ml-1 font-bold text-[#22C55E]">● SECURED</span> : null}
               </p>
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Needed</p>
-              <p className="mt-0.5 text-base font-semibold text-slate-800">{neededLabel}</p>
+              <p className="text-label text-[#94A3B8]">Needed</p>
+              <p className="text-title-main mt-0.5 text-[#1E293B]">{neededLabel}</p>
             </div>
           </div>
 
-          <div className="border-t border-slate-100" />
+          <div className="border-t border-[#F1F5F9]" />
 
           {recurring ? (
             <>
-              <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3">
-                <p className="text-xs font-bold uppercase tracking-[0.05em] text-indigo-400">Recurring Setup</p>
-                <p className="mt-1 text-sm font-medium text-indigo-700">
+              <div className="rounded-2xl border border-[#DBEAFE] bg-[#EFF6FF] px-4 py-3">
+                <p className="text-label">Recurring Setup</p>
+                <p className="text-body-main mt-1 text-[#3B82F6]">
                   Creates {recurringCount} weekly match instances. Players sign up for each week separately.
                 </p>
               </div>
-              <div className="border-t border-slate-100" />
+              <div className="border-t border-[#F1F5F9]" />
             </>
           ) : null}
 
           <div className="space-y-4">
-            <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Invitations Summary</p>
+            <p className="text-label">Invitations Summary</p>
 
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Directly Invited</span>
+                <span className="text-label text-slate-500">Directly Invited</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {directInviteItems.length > 0 ? directInviteItems.map((item) => (
                   <span
                     key={`review-direct-${item.label}`}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-orange-100 bg-orange-50 px-2.5 py-1 text-[13px] font-medium text-orange-600"
+                    className="text-body-main inline-flex max-w-full items-center gap-1.5 rounded-full border border-orange-100 bg-orange-50 px-2.5 py-1 font-medium text-orange-600"
                   >
                     <span className="font-semibold">{item.label}</span>
                     {item.members && item.members.length > 0 ? (
-                      <span className="truncate text-[11px] font-medium text-orange-400">
+                      <span className="text-body-sub truncate font-medium text-orange-400">
                         · {item.members.join(', ')}
                       </span>
                     ) : null}
                   </span>
                 )) : (
-                  <span className="pl-0 text-sm text-slate-300">None</span>
+                  <span className="text-body-main pl-0 text-slate-300">None</span>
                 )}
               </div>
             </div>
@@ -515,23 +553,23 @@ function ReviewMatchModal({
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Open to Request</span>
+                <span className="text-label text-slate-500">Open to Request</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {requestItems.length > 0 ? requestItems.map((item) => (
                   <span
                     key={`review-request-${item.label}`}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-green-100 bg-green-50 px-2.5 py-1 text-[13px] font-medium text-green-600"
+                    className="text-body-main inline-flex max-w-full items-center gap-1.5 rounded-full border border-green-100 bg-green-50 px-2.5 py-1 font-medium text-green-600"
                   >
                     <span className="font-semibold">{item.label}</span>
                     {item.members && item.members.length > 0 ? (
-                      <span className="truncate text-[11px] font-medium text-green-400">
+                      <span className="text-body-sub truncate font-medium text-green-400">
                         · {item.members.join(', ')}
                       </span>
                     ) : null}
                   </span>
                 )) : (
-                  <span className="pl-0 text-sm text-slate-300">None</span>
+                  <span className="text-body-main pl-0 text-slate-300">None</span>
                 )}
               </div>
             </div>
@@ -541,8 +579,8 @@ function ReviewMatchModal({
             <>
               <div className="border-t border-slate-100" />
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400">Organizer Note</p>
-                <p className="mt-2 whitespace-pre-line rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-600">
+                <p className="text-label text-slate-400">Host Note</p>
+                <p className="text-body-main mt-2 whitespace-pre-line rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 leading-relaxed text-slate-600">
                   {organizerNote.trim()}
                 </p>
               </div>
@@ -551,7 +589,7 @@ function ReviewMatchModal({
 
           <div className="space-y-3 pt-2">
             {error ? (
-              <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <p className="text-body-main rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
                 {error}
               </p>
             ) : null}
@@ -559,7 +597,7 @@ function ReviewMatchModal({
               type="button"
               onClick={onConfirm}
               disabled={posting}
-              className="w-full rounded-2xl bg-orange-500 py-4 text-lg font-bold text-white transition hover:-translate-y-[1px] hover:bg-orange-600 hover:shadow-[0_10px_15px_-3px_rgba(249,115,22,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="text-h2 w-full rounded-2xl bg-orange-500 py-4 text-white transition hover:-translate-y-[1px] hover:bg-orange-600 hover:shadow-[0_10px_15px_-3px_rgba(249,115,22,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {posting ? (recurring ? 'Creating...' : 'Posting...') : (recurring ? 'Create Recurring Match' : 'Post Match Now')}
             </button>
@@ -567,7 +605,7 @@ function ReviewMatchModal({
               type="button"
               onClick={onClose}
               disabled={posting}
-              className="w-full py-2 text-sm font-semibold text-slate-400 transition-colors hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="text-body-main w-full py-2 font-medium text-slate-400 transition-colors hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Wait, I need to edit
             </button>
@@ -747,75 +785,100 @@ function MiniCalendar({
   dateIndicators: Record<string, Array<'confirmed' | 'waiting'>>
 }) {
   const today = new Date()
-  const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth())
-
-  const days = useMemo(() => {
-    const first = new Date(year, month, 1)
-    const startDay = first.getDay()
-    const daysInMonth = new Date(year, month + 1, 0).getDate()
-    const cells: (number | null)[] = []
-    for (let i = 0; i < startDay; i++) cells.push(null)
-    for (let d = 1; d <= daysInMonth; d++) cells.push(d)
-    return cells
-  }, [year, month])
+  const [anchorDate, setAnchorDate] = useState(() => {
+    if (selected) {
+      const parsed = new Date(`${selected}T00:00:00`)
+      if (!Number.isNaN(parsed.getTime())) return parsed
+    }
+    return today
+  })
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
-  const toDateStr = (d: number) => {
-    const mm = (month + 1).toString().padStart(2, '0')
-    const dd = d.toString().padStart(2, '0')
-    return `${year}-${mm}-${dd}`
-  }
+  const weekLabels = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
 
   const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`
 
-  const prevMonth = () => {
-    if (month === 0) { setYear(y => y - 1); setMonth(11) }
-    else setMonth(m => m - 1)
+  const toDateStr = (date: Date) => {
+    const yyyy = date.getFullYear().toString()
+    const mm = (date.getMonth() + 1).toString().padStart(2, '0')
+    const dd = date.getDate().toString().padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
   }
 
-  const nextMonth = () => {
-    if (month === 11) { setYear(y => y + 1); setMonth(0) }
-    else setMonth(m => m + 1)
+  const startOfVisibleRange = useMemo(() => {
+    const normalized = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate())
+    normalized.setDate(normalized.getDate() - normalized.getDay())
+    return normalized
+  }, [anchorDate])
+
+  const visibleDates = useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, index) => {
+        const value = new Date(startOfVisibleRange)
+        value.setDate(startOfVisibleRange.getDate() + index)
+        return value
+      }),
+    [startOfVisibleRange],
+  )
+
+  useEffect(() => {
+    if (!selected) return
+    const parsed = new Date(`${selected}T00:00:00`)
+    if (Number.isNaN(parsed.getTime())) return
+
+    const rangeStart = startOfVisibleRange.getTime()
+    const rangeEnd = new Date(startOfVisibleRange)
+    rangeEnd.setDate(startOfVisibleRange.getDate() + 13)
+    if (parsed.getTime() < rangeStart || parsed.getTime() > rangeEnd.getTime()) {
+      setAnchorDate(parsed)
+    }
+  }, [selected, startOfVisibleRange])
+
+  const moveWindow = (days: number) => {
+    setAnchorDate((current) => {
+      const next = new Date(current)
+      next.setDate(current.getDate() + days)
+      return next
+    })
   }
 
   return (
-    <div className="max-w-[220px] select-none">
-      <div className="mb-3 flex items-center justify-between px-1">
-        <span className="text-[13px] font-bold text-gray-700">
-          {monthNames[month]} {year}
+    <div className="max-w-[300px] select-none">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-title-main text-[#0B2136]">
+          {monthNames[startOfVisibleRange.getMonth()]} {startOfVisibleRange.getFullYear()}
         </span>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={prevMonth}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] text-gray-500 transition hover:bg-orange-50 hover:text-orange-500"
-            aria-label="Previous month"
+            onClick={() => moveWindow(-14)}
+            className="flex h-5 w-5 items-center justify-center rounded text-[10px] text-[#94A3B8] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
+            aria-label="Previous dates"
           >
             &lt;
           </button>
           <button
             type="button"
-            onClick={nextMonth}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] text-gray-500 transition hover:bg-orange-50 hover:text-orange-500"
-            aria-label="Next month"
+            onClick={() => moveWindow(14)}
+            className="flex h-5 w-5 items-center justify-center rounded text-[10px] text-[#94A3B8] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
+            aria-label="Next dates"
           >
             &gt;
           </button>
         </div>
       </div>
 
-      <div className="mb-1.5 grid grid-cols-7 text-center text-[9px] font-semibold uppercase tracking-wide text-gray-400">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => (
-          <span key={label}>{label}</span>
+      <div className="mb-1.5 grid grid-cols-7">
+        {weekLabels.map((label) => (
+          <div key={label} className="text-label text-center tracking-tight text-[#94A3B8]">
+            {label}
+          </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-0.5">
-        {days.map((d, i) => {
-          if (d === null) return <div key={`e-${i}`} className="aspect-square" />
-          const dateStr = toDateStr(d)
+      <div className="grid grid-cols-7 gap-y-2">
+        {visibleDates.map((date) => {
+          const dateStr = toDateStr(date)
           const isSelected = dateStr === selected
           const isToday = dateStr === todayStr
           const isPast = dateStr < todayStr
@@ -827,32 +890,37 @@ function MiniCalendar({
               onClick={() => !isPast && onSelect(dateStr)}
               disabled={isPast}
               className={[
-                'relative aspect-square rounded-full text-[11px] transition',
-                isSelected
-                  ? 'bg-orange-500 font-semibold text-white shadow-[0_8px_20px_rgba(249,115,22,0.28)]'
-                  : isPast
-                    ? 'cursor-not-allowed text-gray-300'
-                    : isToday
-                      ? 'border border-orange-200 bg-orange-50 text-orange-600 hover:bg-orange-100'
-                      : 'text-gray-600 hover:bg-orange-100',
+                'flex h-8 flex-col items-center justify-start',
+                isPast ? 'cursor-not-allowed' : 'cursor-pointer',
               ].join(' ')}
             >
-              <span className="flex h-full w-full flex-col items-center justify-center">
-                <span>{d}</span>
+              <span
+                className={[
+                  'flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-medium transition-all',
+                  isSelected
+                    ? 'border border-[#FB923C] bg-[#FFF7ED] text-[#EA580C]'
+                    : isPast
+                      ? 'text-[#CBD5E1]'
+                      : isToday
+                        ? 'border border-[#FED7AA] bg-[#FFF7ED] text-[#EA580C]'
+                        : 'text-[#0B2136] hover:bg-[#F8FAFC]',
+                ].join(' ')}
+              >
+                {date.getDate()}
+              </span>
+              <span className="mt-0.5 flex items-center gap-0.5">
                 {indicators.length > 0 && indicators.length <= 3 ? (
-                  <span className="mt-0.5 flex items-center gap-0.5">
-                    {indicators.map((indicator, index) => (
-                      <span
-                        key={`${dateStr}-indicator-${index}`}
-                        className={[
-                          'inline-block h-1.5 w-1.5 rounded-full',
-                          indicator === 'confirmed' ? 'bg-green-500' : 'bg-slate-300',
-                        ].join(' ')}
-                      />
-                    ))}
-                  </span>
+                  indicators.map((indicator, index) => (
+                    <span
+                      key={`${dateStr}-indicator-${index}`}
+                      className={[
+                        'inline-block h-[3px] w-[3px] rounded-full',
+                        indicator === 'confirmed' ? 'bg-[#22C55E]' : 'bg-[#CBD5E1]',
+                      ].join(' ')}
+                    />
+                  ))
                 ) : (
-                  <span className="mt-0.5 inline-block h-1.5 w-1.5 opacity-0" />
+                  <span className="inline-block h-[3px] w-[3px] opacity-0" />
                 )}
               </span>
             </button>
@@ -866,7 +934,7 @@ function MiniCalendar({
 export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string }) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
-  const [matchMode, setMatchMode] = useState<'one-time' | 'recurring'>('one-time')
+  const [matchMode] = useState<'one-time' | 'recurring'>('one-time')
   const [requiredCount, setRequiredCount] = useState(4)
   const [matchDate, setMatchDate] = useState('')
   const [startTime, setStartTime] = useState('')
@@ -1112,6 +1180,14 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   const selectedFormatLabel = useMemo(() => {
     const source = gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS
     return source.find((option) => option.value === doublesFormat)?.label ?? 'Not selected'
+  }, [doublesFormat, gameType])
+
+  const selectedCombinedGameTypeValue = useMemo(() => {
+    return (
+      COMBINED_GAME_TYPE_OPTIONS.find(
+        (option) => option.gameType === gameType && option.format === doublesFormat,
+      )?.value ?? COMBINED_GAME_TYPE_OPTIONS[0].value
+    )
   }, [doublesFormat, gameType])
 
   const reviewCourtSummary = useMemo(() => {
@@ -1401,7 +1477,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             const profile = profileMap.get(row.user_id)
             return {
               userId: row.user_id,
-              name: profile?.display_name?.trim() || row.display_name?.trim() || row.venue_handle?.trim() || 'Unknown',
+              name: profile?.display_name?.trim() || row.display_name?.trim() || 'Unknown',
               source: 'club_members',
               sourceLabel: 'Club Members',
               gender: profile?.gender ?? null,
@@ -1851,6 +1927,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   const renderInviteCandidateButton = (candidate: InviteCandidate, compact = false) => {
     const isSelected = selectedDirectInviteKeys.has(candidate.key)
     const availabilityWarning = getAvailabilityWarning(candidate)
+    const availabilityLabel = getAvailabilityStatusLabel(candidate.availabilityStatus)
     const availabilityClasses =
       availabilityWarning?.level === 'busy'
         ? 'border-amber-200 bg-amber-50 text-amber-700'
@@ -1883,16 +1960,14 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         ].join(' ')}
       >
         <span className="truncate">{candidate.name}</span>
+        <span
+          className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+          aria-label={availabilityLabel ?? 'Available'}
+          title={availabilityLabel ?? 'Available'}
+        />
         {availabilityWarning ? (
           <span
-            className={[
-              'rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]',
-              availabilityWarning.level === 'busy'
-                ? 'bg-amber-100 text-amber-700'
-                : availabilityWarning.level === 'away'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'bg-rose-100 text-rose-700',
-            ].join(' ')}
+            className="sr-only"
           >
             {availabilityWarning.label}
           </span>
@@ -1933,20 +2008,20 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
           type="button"
           onClick={onToggle}
           className={[
-            'inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-medium shadow-sm transition',
+            'text-body-sub inline-flex items-center gap-1.5 rounded-full border px-3 py-2 font-medium shadow-sm transition',
             toneClasses,
           ].join(' ')}
           aria-pressed={selected}
         >
           <span>{group.name}</span>
-          <span className="rounded bg-green-100 px-1 py-0.5 text-[9px] font-bold text-green-800">
+          <span className="rounded bg-green-100 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-green-800">
             Group
           </span>
         </button>
 
         {tooltip?.kind === 'group-members' && tooltip.groupId === group.id && (
           <div className="absolute left-0 top-[calc(100%+0.45rem)] z-30 min-w-[220px] max-w-[280px] rounded-xl border border-gray-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
-            <p className="mb-1 text-xs font-semibold text-gray-900">
+            <p className="text-title-main mb-1 text-gray-900">
               {(memberPreview?.count ?? 0)} member{(memberPreview?.count ?? 0) === 1 ? '' : 's'}
             </p>
             {(memberPreview?.members.length
@@ -1955,7 +2030,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             ).map((line, index, lines) => (
               <p
                 key={`${line}-${index}`}
-                className={index === lines.length - 1 ? 'text-xs leading-5 text-gray-600' : 'mb-1 text-xs leading-5 text-gray-600'}
+                className={index === lines.length - 1 ? 'text-body-sub leading-5 text-gray-600' : 'text-body-sub mb-1 leading-5 text-gray-600'}
               >
                 {line}
               </p>
@@ -1970,6 +2045,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     if (candidate.kind !== 'user' || !candidate.userId) return null
 
     const isSelected = scopeUserIds.includes(candidate.userId)
+    const availabilityLabel = getAvailabilityStatusLabel(candidate.availabilityStatus)
 
     return (
       <button
@@ -1985,11 +2061,16 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         aria-pressed={isSelected}
         title={`${candidate.name}: ${candidate.sourceLabels.join(', ')}`}
         className={[
-          'inline-flex items-center rounded-full border bg-white px-3 py-2 text-[11px] text-gray-600 shadow-sm transition hover:-translate-y-0.5 hover:border-green-300 hover:bg-green-50 hover:text-green-600',
+          'text-body-sub inline-flex items-center gap-1.5 rounded-full border bg-white px-3 py-2 text-gray-600 shadow-sm transition hover:-translate-y-0.5 hover:border-green-300 hover:bg-green-50 hover:text-green-600',
           isSelected ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200',
         ].join(' ')}
       >
         <span className="truncate">{candidate.name}</span>
+        <span
+          className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+          aria-label={availabilityLabel ?? 'Available'}
+          title={availabilityLabel ?? 'Available'}
+        />
       </button>
     )
   }
@@ -1998,14 +2079,14 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     return (
       <div className="flex flex-col gap-4">
         <div>
-          <h4 className="m-0 text-base font-semibold text-gray-900">Invite Player</h4>
-          <p className="mt-1 text-sm text-gray-500">
+          <h4 className="text-h2 m-0 text-gray-900">Invite Player</h4>
+          <p className="text-body-main mt-1 text-gray-500">
             Match created. Pick players to invite, then open the match once they are recorded as pending.
           </p>
         </div>
 
         {inviteTargets.length === 0 ? (
-          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm text-gray-500">
+          <div className="text-body-main rounded-2xl border border-gray-200 bg-white px-4 py-4 text-gray-500">
             No eligible players are available to invite right now.
           </div>
         ) : (
@@ -2015,7 +2096,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                 <label
                   key={user.id}
                   title={`${user.display_name}: ${user.sourceLabel}`}
-                  className="flex cursor-pointer items-center gap-2 text-sm text-gray-700"
+                  className="text-body-main flex cursor-pointer items-center gap-2 text-gray-700"
                 >
                   <input
                     type="checkbox"
@@ -2036,20 +2117,20 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
           </div>
         )}
 
-        {inviteNotice && <p className="m-0 text-sm text-green-700">{inviteNotice}</p>}
+        {inviteNotice && <p className="text-body-main m-0 text-green-700">{inviteNotice}</p>}
         {invitedNames.length > 0 && (
-          <p className="m-0 text-sm text-gray-600">
+          <p className="text-body-main m-0 text-gray-600">
             Pending on this match: {invitedNames.join(', ')}
           </p>
         )}
-        {error && <p className="m-0 text-sm text-red-600">{error}</p>}
+        {error && <p className="text-body-main m-0 text-red-600">{error}</p>}
 
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
             onClick={handleInviteSelected}
             disabled={selectedPostCreateInviteIds.size === 0 || inviteLoading}
-            className="rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-body-main rounded-xl bg-orange-500 px-5 py-2.5 font-medium text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {inviteLoading ? 'Inviting...' : `Invite selected (${selectedPostCreateInviteIds.size})`}
           </button>
@@ -2057,7 +2138,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             type="button"
             onClick={() => { void handleOpenMatch() }}
             disabled={inviteLoading || openMatchLoading}
-            className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-body-main rounded-xl border border-gray-200 bg-white px-5 py-2.5 font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {openMatchLoading ? 'Opening...' : 'Open match'}
           </button>
@@ -2069,17 +2150,22 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   return (
     <>
     <form onSubmit={handleSubmit} className="space-y-6">
-      <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+      <section className={`overflow-hidden ${DS_CARD}`}>
         <button
           type="button"
           onClick={() => setCreateExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between px-6 py-5 text-left transition hover:bg-slate-50/60"
+          className="flex w-full items-center justify-between px-6 py-5 text-left transition hover:bg-[#FFF8F5]"
         >
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Create a Match</p>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#C25E46] text-lg font-bold leading-none text-white shadow-[0_8px_18px_rgba(194,94,70,0.24)]">
+              +
+            </span>
+            <div>
+              <p className="text-label text-[#C25E46]">Create a Match</p>
+            </div>
           </div>
           <span
-            className={`text-sm text-slate-400 transition-transform ${createExpanded ? 'rotate-180' : ''}`}
+            className={`text-body-main text-[#C25E46] transition-transform ${createExpanded ? 'rotate-180' : ''}`}
             aria-hidden="true"
           >
             v
@@ -2087,57 +2173,22 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         </button>
 
         {createExpanded ? (
-          <div className="space-y-6 border-t border-slate-100 px-6 pb-6 pt-6">
-      <section className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Match Type</p>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setMatchMode('one-time')}
-            className={[
-              'rounded-2xl border px-4 py-3 text-sm font-semibold transition',
-              matchMode === 'one-time'
-                ? 'border-orange-200 bg-white text-orange-600 shadow-sm'
-                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700',
-            ].join(' ')}
-          >
-            One-time Match
-          </button>
-          <button
-            type="button"
-            onClick={() => setMatchMode('recurring')}
-            className={[
-              'rounded-2xl border px-4 py-3 text-sm font-semibold transition',
-              matchMode === 'recurring'
-                ? 'border-orange-200 bg-white text-orange-600 shadow-sm'
-                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700',
-            ].join(' ')}
-          >
-            Recurring Match
-          </button>
-        </div>
-        {matchMode === 'recurring' ? (
-          <p className="mt-2 text-xs text-slate-500">
-            This creates the next {recurringWeeksAheadCount} weekly match instances with shared defaults.
-          </p>
-        ) : null}
-      </section>
-
+          <div className="space-y-6 border-t border-[#F1F5F9] px-6 pb-6 pt-6">
       <section className="rounded-2xl bg-white">
         <div className="mb-3 flex items-center">
-          <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-600">
+          <div className={`mr-3 ${DS_STEP}`}>
             1
           </div>
-          <h3 className="text-lg font-semibold text-gray-700">General Information</h3>
+          <h3 className={DS_SECTION_TITLE}>General Information</h3>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-[1fr_2fr_2fr]">
           <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Sport</label>
+            <label className={DS_LABEL}>Sport</label>
             <select
               value={sportId}
               onChange={(e) => setSportId(parseInt(e.target.value, 10))}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+              className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
             >
               {sports.map((sport) => (
                 <option key={sport.id} value={sport.id}>
@@ -2148,41 +2199,35 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Venue</label>
+            <label className={DS_LABEL}>Venue</label>
             <select
               value={venueId}
               onChange={(e) => setVenueId(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+              className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
             >
               <option value="">Select venue</option>
               {venues.map((venue) => (
                 <option key={venue.id} value={venue.id}>
-                  {venue.name}
+                  {getVenueDisplayName(venue)}
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Game Type</label>
+            <label className={DS_LABEL}>Game Type</label>
             <select
-              value={gameType}
-              onChange={(e) => setGameType(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+              value={selectedCombinedGameTypeValue}
+              onChange={(e) => {
+                const nextOption = COMBINED_GAME_TYPE_OPTIONS.find((option) => option.value === e.target.value)
+                if (!nextOption) return
+                setGameType(nextOption.gameType)
+                setDoublesFormat(nextOption.format)
+                setRequiredCount(nextOption.requiredCount)
+              }}
+              className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
             >
-              <option value="doubles">Doubles</option>
-              <option value="singles">Singles</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Format</label>
-            <select
-              value={doublesFormat}
-              onChange={(e) => setDoublesFormat(e.target.value as MatchDoublesFormat)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-            >
-              {(gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS).map((option) => (
+              {COMBINED_GAME_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -2190,10 +2235,10 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             </select>
           </div>
 
-          <div className="md:col-span-2">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Players</label>
+                <label className={DS_LABEL}>Players</label>
                 <input
                   type="number"
                   min={gameType === 'singles' ? 2 : 4}
@@ -2208,11 +2253,11 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                     }
                     setRequiredCount(Math.max(1, nextValue))
                   }}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                  className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-center text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Court Qty</label>
+                <label className={DS_LABEL}>Courts</label>
                 <input
                   type="number"
                   min={1}
@@ -2227,18 +2272,18 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                     }
                     setCourtCount(Math.min(6, Math.max(1, nextValue)))
                   }}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                  className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-center text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
                 />
               </div>
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Booking Status</label>
+            <label className={DS_LABEL}>Status</label>
             <select
               value={courtPlanMode}
               onChange={(e) => setCourtPlanMode(e.target.value as MatchCourtPlanMode)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+              className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
             >
               {COURT_PLAN_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -2250,24 +2295,24 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
 
           {courtPlanMode === 'secured' ? (
             <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Court Booked</label>
+              <label className={DS_LABEL}>Court Booked</label>
               {courts.length > 0 ? (
                 <div ref={courtPlanMenuRef} className="relative">
                   <button
                     type="button"
                     onClick={() => setCourtPlanMenuOpen((open) => !open)}
                     className={[
-                      'flex w-full items-center justify-between rounded-lg border bg-white px-3 py-2.5 text-[13px] outline-none transition',
+                      'flex w-full items-center justify-between rounded-md border bg-white px-3 py-1.5 text-xs outline-none transition',
                       courtPlanMenuOpen
-                        ? 'border-orange-400 ring-4 ring-orange-100'
-                        : 'border-gray-200 hover:border-orange-200',
+                        ? 'border-[#C25E46] ring-2 ring-[#C25E46]/10'
+                        : 'border-[#E2E8F0] hover:border-[#F4C7B8]',
                     ].join(' ')}
                   >
-                    <span className={selectedCourtLabels.length > 0 ? 'text-gray-700' : 'text-gray-400'}>
+                    <span className={selectedCourtLabels.length > 0 ? 'truncate text-[#1E293B]' : 'text-[#94A3B8]'}>
                       {selectedCourtLabels.length > 0 ? selectedCourtLabels.join(', ') : 'Select your booked court'}
                     </span>
                     <svg
-                      className={`h-4 w-4 text-gray-400 transition ${courtPlanMenuOpen ? 'rotate-180' : ''}`}
+                      className={`h-3.5 w-3.5 text-[#94A3B8] transition ${courtPlanMenuOpen ? 'rotate-180' : ''}`}
                       viewBox="0 0 20 20"
                       fill="none"
                       aria-hidden="true"
@@ -2276,40 +2321,38 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                     </svg>
                   </button>
                   {courtPlanMenuOpen ? (
-                    <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-lg">
-                      {courts.slice(0, 6).map((court) => {
-                        const checked = selectedCourtIds.includes(court.id)
-                        return (
-                          <label
-                            key={court.id}
-                            className="flex cursor-pointer items-center gap-2 border-b border-gray-200 px-3 py-2 text-sm text-gray-700 transition last:border-b-0 hover:bg-blue-50"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleCourtSelection(court.id)}
-                              className="h-4 w-4 rounded border-gray-400 text-orange-500 focus:ring-orange-400"
-                            />
-                            <span>{court.court_code}</span>
-                          </label>
-                        )
-                      })}
+                    <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-md border border-[#E2E8F0] bg-white shadow-lg">
+                      <div className="grid grid-cols-2 gap-x-1 gap-y-0 p-1.5">
+                        {courts.slice(0, 12).map((court) => {
+                          const checked = selectedCourtIds.includes(court.id)
+                          return (
+                            <label
+                              key={court.id}
+                              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[11px] font-semibold text-[#475569] transition hover:bg-[#F8FAFC]"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleCourtSelection(court.id)}
+                                className="h-3.5 w-3.5 rounded border-[#94A3B8] text-[#C25E46] focus:ring-[#C25E46]"
+                              />
+                              <span className="whitespace-nowrap">{court.court_code}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
                     </div>
                   ) : null}
-                  <p className="mt-1 text-[11px] text-gray-400">
-                    Choose up to {courtCount} booked court{courtCount === 1 ? '' : 's'}.
-                  </p>
                 </div>
               ) : (
-                <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
-                  <p className="text-[11px] text-gray-400">Choose the court(s) you&apos;ve already booked.</p>
+                <div className="space-y-2 rounded-md border border-[#E2E8F0] bg-white p-2.5">
                   {visibleCourtSlots.map((slot, index) => (
-                    <div key={`court-slot-${index}`} className="flex items-center gap-3">
+                    <div key={`court-slot-${index}`} className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={slot.enabled}
                         onChange={(e) => updateCourtSlot(index, { enabled: e.target.checked })}
-                        className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
+                        className="h-3.5 w-3.5 rounded border-[#CBD5E1] text-[#C25E46] focus:ring-[#C25E46]"
                       />
                       <input
                         type="text"
@@ -2317,7 +2360,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                         onChange={(e) => updateCourtSlot(index, { manualLabel: e.target.value })}
                         disabled={!slot.enabled}
                         placeholder={`CRT${index + 1}`}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-[13px] text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100 disabled:bg-gray-50 disabled:text-gray-400"
+                        className="w-full rounded-md border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
                       />
                     </div>
                   ))}
@@ -2329,26 +2372,24 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
 
       </section>
 
-      <section className="rounded-2xl bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-        <div className="mb-6 flex items-center">
-          <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-600">
-            2
-          </div>
-          <h3 className="text-lg font-semibold text-gray-700">Schedule</h3>
+      <section className="px-1 py-1">
+        <div className="mb-3 flex items-center">
+          <div className={`${DS_STEP} mr-3`}>2</div>
+          <h3 className={DS_SECTION_TITLE}>Schedule</h3>
         </div>
 
-        <div className="flex flex-col gap-8 md:flex-row">
-          <div className="w-full md:w-[38%]">
+        <div className="grid grid-cols-12 items-start gap-4">
+          <div className="col-span-12 md:col-span-5">
             <MiniCalendar selected={matchDate} onSelect={setMatchDate} dateIndicators={calendarIndicators} />
           </div>
 
-          <div className="flex w-full flex-col justify-center gap-6 md:w-[62%]">
+          <div className="col-span-12 flex flex-col gap-3 md:col-span-7">
             <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Start Time</label>
+              <label className="text-label mb-1 block">Start Time</label>
               <select
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                className="text-body-main w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-[#475569] outline-none transition focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
               >
                 <option value="">Select start time</option>
                 {TIME_SLOTS.map((slot) => (
@@ -2360,11 +2401,11 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             </div>
 
             <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Duration</label>
+              <label className="text-label mb-1 block">Duration</label>
               <select
                 value={durationMinutes}
                 onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10))}
-                className="w-full rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                className="text-body-main w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-[#475569] outline-none transition focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
               >
                 {[30, 45, 60, 90, 120].map((minutes) => (
                   <option key={minutes} value={minutes}>
@@ -2377,60 +2418,60 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-        <div className="mb-8 flex items-center justify-between gap-4">
+      <section className="px-1 py-2">
+        <div className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center">
-            <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-600">3</div>
-            <h3 className="text-lg font-semibold text-gray-700">Players &amp; Requests</h3>
+            <div className={`${DS_STEP} mr-3`}>3</div>
+            <h3 className={DS_SECTION_TITLE}>Players</h3>
           </div>
-          <div className="rounded-full bg-gray-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-400">
-            Players Needed: <span className="text-orange-500">{requiredCount}</span>
+          <div className="text-label rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-[#94A3B8]">
+            Players Needed: <span className="text-[#C25E46]">{requiredCount}</span>
           </div>
         </div>
 
         <div className="flex flex-col gap-6 md:flex-row">
           <div className="w-full space-y-3 md:w-1/4">
-            <div className="mb-1 flex items-center text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+            <div className="text-label mb-1 flex items-center text-[#94A3B8]">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
               Add By
             </div>
             <button
               type="button"
               onClick={() => setSelectionMode('invite')}
               className={[
-                'flex h-[60px] w-full items-center gap-3 rounded-xl border-2 px-4 text-left transition active:scale-[0.98]',
+                'flex h-[48px] w-full items-center gap-2.5 rounded-xl border-2 px-3 text-left transition active:scale-[0.98]',
                 selectionMode === 'invite'
-                  ? 'border-orange-200 bg-orange-50 ring-2 ring-orange-500/80'
-                  : 'border-orange-100 text-orange-600 hover:border-orange-200 hover:bg-orange-50',
+                  ? 'border-[#C25E46] bg-[#FFF8F5] text-[#C25E46] ring-2 ring-[#C25E46]/15'
+                  : 'border-[#E2E8F0] bg-white text-[#C25E46] hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]',
               ].join(' ')}
             >
-              <span className="text-lg">+</span>
-              <span className="text-xs font-bold">Direct Invite</span>
+              <span className="text-base">+</span>
+              <span className="text-body-main font-medium">Direct Invite</span>
             </button>
             <button
               type="button"
               onClick={() => setSelectionMode('request')}
               className={[
-                'flex h-[60px] w-full items-center gap-3 rounded-xl border-2 px-4 text-left transition active:scale-[0.98]',
+                'flex h-[48px] w-full items-center gap-2.5 rounded-xl border-2 px-3 text-left transition active:scale-[0.98]',
                 selectionMode === 'request'
-                  ? 'border-green-200 bg-green-50 ring-2 ring-green-500/80'
-                  : 'border-green-50 text-green-600 hover:border-green-100 hover:bg-green-50',
+                  ? 'border-[#22C55E] bg-[#F0FDF4] text-[#15803D] ring-2 ring-[#22C55E]/15'
+                  : 'border-[#E2E8F0] bg-white text-[#15803D] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4]',
               ].join(' ')}
             >
-              <span className="text-lg">+</span>
-              <span className="whitespace-nowrap text-xs font-bold">Open for Request</span>
+              <span className="text-base">+</span>
+              <span className="text-body-main whitespace-nowrap font-medium">Open for Request</span>
             </button>
           </div>
 
           <div className="w-full md:w-2/5">
-            <div className="mb-4 flex items-center text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+            <div className="text-label mb-4 flex items-center text-[#94A3B8]">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
               Select Target
             </div>
-            <div className="flex min-h-[200px] flex-col rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex min-h-[200px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
               {!selectionMode ? (
                 <div className="flex flex-1 items-center justify-center px-6 text-center">
-                  <p className="text-xs italic leading-relaxed text-gray-300">
+                  <p className="text-body-main italic leading-relaxed text-[#CBD5E1]">
                     Choose an action on the left to add people or groups.
                   </p>
                 </div>
@@ -2476,16 +2517,16 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                     )}
 
                     {selectionMode === 'invite' && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 && (
-                      <div className="w-full rounded-lg border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-xs text-gray-300">No candidates found.</div>
+                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">No candidates found.</div>
                     )}
                     {selectionMode === 'request' && filteredRequestUsers.length === 0 && filteredRequestGroups.length === 0 && (
-                      <div className="w-full rounded-lg border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-xs text-gray-300">No candidates found.</div>
+                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">No candidates found.</div>
                     )}
                   </div>
 
                   {shouldShowHoodPanelButton ? (
                     <div className="mt-auto">
-                      <button type="button" className="w-full rounded-lg border border-gray-200 bg-white py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 transition hover:text-orange-500">
+                      <button type="button" className="text-label w-full rounded-xl border border-[#E2E8F0] bg-white py-2 text-[#64748B] transition hover:border-[#C25E46]/30 hover:text-[#C25E46]">
                         Hood Panel
                       </button>
                     </div>
@@ -2496,15 +2537,15 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
           </div>
 
           <div className="w-full md:w-1/3">
-            <div className="mb-4 flex items-center text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+            <div className="text-label mb-4 flex items-center text-[#94A3B8]">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
               Summary
             </div>
-            <div className="min-h-[200px] rounded-xl bg-[#fafafa] p-4">
+            <div className="min-h-[200px] rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
               {summaryIsEmpty ? (
-                <div className="py-10 text-center opacity-20">
+                <div className="py-10 text-center opacity-30">
                   <div className="mb-2 text-3xl">[]</div>
-                  <p className="text-[10px]">Empty</p>
+                  <p className="text-body-sub">Empty</p>
                 </div>
               ) : (
                 <div className="space-y-5">
@@ -2512,7 +2553,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                     <div>
                       <div className="mb-2 flex items-center gap-2">
                         <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                        <span className="text-[9px] font-black uppercase tracking-tight text-gray-400">Direct Invited</span>
+                        <span className="text-label">Direct Invited</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedInvitePlayers.map((member) => (
@@ -2524,7 +2565,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                               next.delete(member.key)
                               return next
                             })}
-                            className="flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 text-[10px] font-bold text-orange-700"
+                            className="text-body-sub flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 font-semibold text-orange-700"
                           >
                             <span>{member.name}</span>
                             <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
@@ -2535,7 +2576,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                             key={group.id}
                             type="button"
                             onClick={() => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id))}
-                            className="flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 text-[10px] font-bold text-orange-700"
+                            className="text-body-sub flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 font-semibold text-orange-700"
                           >
                             <span>{group.name}</span>
                             <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
@@ -2547,14 +2588,14 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                         <div className="mt-3 space-y-2 rounded-xl border border-amber-100 bg-white px-3 py-3">
                           <div className="flex items-center gap-2">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                            <span className="text-[9px] font-black uppercase tracking-tight text-gray-400">Availability heads-up</span>
+                            <span className="text-label">Availability heads-up</span>
                           </div>
                           <div className="space-y-2">
                             {selectedInviteWarnings.map(({ candidate, warning }) => (
                               <div
                                 key={`summary-warning-${candidate.key}`}
                                 className={[
-                                  'rounded-lg border px-2.5 py-2 text-[10px]',
+                                  'text-body-sub rounded-lg border px-2.5 py-2',
                                   warning.level === 'busy'
                                     ? 'border-amber-100 bg-amber-50 text-amber-700'
                                     : warning.level === 'away'
@@ -2578,7 +2619,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                     <div>
                       <div className="mb-2 flex items-center gap-2">
                         <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                        <span className="text-[9px] font-black uppercase tracking-tight text-gray-400">Open to Request</span>
+                        <span className="text-label">Open to Request</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedScopeUsers.map((candidate) => (
@@ -2586,7 +2627,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                             key={`summary-request-${candidate.key}`}
                             type="button"
                             onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
-                            className="flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700"
+                            className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
                           >
                             <span>{candidate.name}</span>
                             <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
@@ -2597,7 +2638,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                             key={`summary-request-group-${group.id}`}
                             type="button"
                             onClick={() => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id))}
-                            className="flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700"
+                            className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-bold text-green-700"
                           >
                             <span>{group.name}</span>
                             <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
@@ -2613,29 +2654,27 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white">
+      <section className={`${DS_CARD} p-5`}>
         <button
           type="button"
           onClick={() => setOrganizerNoteExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between rounded-xl p-1 text-left transition hover:bg-gray-50"
+          className="flex w-full items-center justify-between rounded-xl p-1 text-left transition hover:bg-[#F8FAFC]"
         >
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-sm font-bold text-orange-600">
-              4
-            </div>
-            <h3 className="text-lg font-semibold text-gray-700">Organizer Note</h3>
+            <div className={DS_STEP}>4</div>
+            <h3 className={DS_SECTION_TITLE}>Host Note</h3>
             {organizerNote.trim() && !organizerNoteExpanded ? (
-              <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-600">
+              <span className="text-body-sub rounded-full border border-[#C25E46]/15 bg-[#FFF8F5] px-2 py-0.5 font-bold text-[#C25E46]">
                 Saved
               </span>
             ) : null}
           </div>
           <div className="flex items-center gap-2">
             {!organizerNoteExpanded && !organizerNote.trim() ? (
-              <span className="text-xs font-bold text-orange-500">+ Add Note</span>
+              <span className="text-body-main font-medium text-[#C25E46]">+ Add Note</span>
             ) : null}
             <span
-              className={`text-sm text-slate-400 transition-transform ${organizerNoteExpanded ? 'rotate-180' : ''}`}
+              className={`text-sm text-[#94A3B8] transition-transform ${organizerNoteExpanded ? 'rotate-180' : ''}`}
               aria-hidden="true"
             >
               v
@@ -2644,11 +2683,11 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         </button>
 
         {organizerNoteExpanded ? (
-          <div className="mt-4 space-y-4 rounded-2xl border border-gray-100 bg-gray-50/80 p-4">
+          <div className="mt-4 space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {ORGANIZER_NOTE_PRESETS.map((group) => (
-                <div key={group.label} className="flex items-center gap-2 border-r border-gray-200 pr-4 last:border-r-0 last:pr-0">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{group.label}</span>
+                <div key={group.label} className="flex items-center gap-2 border-r border-[#E2E8F0] pr-4 last:border-r-0 last:pr-0">
+                  <span className="text-label text-[#94A3B8]">{group.label}</span>
                   <div className="flex flex-wrap gap-1.5">
                     {group.items.map((item) => (
                       <button
@@ -2656,10 +2695,10 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                         type="button"
                         onClick={() => appendOrganizerNote(item)}
                         className={[
-                          'rounded-md border px-2 py-1 text-[11px] font-bold shadow-sm transition active:scale-95',
+                          'text-body-main rounded-md border px-2 py-1 font-medium shadow-sm transition active:scale-95',
                           organizerNoteSentences.has(item.full)
-                            ? 'border-orange-300 bg-orange-50 text-orange-600'
-                            : 'border-gray-200 bg-white text-slate-500 hover:border-orange-400 hover:text-orange-500',
+                            ? 'border-[#C25E46]/35 bg-[#FFF8F5] text-[#C25E46]'
+                            : 'border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#C25E46]/45 hover:text-[#C25E46]',
                         ].join(' ')}
                       >
                         {item.chip}
@@ -2676,13 +2715,13 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                 value={organizerNote}
                 onChange={(e) => setOrganizerNote(e.target.value)}
                 placeholder="Anything else for the group?"
-                className="h-[100px] w-full resize-none rounded-xl border border-gray-200 bg-white p-3 text-sm leading-relaxed text-slate-700 shadow-inner outline-none transition placeholder:text-slate-300 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/5"
+                className="text-body-main h-[100px] w-full resize-none rounded-xl border border-[#E2E8F0] bg-white p-3 leading-relaxed text-[#1E293B] shadow-inner outline-none transition placeholder:text-[#CBD5E1] focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
               />
               {organizerNote.trim() ? (
                 <button
                   type="button"
                   onClick={() => setOrganizerNote('')}
-                  className="absolute right-2 top-2 rounded-md border border-gray-100 bg-white/90 p-1 text-xs text-slate-400 shadow-sm transition hover:text-slate-600"
+                  className="text-body-sub absolute right-2 top-2 rounded-md border border-[#E2E8F0] bg-white/90 p-1 text-[#94A3B8] shadow-sm transition hover:text-[#64748B]"
                 >
                   x
                 </button>
@@ -2692,7 +2731,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             <button
               type="button"
               onClick={() => setOrganizerNoteExpanded(false)}
-              className="flex w-full items-center justify-center border-t border-gray-100 pt-2 text-[11px] font-bold text-slate-400 transition hover:text-orange-500"
+              className="text-body-main flex w-full items-center justify-center border-t border-[#E2E8F0] pt-2 font-medium text-[#94A3B8] transition hover:text-[#C25E46]"
             >
               Confirm
             </button>
@@ -2701,7 +2740,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       </section>
 
             {!reviewOpen && error && (
-              <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <p className="text-body-main rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
                 {error}
               </p>
             )}
@@ -2710,7 +2749,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-xl bg-orange-500 px-6 py-4 text-lg font-bold text-white shadow-[0_18px_40px_-24px_rgba(249,115,22,0.65)] transition hover:bg-orange-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                className="text-h2 w-full rounded-2xl bg-[#C25E46] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(194,94,70,0.7)] transition hover:bg-[#AA523D] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading && submitMode === 'create'
                   ? (matchMode === 'recurring' ? 'Creating...' : 'Posting...')

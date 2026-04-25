@@ -247,13 +247,23 @@ export async function leaveGroup(supabase: Client, groupId: string) {
 export async function updateGroup(
   supabase: Client,
   groupId: string,
-  data: { name: string; description?: string | null; primary_sport_id?: number | null }
+  data: {
+    name: string
+    description?: string | null
+    primary_sport_id?: number | null
+    venue_id?: string | null
+    open_to_club_members?: boolean
+    icon_key?: string | null
+  }
 ) {
   const { error } = await supabase.rpc('rpc_group_update', {
     p_group_id: groupId,
     p_name: data.name.trim(),
     p_description: data.description != null ? String(data.description).trim() || null : null,
     p_primary_sport_id: data.primary_sport_id ?? null,
+    p_venue_id: data.venue_id ?? null,
+    p_open_to_club_members: data.open_to_club_members ?? null,
+    p_icon_key: data.icon_key ?? null,
   })
   if (error) throw error
 }
@@ -263,11 +273,14 @@ export async function updateGroup(
 // on the RETURNING clause before any group_members row exists.
 export async function createGroup(
   supabase: Client,
-  data: { name: string; description?: string }
+  data: { name: string; description?: string; primary_sport_id?: number | null; venue_id?: string | null; icon_key?: string | null }
 ) {
   const { data: group, error } = await supabase.rpc('rpc_group_create', {
     p_name: data.name.trim(),
     p_description: (data.description ?? '').trim() || null,
+    p_primary_sport_id: data.primary_sport_id ?? null,
+    p_venue_id: data.venue_id ?? null,
+    p_icon_key: data.icon_key ?? null,
   })
 
   if (error) throw error
@@ -403,6 +416,7 @@ export type GroupContactWithDisplay = {
   person_id: string
   display_name: string
   avatar_url: string | null
+  gender?: string | null
   membership_type: string
   created_by: string
   created_at: string

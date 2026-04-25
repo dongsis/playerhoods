@@ -2,6 +2,7 @@ import {
   cancelMatchWithReasonAction,
   removeMatchParticipantAction,
   postMatchMessageAction,
+  saveMatchLineupAction,
   updateMatchCourtPlanAction,
   updateMatchDetailsAction,
   updateMatchOrganizerNoteAction,
@@ -31,6 +32,7 @@ export default async function MatchDetailPage({ params }: Props) {
       onUpdateMatchDetails={updateMatchDetailsAction.bind(null, matchId, viewModel.venueName, matchSnapshot)}
       onUpdateOrganizerNote={updateMatchOrganizerNoteAction.bind(null, matchId)}
       onPostMessage={postMatchMessageAction.bind(null, matchId)}
+      onSaveLineup={saveMatchLineupAction.bind(null, matchId)}
       onCancelMatch={cancelMatchWithReasonAction.bind(null, matchId)}
       onSaveCourtPlan={updateMatchCourtPlanAction.bind(null, matchId)}
       onRemoveParticipant={removeMatchParticipantAction.bind(null, matchId)}

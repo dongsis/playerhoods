@@ -9,9 +9,18 @@ interface GroupResult {
   boundary_keeper_id: string
   created_by: string
   created_at: string
+  primary_sport_id: number | null
+  venue_id: string | null
+  icon_key: string
 }
 
-export async function createGroupAction(input: { name: string; description?: string }): Promise<GroupResult> {
+export async function createGroupAction(input: {
+  name: string
+  description?: string
+  primary_sport_id?: number | null
+  venue_id?: string | null
+  icon_key?: string | null
+}): Promise<GroupResult> {
   const supabase = await createSupabaseServerClient()
 
   const { data: { user }, error: userErr } = await supabase.auth.getUser()
@@ -22,6 +31,9 @@ export async function createGroupAction(input: { name: string; description?: str
   const { data, error } = await (supabase.rpc as any)('rpc_group_create', {
     p_name: input.name.trim(),
     p_description: (input.description ?? '').trim() || null,
+    p_primary_sport_id: input.primary_sport_id ?? null,
+    p_venue_id: input.venue_id ?? null,
+    p_icon_key: input.icon_key ?? null,
   })
 
   if (error) throw error

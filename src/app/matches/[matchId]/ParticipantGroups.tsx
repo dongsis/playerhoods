@@ -5,9 +5,6 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   orgApproveParticipant,
-  proxyConfirmParticipant,
-  proxyDeclineParticipant,
-  proxyWithdrawParticipant,
   removeParticipant,
   userWithdraw,
 } from '@/lib/api/matches'
@@ -17,6 +14,7 @@ import { SavedPlayerButton } from '@/app/components/SavedPlayerButton'
 import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import type { MatchStatus } from '@/lib/types/database'
+import { MatchExitNoteComposer } from './MatchExitNoteComposer'
 
 interface Props {
   matchId: string
@@ -37,7 +35,7 @@ interface Props {
   onRemoveParticipant?: (participantId: string) => Promise<void>
 }
 
-type ParticipantMenuAction = 'remove' | 'withdraw' | 'proxy-decline' | 'proxy-withdraw' | null
+type ParticipantMenuAction = 'remove' | 'withdraw' | null
 
 type ParticipantTimelineEvent = {
   key: string
@@ -188,6 +186,7 @@ function ParticipantRow({
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
   const [activeDialog, setActiveDialog] = useState<ParticipantMenuAction>(null)
+  const [actionReason, setActionReason] = useState('')
   const [isPending, startTransition] = useTransition()
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -299,29 +298,16 @@ function ParticipantRow({
     (p.status === 'pending' || p.status === 'confirmed' || p.status === 'waiting_list')
   const relationshipBadges = [
     isGuest ? 'Contact' : null,
-    isGuest && p.saved_by_viewer ? 'Saved by you' : null,
-    p.proxy_manageable_by_viewer ? 'Proxy for' : null,
   ].filter((badge): badge is string => badge !== null)
-  const canProxyManage = isActive && Boolean(p.proxy_manageable_by_viewer)
-  const canProxyConfirm =
-    canProxyManage &&
-    p.status === 'pending' &&
-    !(pendingState?.participantConfirmed ?? false)
-  const canProxyDecline =
-    canProxyManage &&
-    p.status === 'pending' &&
-    !(pendingState?.participantConfirmed ?? false)
-  const canProxyWithdraw =
-    canProxyManage &&
-    (p.status === 'confirmed'
-      || p.status === 'waiting_list'
-      || (p.status === 'pending' && (pendingState?.participantConfirmed ?? false)))
 
   const canRemoveParticipant = canOrganizerRemoveParticipant || canRemovePendingParticipant
+  const isPendingRequest = p.status === 'pending' && p.join_method === 'requested' && p.org_approved_at === null
+  const hostRemoveActionLabel = isPendingRequest ? 'Decline request' : 'Remove player'
 
   const closeMenus = () => {
     setMenuOpen(false)
     setActiveDialog(null)
+    setActionReason('')
   }
 
   const resolveActorName = (actorId: string | null | undefined) => {
@@ -381,10 +367,7 @@ function ParticipantRow({
       const confirmer = resolveActorName(p.manual_confirmed_by)
       timelineEvents.push({
         key: 'player-confirmed-delegated',
-        label:
-          p.participant_accepted_via === 'proxy'
-            ? (confirmer ? `Player confirmed by ${confirmer} on their behalf` : 'Player confirmed by proxy')
-            : (confirmer ? `Player confirmed by ${confirmer}` : 'Player confirmed'),
+        label: confirmer ? `Player confirmed by ${confirmer}` : 'Player confirmed',
         at: p.participant_accepted_at,
       })
     } else if (p.user_id !== null) {
@@ -427,37 +410,15 @@ function ParticipantRow({
       : p.join_method === 'requested'
         ? 'Withdraw request'
         : 'Decline participation'
-  const proxyDeclineLabel =
-    p.join_method === 'requested'
-      ? 'Withdraw request on their behalf'
-      : 'Decline on their behalf'
-  const proxyWithdrawLabel =
-    p.status === 'confirmed'
-      ? 'Withdraw on their behalf'
-      : p.status === 'waiting_list'
-        ? 'Leave waiting list on their behalf'
-        : 'Withdraw on their behalf'
-
   const actionButtons = [
-    canProxyDecline
+    canRemoveParticipant
       ? {
-          key: 'proxy-decline',
-          label: proxyDeclineLabel,
-          style: secondaryMenuActionStyle,
-          onClick: () => {
-            setMenuOpen(false)
-            setActiveDialog('proxy-decline')
-          },
-        }
-      : null,
-    canProxyWithdraw
-      ? {
-          key: 'proxy-withdraw',
-          label: proxyWithdrawLabel,
+          key: 'remove',
+          label: hostRemoveActionLabel,
           style: dangerMenuActionStyle,
           onClick: () => {
             setMenuOpen(false)
-            setActiveDialog('proxy-withdraw')
+            setActiveDialog('remove')
           },
         }
       : null,
@@ -468,6 +429,7 @@ function ParticipantRow({
           style: secondaryMenuActionStyle,
           onClick: () => {
             setMenuOpen(false)
+            setActionReason('')
             setActiveDialog('withdraw')
           },
         }
@@ -480,6 +442,12 @@ function ParticipantRow({
   } => item !== null)
 
   const showParticipantMenu = timelineEvents.length > 0 || actionButtons.length > 0
+  const withdrawDialogMode =
+    p.status === 'confirmed'
+      || p.status === 'waiting_list'
+      || (p.status === 'pending' && (pendingState?.participantConfirmed ?? false))
+      ? 'withdraw'
+      : 'decline'
 
   return (
       <div style={{ padding: '0.52rem 0', borderBottom: '1px solid #f8fafc' }}>
@@ -532,12 +500,14 @@ function ParticipantRow({
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    padding: '0.1rem 0.34rem',
+                    padding: '0.04rem 0.22rem',
                     borderRadius: '999px',
                     background: badge === 'Proxy for' ? '#eef2ff' : '#f8fafc',
                     color: badge === 'Proxy for' ? '#4338ca' : '#94a3b8',
-                    fontSize: '0.56rem',
+                    fontSize: '0.32rem',
                     fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
                   }}
                 >
                   {badge}
@@ -625,17 +595,6 @@ function ParticipantRow({
               </button>
             )}
 
-            {canProxyConfirm && (
-              <button
-                type="button"
-                onClick={() => act(() => proxyConfirmParticipant(supabase, p.id))}
-                disabled={isPending}
-                style={inlinePrimaryActionStyle}
-              >
-                Confirm on their behalf
-              </button>
-            )}
-
             <div ref={menuRef} style={{ position: 'relative' }}>
               <button
                 ref={menuButtonRef}
@@ -718,12 +677,20 @@ function ParticipantRow({
       {activeDialog === 'remove' && (
         <div style={dialogOverlayStyle}>
           <div style={dialogCardStyle}>
-            <h4 style={dialogTitleStyle}>Remove this player?</h4>
+            <h4 style={dialogTitleStyle}>{hostRemoveActionLabel}?</h4>
             <p style={dialogBodyStyle}>
-              {isOrganizer
-                ? 'Removes them from the match.'
-                : 'Remove this player?'}
+              {isPendingRequest
+                ? 'This will decline their request to join.'
+                : isOrganizer
+                  ? 'This removes them from the match.'
+                  : 'Remove this player?'}
             </p>
+            <textarea
+              value={actionReason}
+              onChange={(event) => setActionReason(event.target.value)}
+              placeholder={isPendingRequest ? 'Add a note for declining (optional)' : 'Add a note (optional)'}
+              style={dialogTextareaStyle}
+            />
             <div style={dialogActionsStyle}>
               <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
                 Cancel
@@ -731,12 +698,13 @@ function ParticipantRow({
               <button
                 type="button"
                 onClick={() => {
+                  const note = actionReason.trim()
                   closeMenus()
                   if (canRemoveParticipant && onRemoveParticipant) {
                     setError(null)
                     startTransition(async () => {
                       try {
-                        await onRemoveParticipant(p.id)
+                        await (onRemoveParticipant as ((participantId: string, note?: string | null) => Promise<void>))(p.id, note)
                         router.refresh()
                         processDeliveriesAction().catch(() => {})
                       } catch (err: unknown) {
@@ -744,12 +712,12 @@ function ParticipantRow({
                       }
                     })
                   } else {
-                    act(() => removeParticipant(supabase, p.id))
+                    act(() => removeParticipant(supabase, p.id, note))
                   }
                 }}
                 style={dangerButtonStyle}
               >
-                Remove player
+                {hostRemoveActionLabel}
               </button>
             </div>
           </div>
@@ -765,6 +733,11 @@ function ParticipantRow({
                 ? 'You will leave this match.'
                 : 'This removes your participation.'}
             </p>
+            <MatchExitNoteComposer
+              mode={withdrawDialogMode}
+              note={actionReason}
+              onNoteChange={setActionReason}
+            />
             <div style={dialogActionsStyle}>
               <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
                 Cancel
@@ -772,8 +745,9 @@ function ParticipantRow({
               <button
                 type="button"
                 onClick={() => {
+                  const note = actionReason.trim()
                   closeMenus()
-                  act(() => userWithdraw(supabase, matchId))
+                  act(() => userWithdraw(supabase, matchId, note))
                 }}
                 style={dangerButtonStyle}
               >
@@ -784,57 +758,6 @@ function ParticipantRow({
         </div>
       )}
 
-      {activeDialog === 'proxy-decline' && (
-        <div style={dialogOverlayStyle}>
-          <div style={dialogCardStyle}>
-            <h4 style={dialogTitleStyle}>{proxyDeclineLabel}?</h4>
-            <p style={dialogBodyStyle}>
-              Record a proxy decline.
-            </p>
-            <div style={dialogActionsStyle}>
-              <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  closeMenus()
-                  act(() => proxyDeclineParticipant(supabase, p.id))
-                }}
-                style={dangerButtonStyle}
-              >
-                {proxyDeclineLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeDialog === 'proxy-withdraw' && (
-        <div style={dialogOverlayStyle}>
-          <div style={dialogCardStyle}>
-            <h4 style={dialogTitleStyle}>{proxyWithdrawLabel}?</h4>
-            <p style={dialogBodyStyle}>
-              Record a proxy withdrawal.
-            </p>
-            <div style={dialogActionsStyle}>
-              <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  closeMenus()
-                  act(() => proxyWithdrawParticipant(supabase, p.id))
-                }}
-                style={dangerButtonStyle}
-              >
-                {proxyWithdrawLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {error && <p style={{ color: 'red', fontSize: '0.75rem', margin: '0.2rem 0 0' }}>{error}</p>}
     </div>
@@ -923,6 +846,18 @@ const dialogBodyStyle: React.CSSProperties = {
   lineHeight: 1.5,
 }
 
+const dialogTextareaStyle: React.CSSProperties = {
+  width: '100%',
+  minHeight: '6rem',
+  padding: '0.8rem 0.9rem',
+  borderRadius: '14px',
+  border: '1px solid #cbd5e1',
+  color: '#0f172a',
+  fontSize: '0.9rem',
+  resize: 'vertical',
+  marginBottom: '1rem',
+}
+
 const dialogActionsStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'flex-end',
@@ -933,16 +868,6 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: '#fff',
   color: '#374151',
   border: '1px solid #d1d5db',
-  padding: '0.45rem 0.7rem',
-  borderRadius: '8px',
-  cursor: 'pointer',
-  fontSize: '0.8rem',
-}
-
-const primaryButtonStyle: React.CSSProperties = {
-  background: '#2563eb',
-  color: '#fff',
-  border: 'none',
   padding: '0.45rem 0.7rem',
   borderRadius: '8px',
   cursor: 'pointer',

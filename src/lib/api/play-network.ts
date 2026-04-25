@@ -3,7 +3,7 @@
  * Venue Members discovery, Invite Circle, match admission targets/admit
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/lib/types/database'
+import type { Database, VenueRelationshipType } from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -28,13 +28,12 @@ export type VenueMemberDiscoveryRow = {
   user_id: string
   display_name: string | null
   avatar_url: string | null
-  venue_handle: string | null
+  relationship_type?: VenueRelationshipType | null
 }
 
 export type VenueInvitableMemberRow = {
   user_id: string
   display_name: string | null
-  venue_handle: string | null
 }
 
 /** Phase 1: Venue Members discovery. Caller must be club member. */
@@ -43,74 +42,66 @@ export async function getVenueMembersDiscovery(
   venueId: string,
   search?: string | null
 ): Promise<VenueMemberDiscoveryRow[]> {
-  const { data, error } = await supabase.rpc('rpc_venue_members_discovery', {
+  const next = await supabase.rpc('rpc_venue_people_discovery_v2', {
     p_venue_id: venueId,
     p_search: search ?? null,
   })
-  if (error) throw error
-  return (data ?? []) as VenueMemberDiscoveryRow[]
+
+  if (!next.error) {
+    return ((next.data ?? []) as {
+      user_id: string
+      display_name: string | null
+      avatar_url: string | null
+      relationship_type: VenueRelationshipType
+    }[]).map((row) => ({
+      user_id: row.user_id,
+      display_name: row.display_name,
+      avatar_url: row.avatar_url,
+      relationship_type: row.relationship_type,
+    }))
+  }
+
+  const fallback = await supabase.rpc('rpc_venue_members_discovery', {
+    p_venue_id: venueId,
+    p_search: search ?? null,
+  })
+  if (fallback.error) throw fallback.error
+  return (fallback.data ?? []) as VenueMemberDiscoveryRow[]
 }
 
-/** Venue members who allow direct non-group invites in this venue. */
+/** Venue people who allow direct non-group invites in this venue. */
 export async function getVenueInvitableMembers(
   supabase: Client,
   venueId: string,
   currentUserId?: string | null,
 ): Promise<VenueInvitableMemberRow[]> {
-  const { data: identities, error: identitiesError } = await supabase
-    .from('venue_identities')
-    .select('user_id, venue_handle, accept_non_group_invites_in_venue, visible_in_venue_member_discovery')
-    .eq('venue_id', venueId)
-  if (identitiesError) throw identitiesError
+  const discovered = await getVenueMembersDiscovery(supabase, venueId, null)
 
-  const rows = (identities ?? []) as {
-    user_id: string
-    venue_handle: string | null
-    accept_non_group_invites_in_venue: boolean | null
-    visible_in_venue_member_discovery: boolean | null
-  }[]
+  if (discovered.length === 0) return []
+  if (currentUserId && !discovered.some((row) => row.user_id === currentUserId)) return []
 
-  if (rows.length === 0) return []
-  if (currentUserId && !rows.some((row) => row.user_id === currentUserId)) return []
-
-  const userIds = rows.map((row) => row.user_id)
+  const userIds = discovered.map((row) => row.user_id)
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, display_name, show_in_venue_member_discovery, allow_non_group_invites')
+    .select('id, display_name, allow_non_group_invites')
     .in('id', userIds)
   if (profilesError) throw profilesError
 
   const profileMap = new Map(
-    ((
-      profiles ?? []
-    ) as {
+    ((profiles ?? []) as {
       id: string
       display_name: string | null
-      show_in_venue_member_discovery: boolean | null
       allow_non_group_invites: boolean | null
-    }[])
-      .map((profile) => [profile.id, profile]),
+    }[]).map((profile) => [profile.id, profile]),
   )
 
-  return rows
+  return discovered
     .filter((row) => row.user_id !== currentUserId)
-    .filter((row) => {
-      const profile = profileMap.get(row.user_id)
-      if (!profile) return false
-      if (profile.show_in_venue_member_discovery !== true) return false
-      if (row.visible_in_venue_member_discovery === false) return false
-      if (profile.allow_non_group_invites !== true) return false
-      if (row.accept_non_group_invites_in_venue === false) return false
-      return true
-    })
-    .map((row) => {
-      const profile = profileMap.get(row.user_id)
-      return {
-        user_id: row.user_id,
-        display_name: profile?.display_name ?? null,
-        venue_handle: row.venue_handle,
-      }
-    })
+    .filter((row) => profileMap.get(row.user_id)?.allow_non_group_invites === true)
+    .map((row) => ({
+      user_id: row.user_id,
+      display_name: profileMap.get(row.user_id)?.display_name ?? row.display_name ?? null,
+    }))
 }
 
 // ============================================================================

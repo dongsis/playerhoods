@@ -1,3 +1,282 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --font-family-sans: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --ph-brand-clay: #c25e46;
+  --ph-brand-deep: #1e293b;
+  --ph-brand-sky: #f0f7ff;
+  --ph-success: #22c55e;
+  --ph-warning: #f97316;
+  --ph-danger: #ef4444;
+  --ph-info: #3b82f6;
+  --ph-surface: #ffffff;
+  --ph-border: #e2e8f0;
+  --ph-text-main: #1e293b;
+  --ph-text-muted: #64748b;
+  --ph-text-soft: #94a3b8;
+  --ph-card-radius: 24px;
+  --ph-input-radius: 12px;
+  --ph-pill-radius: 999px;
+  --ph-shadow-card: 0 12px 30px rgba(15, 23, 42, 0.05);
+  --text-h1-size: 24px;
+  --text-h1-weight: 900;
+  --text-h1-line-height: 1.15;
+  --text-h2-size: 16px;
+  --text-h2-weight: 800;
+  --text-h2-line-height: 1.2;
+  --text-title-main-size: 14px;
+  --text-title-main-weight: 700;
+  --text-title-main-line-height: 1.25;
+  --text-body-main-size: 12px;
+  --text-body-main-weight: 500;
+  --text-body-main-line-height: 1.4;
+  --text-body-sub-size: 11px;
+  --text-body-sub-weight: 400;
+  --text-body-sub-line-height: 1.35;
+  --text-label-size: 9px;
+  --text-label-weight: 800;
+  --text-label-line-height: 1.2;
+  --text-label-tracking: 0.12em;
+}
+
+@layer base {
+  html {
+    background: var(--ph-brand-sky);
+  }
+
+  body {
+    margin: 0;
+    background: var(--ph-brand-sky);
+    color: var(--ph-text-main);
+    font-family: var(--font-family-sans);
+    font-size: var(--text-body-main-size);
+    font-weight: var(--text-body-main-weight);
+    line-height: var(--text-body-main-line-height);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--ph-brand-deep);
+    font-family: inherit;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font-family: inherit;
+  }
+
+  input,
+  select,
+  textarea {
+    border-radius: var(--ph-input-radius);
+    border-color: var(--ph-border);
+    color: var(--ph-text-main);
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      background-color 160ms ease;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--ph-brand-clay);
+    box-shadow: 0 0 0 4px rgba(194, 94, 70, 0.1);
+  }
+
+  button {
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
+  }
+
+  ::selection {
+    background: rgba(194, 94, 70, 0.16);
+    color: var(--ph-brand-deep);
+  }
+}
+
+@layer components {
+  .text-h1 {
+    font-size: var(--text-h1-size);
+    font-weight: var(--text-h1-weight);
+    line-height: var(--text-h1-line-height);
+    letter-spacing: -0.03em;
+  }
+
+  .text-h2 {
+    font-size: var(--text-h2-size);
+    font-weight: var(--text-h2-weight);
+    line-height: var(--text-h2-line-height);
+    letter-spacing: -0.02em;
+  }
+
+  .text-title-main {
+    font-size: var(--text-title-main-size);
+    font-weight: var(--text-title-main-weight);
+    line-height: var(--text-title-main-line-height);
+  }
+
+  .text-body-main {
+    font-size: var(--text-body-main-size);
+    font-weight: var(--text-body-main-weight);
+    line-height: var(--text-body-main-line-height);
+  }
+
+  .text-body-sub {
+    font-size: var(--text-body-sub-size);
+    font-weight: var(--text-body-sub-weight);
+    line-height: var(--text-body-sub-line-height);
+  }
+
+  .text-label {
+    font-size: var(--text-label-size);
+    font-weight: var(--text-label-weight);
+    line-height: var(--text-label-line-height);
+    letter-spacing: var(--text-label-tracking);
+    text-transform: uppercase;
+    color: var(--ph-text-soft);
+  }
+
+  .ph-page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+
+  .ph-page-narrow {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
+  .ph-card {
+    border: 1px solid var(--ph-border);
+    border-radius: var(--ph-card-radius);
+    background: var(--ph-surface);
+    box-shadow: var(--ph-shadow-card);
+  }
+
+  .ph-panel {
+    border: 1px solid var(--ph-border);
+    border-radius: 32px;
+    background: var(--ph-surface);
+    box-shadow: var(--ph-shadow-card);
+  }
+
+  .ph-kicker {
+    font-size: var(--text-label-size);
+    font-weight: var(--text-label-weight);
+    line-height: var(--text-label-line-height);
+    letter-spacing: var(--text-label-tracking);
+    text-transform: uppercase;
+    color: var(--ph-text-soft);
+  }
+
+  .ph-title {
+    font-size: var(--text-h1-size);
+    line-height: var(--text-h1-line-height);
+    font-weight: var(--text-h1-weight);
+    color: var(--ph-brand-deep);
+    letter-spacing: -0.03em;
+  }
+
+  .ph-subtitle {
+    font-size: var(--text-body-sub-size);
+    line-height: var(--text-body-sub-line-height);
+    font-weight: var(--text-body-sub-weight);
+    color: var(--ph-text-muted);
+  }
+
+  .ph-link {
+    color: var(--ph-brand-clay);
+    text-decoration: none;
+  }
+
+  .ph-link:hover {
+    color: #aa523d;
+  }
+
+  .ph-button-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+    border-radius: var(--ph-pill-radius);
+    background: var(--ph-brand-clay);
+    color: #fff;
+    padding: 0.75rem 1.25rem;
+    font-size: var(--text-body-main-size);
+    font-weight: 700;
+    line-height: var(--text-body-main-line-height);
+    box-shadow: 0 12px 28px rgba(194, 94, 70, 0.28);
+  }
+
+  .ph-button-primary:hover {
+    background: #aa523d;
+  }
+
+  .ph-button-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid var(--ph-border);
+    border-radius: var(--ph-pill-radius);
+    background: #fff;
+    color: var(--ph-text-muted);
+    padding: 0.75rem 1.25rem;
+    font-size: var(--text-body-main-size);
+    font-weight: 600;
+    line-height: var(--text-body-main-line-height);
+  }
+
+  .ph-button-secondary:hover {
+    background: #f8fafc;
+    color: var(--ph-brand-deep);
+  }
+
+  .ph-input {
+    width: 100%;
+    border: 1px solid var(--ph-border);
+    border-radius: var(--ph-input-radius);
+    background: #fff;
+    padding: 0.75rem 0.9rem;
+    font-size: var(--text-body-main-size);
+    font-weight: var(--text-body-main-weight);
+    line-height: var(--text-body-main-line-height);
+    color: var(--ph-text-main);
+    box-sizing: border-box;
+  }
+
+  .ph-empty {
+    border: 1px dashed var(--ph-border);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--ph-text-soft);
+    text-align: center;
+    padding: 2rem 1rem;
+    font-size: var(--text-body-main-size);
+    line-height: var(--text-body-main-line-height);
+  }
+}

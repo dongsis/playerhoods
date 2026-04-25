@@ -1,16 +1,19 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
 import type { MatchCourt, MatchStatus } from '@/lib/types/database'
+import type { MatchLineupSnapshot } from '@/lib/match-lineup'
 
-type Props = {
+export type MatchRoundRobinPanelProps = {
   gameType: string | null
   matchStatus: MatchStatus
   isOrganizer: boolean
   confirmedParticipants: MatchParticipantEnriched[]
   matchCourts: MatchCourt[]
   finalCourtLabel: string | null
+  savedLineup: MatchLineupSnapshot | null
+  onSaveLineup: (lineup: MatchLineupSnapshot | null) => Promise<void>
 }
 
 type RoundRobinMatch = {
@@ -27,6 +30,7 @@ type RoundRobinResult =
     }
   | {
       ok: true
+      playerIds: string[]
       playersCount: number
       courtCount: number
       generatedCourtLabels: boolean
@@ -241,6 +245,7 @@ function buildRoundRobin(
 
   return {
     ok: true,
+    playerIds,
     playersCount: uniquePlayers.length,
     courtCount,
     generatedCourtLabels,
@@ -259,25 +264,25 @@ function SetCard({
   return (
     <div className="rounded-[20px] border border-slate-100 bg-slate-50/60 p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">{title}</h3>
-        <span className="text-[11px] font-bold text-slate-400">{matches.length} court{matches.length === 1 ? '' : 's'}</span>
+        <h3 className="text-label text-slate-500">{title}</h3>
+        <span className="text-body-sub font-semibold text-slate-400">{matches.length} court{matches.length === 1 ? '' : 's'}</span>
       </div>
 
       <div className="space-y-3">
         {matches.map((match) => (
           <div key={`${title}-${match.court}`} className="rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
             <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{match.court}</span>
-              <span className="text-[10px] text-slate-300">{match.group.join(', ')}</span>
+              <span className="text-label text-slate-500">{match.court}</span>
+              <span className="text-body-sub text-slate-300">{match.group.join(', ')}</span>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2">
-                <div className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-orange-400">Team A</div>
-                <div className="text-sm font-semibold text-orange-900">{match.teamA.join(' / ')}</div>
+                <div className="text-label mb-1 text-orange-400">Team A</div>
+                <div className="text-title-main text-orange-900">{match.teamA.join(' / ')}</div>
               </div>
               <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2">
-                <div className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-sky-400">Team B</div>
-                <div className="text-sm font-semibold text-sky-900">{match.teamB.join(' / ')}</div>
+                <div className="text-label mb-1 text-sky-400">Team B</div>
+                <div className="text-title-main text-sky-900">{match.teamB.join(' / ')}</div>
               </div>
             </div>
           </div>
@@ -294,74 +299,109 @@ export function MatchRoundRobinPanel({
   confirmedParticipants,
   matchCourts,
   finalCourtLabel,
-}: Props) {
-  const [seed, setSeed] = useState(0)
-  const [hasGeneratedDraw, setHasGeneratedDraw] = useState(false)
+  savedLineup,
+  onSaveLineup,
+}: MatchRoundRobinPanelProps) {
+  const [error, setError] = useState<string | null>(null)
+  const [isSaving, startSaving] = useTransition()
 
-  const result = useMemo(
+  const draftResult = useMemo(
     () => buildRoundRobin(confirmedParticipants, matchCourts, finalCourtLabel, gameType),
-    [confirmedParticipants, finalCourtLabel, gameType, matchCourts, seed],
+    [confirmedParticipants, finalCourtLabel, gameType, matchCourts],
   )
 
   if (matchStatus !== 'active') {
     return null
   }
 
+  const activeLineup = savedLineup
+  const emptyStateMessage = !draftResult.ok
+    ? draftResult.message
+    : isOrganizer
+      ? 'Generate the lineup to show the matchups.'
+      : 'The lineup will appear after the host generates it.'
+
+  const handleGenerateLineup = () => {
+    setError(null)
+    const next = buildRoundRobin(confirmedParticipants, matchCourts, finalCourtLabel, gameType)
+    if (!next.ok) {
+      setError(next.message)
+      return
+    }
+
+    const snapshot: MatchLineupSnapshot = {
+      generatedAt: new Date().toISOString(),
+      playerIds: next.playerIds,
+      playersCount: next.playersCount,
+      courtCount: next.courtCount,
+      generatedCourtLabels: next.generatedCourtLabels,
+      setOne: next.setOne,
+      setTwo: next.setTwo,
+    }
+
+    startSaving(async () => {
+      try {
+        await onSaveLineup(snapshot)
+      } catch (saveError) {
+        setError((saveError as { message?: string })?.message ?? 'Could not save lineup.')
+      }
+    })
+  }
+
   return (
     <div className="px-6 pb-6 pt-5">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="mb-2 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Round Robin</div>
-          <p className="max-w-2xl text-sm text-slate-500">
-            Generate a simple two-round doubles draw from the current confirmed players.
+          <div className="text-label mb-2">Lineup</div>
+          <p className="text-body-main max-w-2xl text-slate-500">
+            Build a simple two-round doubles lineup from the current confirmed players.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setHasGeneratedDraw(true)
-            setSeed((current) => current + 1)
-          }}
-          disabled={!result.ok || !isOrganizer}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
-        >
-          {hasGeneratedDraw ? 'Shuffle Draw' : 'Generate Draw'}
-        </button>
+        {isOrganizer ? (
+          <button
+            type="button"
+            onClick={handleGenerateLineup}
+            disabled={!draftResult.ok || isSaving}
+            className="text-body-sub rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? 'Saving...' : activeLineup ? 'Shuffle Lineup' : 'Generate Lineup'}
+          </button>
+        ) : null}
       </div>
 
-      {!result.ok ? (
-        <div className="rounded-[20px] border border-slate-100 bg-slate-50 px-5 py-4 text-sm text-slate-500">
-          {result.message}
+      {error ? (
+        <div className="text-body-main mb-5 rounded-[20px] border border-rose-100 bg-rose-50 px-5 py-4 text-rose-600">
+          {error}
         </div>
-      ) : !hasGeneratedDraw ? (
-        <div className="rounded-[20px] border border-slate-100 bg-slate-50 px-5 py-4 text-sm text-slate-500">
-          {isOrganizer
-            ? 'Generate the round robin draw to show the matchups.'
-            : 'Round robin matchups will appear after the host generates the draw.'}
+      ) : null}
+
+      {!activeLineup ? (
+        <div className="text-body-main rounded-[20px] border border-slate-100 bg-slate-50 px-5 py-4 text-slate-500">
+          {emptyStateMessage}
         </div>
       ) : (
         <>
           <div className="mb-5 flex flex-wrap gap-2">
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
-              {result.playersCount} players
+            <span className="text-body-sub rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-600">
+              {activeLineup.playersCount} players
             </span>
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
-              {result.courtCount} court{result.courtCount === 1 ? '' : 's'}
+            <span className="text-body-sub rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-600">
+              {activeLineup.courtCount} court{activeLineup.courtCount === 1 ? '' : 's'}
             </span>
-            <span className="rounded-full border border-orange-100 bg-orange-50 px-3 py-1 text-[11px] font-bold text-orange-600">
+            <span className="text-body-sub rounded-full border border-orange-100 bg-orange-50 px-3 py-1 font-semibold text-orange-600">
               2 rounds
             </span>
           </div>
 
-          {result.generatedCourtLabels ? (
+          {activeLineup.generatedCourtLabels ? (
             <div className="mb-5 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-700">
               Current court info does not fully match the player count, so extra court labels were generated for the draw preview.
             </div>
           ) : null}
 
           <div className="grid gap-5 xl:grid-cols-2">
-            <SetCard title="Round 1" matches={result.setOne} />
-            <SetCard title="Round 2" matches={result.setTwo} />
+            <SetCard title="Round 1" matches={activeLineup.setOne} />
+            <SetCard title="Round 2" matches={activeLineup.setTwo} />
           </div>
         </>
       )}

@@ -25,6 +25,7 @@ export type PublicPlayerProfile = {
   user_id: string
   display_name: string | null
   avatar_url: string | null
+  gender: 'male' | 'female' | 'unspecified' | null
   looking_to_play: string | null
   preferred_play_times: string[]
   sport_profiles: PublicSportProfile[]
@@ -131,6 +132,7 @@ export async function getPublicPlayerProfile(
     user_id: row.user_id,
     display_name: row.display_name ?? null,
     avatar_url: row.avatar_url ?? null,
+    gender: row.gender ?? null,
     looking_to_play: row.looking_to_play ?? null,
     preferred_play_times: row.preferred_play_times ?? [],
     sport_profiles: normalizePublicSportProfiles(row.sport_profiles),

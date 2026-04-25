@@ -5,6 +5,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { acceptInvitationAsGuest } from '@/lib/invitations/accept-invitation-as-guest'
 import { declineInvitationAsGuest } from '@/lib/invitations/decline-invitation-as-guest'
 
+const FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000001'
+
 export async function acceptInvitationAsGuestAction(invitationId: string): Promise<void> {
   const supabase = await createSupabaseServerClient()
   await acceptInvitationAsGuest(supabase, invitationId)
@@ -13,10 +15,9 @@ export async function acceptInvitationAsGuestAction(invitationId: string): Promi
 
 export async function declineInvitationAsGuestAction(invitationId: string): Promise<void> {
   const supabase = await createSupabaseServerClient()
-  const systemActorId = process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
-  if (!systemActorId) {
-    throw new Error('Missing GUEST_INVITATION_SYSTEM_ACTOR_ID for guest decline audit actor')
-  }
+  const systemActorId =
+    process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
+    || FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID
   await declineInvitationAsGuest(supabase, invitationId, systemActorId)
   revalidatePath(`/invitations/${invitationId}`)
 }

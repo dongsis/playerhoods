@@ -5,12 +5,13 @@ import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getVenue, getVenueCourts } from '@/lib/api/venues'
 import { listSports } from '@/lib/api/sports'
 import {
-  getMyVenueIdentities,
+  getMyVenueRelationships,
   getMyVenuePreferences,
   addVenuePreference,
   removeVenuePreference,
 } from '@/lib/api/identities'
 import { getInviteCircleList } from '@/lib/api/play-network'
+import { getVenueDisplayName } from '@/lib/venues/display'
 import { VenuePreferenceButton } from './VenuePreferenceButton'
 import { VenueMembersSection } from './VenueMembersSection'
 
@@ -44,18 +45,18 @@ export default async function VenueDetailPage({ params }: Props) {
 
   let isMember = false
   let isSaved  = false
-  let memberHandle: string | null = null
   let savedPlayerIds: string[] = []
 
   if (user) {
-    const [identities, prefs, inviteCircle] = await Promise.all([
-      getMyVenueIdentities(supabase, user.id).catch(() => []),
+    const [relationships, prefs, inviteCircle] = await Promise.all([
+      getMyVenueRelationships(supabase, user.id).catch(() => []),
       getMyVenuePreferences(supabase, user.id).catch(() => []),
       getInviteCircleList(supabase).catch(() => []),
     ])
-    const identity = identities.find(i => i.venue_id === venueId)
-    isMember = !!identity
-    memberHandle = identity?.venue_handle ?? null
+    const relationship = relationships.find(
+      (item) => item.venue_id === venueId && item.relationship_type === 'member',
+    )
+    isMember = !!relationship
     isSaved  = prefs.some(v => v.id === venueId)
     savedPlayerIds = inviteCircle.map((row) => row.target_user_id)
   }
@@ -86,7 +87,7 @@ export default async function VenueDetailPage({ params }: Props) {
       <header className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{venue.name}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{getVenueDisplayName(venue)}</h1>
             <div className="flex flex-wrap gap-3 mt-1 text-sm text-gray-500">
               {venue.location_text && <span>📍 {venue.location_text}</span>}
               {venue.timezone && <span>🕐 {venue.timezone}</span>}
@@ -97,7 +98,7 @@ export default async function VenueDetailPage({ params }: Props) {
           <div className="flex items-center gap-2 shrink-0">
             {isMember ? (
               <span className="px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-xl border border-blue-100">
-                ✓ Member{memberHandle ? ` · @${memberHandle}` : ''}
+                ✓ Member
               </span>
             ) : user ? (
               <VenuePreferenceButton isSaved={isSaved} onToggle={handleTogglePreference} />
@@ -195,7 +196,7 @@ export default async function VenueDetailPage({ params }: Props) {
         <section className="mt-2 px-4 py-4 bg-white rounded-2xl border border-gray-100 flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-gray-700">Not a member yet</p>
-            <p className="text-xs text-gray-400 mt-0.5">Join this venue to get a handle and appear in match scope groups.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Join this venue to appear in match scope groups.</p>
           </div>
           <Link
             href="/profile"

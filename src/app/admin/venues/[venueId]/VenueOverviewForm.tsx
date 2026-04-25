@@ -93,6 +93,19 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
           <label
             style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
           >
+            Abbreviation
+          </label>
+          <input
+            name="abbreviation"
+            defaultValue={venue.abbreviation ?? ''}
+            placeholder="ORTC"
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
             Location
           </label>
           <input

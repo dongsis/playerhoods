@@ -40,15 +40,16 @@ export function SaveContactPlayerButton({
       })
       setSaved(true)
     } catch (saveError) {
-      setError((saveError as Error).message)
+      console.error('[SaveContactPlayerButton] save failed:', saveError)
+      setError('Could not save this player right now.')
     } finally {
       setPending(false)
     }
   }
 
   const className = compact
-    ? 'shrink-0 rounded-xl border border-[#5ca0a0]/20 px-4 py-2 text-[11px] font-bold text-[#5ca0a0] transition-all hover:bg-[#5ca0a0]/5 disabled:opacity-50'
-    : 'shrink-0 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-50'
+    ? 'text-body-sub shrink-0 rounded-xl border border-[#5ca0a0]/20 px-4 py-2 font-semibold text-[#5ca0a0] transition-all hover:bg-[#5ca0a0]/5 disabled:opacity-50'
+    : 'text-body-main shrink-0 rounded-lg bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100 disabled:opacity-50'
 
   if (saved && !error) {
     return null
@@ -65,7 +66,7 @@ export function SaveContactPlayerButton({
         {pending ? 'Saving...' : saveLabel}
       </button>
       {error && (
-        <span className="text-[11px] text-red-600">
+        <span className="text-body-sub text-red-600">
           {error}
         </span>
       )}

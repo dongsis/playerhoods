@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import type { Venue } from '@/lib/types/database'
+import { getVenueDisplayName } from '@/lib/venues/display'
 
 type Filter = 'all' | 'my-venues' | 'saved'
 
 interface Props {
   venues: Venue[]
-  myVenueIds: string[]   // venues where user has a handle
-  mySavedIds: string[]  // venues in secondary_venue_ids
+  myVenueIds: string[]   // venues where user is a member
+  mySavedIds: string[]  // venues starred/saved by the user
 }
 
 export function VenueSearch({ venues, myVenueIds, mySavedIds }: Props) {
@@ -23,7 +24,10 @@ export function VenueSearch({ venues, myVenueIds, mySavedIds }: Props) {
     // text search
     if (query) {
       const q = query.toLowerCase()
-      const match = v.name.toLowerCase().includes(q) || v.location_text?.toLowerCase().includes(q)
+      const match =
+        v.name.toLowerCase().includes(q)
+        || v.abbreviation?.toLowerCase().includes(q)
+        || v.location_text?.toLowerCase().includes(q)
       if (!match) return false
     }
     // filter tab
@@ -86,7 +90,7 @@ export function VenueSearch({ venues, myVenueIds, mySavedIds }: Props) {
               >
                 <div>
                   <span className="text-sm font-medium text-gray-800 group-hover:text-gray-900">
-                    {v.name}
+                    {getVenueDisplayName(v)}
                   </span>
                   {isMember && (
                     <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">member</span>

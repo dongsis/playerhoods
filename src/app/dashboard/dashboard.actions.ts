@@ -6,10 +6,8 @@ import { cancelMatch } from '@/lib/api/matches'
 import {
   updateProfile,
   setDisplayName,
-  setVenueHandle,
   setPrimaryVenue,
   setVenueIdentityPreferences,
-  checkVenueHandle,
   joinVenue,
   leaveVenue,
   removeVenuePreference,
@@ -87,83 +85,30 @@ export async function setDashboardDisplayNameAction(newName: string) {
   revalidateProfileSurfaces()
 }
 
-export async function setDashboardVenueHandleAction(venueId: string, newHandle: string) {
-  const supabase = await createSupabaseServerClient()
-  await setVenueHandle(supabase, venueId, newHandle)
-  revalidateProfileSurfaces()
-}
-
 export async function setDashboardPrimaryVenueAction(venueId: string) {
   const supabase = await createSupabaseServerClient()
   await setPrimaryVenue(supabase, venueId)
   revalidateProfileSurfaces()
 }
 
-export async function checkDashboardVenueHandleAction(venueId: string, handle: string) {
-  const supabase = await createSupabaseServerClient()
-  return checkVenueHandle(supabase, venueId, handle)
-}
-
 function mapJoinVenueError(error: unknown): string {
   const message = (error as { message?: string })?.message ?? String(error ?? '')
   if (message.includes('already_member')) return 'You have already joined this venue.'
-  if (message.includes('club_not_found')) return 'That venue could not be found.'
-  if (message.includes('invalid_handle')) {
-    if (message.includes('at least 2 characters')) return 'Your display name must be at least 2 characters before joining a venue.'
-    if (message.includes('at most 30 characters')) return 'Your display name must be 30 characters or fewer before joining a venue.'
-    if (message.includes('must not contain @')) return 'Your display name cannot contain @ if it is used as a venue handle.'
-    return 'Your display name cannot be used as a venue handle yet.'
-  }
-  if (message.includes('handle_taken')) return 'Your display name is already taken in this venue. Try changing your display name first.'
-  if (message.includes('P0001')) return 'We could not join this venue with your current display name. Try a different display name first.'
+  if (message.includes('venue_not_found') || message.includes('club_not_found')) return 'That venue could not be found.'
+  if (message.includes('relationship_not_allowed_for_venue_kind')) return 'This venue cannot be joined in that way.'
+  if (message.includes('not_authenticated')) return 'Please log in again.'
   return message || 'Failed to join venue.'
 }
 
 export async function joinDashboardVenueAction(venueId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await createSupabaseServerClient()
-  const user = await getUser()
-  if (!user) return { ok: false, error: 'Please log in again.' }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('display_name')
-    .eq('id', user.id)
-    .single()
-  if (profileError) return { ok: false, error: 'Could not load your profile.' }
-
-  const displayName = profile?.display_name?.trim() ?? ''
-  if (!displayName) {
-    return { ok: false, error: 'Set your display name first, then you can join venues.' }
-  }
-
-  let availability
   try {
-    availability = await checkVenueHandle(supabase, venueId, displayName)
+    await joinVenue(supabase, venueId)
+    revalidateProfileSurfaces()
+    return { ok: true }
   } catch (error: unknown) {
     return { ok: false, error: mapJoinVenueError(error) }
   }
-  const candidates = availability.available
-    ? [displayName]
-    : availability.suggestions?.length
-      ? availability.suggestions
-      : [displayName]
-
-  let lastError: unknown = null
-  for (const candidate of candidates) {
-    try {
-      await joinVenue(supabase, venueId, candidate)
-      revalidateProfileSurfaces()
-      return { ok: true }
-    } catch (error: unknown) {
-      lastError = error
-      const message = (error as { message?: string })?.message ?? ''
-      if (!message.includes('handle_taken')) {
-        break
-      }
-    }
-  }
-
-  return { ok: false, error: mapJoinVenueError(lastError) }
 }
 
 export async function leaveDashboardVenueAction(venueId: string) {

@@ -1,76 +1,34 @@
-'use client'
+import { getMyVenueIdentities } from '@/lib/api/identities'
+import { getContactPlayerResolution } from '@/lib/api/roster'
+import { listSports } from '@/lib/api/sports'
+import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
+import { NewGroupForm } from './NewGroupForm'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { createGroupAction } from './actions'
-
-export default function NewGroupPage() {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const router = useRouter()
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
-
-    try {
-      const group = await createGroupAction({ name, description })
-      router.push(`/groups/${group.id}`)
-    } catch (err: unknown) {
-      const message = (err as { message?: string })?.message || 'Failed to create group'
-      setError(message)
-      console.error('Create group error:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
+export default async function NewGroupPage() {
+  const user = await getUser()
+  const supabase = await createSupabaseServerClient()
+  const [sports, myIdentities, contacts, usersRes] = await Promise.all([
+    listSports(supabase),
+    user ? getMyVenueIdentities(supabase, user.id) : Promise.resolve([]),
+    user ? getContactPlayerResolution(supabase) : Promise.resolve([]),
+    user
+      ? supabase
+          .from('profile_display')
+          .select('id, display_name')
+          .neq('id', user.id)
+          .order('display_name', { ascending: true })
+      : Promise.resolve({ data: [] }),
+  ])
 
   return (
-    <div style={{ maxWidth: '600px' }}>
-      <h1>Create New Group</h1>
-
-      <nav style={{ marginBottom: '1rem' }}>
-        <Link href="/groups">Back to Groups</Link>
-      </nav>
-
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: '1rem' }}>
-          <label htmlFor="name" style={{ display: 'block', marginBottom: '0.5rem' }}>
-            Group Name *
-          </label>
-          <input
-            id="name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '1rem' }}>
-          <label htmlFor="description" style={{ display: 'block', marginBottom: '0.5rem' }}>
-            Description
-          </label>
-          <textarea
-            id="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
-          />
-        </div>
-
-        {error && <div style={{ color: 'red', marginBottom: '1rem' }}>{error}</div>}
-
-        <button type="submit" disabled={loading} style={{ padding: '0.75rem 1.5rem' }}>
-          {loading ? 'Creating...' : 'Create Group'}
-        </button>
-      </form>
-    </div>
+    <NewGroupForm
+      sports={sports}
+      venues={myIdentities.map((identity) => identity.venue)}
+      invitableUsers={(usersRes.data ?? []) as { id: string; display_name: string }[]}
+      contacts={contacts.map((contact) => ({
+        guest_id: contact.guest_id,
+        display_name: contact.display_name,
+      }))}
+    />
   )
 }

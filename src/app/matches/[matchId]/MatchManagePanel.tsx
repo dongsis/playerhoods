@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { processDeliveriesAction } from './process-deliveries-action'
 import {
   inviteGroupToMatch,
   inviteUserToMatch,
@@ -89,7 +90,7 @@ type Props = {
   contactTargets: { guest_id: string; display_name: string; sourceLabel: string; email: string | null }[]
   candidateGroups: Group[]
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>
-  onRemoveParticipant: (participantId: string) => Promise<void>
+  onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
 }
 
 function sortStrings(values: string[]) {
@@ -99,41 +100,6 @@ function sortStrings(values: string[]) {
 function arraysEqual(left: string[], right: string[]) {
   if (left.length !== right.length) return false
   return left.every((value, index) => value === right[index])
-}
-
-function SummaryPreviewAvatar({
-  label,
-  kind,
-  avatarUrl,
-  zIndex,
-}: {
-  label: string
-  kind: SummaryEntry['kind']
-  avatarUrl?: string | null
-  zIndex: number
-}) {
-  const initial = label.charAt(0).toUpperCase() || '?'
-
-  return (
-    <div
-      className={[
-        'relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[11px] font-bold shadow-sm',
-        kind === 'user'
-          ? 'bg-[#5ca0a0] text-white'
-          : kind === 'contact'
-            ? 'border-dashed border-slate-300 bg-slate-100 text-slate-500'
-            : 'bg-green-100 text-green-700',
-      ].join(' ')}
-      style={{ zIndex }}
-      title={label}
-    >
-      {avatarUrl && kind !== 'group' ? (
-        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-      ) : (
-        <span>{initial}</span>
-      )}
-    </div>
-  )
 }
 
 function SummaryRosterRow({
@@ -152,54 +118,41 @@ function SummaryRosterRow({
 
   return (
     <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-      <div className="mb-2 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">{title}</div>
+      <div className="text-label mb-2">{title}</div>
       {items.length === 0 ? (
-        <div className="text-sm text-slate-300">{emptyLabel}</div>
+        <div className="text-body-main text-slate-300">{emptyLabel}</div>
       ) : (
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex shrink-0 -space-x-2 pt-0.5">
-            {previewItems.map((item, index) => (
-              <SummaryPreviewAvatar
-                key={`avatar-${item.key}`}
-                label={item.label}
-                kind={item.kind}
-                avatarUrl={item.avatarUrl}
-                zIndex={10 - index}
-              />
+        <div className="min-w-0">
+          <div className="text-title-main flex flex-wrap items-center gap-1.5 text-slate-700">
+            {previewItems.map((item) => (
+              <span key={item.key} className="inline-flex min-w-0 items-center gap-1">
+                <span className="break-all">{item.label}</span>
+                {item.kind === 'group' ? (
+                  <span className="text-label rounded-full bg-green-100 px-1.5 py-0.5 text-green-700">
+                    Group
+                  </span>
+                ) : item.kind === 'contact' ? (
+                  <span className="text-label rounded-full bg-slate-100 px-1.5 py-0.5 text-slate-400">
+                    Contact
+                  </span>
+                ) : null}
+                {item.onRemove ? (
+                  <button
+                    type="button"
+                    onClick={item.onRemove}
+                    className="opacity-40 transition hover:opacity-100"
+                    aria-label={`Remove ${item.label}`}
+                  >
+                    x
+                  </button>
+                ) : null}
+              </span>
             ))}
+            {overflow ? <span className="text-slate-400">{overflow}</span> : null}
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-slate-700">
-              {previewItems.map((item) => (
-                <span key={item.key} className="inline-flex min-w-0 items-center gap-1">
-                  <span className="break-all">{item.label}</span>
-                  {item.kind === 'group' ? (
-                    <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-green-700">
-                      Group
-                    </span>
-                  ) : item.kind === 'contact' ? (
-                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                      Contact
-                    </span>
-                  ) : null}
-                  {item.onRemove ? (
-                    <button
-                      type="button"
-                      onClick={item.onRemove}
-                      className="opacity-40 transition hover:opacity-100"
-                      aria-label={`Remove ${item.label}`}
-                    >
-                      x
-                    </button>
-                  ) : null}
-                </span>
-              ))}
-              {overflow ? <span className="text-slate-400">{overflow}</span> : null}
-            </div>
-            {metaLabel ? (
-              <div className="mt-1 text-xs text-slate-400">{metaLabel}</div>
-            ) : null}
-          </div>
+          {metaLabel ? (
+            <div className="text-body-sub mt-1 text-slate-400">{metaLabel}</div>
+          ) : null}
         </div>
       )}
     </div>
@@ -438,6 +391,8 @@ export function MatchManagePanel({
     setSuccess(null)
 
     try {
+      let shouldProcessQueuedDeliveries = false
+
       const nextRequestUserIds = sortStrings([
         ...activeRequestUsers
           .map((user) => user.id)
@@ -490,7 +445,12 @@ export function MatchManagePanel({
           await inviteGroupToMatch(supabase, matchId, item.id)
         } else {
           await nominateGuest(supabase, matchId, item.id)
+          shouldProcessQueuedDeliveries = true
         }
+      }
+
+      if (shouldProcessQueuedDeliveries) {
+        await processDeliveriesAction()
       }
 
       setStagedAdds([])
@@ -614,15 +574,15 @@ export function MatchManagePanel({
           aria-expanded={isExpanded}
         >
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-orange-50 text-[13px] font-bold text-orange-500">
+            <span className="text-body-main inline-flex h-5 w-5 items-center justify-center rounded-full bg-orange-50 font-bold text-orange-500">
               +
             </span>
-            <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-800">Invite Players</h2>
+            <h2 className="text-h2 text-slate-800">Invite Players</h2>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm font-bold text-teal-600">{spotsLabel}</span>
+            <span className="text-title-main text-teal-600">{spotsLabel}</span>
             <span
-              className={`text-sm text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              className={`text-body-main text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
               aria-hidden="true"
             >
               v
@@ -635,18 +595,18 @@ export function MatchManagePanel({
         <div className="px-6 pb-6 pt-5">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-2">
-          <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">1. Add By</div>
+          <div className="text-label">1. Add By</div>
           <button
             type="button"
             onClick={() => setSelectionMode('invite')}
             className={[
-              'flex h-20 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 bg-white text-xs font-bold transition',
+              'text-body-main flex h-20 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 bg-white font-medium transition',
               selectionMode === 'invite'
                 ? 'border-orange-500 bg-orange-50 text-orange-600 shadow-sm'
                 : 'border-slate-100 text-slate-400 hover:border-slate-200 hover:bg-slate-50',
             ].join(' ')}
           >
-            <span className="text-lg">+</span>
+            <span className="text-h2">+</span>
             <span>Invite</span>
           </button>
           {isOrganizer ? (
@@ -654,20 +614,20 @@ export function MatchManagePanel({
               type="button"
               onClick={() => setSelectionMode('request')}
               className={[
-                'flex h-20 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 bg-white text-xs font-bold transition',
+                'text-body-main flex h-20 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 bg-white font-medium transition',
                 selectionMode === 'request'
                   ? 'border-green-500 bg-green-50 text-green-700 shadow-sm'
                   : 'border-slate-100 text-slate-400 hover:border-slate-200 hover:bg-slate-50',
               ].join(' ')}
             >
-              <span className="text-lg">O</span>
+              <span className="text-h2">O</span>
               <span>Open for Request</span>
             </button>
           ) : null}
         </div>
 
         <div className="lg:col-span-5">
-          <div className="mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">2. Select Target</div>
+          <div className="text-label mb-4">2. Select Target</div>
           <div className="rounded-[28px] border border-slate-100 bg-slate-50/70 p-6">
             <div className="relative mb-6">
               <input
@@ -675,24 +635,24 @@ export function MatchManagePanel({
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search friends or groups..."
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
+                className="text-body-main w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
               />
             </div>
 
             <div className="flex flex-wrap gap-2">
               {candidates.length === 0 ? (
-                <span className="text-xs italic text-slate-300">No targets available.</span>
+                <span className="text-body-sub italic text-slate-300">No targets available.</span>
               ) : (
                 candidates.map((candidate) => (
                   <button
                     key={`${selectionMode}:${candidate.key}`}
                     type="button"
                     onClick={() => stageAdd(candidate)}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                    className="text-body-sub inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
                   >
                     <span>{candidate.name}</span>
                     {candidate.kind === 'group' ? (
-                      <span className="rounded bg-green-100 px-1 py-0.5 text-[10px] font-bold text-green-700">Group</span>
+                      <span className="rounded bg-green-100 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-green-700">Group</span>
                     ) : null}
                   </button>
                 ))
@@ -702,7 +662,7 @@ export function MatchManagePanel({
             <div className="mt-10 border-t border-slate-200 pt-6">
               <button
                 type="button"
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-3 text-xs font-bold text-slate-500 transition hover:bg-slate-50"
+                className="text-body-sub flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-3 font-semibold text-slate-500 transition hover:bg-slate-50"
               >
                 <span>+</span>
                 <span>HOOD PANEL</span>
@@ -712,7 +672,7 @@ export function MatchManagePanel({
         </div>
 
         <div className="flex flex-col lg:col-span-5">
-          <div className="mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">3. Summary</div>
+          <div className="text-label mb-4">3. Summary</div>
           <div className="flex min-h-[420px] flex-col rounded-[20px] border border-slate-100 bg-[#fafafa] px-5 py-6">
             <div className="mb-8 space-y-3">
               <SummaryRosterRow
@@ -738,7 +698,7 @@ export function MatchManagePanel({
             </div>
 
             <div className="mt-auto border-t border-slate-100 pt-6">
-              <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.08em] text-orange-500">
+              <div className="text-label mb-3 flex items-center gap-2 text-orange-500">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
                 <span>New Changes</span>
               </div>
@@ -753,7 +713,7 @@ export function MatchManagePanel({
                     <div
                       key={change.key}
                       className={[
-                        'flex items-center justify-between rounded-xl p-2 text-[10px] font-bold',
+                        'text-body-sub flex items-center justify-between rounded-xl p-2 font-semibold',
                         change.tone === 'invite'
                           ? 'border border-dashed border-orange-300 bg-orange-50 text-orange-700'
                           : change.tone === 'request'
@@ -762,7 +722,7 @@ export function MatchManagePanel({
                       ].join(' ')}
                     >
                       <span>
-                        <span className="mr-1 text-[8px] opacity-50">{change.label}</span>
+                        <span className="text-label mr-1 opacity-50">{change.label}</span>
                         {change.name}
                         {change.isGroup ? ' (Group)' : ''}
                       </span>
@@ -782,7 +742,7 @@ export function MatchManagePanel({
           </div>
 
           {(error || success) && (
-            <div className="mt-4 rounded-2xl border border-slate-100 bg-white px-4 py-3 text-sm">
+            <div className="text-body-main mt-4 rounded-2xl border border-slate-100 bg-white px-4 py-3">
               {error ? <p className="text-red-600">{error}</p> : null}
               {success ? <p className="text-green-700">{success}</p> : null}
             </div>
@@ -792,7 +752,7 @@ export function MatchManagePanel({
             type="button"
             onClick={() => void handleApply()}
             disabled={isApplying || changes.length === 0}
-            className="mt-6 w-full rounded-2xl bg-slate-900 py-4 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-label mt-6 w-full rounded-2xl bg-slate-900 py-4 text-white shadow-xl transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isApplying ? 'Applying...' : 'Apply Changes'}
           </button>

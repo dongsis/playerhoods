@@ -7,7 +7,9 @@ import {
   requestJoinMatch,
   acceptMatchInvite,
   acceptGroupMatchInvite,
+  userWithdraw,
 } from '@/lib/api/matches'
+import { MatchExitNoteComposer } from './MatchExitNoteComposer'
 import type { MatchParticipant } from '@/lib/types/database'
 import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 
@@ -23,6 +25,8 @@ interface Props {
 export function MatchActions({ matchId, isOrganizer, myParticipation, needsReconfirm, inScope, myGroupInvites }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [declineOpen, setDeclineOpen] = useState(false)
+  const [declineReason, setDeclineReason] = useState('')
   const router = useRouter()
 
   const handleAction = async (action: () => Promise<void>, redirectAfter?: string) => {
@@ -59,6 +63,18 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     padding: '0.5rem 1rem',
     marginRight: '0.5rem',
   } as const
+  const secondaryButtonStyle = {
+    background: 'white',
+    color: '#475569',
+    border: '1px solid #cbd5e1',
+    padding: '0.5rem 1rem',
+  } as const
+  const declineActionLabel = mp?.join_method === 'nominated' ? 'Decline nomination' : 'Decline invite'
+
+  const closeDeclineDialog = () => {
+    setDeclineOpen(false)
+    setDeclineReason('')
+  }
 
   if (isOrganizer) return null
 
@@ -164,13 +180,26 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     return (
       <div>
         {!needsReconfirm && !hasUserAccepted && (isInvited || isNominated) && (
-          <button
-            onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
-            disabled={loading}
-            style={primaryButtonStyle}
-          >
-            {loading ? 'Accepting...' : 'Accept Invite'}
-          </button>
+          <>
+            <button
+              onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
+              disabled={loading}
+              style={primaryButtonStyle}
+            >
+              {loading ? 'Accepting...' : 'Accept Invite'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null)
+                setDeclineOpen(true)
+              }}
+              disabled={loading}
+              style={secondaryButtonStyle}
+            >
+              Decline
+            </button>
+          </>
         )}
 
         {needsReconfirm && (
@@ -208,6 +237,42 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
           )}
         </div>
         {error && <p style={{ color: 'red' }}>{error}</p>}
+        {declineOpen && (
+          <div style={dialogOverlayStyle}>
+            <div style={dialogCardStyle}>
+              <h4 style={dialogTitleStyle}>{declineActionLabel}</h4>
+              <p style={dialogBodyStyle}>
+                Add a note if you want. It will be saved and posted to match chat.
+              </p>
+              <MatchExitNoteComposer
+                mode="decline"
+                note={declineReason}
+                onNoteChange={setDeclineReason}
+              />
+              <div style={dialogActionsStyle}>
+                <button type="button" onClick={closeDeclineDialog} style={secondaryDialogButtonStyle}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    const note = declineReason.trim()
+                    closeDeclineDialog()
+                    handleAction(() => userWithdraw(supabase, matchId, note))
+                  }}
+                  style={{
+                    ...dangerDialogButtonStyle,
+                    opacity: loading ? 0.6 : 1,
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {loading ? 'Declining...' : declineActionLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -231,3 +296,63 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
 
   return null
 }
+
+const dialogOverlayStyle = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.35)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '1rem',
+  zIndex: 70,
+} as const
+
+const dialogCardStyle = {
+  width: '100%',
+  maxWidth: '30rem',
+  borderRadius: '20px',
+  border: '1px solid #e2e8f0',
+  background: '#fff',
+  padding: '1rem',
+  boxShadow: '0 24px 48px -24px rgba(15, 23, 42, 0.35)',
+} as const
+
+const dialogTitleStyle = {
+  margin: 0,
+  color: '#0f172a',
+  fontSize: '1rem',
+  fontWeight: 700,
+} as const
+
+const dialogBodyStyle = {
+  margin: '0.45rem 0 0',
+  color: '#64748b',
+  fontSize: '0.88rem',
+  lineHeight: 1.5,
+} as const
+
+const dialogActionsStyle = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: '0.6rem',
+  marginTop: '0.9rem',
+} as const
+
+const secondaryDialogButtonStyle = {
+  borderRadius: '999px',
+  border: '1px solid #cbd5e1',
+  background: '#fff',
+  color: '#475569',
+  padding: '0.5rem 0.9rem',
+  fontWeight: 600,
+} as const
+
+const dangerDialogButtonStyle = {
+  borderRadius: '999px',
+  border: 'none',
+  background: '#b91c1c',
+  color: '#fff',
+  padding: '0.5rem 0.9rem',
+  fontWeight: 600,
+} as const

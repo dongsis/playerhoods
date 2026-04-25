@@ -193,8 +193,10 @@ function CardButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-2xl px-4 py-2.5 text-sm font-medium transition ${
-        active ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'
+      className={`text-body-main rounded-2xl px-4 py-2.5 font-medium transition ${
+        active
+          ? 'bg-[#C25E46] text-white shadow-[0_12px_24px_-16px_rgba(194,94,70,0.55)]'
+          : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]'
       }`}
     >
       {children}
@@ -211,7 +213,7 @@ function ConfidenceBadge({ value }: { value?: GearLinkFieldConfidence }) {
         ? 'bg-amber-50 text-amber-700'
         : 'bg-rose-50 text-rose-700'
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${className}`}>
+    <span className={`text-label rounded-full px-2.5 py-1 ${className}`}>
       {value}
     </span>
   )
@@ -240,8 +242,8 @@ function LinkImportReview({
     <section className="mt-5 rounded-[24px] border border-sky-100 bg-sky-50/70 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h4 className="text-sm font-semibold text-slate-900">Imported draft review</h4>
-          <p className="mt-1 text-sm text-slate-500">
+          <h4 className="text-title-main text-slate-900">Imported draft review</h4>
+          <p className="text-body-sub mt-1 text-slate-500">
             Parsed with {draft.imported_parser_label}. Review anything uncertain before saving.
           </p>
         </div>
@@ -252,13 +254,13 @@ function LinkImportReview({
           {draft.imported_image_url ? (
             <img src={draft.imported_image_url} alt={draft.item_name || 'Imported gear'} className="h-40 w-full object-contain" />
           ) : (
-            <div className="flex h-40 items-center justify-center px-4 text-center text-sm text-slate-400">No image detected</div>
+            <div className="text-body-main flex h-40 items-center justify-center px-4 text-center text-slate-400">No image detected</div>
           )}
         </div>
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {draft.imported_detected_fields.map((field) => (
-              <span key={field} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600">
+              <span key={field} className="text-body-sub rounded-full bg-white px-3 py-1 font-medium text-slate-600">
                 {field.replace(/_/g, ' ')}
               </span>
             ))}
@@ -267,15 +269,15 @@ function LinkImportReview({
             {fields.map((field) => (
               <div key={field.label} className="rounded-2xl border border-white bg-white px-3 py-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{field.label}</p>
+                  <p className="text-label text-slate-400">{field.label}</p>
                   <ConfidenceBadge value={field.confidence} />
                 </div>
-                <p className="mt-1 text-sm text-slate-700">{field.value}</p>
+                <p className="text-body-main mt-1 text-slate-700">{field.value}</p>
               </div>
             ))}
           </div>
           {draft.imported_notes.length > 0 && (
-            <div className="rounded-2xl border border-white bg-white px-3 py-3 text-sm text-slate-600">
+            <div className="text-body-main rounded-2xl border border-white bg-white px-3 py-3 text-slate-600">
               {draft.imported_notes.map((note) => (
                 <p key={note}>{note}</p>
               ))}
@@ -368,54 +370,54 @@ function StringJobsSection({
   return (
     <section className="space-y-4 border-t border-slate-200 pt-5">
       <div>
-        <h4 className="text-sm font-semibold text-slate-900">String Jobs</h4>
-        <p className="mt-1 text-sm text-slate-500">Track each restring as its own history entry.</p>
+        <h4 className="text-title-main text-slate-900">String Jobs</h4>
+        <p className="text-body-sub mt-1 text-slate-500">Track each restring as its own history entry.</p>
       </div>
       <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
-        <input type="date" value={draft.strung_at} onChange={(event) => setDraft((previous) => ({ ...previous, strung_at: event.target.value }))} className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <input value={draft.string_name} onChange={(event) => setDraft((previous) => ({ ...previous, string_name: event.target.value }))} placeholder="String name" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <input value={draft.string_brand} onChange={(event) => setDraft((previous) => ({ ...previous, string_brand: event.target.value }))} placeholder="String brand" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <input value={draft.string_type} onChange={(event) => setDraft((previous) => ({ ...previous, string_type: event.target.value }))} placeholder="String type" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <select value={draft.string_shape} onChange={(event) => setDraft((previous) => ({ ...previous, string_shape: event.target.value }))} className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm">
+        <input type="date" value={draft.strung_at} onChange={(event) => setDraft((previous) => ({ ...previous, strung_at: event.target.value }))} className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <input value={draft.string_name} onChange={(event) => setDraft((previous) => ({ ...previous, string_name: event.target.value }))} placeholder="String name" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <input value={draft.string_brand} onChange={(event) => setDraft((previous) => ({ ...previous, string_brand: event.target.value }))} placeholder="String brand" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <input value={draft.string_type} onChange={(event) => setDraft((previous) => ({ ...previous, string_type: event.target.value }))} placeholder="String type" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <select value={draft.string_shape} onChange={(event) => setDraft((previous) => ({ ...previous, string_shape: event.target.value }))} className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4">
           <option value="">Shape</option>
           {STRING_SHAPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
         </select>
-        <input value={draft.gauge} onChange={(event) => setDraft((previous) => ({ ...previous, gauge: event.target.value }))} placeholder="Gauge" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <input value={draft.tension_mains} onChange={(event) => setDraft((previous) => ({ ...previous, tension_mains: event.target.value }))} placeholder="Tension mains" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <input value={draft.tension_crosses} onChange={(event) => setDraft((previous) => ({ ...previous, tension_crosses: event.target.value }))} placeholder="Tension crosses" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <input value={draft.strung_by} onChange={(event) => setDraft((previous) => ({ ...previous, strung_by: event.target.value }))} placeholder="Who strung it" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <input value={draft.cost} onChange={(event) => setDraft((previous) => ({ ...previous, cost: event.target.value }))} placeholder="Cost" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <textarea value={draft.first_impression} onChange={(event) => setDraft((previous) => ({ ...previous, first_impression: event.target.value }))} placeholder="First impression" className="min-h-[84px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm md:col-span-2" />
-        <textarea value={draft.follow_up_feel} onChange={(event) => setDraft((previous) => ({ ...previous, follow_up_feel: event.target.value }))} placeholder="Follow-up feel" className="min-h-[84px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm md:col-span-2" />
-        <input type="date" value={draft.ended_at} onChange={(event) => setDraft((previous) => ({ ...previous, ended_at: event.target.value }))} className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-        <input value={draft.ended_reason} onChange={(event) => setDraft((previous) => ({ ...previous, ended_reason: event.target.value }))} placeholder="Ended reason" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+        <input value={draft.gauge} onChange={(event) => setDraft((previous) => ({ ...previous, gauge: event.target.value }))} placeholder="Gauge" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <input value={draft.tension_mains} onChange={(event) => setDraft((previous) => ({ ...previous, tension_mains: event.target.value }))} placeholder="Tension mains" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <input value={draft.tension_crosses} onChange={(event) => setDraft((previous) => ({ ...previous, tension_crosses: event.target.value }))} placeholder="Tension crosses" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <input value={draft.strung_by} onChange={(event) => setDraft((previous) => ({ ...previous, strung_by: event.target.value }))} placeholder="Who strung it" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <input value={draft.cost} onChange={(event) => setDraft((previous) => ({ ...previous, cost: event.target.value }))} placeholder="Cost" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <textarea value={draft.first_impression} onChange={(event) => setDraft((previous) => ({ ...previous, first_impression: event.target.value }))} placeholder="First impression" className="text-body-main min-h-[84px] rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2" />
+        <textarea value={draft.follow_up_feel} onChange={(event) => setDraft((previous) => ({ ...previous, follow_up_feel: event.target.value }))} placeholder="Follow-up feel" className="text-body-main min-h-[84px] rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2" />
+        <input type="date" value={draft.ended_at} onChange={(event) => setDraft((previous) => ({ ...previous, ended_at: event.target.value }))} className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
+        <input value={draft.ended_reason} onChange={(event) => setDraft((previous) => ({ ...previous, ended_reason: event.target.value }))} placeholder="Ended reason" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
         <div className="md:col-span-2">
-          <button type="button" onClick={() => void save()} disabled={busy} className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">
+          <button type="button" onClick={() => void save()} disabled={busy} className="text-body-main rounded-2xl bg-slate-900 px-4 py-2.5 font-medium text-white">
             {busy ? 'Saving...' : 'Add string job'}
           </button>
         </div>
-        {error && <p className="text-sm text-rose-500 md:col-span-2">{error}</p>}
+        {error && <p className="text-body-main text-rose-500 md:col-span-2">{error}</p>}
       </div>
       <div className="space-y-3">
         {jobs.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm text-slate-500">No string jobs yet.</div>
+          <div className="text-body-main rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4 text-slate-500">No string jobs yet.</div>
         ) : (
           jobs.map((job) => (
             <div key={job.id} className="rounded-[24px] border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">{job.string_name || 'Unnamed string job'}</p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="text-title-main text-slate-900">{job.string_name || 'Unnamed string job'}</p>
+                  <p className="text-body-sub mt-1 text-slate-500">
                     {job.strung_at}
                     {job.string_brand ? ` · ${job.string_brand}` : ''}
                     {job.gauge ? ` · ${job.gauge}` : ''}
                     {job.tension_mains != null ? ` · ${job.tension_mains}/${job.tension_crosses ?? job.tension_mains}` : ''}
                   </p>
                 </div>
-                <button type="button" onClick={() => void onDeleteStringJob(job.id)} className="rounded-2xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">Remove</button>
+                <button type="button" onClick={() => void onDeleteStringJob(job.id)} className="text-body-sub rounded-2xl bg-rose-50 px-3 py-2 font-medium text-rose-700">Remove</button>
               </div>
               {(job.first_impression || job.follow_up_feel || job.ended_reason) && (
-                <div className="mt-3 space-y-2 text-sm text-slate-600">
+                <div className="text-body-main mt-3 space-y-2 text-slate-600">
                   {job.first_impression && <p>First impression: {job.first_impression}</p>}
                   {job.follow_up_feel && <p>Follow-up feel: {job.follow_up_feel}</p>}
                   {job.ended_reason && <p>Ended: {job.ended_reason}</p>}
@@ -554,187 +556,187 @@ function GearItemEditor({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <button type="button" onClick={onBack} className="text-sm font-medium text-slate-500 hover:text-slate-900">
+        <button type="button" onClick={onBack} className="text-body-main font-medium text-slate-500 hover:text-slate-900">
           ← Back
         </button>
         <div className="flex flex-wrap gap-2">
           {item && (
             <>
-              <button type="button" onClick={() => void onArchiveItem(item.id, item.archived_at == null)} className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700">
+              <button type="button" onClick={() => void onArchiveItem(item.id, item.archived_at == null)} className="text-body-main rounded-2xl bg-slate-100 px-4 py-2 font-medium text-slate-700">
                 {item.archived_at ? 'Unarchive' : 'Archive'}
               </button>
               {item.collection_type === 'wishlist' && (
-                <button type="button" onClick={() => void onMoveWishlistToOwned(item.id)} className="rounded-2xl bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-800">
+                <button type="button" onClick={() => void onMoveWishlistToOwned(item.id)} className="text-body-main rounded-2xl bg-emerald-100 px-4 py-2 font-medium text-emerald-800">
                   Move to Owned Gear
                 </button>
               )}
-              <button type="button" onClick={() => void onDeleteItem(item.id)} className="rounded-2xl bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700">
+              <button type="button" onClick={() => void onDeleteItem(item.id)} className="text-body-main rounded-2xl bg-rose-50 px-4 py-2 font-medium text-rose-700">
                 Delete
               </button>
             </>
           )}
-          <button type="button" onClick={() => void save()} disabled={saving} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+          <button type="button" onClick={() => void save()} disabled={saving} className="text-body-main rounded-2xl bg-slate-900 px-4 py-2 font-medium text-white">
             {saving ? 'Saving...' : isExisting ? 'Save changes' : 'Save item'}
           </button>
         </div>
       </div>
 
       <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.35)]">
-        <h3 className="text-xl font-semibold tracking-tight text-slate-900">{detailTitle}</h3>
-        <p className="mt-1 text-sm text-slate-500">
+        <h3 className="text-h1 text-slate-900">{detailTitle}</h3>
+        <p className="text-body-sub mt-1 text-slate-500">
           {isWishlist ? 'Wishlist keeps lighter product notes and links.' : 'Owned gear keeps your usage, photos, and history together.'}
         </p>
         {addMode === 'link' && !isExisting && <LinkImportReview draft={draft} />}
 
         <section className="mt-5 grid gap-4 md:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Item name</label>
-            <input value={draft.item_name} onChange={(event) => setDraft((previous) => ({ ...previous, item_name: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+            <label className="text-label mb-1.5 block text-slate-400">Item name</label>
+            <input value={draft.item_name} onChange={(event) => setDraft((previous) => ({ ...previous, item_name: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Category</label>
-            <select value={draft.category} onChange={(event) => setDraft((previous) => ({ ...previous, category: event.target.value as GearItem['category'] }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm">
+            <label className="text-label mb-1.5 block text-slate-400">Category</label>
+            <select value={draft.category} onChange={(event) => setDraft((previous) => ({ ...previous, category: event.target.value as GearItem['category'] }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4">
               {GEAR_CATEGORY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </div>
           {draft.category === 'rackets' && (
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Racquet type</label>
-              <select value={draft.gear_type} onChange={(event) => setDraft((previous) => ({ ...previous, gear_type: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm">
+              <label className="text-label mb-1.5 block text-slate-400">Racquet type</label>
+              <select value={draft.gear_type} onChange={(event) => setDraft((previous) => ({ ...previous, gear_type: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4">
                 <option value="">Select type...</option>
                 {RACKET_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
             </div>
           )}
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Brand</label>
-            <input value={draft.brand} onChange={(event) => setDraft((previous) => ({ ...previous, brand: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+            <label className="text-label mb-1.5 block text-slate-400">Brand</label>
+            <input value={draft.brand} onChange={(event) => setDraft((previous) => ({ ...previous, brand: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
           </div>
           {!isWishlist && (
             <>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Current status</label>
-                <select value={draft.current_status} onChange={(event) => setDraft((previous) => ({ ...previous, current_status: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm">
+                <label className="text-label mb-1.5 block text-slate-400">Current status</label>
+                <select value={draft.current_status} onChange={(event) => setDraft((previous) => ({ ...previous, current_status: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4">
                   <option value="">Select status...</option>
                   {OWNED_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Nickname</label>
-                <input value={draft.nickname} onChange={(event) => setDraft((previous) => ({ ...previous, nickname: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Nickname</label>
+                <input value={draft.nickname} onChange={(event) => setDraft((previous) => ({ ...previous, nickname: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Purchase date</label>
-                <input type="date" value={draft.purchase_date} onChange={(event) => setDraft((previous) => ({ ...previous, purchase_date: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Purchase date</label>
+                <input type="date" value={draft.purchase_date} onChange={(event) => setDraft((previous) => ({ ...previous, purchase_date: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Purchase price</label>
-                <input value={draft.purchase_price} onChange={(event) => setDraft((previous) => ({ ...previous, purchase_price: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Purchase price</label>
+                <input value={draft.purchase_price} onChange={(event) => setDraft((previous) => ({ ...previous, purchase_price: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Bought from</label>
-                <input value={draft.bought_from} onChange={(event) => setDraft((previous) => ({ ...previous, bought_from: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Bought from</label>
+                <input value={draft.bought_from} onChange={(event) => setDraft((previous) => ({ ...previous, bought_from: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Suitable for / sport tags</label>
-                <input value={draft.suitable_for} onChange={(event) => setDraft((previous) => ({ ...previous, suitable_for: event.target.value }))} placeholder="Tennis, hard court, club nights" className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Suitable for / sport tags</label>
+                <input value={draft.suitable_for} onChange={(event) => setDraft((previous) => ({ ...previous, suitable_for: event.target.value }))} placeholder="Tennis, hard court, club nights" className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
             </>
           )}
           {isWishlist && (
             <>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Status</label>
-                <select value={draft.wishlist_status} onChange={(event) => setDraft((previous) => ({ ...previous, wishlist_status: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm">
+                <label className="text-label mb-1.5 block text-slate-400">Status</label>
+                <select value={draft.wishlist_status} onChange={(event) => setDraft((previous) => ({ ...previous, wishlist_status: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4">
                   <option value="">Select status...</option>
                   {WISHLIST_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Priority</label>
-                <select value={draft.wishlist_priority} onChange={(event) => setDraft((previous) => ({ ...previous, wishlist_priority: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm">
+                <label className="text-label mb-1.5 block text-slate-400">Priority</label>
+                <select value={draft.wishlist_priority} onChange={(event) => setDraft((previous) => ({ ...previous, wishlist_priority: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4">
                   <option value="">Select priority...</option>
                   {WISHLIST_PRIORITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Source link</label>
-                <input value={draft.source_link} onChange={(event) => setDraft((previous) => ({ ...previous, source_link: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Source link</label>
+                <input value={draft.source_link} onChange={(event) => setDraft((previous) => ({ ...previous, source_link: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Price</label>
-                <input value={draft.source_price} onChange={(event) => setDraft((previous) => ({ ...previous, source_price: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Price</label>
+                <input value={draft.source_price} onChange={(event) => setDraft((previous) => ({ ...previous, source_price: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
             </>
           )}
           {draft.category === 'rackets' && (
             <>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Head size</label>
-                <input value={draft.head_size} onChange={(event) => setDraft((previous) => ({ ...previous, head_size: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Head size</label>
+                <input value={draft.head_size} onChange={(event) => setDraft((previous) => ({ ...previous, head_size: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">String pattern</label>
-                <input value={draft.string_pattern} onChange={(event) => setDraft((previous) => ({ ...previous, string_pattern: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">String pattern</label>
+                <input value={draft.string_pattern} onChange={(event) => setDraft((previous) => ({ ...previous, string_pattern: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Length</label>
-                <input value={draft.length} onChange={(event) => setDraft((previous) => ({ ...previous, length: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Length</label>
+                <input value={draft.length} onChange={(event) => setDraft((previous) => ({ ...previous, length: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Grip size</label>
-                <input value={draft.grip_size} onChange={(event) => setDraft((previous) => ({ ...previous, grip_size: event.target.value }))} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                <label className="text-label mb-1.5 block text-slate-400">Grip size</label>
+                <input value={draft.grip_size} onChange={(event) => setDraft((previous) => ({ ...previous, grip_size: event.target.value }))} className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
               </div>
             </>
           )}
           <div className="md:col-span-2">
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Notes</label>
-            <textarea value={draft.notes} onChange={(event) => setDraft((previous) => ({ ...previous, notes: event.target.value }))} className="min-h-[96px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" />
+            <label className="text-label mb-1.5 block text-slate-400">Notes</label>
+            <textarea value={draft.notes} onChange={(event) => setDraft((previous) => ({ ...previous, notes: event.target.value }))} className="text-body-main min-h-[96px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3" />
           </div>
           <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h4 className="text-sm font-semibold text-slate-900">Showcase</h4>
-                <p className="mt-1 text-sm text-slate-500">Control whether this item appears publicly in your Gear showcase.</p>
+                <h4 className="text-title-main text-slate-900">Showcase</h4>
+                <p className="text-body-sub mt-1 text-slate-500">Control whether this item appears publicly in your Gear showcase.</p>
               </div>
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+              <label className="text-body-main inline-flex items-center gap-2 text-slate-700">
                 <input type="checkbox" checked={draft.visible_in_showcase} onChange={(event) => setDraft((previous) => ({ ...previous, visible_in_showcase: event.target.checked }))} />
                 Visible publicly
               </label>
             </div>
-            <input value={draft.showcase_note} onChange={(event) => setDraft((previous) => ({ ...previous, showcase_note: event.target.value }))} placeholder="Short display note" className="mt-3 h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+            <input value={draft.showcase_note} onChange={(event) => setDraft((previous) => ({ ...previous, showcase_note: event.target.value }))} placeholder="Short display note" className="text-body-main mt-3 h-11 w-full rounded-2xl border border-slate-200 bg-white px-4" />
           </div>
         </section>
         {addMode === 'photos' && draft.category === 'rackets' && !isExisting && (
           <section className="mt-5 space-y-4 border-t border-slate-200 pt-5">
             <div>
-              <h4 className="text-sm font-semibold text-slate-900">Add from Photos</h4>
-              <p className="mt-1 text-sm text-slate-500">
+              <h4 className="text-title-main text-slate-900">Add from Photos</h4>
+              <p className="text-body-sub mt-1 text-slate-500">
                 Upload racquet photos first. We will draft a model guess from the photo filenames and any visible text you add here.
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(event) => setPhotoFiles(Array.from(event.target.files ?? []))} className="block w-full text-sm" />
-              <input value={manualHints} onChange={(event) => setManualHints(event.target.value)} placeholder="Optional visible text or specs you can read" className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+              <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(event) => setPhotoFiles(Array.from(event.target.files ?? []))} className="text-body-main block w-full" />
+              <input value={manualHints} onChange={(event) => setManualHints(event.target.value)} placeholder="Optional visible text or specs you can read" className="text-body-main h-11 rounded-2xl border border-slate-200 bg-white px-4" />
             </div>
-            <button type="button" onClick={detectFromPhotos} disabled={photoFiles.length === 0} className="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 disabled:opacity-50">
+            <button type="button" onClick={detectFromPhotos} disabled={photoFiles.length === 0} className="text-body-main rounded-2xl bg-slate-100 px-4 py-2.5 font-medium text-slate-700 disabled:opacity-50">
               Generate draft from photos
             </button>
             {draft.recognition_confidence && (
-              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+              <div className="text-body-main rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-600">
                 <p className="font-medium text-slate-900">Recognition confidence: {draft.recognition_confidence}</p>
                 {metadataNote && <p className="mt-1">{metadataNote}</p>}
               </div>
             )}
           </section>
         )}
-        {error && <p className="mt-4 text-sm text-rose-500">{error}</p>}
+        {error && <p className="text-body-main mt-4 text-rose-500">{error}</p>}
       </div>
 
       <section className="space-y-4 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.35)]">
         <div>
-          <h4 className="text-sm font-semibold text-slate-900">Photos</h4>
-          <p className="mt-1 text-sm text-slate-500">Manage multiple photos, cover image, captions, and background-removed versions.</p>
+          <h4 className="text-title-main text-slate-900">Photos</h4>
+          <p className="text-body-sub mt-1 text-slate-500">Manage multiple photos, cover image, captions, and background-removed versions.</p>
         </div>
         {item ? (
           <GearImageManager
@@ -747,7 +749,7 @@ function GearItemEditor({
             onDeleteImage={onDeleteImage}
           />
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+          <div className="text-body-main rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-slate-500">
             Save the item first, then you can manage its photos in full.
           </div>
         )}
@@ -760,7 +762,7 @@ function GearItemEditor({
       )}
 
       {item && !draft.visible_in_showcase && (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+        <div className="text-body-main rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-500">
           This item is currently private and not shown in Showcase.
         </div>
       )}
@@ -816,10 +818,10 @@ function ShowcasePanel({
       <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.35)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h3 className="text-xl font-semibold tracking-tight text-slate-900">Public preview</h3>
-            <p className="mt-1 text-sm text-slate-500">Preview what others will see when you choose to show gear publicly.</p>
+            <h3 className="text-h1 text-slate-900">Public preview</h3>
+            <p className="text-body-sub mt-1 text-slate-500">Preview what others will see when you choose to show gear publicly.</p>
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <span className="text-label rounded-full bg-slate-100 px-3 py-1 text-slate-500">
             {visibleEntries.filter((entry) => entry.is_visible).length} visible
           </span>
         </div>
@@ -828,7 +830,7 @@ function ShowcasePanel({
             {previewImageUrl ? (
               <img src={previewImageUrl} alt="Showcase preview cover" className="h-[320px] w-full object-contain" />
             ) : (
-              <div className="flex h-[320px] items-center justify-center text-sm text-slate-400">No cover image selected yet.</div>
+              <div className="text-body-main flex h-[320px] items-center justify-center text-slate-400">No cover image selected yet.</div>
             )}
           </div>
           <div className="space-y-3">
@@ -837,8 +839,8 @@ function ShowcasePanel({
               const photo = entry.gear_image_id ? imageMap.get(entry.gear_image_id) : null
               return (
                 <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-medium text-slate-900">{item?.item_name ?? photo?.caption ?? 'Setup photo'}</p>
-                  {entry.display_note && <p className="mt-1 text-sm text-slate-500">{entry.display_note}</p>}
+                  <p className="text-body-main font-medium text-slate-900">{item?.item_name ?? photo?.caption ?? 'Setup photo'}</p>
+                  {entry.display_note && <p className="text-body-sub mt-1 text-slate-500">{entry.display_note}</p>}
                 </div>
               )
             })}
@@ -848,8 +850,8 @@ function ShowcasePanel({
 
       <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.35)]">
         <div className="mb-4">
-          <h4 className="text-sm font-semibold text-slate-900">Setup / look photos</h4>
-          <p className="mt-1 text-sm text-slate-500">Upload standalone photos like full setups, outfit shots, or artwork and choose whether to show them publicly.</p>
+          <h4 className="text-title-main text-slate-900">Setup / look photos</h4>
+          <p className="text-body-sub mt-1 text-slate-500">Upload standalone photos like full setups, outfit shots, or artwork and choose whether to show them publicly.</p>
         </div>
         <GearImageManager
           userId={userId}
@@ -868,7 +870,7 @@ function ShowcasePanel({
 
       <div className="space-y-3">
         {visibleEntries.length === 0 ? (
-          <div className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50 px-5 py-5 text-sm text-slate-500">
+          <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 px-5 py-5 text-slate-500">
             Nothing is in Showcase yet. Add items from Owned Gear or Wishlist, or upload setup photos here.
           </div>
         ) : (
@@ -879,28 +881,28 @@ function ShowcasePanel({
               <div key={entry.id} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_14px_30px_-26px_rgba(15,23,42,0.35)]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{item?.item_name ?? photo?.caption ?? 'Setup photo'}</p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="text-title-main text-slate-900">{item?.item_name ?? photo?.caption ?? 'Setup photo'}</p>
+                    <p className="text-body-sub mt-1 text-slate-500">
                       {item ? `${item.collection_type === 'owned' ? 'Owned Gear' : 'Wishlist'} · ${getGearCategoryLabel(item.category)}` : 'Setup photo'}
                     </p>
                   </div>
                   {item && (
-                    <button type="button" onClick={() => onOpenItem(item.id)} className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+                    <button type="button" onClick={() => onOpenItem(item.id)} className="text-body-sub rounded-2xl bg-slate-100 px-3 py-2 font-medium text-slate-700">
                       Open detail
                     </button>
                   )}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => void onUpsertShowcase({ source_type: entry.source_type, gear_item_id: entry.gear_item_id ?? null, gear_image_id: entry.gear_image_id ?? null, is_visible: !entry.is_visible, pinned: entry.pinned, is_cover: entry.is_cover, sort_order: entry.sort_order, display_note: entry.display_note })} className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+                  <button type="button" onClick={() => void onUpsertShowcase({ source_type: entry.source_type, gear_item_id: entry.gear_item_id ?? null, gear_image_id: entry.gear_image_id ?? null, is_visible: !entry.is_visible, pinned: entry.pinned, is_cover: entry.is_cover, sort_order: entry.sort_order, display_note: entry.display_note })} className="text-body-sub rounded-2xl bg-slate-100 px-3 py-2 font-medium text-slate-700">
                     {entry.is_visible ? 'Hide' : 'Show'}
                   </button>
-                  <button type="button" onClick={() => void onUpsertShowcase({ source_type: entry.source_type, gear_item_id: entry.gear_item_id ?? null, gear_image_id: entry.gear_image_id ?? null, is_visible: entry.is_visible, pinned: !entry.pinned, is_cover: entry.is_cover, sort_order: entry.sort_order, display_note: entry.display_note })} className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+                  <button type="button" onClick={() => void onUpsertShowcase({ source_type: entry.source_type, gear_item_id: entry.gear_item_id ?? null, gear_image_id: entry.gear_image_id ?? null, is_visible: entry.is_visible, pinned: !entry.pinned, is_cover: entry.is_cover, sort_order: entry.sort_order, display_note: entry.display_note })} className="text-body-sub rounded-2xl bg-slate-100 px-3 py-2 font-medium text-slate-700">
                     {entry.pinned ? 'Unpin' : 'Pin'}
                   </button>
-                  <button type="button" onClick={() => void Promise.all(visibleEntries.map((candidate) => onUpsertShowcase({ source_type: candidate.source_type, gear_item_id: candidate.gear_item_id ?? null, gear_image_id: candidate.gear_image_id ?? null, is_visible: candidate.is_visible, pinned: candidate.pinned, is_cover: candidate.id === entry.id, sort_order: candidate.sort_order, display_note: candidate.display_note })))} className="rounded-2xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                  <button type="button" onClick={() => void Promise.all(visibleEntries.map((candidate) => onUpsertShowcase({ source_type: candidate.source_type, gear_item_id: candidate.gear_item_id ?? null, gear_image_id: candidate.gear_image_id ?? null, is_visible: candidate.is_visible, pinned: candidate.pinned, is_cover: candidate.id === entry.id, sort_order: candidate.sort_order, display_note: candidate.display_note })))} className="text-body-sub rounded-2xl bg-amber-50 px-3 py-2 font-medium text-amber-700">
                     {entry.is_cover ? 'Cover image' : 'Make cover'}
                   </button>
-                  <button type="button" onClick={() => void onDeleteShowcase(entry.id)} className="rounded-2xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                  <button type="button" onClick={() => void onDeleteShowcase(entry.id)} className="text-body-sub rounded-2xl bg-rose-50 px-3 py-2 font-medium text-rose-700">
                     Remove
                   </button>
                 </div>
@@ -909,7 +911,7 @@ function ShowcasePanel({
                   defaultValue={entry.display_note ?? ''}
                   onBlur={(event) => void onUpsertShowcase({ source_type: entry.source_type, gear_item_id: entry.gear_item_id ?? null, gear_image_id: entry.gear_image_id ?? null, is_visible: entry.is_visible, pinned: entry.pinned, is_cover: entry.is_cover, sort_order: entry.sort_order, display_note: event.target.value })}
                   placeholder="Short display note"
-                  className="mt-3 h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm"
+                  className="text-body-main mt-3 h-11 w-full rounded-2xl border border-slate-200 bg-white px-4"
                 />
               </div>
             )
@@ -1070,8 +1072,9 @@ export function GearPanel({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Gear</h2>
-          <p className="mt-1 text-sm text-slate-500">Manage what you own, what you want, and what you choose to show publicly.</p>
+          <div className="text-label text-[#94A3B8]">Equipment</div>
+          <h2 className="text-h1 mt-1 text-[#1E293B]">Gear</h2>
+          <p className="text-body-sub mt-1 text-[#64748B]">Manage what you own, what you want, and what you choose to show publicly.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {GEAR_SECTION_OPTIONS.map((option) => (
@@ -1115,7 +1118,7 @@ export function GearPanel({
         />
       ) : (
         <>
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.35)]">
+          <div className="rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_18px_40px_-30px_rgba(30,41,59,0.16)]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
                 <CardButton active={category === 'all'} onClick={() => setCategory('all')}>All</CardButton>
@@ -1126,16 +1129,16 @@ export function GearPanel({
                 ))}
               </div>
               <div className="flex flex-wrap gap-2">
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${section === 'owned' ? 'owned gear' : 'wishlist'}...`} className="h-11 min-w-[220px] rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
-                <button type="button" onClick={() => setComposer({ collection: section === 'wishlist' ? 'wishlist' : 'owned', mode: 'manual' })} className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white">Add manually</button>
-                {section === 'wishlist' && <button type="button" onClick={() => setComposer({ collection: 'wishlist', mode: 'link' })} className="rounded-2xl bg-sky-50 px-4 py-2.5 text-sm font-medium text-sky-700">Add from link</button>}
-                {section === 'owned' && (category === 'all' || category === 'rackets') && <button type="button" onClick={() => setComposer({ collection: 'owned', mode: 'photos', initialDraft: { ...buildDraftFromItem(undefined, 'owned'), category: 'rackets', gear_type: 'Tennis Racquet' } })} className="rounded-2xl bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700">Add racquet from photos</button>}
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${section === 'owned' ? 'owned gear' : 'wishlist'}...`} className="text-body-main h-11 min-w-[220px] rounded-2xl border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]" />
+                <button type="button" onClick={() => setComposer({ collection: section === 'wishlist' ? 'wishlist' : 'owned', mode: 'manual' })} className="text-body-main rounded-2xl bg-[#C25E46] px-4 py-2.5 font-semibold text-white transition hover:bg-[#A64F3A]">Add manually</button>
+                {section === 'wishlist' && <button type="button" onClick={() => setComposer({ collection: 'wishlist', mode: 'link' })} className="text-body-main rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-2.5 font-medium text-[#475569] transition hover:border-[#C25E46]/35">Add from link</button>}
+                {section === 'owned' && (category === 'all' || category === 'rackets') && <button type="button" onClick={() => setComposer({ collection: 'owned', mode: 'photos', initialDraft: { ...buildDraftFromItem(undefined, 'owned'), category: 'rackets', gear_type: 'Tennis Racquet' } })} className="text-body-main rounded-2xl bg-emerald-50 px-4 py-2.5 font-medium text-emerald-700">Add racquet from photos</button>}
               </div>
             </div>
             {composer?.mode === 'link' && section === 'wishlist' && (
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mt-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] p-4">
                 <div className="flex flex-wrap gap-3">
-                  <input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="Paste a product link" className="h-11 min-w-[320px] flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-sm" />
+                  <input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="Paste a product link" className="text-body-main h-11 min-w-[320px] flex-1 rounded-2xl border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]" />
                   <button type="button" disabled={linkLoading || !linkUrl.trim()} onClick={async () => {
                     setLinkLoading(true)
                     setLinkError(null)
@@ -1169,18 +1172,18 @@ export function GearPanel({
                     } finally {
                       setLinkLoading(false)
                     }
-                  }} className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+                  }} className="text-body-main rounded-2xl bg-[#C25E46] px-4 py-2.5 font-semibold text-white disabled:opacity-50">
                     {linkLoading ? 'Importing...' : 'Generate draft'}
                   </button>
                 </div>
-                {linkError && <p className="mt-3 text-sm text-rose-500">{linkError}</p>}
-                <p className="mt-3 text-sm text-slate-500">We try to pull item name, image, category, and price, then you review and fix anything before saving.</p>
+                {linkError && <p className="text-body-main mt-3 text-rose-500">{linkError}</p>}
+                <p className="text-body-sub mt-3 text-[#64748B]">We try to pull item name, image, category, and price, then you review and fix anything before saving.</p>
               </div>
             )}
           </div>
 
           {filteredItems.length === 0 ? (
-            <div className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50 px-5 py-5 text-sm text-slate-500">No items in this view yet.</div>
+            <div className="text-body-main rounded-[28px] border border-dashed border-[#CBD5E1] bg-[#F8FBFF] px-5 py-5 text-[#64748B]">No items in this view yet.</div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredItems.map((item) => {
@@ -1189,16 +1192,16 @@ export function GearPanel({
                 return (
                   <button key={item.id} type="button" onClick={() => setSelectedItemId(item.id)} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white text-left shadow-[0_18px_40px_-30px_rgba(15,23,42,0.35)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_48px_-30px_rgba(15,23,42,0.45)]">
                     <div className="h-52 border-b border-slate-100 bg-slate-50">
-                      {coverImage ? <img src={coverImage.cutout_public_url || coverImage.public_url} alt={item.item_name} className="h-full w-full object-contain" /> : <div className="flex h-full items-center justify-center text-sm text-slate-400">No image yet</div>}
+                      {coverImage ? <img src={coverImage.cutout_public_url || coverImage.public_url} alt={item.item_name} className="h-full w-full object-contain" /> : <div className="text-body-main flex h-full items-center justify-center text-slate-400">No image yet</div>}
                     </div>
                     <div className="p-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{getGearCategoryLabel(item.category)}</span>
-                        {showcaseItemIds.has(item.id) && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">In showcase</span>}
+                        <span className="text-label rounded-full bg-slate-100 px-2.5 py-1 text-slate-500">{getGearCategoryLabel(item.category)}</span>
+                        {showcaseItemIds.has(item.id) && <span className="text-label rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">In showcase</span>}
                       </div>
-                      <h3 className="mt-3 text-base font-semibold text-slate-900">{item.item_name}</h3>
-                      <p className="mt-1 text-sm text-slate-500">{item.gear_type || item.current_status || readMetadataString(item.metadata, 'wishlist_status') || 'Open detail'}</p>
-                      {item.showcase_note && <p className="mt-2 text-sm text-slate-600">{item.showcase_note}</p>}
+                      <h3 className="text-title-main mt-3 text-slate-900">{item.item_name}</h3>
+                      <p className="text-body-sub mt-1 text-slate-500">{item.gear_type || item.current_status || readMetadataString(item.metadata, 'wishlist_status') || 'Open detail'}</p>
+                      {item.showcase_note && <p className="text-body-main mt-2 text-slate-600">{item.showcase_note}</p>}
                     </div>
                   </button>
                 )

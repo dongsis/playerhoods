@@ -1,13 +1,19 @@
 'use client'
-
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import {
+  AUTH_SUBMIT_THROTTLE_MS,
+  MIN_PASSWORD_LENGTH,
+  mapAuthErrorToUiMessage,
+  sanitizeNextPath,
+} from '@/lib/auth-ui'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 type Mode = 'login' | 'register' | 'forgot'
+type NoticeKey = 'password-updated' | 'reset-link-invalid' | null
 
 export default function LoginPage() {
-  const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
@@ -16,6 +22,68 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const lastSubmitAtRef = useRef<Record<Mode, number>>({
+    login: 0,
+    register: 0,
+    forgot: 0,
+  })
+
+  const nextPath = useMemo(
+    () => sanitizeNextPath(searchParams.get('next'), '/dashboard'),
+    [searchParams],
+  )
+  const oauthCode = searchParams.get('code')
+  const oauthAccessToken = searchParams.get('access_token')
+
+  useEffect(() => {
+    const nextMode = searchParams.get('mode')
+    const notice = (searchParams.get('notice') as NoticeKey) ?? null
+
+    if (nextMode === 'login' || nextMode === 'register' || nextMode === 'forgot') {
+      setMode(nextMode)
+    }
+
+    if (notice === 'password-updated') {
+      setMode('login')
+      setError(null)
+      setInfo('Your password has been updated. Please sign in.')
+      return
+    }
+
+    if (notice === 'reset-link-invalid') {
+      setMode('forgot')
+      setInfo(null)
+      setError('That reset link is invalid or has expired. Please request a new one.')
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!oauthCode && !oauthAccessToken) return
+
+    let cancelled = false
+    const supabase = createSupabaseBrowserClient()
+
+    async function settleOAuthSession() {
+      const { data } = await supabase.auth.getSession()
+      if (!cancelled && data.session) {
+        window.location.replace(nextPath)
+      }
+    }
+
+    void settleOAuthSession()
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled || !session) return
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        window.location.replace(nextPath)
+      }
+    })
+
+    return () => {
+      cancelled = true
+      authListener.subscription.unsubscribe()
+    }
+  }, [nextPath, oauthAccessToken, oauthCode])
 
   function switchMode(next: Mode) {
     setMode(next)
@@ -25,184 +93,345 @@ export default function LoginPage() {
     setConfirmPassword('')
   }
 
+  function normalizeEmail(value: string) {
+    return value.trim().toLowerCase()
+  }
+
+  function guardAgainstRapidSubmit(target: Mode) {
+    const now = Date.now()
+    if (now - lastSubmitAtRef.current[target] < AUTH_SUBMIT_THROTTLE_MS) {
+      setError('Please wait a moment and try again.')
+      return false
+    }
+
+    lastSubmitAtRef.current[target] = now
+    return true
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setInfo(null)
+
+    if (!guardAgainstRapidSubmit('login')) return
+
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (error) { setError(error.message); return }
-    router.replace('/dashboard')
+
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizeEmail(email),
+        password,
+      })
+
+      if (signInError) {
+        console.error('[auth:login]', signInError)
+        setError(mapAuthErrorToUiMessage('login'))
+        return
+      }
+
+      window.location.assign(nextPath)
+    } catch (err) {
+      console.error('[auth:login]', err)
+      setError(mapAuthErrorToUiMessage('login'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleGoogleAuth(targetMode: 'login' | 'register') {
+    setError(null)
+    setInfo(null)
+
+    if (!guardAgainstRapidSubmit(targetMode)) return
+
+    setLoading(true)
+    const supabase = createSupabaseBrowserClient()
+
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/login?next=${encodeURIComponent(nextPath)}`,
+        },
+      })
+
+      if (oauthError) {
+        console.error('[auth:google]', oauthError)
+        setError('Unable to continue with Google right now. Please try again.')
+        setLoading(false)
+      }
+    } catch (err) {
+      console.error('[auth:google]', err)
+      setError('Unable to continue with Google right now. Please try again.')
+      setLoading(false)
+    }
   }
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (password !== confirmPassword) { setError('两次密码不一致'); return }
-    if (password.length < 6) { setError('密码至少需要 6 位'); return }
+    setInfo(null)
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      return
+    }
+
+    if (!guardAgainstRapidSubmit('register')) return
+
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
-    const { data, error } = await supabase.auth.signUp({ email, password })
-    setLoading(false)
-    if (error) { setError(error.message); return }
-    // If session exists immediately, redirect to onboarding; otherwise prompt email confirmation
-    if (data.session) {
-      router.replace('/onboarding/profile')
-    } else {
-      setInfo('注册成功！请查收确认邮件，点击链接后即可登录。')
+
+    try {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: normalizeEmail(email),
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        },
+      })
+
+      if (signUpError) {
+        console.error('[auth:register]', signUpError)
+        setError(mapAuthErrorToUiMessage('register'))
+        return
+      }
+
+      if (data.session) {
+        window.location.assign('/onboarding/profile')
+        return
+      }
+
+      setInfo('If this email can be used, check your inbox for the confirmation link.')
+    } catch (err) {
+      console.error('[auth:register]', err)
+      setError(mapAuthErrorToUiMessage('register'))
+    } finally {
+      setLoading(false)
     }
   }
 
   async function handleForgot(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setInfo(null)
+
+    if (!guardAgainstRapidSubmit('forgot')) return
+
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
-    const redirectTo = `${window.location.origin}/reset-password`
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
-    setLoading(false)
-    if (error) { setError(error.message); return }
-    setInfo('重置密码邮件已发送，请查收邮件并点击链接。')
+
+    try {
+      const redirectTo = `${window.location.origin}/auth/callback?next=/reset-password`
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        normalizeEmail(email),
+        { redirectTo },
+      )
+
+      if (resetError) {
+        console.error('[auth:forgot]', resetError)
+      }
+
+      setInfo('If that email is registered, we have sent a password reset link.')
+    } catch (err) {
+      console.error('[auth:forgot]', err)
+      setError(mapAuthErrorToUiMessage('forgot'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   const titles: Record<Mode, string> = {
-    login: '登录',
-    register: '注册',
-    forgot: '找回密码',
+    login: 'Sign in',
+    register: 'Create account',
+    forgot: 'Reset password',
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: '4rem auto', padding: '0 1rem' }}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Playerhoods</h1>
-      <h2 style={{ fontSize: '1.1rem', marginBottom: '1.5rem', fontWeight: 500, color: '#444' }}>
-        {titles[mode]}
-      </h2>
+    <div className="min-h-screen bg-[#EEF1F7] px-4 py-10">
+      <div className="ph-page-narrow">
+        <div className="mb-6 flex justify-center">
+          <img
+            src="/playerhoods-logo-transparent.png"
+            alt="PlayerHoods"
+            className="h-auto w-full max-w-[280px]"
+          />
+        </div>
 
-      {/* ── Login ──────────────────────────────────────────────────────── */}
-      {mode === 'login' && (
-        <form onSubmit={handleLogin}>
+        <section className="ph-card px-6 py-6">
+          <h1 className="ph-title">{titles[mode]}</h1>
+          <p className="ph-subtitle mb-6 mt-2">
+            {mode === 'login'
+              ? 'Sign in to manage matches, groups, and player coordination.'
+              : mode === 'register'
+                ? 'Create your account and get your player profile ready.'
+                : 'Enter your email and we will send a reset link if the account exists.'}
+          </p>
+
+        {mode === 'login' && (
+          <form onSubmit={handleLogin}>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void handleGoogleAuth('login')}
+            style={secondaryBtnStyle}
+          >
+            <GoogleIcon />
+            <span>{loading ? 'Opening Google...' : 'Continue with Google'}</span>
+          </button>
+
+          <div style={separatorStyle}>
+            <span style={separatorLineStyle} />
+            <span style={separatorTextStyle}>or</span>
+            <span style={separatorLineStyle} />
+          </div>
+
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>邮箱</label>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Email</label>
             <input
               data-testid="login-email"
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
               style={inputStyle}
             />
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>密码</label>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Password</label>
             <PasswordInput
               data-testid="login-password"
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
             />
           </div>
           <div style={{ textAlign: 'right', marginBottom: '1.25rem' }}>
             <button type="button" onClick={() => switchMode('forgot')} style={linkBtnStyle}>
-              忘记密码？
+              Forgot password?
             </button>
           </div>
           {error && <p style={errorStyle}>{error}</p>}
+          {info && <p style={infoStyle}>{info}</p>}
           <button data-testid="login-submit" type="submit" disabled={loading} style={primaryBtnStyle}>
-            {loading ? '登录中…' : '登录'}
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
           <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#555', textAlign: 'center' }}>
-            没有账号？{' '}
+            Need an account?{' '}
             <button type="button" onClick={() => switchMode('register')} style={linkBtnStyle}>
-              立即注册
+              Create one
             </button>
           </p>
-        </form>
-      )}
+          </form>
+        )}
 
-      {/* ── Register ───────────────────────────────────────────────────── */}
-      {mode === 'register' && (
-        <form onSubmit={handleRegister}>
+        {mode === 'register' && (
+          <form onSubmit={handleRegister}>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void handleGoogleAuth('register')}
+            style={secondaryBtnStyle}
+          >
+            <GoogleIcon />
+            <span>{loading ? 'Opening Google...' : 'Continue with Google'}</span>
+          </button>
+
+          <div style={separatorStyle}>
+            <span style={separatorLineStyle} />
+            <span style={separatorTextStyle}>or</span>
+            <span style={separatorLineStyle} />
+          </div>
+
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>邮箱</label>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Email</label>
             <input
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
               style={inputStyle}
             />
           </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>密码（至少 6 位）</label>
+          <div style={{ marginBottom: '0.35rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>
+              Password
+            </label>
             <PasswordInput
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
               required
-              minLength={6}
+              minLength={MIN_PASSWORD_LENGTH}
             />
           </div>
+          <p style={helperTextStyle}>At least {MIN_PASSWORD_LENGTH} characters.</p>
           <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>确认密码</label>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>
+              Confirm password
+            </label>
             <PasswordInput
               value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
+              onChange={(e) => setConfirmPassword(e.target.value)}
               autoComplete="new-password"
               required
-              minLength={6}
+              minLength={MIN_PASSWORD_LENGTH}
             />
           </div>
           {error && <p style={errorStyle}>{error}</p>}
-          {info  && <p style={infoStyle}>{info}</p>}
+          {info && <p style={infoStyle}>{info}</p>}
           {!info && (
             <button type="submit" disabled={loading} style={primaryBtnStyle}>
-              {loading ? '注册中…' : '注册'}
+              {loading ? 'Creating account...' : 'Create account'}
             </button>
           )}
           <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#555', textAlign: 'center' }}>
-            已有账号？{' '}
+            Already have an account?{' '}
             <button type="button" onClick={() => switchMode('login')} style={linkBtnStyle}>
-              返回登录
+              Back to sign in
             </button>
           </p>
-        </form>
-      )}
+          </form>
+        )}
 
-      {/* ── Forgot password ────────────────────────────────────────────── */}
-      {mode === 'forgot' && (
-        <form onSubmit={handleForgot}>
-          <p style={{ fontSize: '0.9rem', color: '#555', marginBottom: '1rem' }}>
-            输入注册邮箱，我们将发送密码重置链接。
-          </p>
+        {mode === 'forgot' && (
+          <form onSubmit={handleForgot}>
           <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>邮箱</label>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Email</label>
             <input
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
               style={inputStyle}
             />
           </div>
           {error && <p style={errorStyle}>{error}</p>}
-          {info  && <p style={infoStyle}>{info}</p>}
+          {info && <p style={infoStyle}>{info}</p>}
           {!info && (
             <button type="submit" disabled={loading} style={primaryBtnStyle}>
-              {loading ? '发送中…' : '发送重置邮件'}
+              {loading ? 'Sending...' : 'Send reset email'}
             </button>
           )}
           <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#555', textAlign: 'center' }}>
             <button type="button" onClick={() => switchMode('login')} style={linkBtnStyle}>
-              ← 返回登录
+              Back to sign in
             </button>
           </p>
-        </form>
-      )}
+          </form>
+        )}
+        </section>
+      </div>
     </div>
   )
 }
@@ -230,7 +459,7 @@ function PasswordInput(props: PasswordInputProps) {
         type="button"
         aria-label={isVisible ? 'Hide password' : 'Show password'}
         title={isVisible ? 'Hide password' : 'Show password'}
-        onClick={() => setIsVisible(current => !current)}
+        onClick={() => setIsVisible((current) => !current)}
         style={passwordToggleStyle}
       >
         <EyeIcon isVisible={isVisible} />
@@ -280,13 +509,26 @@ function EyeIcon({ isVisible }: { isVisible: boolean }) {
   )
 }
 
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.24 1.26-.96 2.33-2.04 3.05l3.3 2.56c1.92-1.77 3.03-4.38 3.03-7.5 0-.72-.06-1.41-.19-2.08H12z" />
+      <path fill="#34A853" d="M12 22c2.75 0 5.05-.91 6.73-2.48l-3.3-2.56c-.91.61-2.08.97-3.43.97-2.64 0-4.88-1.78-5.68-4.18l-3.42 2.64C4.57 19.71 8 22 12 22z" />
+      <path fill="#4A90E2" d="M6.32 13.75A5.98 5.98 0 016 12c0-.61.11-1.2.32-1.75L2.9 7.61A9.95 9.95 0 002 12c0 1.6.38 3.12 1.05 4.39l3.27-2.64z" />
+      <path fill="#FBBC05" d="M12 6.07c1.5 0 2.84.52 3.9 1.54l2.92-2.92C17.04 3.04 14.75 2 12 2 8 2 4.57 4.29 2.9 7.61l3.42 2.64C7.12 7.85 9.36 6.07 12 6.07z" />
+    </svg>
+  )
+}
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '0.5rem 0.6rem',
-  fontSize: '0.95rem',
+  padding: '0.8rem 0.95rem',
+  fontSize: '0.85rem',
   boxSizing: 'border-box',
-  border: '1px solid #ccc',
-  borderRadius: '4px',
+  border: '1px solid #E2E8F0',
+  borderRadius: '12px',
+  background: '#fff',
+  color: '#1E293B',
 }
 
 const passwordFieldStyle: React.CSSProperties = {
@@ -306,7 +548,7 @@ const passwordToggleStyle: React.CSSProperties = {
   border: 'none',
   background: 'transparent',
   padding: 0,
-  color: '#666',
+  color: '#94A3B8',
   cursor: 'pointer',
   display: 'inline-flex',
   alignItems: 'center',
@@ -315,37 +557,91 @@ const passwordToggleStyle: React.CSSProperties = {
 
 const primaryBtnStyle: React.CSSProperties = {
   width: '100%',
-  padding: '0.65rem',
-  fontSize: '0.95rem',
+  padding: '0.85rem 1rem',
+  fontSize: '0.78rem',
   cursor: 'pointer',
-  background: '#1a1a1a',
+  background: '#C25E46',
   color: '#fff',
   border: 'none',
-  borderRadius: '4px',
+  borderRadius: '999px',
+  fontWeight: 900,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  boxShadow: '0 12px 28px rgba(194, 94, 70, 0.28)',
+}
+
+const secondaryBtnStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '0.8rem 1rem',
+  marginBottom: '1rem',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.7rem',
+  fontSize: '0.84rem',
+  cursor: 'pointer',
+  background: '#fff',
+  color: '#1E293B',
+  border: '1px solid #E2E8F0',
+  borderRadius: '999px',
+  fontWeight: 700,
+}
+
+const separatorStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  marginBottom: '1rem',
+}
+
+const separatorLineStyle: React.CSSProperties = {
+  flex: 1,
+  height: '1px',
+  background: '#E2E8F0',
+}
+
+const separatorTextStyle: React.CSSProperties = {
+  color: '#94A3B8',
+  fontSize: '0.76rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
 }
 
 const linkBtnStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
   padding: 0,
-  color: '#0070f3',
+  color: '#C25E46',
   cursor: 'pointer',
   fontSize: 'inherit',
-  textDecoration: 'underline',
+  textDecoration: 'none',
+  fontWeight: 700,
+}
+
+const helperTextStyle: React.CSSProperties = {
+  marginTop: 0,
+  marginBottom: '0.9rem',
+  color: '#64748B',
+  fontSize: '0.76rem',
 }
 
 const errorStyle: React.CSSProperties = {
-  color: 'red',
-  fontSize: '0.85rem',
+  color: '#b91c1c',
+  fontSize: '0.84rem',
   marginBottom: '0.75rem',
+  padding: '0.75rem 0.9rem',
+  background: '#FEF2F2',
+  borderRadius: '16px',
+  border: '1px solid #fecaca',
 }
 
 const infoStyle: React.CSSProperties = {
-  color: '#2d8a4e',
-  fontSize: '0.85rem',
+  color: '#166534',
+  fontSize: '0.84rem',
   marginBottom: '0.75rem',
-  padding: '0.6rem 0.8rem',
-  background: '#f0faf4',
-  borderRadius: '4px',
-  border: '1px solid #b7e4c7',
+  padding: '0.75rem 0.9rem',
+  background: '#F0FDF4',
+  borderRadius: '16px',
+  border: '1px solid #bbf7d0',
 }

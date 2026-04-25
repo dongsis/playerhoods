@@ -8,8 +8,9 @@ import { MatchCommunicationSection } from './MatchCommunicationSection'
 import { MatchCourtInfoButton } from './MatchCourtInfoButton'
 import type { MatchDetailPageViewModel } from './match-detail.view-model'
 import type { MatchCourtPlanUpdateInput, MatchUpdateInput } from './match-detail.actions'
+import type { MatchLineupSnapshot } from '@/lib/match-lineup'
 
-function IconCalendar({ size = 12, color = '#f97316' }: { size?: number; color?: string }) {
+function IconCalendar({ size = 12, color = '#C25E46' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="3" y="5" width="18" height="16" rx="3" stroke={color} strokeWidth="1.8" />
@@ -18,7 +19,7 @@ function IconCalendar({ size = 12, color = '#f97316' }: { size?: number; color?:
   )
 }
 
-function IconMapPin({ size = 12, color = '#f97316' }: { size?: number; color?: string }) {
+function IconMapPin({ size = 12, color = '#C25E46' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M12 21C15.5 17.4 18 14.7 18 11.5A6 6 0 0 0 6 11.5C6 14.7 8.5 17.4 12 21Z" stroke={color} strokeWidth="1.8" />
@@ -27,7 +28,7 @@ function IconMapPin({ size = 12, color = '#f97316' }: { size?: number; color?: s
   )
 }
 
-function IconUsers({ size = 12, color = '#0f172a' }: { size?: number; color?: string }) {
+function IconUsers({ size = 12, color = '#1E293B' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="9" cy="8" r="3" stroke={color} strokeWidth="1.8" />
@@ -38,7 +39,7 @@ function IconUsers({ size = 12, color = '#0f172a' }: { size?: number; color?: st
   )
 }
 
-function IconMessageCircle({ size = 12, color = '#0f172a' }: { size?: number; color?: string }) {
+function IconMessageCircle({ size = 12, color = '#1E293B' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M7 18L3.5 20L4.4 16.1A8 8 0 1 1 20 12A8 8 0 0 1 7 18Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
@@ -46,7 +47,7 @@ function IconMessageCircle({ size = 12, color = '#0f172a' }: { size?: number; co
   )
 }
 
-function IconInfo({ size = 10, color = '#f97316' }: { size?: number; color?: string }) {
+function IconInfo({ size = 10, color = '#C25E46' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
@@ -70,9 +71,10 @@ type MatchDetailPageViewProps = {
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>
   onUpdateOrganizerNote: (organizerNote: string | null) => Promise<void>
   onPostMessage: (body: string) => Promise<void>
+  onSaveLineup: (lineup: MatchLineupSnapshot | null) => Promise<void>
   onCancelMatch: (reason: string) => Promise<void>
   onSaveCourtPlan: (data: MatchCourtPlanUpdateInput) => Promise<void>
-  onRemoveParticipant: (participantId: string) => Promise<void>
+  onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
 }
 
 function MatchHeaderSection({
@@ -97,15 +99,18 @@ function MatchHeaderSection({
     courtState,
     rosterInsight,
   } = viewModel
+  const showMatchFormedBanner =
+    match.status === 'active' &&
+    confirmedCount >= match.required_count
   const gameTypeLabel = match.game_type
     ? `${match.game_type.charAt(0).toUpperCase()}${match.game_type.slice(1)}`
     : null
   const courtBadgeColors =
     courtState.status === 'secured'
-      ? { background: '#dcfce7', color: '#166534', dot: '#22c55e' }
+      ? { background: '#F0FDF4', color: '#166534', dot: '#22C55E' }
       : courtState.status === 'walk_in'
-        ? { background: '#dbeafe', color: '#1d4ed8', dot: '#3b82f6' }
-        : { background: '#fef3c7', color: '#b45309', dot: '#f59e0b' }
+        ? { background: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6' }
+        : { background: '#FFF7ED', color: '#C25E46', dot: '#F97316' }
   const showUpdateCourtInfo =
     Boolean(userId)
     && match.status === 'active'
@@ -121,7 +126,7 @@ function MatchHeaderSection({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.25rem',
-            color: '#94a3b8',
+            color: '#94A3B8',
             fontSize: '0.62rem',
             fontWeight: 800,
             letterSpacing: '0.12em',
@@ -137,16 +142,16 @@ function MatchHeaderSection({
           <div
             style={{
               padding: '1rem',
-              border: '1px solid #e8eef6',
+              border: '1px solid #E2E8F0',
               borderRadius: '24px',
               background: '#fff',
-              boxShadow: '0 14px 32px -28px rgba(15, 23, 42, 0.28)',
+              boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', marginBottom: '0.7rem' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.15rem' }}>
-                  <h1 style={{ margin: 0, fontSize: '1.55rem', color: '#0f172a', lineHeight: 1, fontWeight: 800, letterSpacing: '-0.03em' }}>
+                  <h1 style={{ margin: 0, fontSize: '1.55rem', color: '#1E293B', lineHeight: 1, fontWeight: 900, letterSpacing: '-0.03em' }}>
                     {sportName}
                     {gameTypeLabel && (
                       <>
@@ -154,29 +159,27 @@ function MatchHeaderSection({
                         <span aria-hidden="true">&middot;</span>
                         {' '}
                         {gameTypeLabel}
+                        {rosterInsight.formatLabel ? (
+                          <span
+                            style={{
+                              marginLeft: '0.38rem',
+                              fontSize: '0.62em',
+                              fontWeight: 700,
+                              letterSpacing: '0.08em',
+                              textTransform: 'uppercase',
+                              color: '#1E293B',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            {' - '}
+                            {rosterInsight.formatLabel.replace(/\s+/g, ' ')}
+                          </span>
+                        ) : null}
                       </>
                     )}
                   </h1>
-                  {rosterInsight.formatLabel ? (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '0.18rem 0.4rem',
-                        borderRadius: '999px',
-                        background: '#fff7ed',
-                        color: '#ea580c',
-                        fontSize: '0.5rem',
-                        fontWeight: 800,
-                        letterSpacing: '0.12em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {rosterInsight.formatLabel.replace(/\s+/g, ' ')}
-                    </span>
-                  ) : null}
                 </div>
-                <p style={{ margin: 0, fontSize: '0.76rem', color: '#94a3b8', fontWeight: 500 }}>
+                <p style={{ margin: 0, fontSize: '0.76rem', color: '#94A3B8', fontWeight: 500 }}>
                   Hosted by {organizerName}
                 </p>
                 {match.recurring_series_id ? (
@@ -187,7 +190,7 @@ function MatchHeaderSection({
                       marginTop: '0.35rem',
                       fontSize: '0.72rem',
                       fontWeight: 700,
-                      color: '#4f46e5',
+                      color: '#3B82F6',
                       textDecoration: 'none',
                     }}
                   >
@@ -231,9 +234,29 @@ function MatchHeaderSection({
               ) : null}
             </div>
 
+            {showMatchFormedBanner ? (
+              <div
+                style={{
+                  marginBottom: '0.8rem',
+                  borderRadius: '18px',
+                  overflow: 'hidden',
+                }}
+              >
+                <img
+                  src="/match-formed-confirmation.png"
+                  alt="Match formed confirmation"
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    height: 'auto',
+                  }}
+                />
+              </div>
+            ) : null}
+
             <div
               style={{
-                background: '#f8fafc',
+                background: '#F8FAFC',
                 borderRadius: '18px',
                 padding: '0.7rem 0.8rem',
                 display: 'grid',
@@ -242,16 +265,16 @@ function MatchHeaderSection({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.84rem' }}>
                 <IconCalendar />
-                <span style={{ fontWeight: 700, color: '#64748b', fontSize: '0.76rem' }}>
+                <span style={{ fontWeight: 700, color: '#64748B', fontSize: '0.76rem' }}>
                   {timeLabel.split(' ').slice(0, 3).join(' ')}
                 </span>
-                <span style={{ color: '#0f172a', fontSize: '0.98rem', fontWeight: 800 }}>
+                <span style={{ color: '#1E293B', fontSize: '1.1rem', fontWeight: 900 }}>
                   {timeLabel.split(' ').slice(3).join(' ')}
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', flexWrap: 'wrap' }}>
                 <IconMapPin />
-                {venueName ? <span style={{ fontWeight: 800, color: '#0f172a' }}>{venueName}</span> : null}
+                {venueName ? <span style={{ fontWeight: 800, color: '#1E293B' }}>{venueName}</span> : null}
                 <span
                   style={{
                     display: 'inline-flex',
@@ -295,7 +318,16 @@ function MatchSelfActionsSection({
   }
 
   return (
-    <section style={{ marginBottom: '1.5rem', padding: '0.75rem 1rem', border: '1px solid #e0e0e0', borderRadius: '6px' }}>
+    <section
+      style={{
+        marginBottom: '1.1rem',
+        padding: '0.95rem 1.1rem',
+        border: '1px solid #E2E8F0',
+        borderRadius: '24px',
+        background: '#fff',
+        boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)',
+      }}
+    >
       <MatchActions
         matchId={viewModel.matchId}
         isOrganizer={viewModel.isOrganizer}
@@ -319,8 +351,8 @@ function MatchParticipantsSection({
         background: '#fff',
         borderRadius: '38px',
         padding: '1.15rem 1.45rem 1rem',
-        border: '1px solid #edf2f7',
-        boxShadow: '0 12px 30px rgba(15, 23, 42, 0.035)',
+        border: '1px solid #E2E8F0',
+        boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)',
       }}
     >
       <div style={{ marginBottom: '0.95rem' }}>
@@ -331,7 +363,7 @@ function MatchParticipantsSection({
             fontWeight: 900,
             letterSpacing: '0.16em',
             textTransform: 'uppercase',
-            color: '#0f172a',
+            color: '#1E293B',
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.38rem',
@@ -370,12 +402,12 @@ function MatchChatSection({
   return (
     <MatchCommunicationSection
       organizerNoteText={viewModel.match.organizer_note}
-      organizerName={viewModel.organizerName}
       messages={viewModel.messages}
       viewerUserId={viewModel.userId}
       canAccessCommunication={viewModel.canAccessCommunication}
       canPostCommunication={viewModel.canPostCommunication}
       canEditOrganizerNote={viewModel.canEditOrganizerNote}
+      showFormedNotice={viewModel.isFormed}
       onUpdateOrganizerNote={onUpdateOrganizerNote}
       onPostMessage={onPostMessage}
     />
@@ -399,6 +431,7 @@ export function MatchDetailPageView({
   onCancelMatch,
   onSaveCourtPlan,
   onRemoveParticipant,
+  onSaveLineup,
 }: MatchDetailPageViewProps) {
   const showManagePanel =
     viewModel.showOrganizerAdminSection ||
@@ -420,12 +453,12 @@ export function MatchDetailPageView({
     id,
     name: currentRequestUserMap.get(id) ?? `User ${id.slice(0, 6)}`,
   }))
-  const showRoundRobinTools = viewModel.match.status === 'active'
+  const showRoundRobinTools = viewModel.match.status === 'active' && (viewModel.isOrganizer || viewModel.canViewLineup)
   const showToolsSection = showManagePanel || showRoundRobinTools
   const pageMaxWidth = showToolsSection ? '920px' : '720px'
 
   return (
-    <div style={{ maxWidth: pageMaxWidth, margin: '0 auto', padding: '0.75rem 1rem' }}>
+    <div style={{ maxWidth: pageMaxWidth, margin: '0 auto', padding: '0.75rem 1rem 1.5rem', background: '#F0F7FF' }}>
       <MatchHeaderSection
         viewModel={viewModel}
         onUpdateMatchDetails={onUpdateMatchDetails}
@@ -461,8 +494,10 @@ export function MatchDetailPageView({
           candidateGroups={viewModel.allGroups.filter((group) =>
             group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
           )}
+          savedLineup={viewModel.savedLineup}
           onUpdateMatchDetails={onUpdateMatchDetails}
           onRemoveParticipant={onRemoveParticipant}
+          onSaveLineup={onSaveLineup}
         />
       ) : null}
     </div>

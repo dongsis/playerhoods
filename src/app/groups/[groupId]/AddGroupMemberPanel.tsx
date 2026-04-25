@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { addContactPlayerToGroup, addMemberToGroup, type GroupAddMemberResult } from '@/lib/api/groups'
@@ -13,6 +13,7 @@ type Props = {
 
 export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props) {
   const router = useRouter()
+  const panelRef = useRef<HTMLElement | null>(null)
   const [isOpen, setIsOpen] = useState(false)
   const [mode, setMode] = useState<'player' | 'contact'>('player')
   const [userId, setUserId] = useState('')
@@ -77,8 +78,36 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
 
   const nothingToAdd = invitableUsers.length === 0 && contacts.length === 0
 
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!panelRef.current) return
+      if (panelRef.current.contains(event.target as Node)) return
+      setIsOpen(false)
+      setError(null)
+      setFeedback(null)
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setIsOpen(false)
+      setError(null)
+      setFeedback(null)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isOpen])
+
   return (
     <section
+      ref={panelRef}
       style={{
         borderRadius: '18px',
         border: '1px solid #e2e8f0',

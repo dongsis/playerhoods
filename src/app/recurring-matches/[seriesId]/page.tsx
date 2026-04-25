@@ -152,7 +152,7 @@ export default async function RecurringMatchSeriesPage({ params }: Props) {
             }}
           >
             <p style={{ margin: 0, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#ea580c' }}>
-              Organizer Note
+              Host Note
             </p>
             <p style={{ margin: '0.35rem 0 0', whiteSpace: 'pre-line', fontSize: '0.92rem', lineHeight: 1.6, color: '#7c2d12' }}>
               {detail.series.organizer_note.trim()}

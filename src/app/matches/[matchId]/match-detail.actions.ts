@@ -11,7 +11,8 @@ import {
   updateMatchCourtPlan,
   updateMatchDetails,
 } from '@/lib/api/matches'
-import { sendMatchTimeChangeEmails } from '@/lib/email/send-participant-notifications'
+import type { MatchLineupSnapshot } from '@/lib/match-lineup'
+import { sendMatchTimeChangeEmails, sendParticipantRemovedNotification } from '@/lib/email/send-participant-notifications'
 import {
   notifyMatchCourtPlanUpdated,
 } from '@/lib/notifications/match-court'
@@ -39,6 +40,11 @@ type MatchNotificationSnapshot = {
   game_type: string | null
   match_date: string | null
   start_time: string | null
+}
+
+type MatchRemovalNotificationSnapshot = MatchNotificationSnapshot & {
+  organizer_id: string
+  venue_id: string | null
 }
 
 function revalidateMatchSurfaces(matchId: string) {
@@ -136,6 +142,41 @@ export async function postMatchMessageAction(matchId: string, body: string) {
   revalidateMatchSurfaces(matchId)
 }
 
+export async function saveMatchLineupAction(matchId: string, lineup: MatchLineupSnapshot | null) {
+  const supabase = await createSupabaseServerClient()
+  const user = await getUser()
+  if (!user) {
+    throw new Error('not_authenticated')
+  }
+
+  const { data: match, error: matchError } = await supabase
+    .from('matches')
+    .select('organizer_id, game_type, match_date, start_time, venue_id')
+    .eq('id', matchId)
+    .maybeSingle<MatchRemovalNotificationSnapshot>()
+
+  if (matchError) {
+    throw matchError
+  }
+  if (!match) {
+    throw new Error('match_not_found')
+  }
+  if (match.organizer_id !== user.id) {
+    throw new Error('only_organizer_can_manage_lineup')
+  }
+
+  const { error } = await supabase
+    .from('matches')
+    .update({ lineup_snapshot: lineup })
+    .eq('id', matchId)
+
+  if (error) {
+    throw error
+  }
+
+  revalidateMatchSurfaces(matchId)
+}
+
 export async function cancelMatchWithReasonAction(matchId: string, reason: string) {
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
@@ -158,7 +199,11 @@ export async function cancelMatchWithReasonAction(matchId: string, reason: strin
   revalidateMatchSurfaces(matchId)
 }
 
-export async function removeMatchParticipantAction(matchId: string, participantId: string) {
+export async function removeMatchParticipantAction(
+  matchId: string,
+  participantId: string,
+  note?: string | null,
+) {
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
   if (!user) {
@@ -183,7 +228,7 @@ export async function removeMatchParticipantAction(matchId: string, participantI
 
   const { data: match, error: matchError } = await supabase
     .from('matches')
-    .select('organizer_id')
+    .select('organizer_id, game_type, match_date, start_time, venue_id')
     .eq('id', matchId)
     .maybeSingle()
 
@@ -201,6 +246,26 @@ export async function removeMatchParticipantAction(matchId: string, participantI
     throw new Error('only_organizer_can_remove_participant')
   }
 
-  await removeParticipant(supabase, participantId)
+  await removeParticipant(supabase, participantId, note ?? null)
+  let venueName: string | null = null
+  if (match.venue_id) {
+    const { data: venue } = await supabase
+      .from('venues')
+      .select('name')
+      .eq('id', match.venue_id)
+      .maybeSingle()
+    venueName = venue?.name ?? null
+  }
+  await sendParticipantRemovedNotification(
+    supabase,
+    participantId,
+    {
+      id: matchId,
+      game_type: match.game_type,
+      match_date: match.match_date,
+      start_time: match.start_time,
+    },
+    venueName,
+  )
   revalidateMatchSurfaces(matchId)
 }

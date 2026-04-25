@@ -178,6 +178,7 @@ export function DashboardShell({
     const requestedTab = searchParams.get('tab')
     if (requestedTab === 'players') return 'hoods'
     if (requestedTab === 'contacts') return 'hoods'
+    if ((requestedTab === 'venues' || requestedTab === 'admin') && !isAdmin) return 'matches'
     return isDashTab(requestedTab) ? requestedTab : 'matches'
   })
   const [viewedMatchIds, setViewedMatchIds] = useState<Set<string>>(new Set())
@@ -219,6 +220,11 @@ export function DashboardShell({
   )
 
   useEffect(() => {
+    if (!isAdmin && (activeTab === 'venues' || activeTab === 'admin')) {
+      setActiveTab('matches')
+      return
+    }
+
     const nextParams = new URLSearchParams(searchParams.toString())
     if (activeTab === 'matches') {
       nextParams.delete('tab')
@@ -229,7 +235,7 @@ export function DashboardShell({
     const currentQuery = searchParams.toString()
     if (nextQuery === currentQuery) return
     router.replace(nextQuery ? `/dashboard?${nextQuery}` : '/dashboard', { scroll: false })
-  }, [activeTab, router, searchParams])
+  }, [activeTab, isAdmin, router, searchParams])
 
   // Compute nav badge counts
   const badges = useMemo(() => {
@@ -244,10 +250,14 @@ export function DashboardShell({
         : item.match.match_date
           ? item.match.match_date < nowIso.slice(0, 10)
           : false
+      const hasUserAccepted = mp.participant_accepted_at != null
       // Pending invite/nomination needing user action
       if (
         mp.status === 'pending' &&
-        (mp.join_method === 'invited' || mp.join_method === 'nominated') &&
+        (
+          ((mp.join_method === 'invited' || mp.join_method === 'nominated') && !hasUserAccepted)
+          || (mp.join_method === 'requested' && mp.org_approved_at !== null && !hasUserAccepted)
+        ) &&
         !past
       ) {
         matchesBadge++
@@ -271,23 +281,22 @@ export function DashboardShell({
       }
     }
     const groupsBadge = playersData.pendingGroupInvites.length || undefined
-    const profileBadge = playersData.proxyPendingCount || undefined
     return {
       inbox: inboxBadge || undefined,
       matches: matchesBadge || undefined,
       groups: groupsBadge,
-      profile: profileBadge,
     }
-  }, [items, playersData.pendingGroupInvites.length, playersData.proxyPendingCount, suppressedMatchIds, inboxBadge])
+  }, [items, playersData.pendingGroupInvites.length, suppressedMatchIds, inboxBadge])
 
   const mainWidthClass = activeTab === 'profile' || activeTab === 'gear' || activeTab === 'hoods' || activeTab === 'groups'
     ? 'max-w-6xl'
     : 'max-w-3xl'
+  const shouldLeftAlignMain = activeTab === 'groups'
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-[#F0F7FF]">
       {/* Left nav — sticky sidebar */}
-      <aside className="w-56 shrink-0 border-r border-gray-100 bg-white sticky top-0 h-screen">
+      <aside className="sticky top-0 h-screen w-60 shrink-0 border-r border-[#E2E8F0] bg-[#EEF1F7]">
         <LeftNav
           active={activeTab}
           onTab={setActiveTab}
@@ -297,7 +306,7 @@ export function DashboardShell({
       </aside>
 
       {/* Main content */}
-      <main className={`flex-1 ${mainWidthClass} mx-auto px-6 py-8`}>
+      <main className={`flex-1 px-6 py-8 ${shouldLeftAlignMain ? '' : `${mainWidthClass} mx-auto`}`}>
         {activeTab === 'inbox' && (
           <InboxPanel onUnreadChange={setInboxBadge} />
         )}

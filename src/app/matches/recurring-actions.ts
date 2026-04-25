@@ -5,7 +5,7 @@ import {
   createRecurringMatchSeries,
   type CreateRecurringMatchSeriesInput,
 } from '@/lib/api/recurring-matches'
-import { processQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
+import { drainQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 export async function createRecurringMatchSeriesAction(input: CreateRecurringMatchSeriesInput) {
@@ -13,7 +13,7 @@ export async function createRecurringMatchSeriesAction(input: CreateRecurringMat
   const result = await createRecurringMatchSeries(supabase, input)
 
   if (result.hasQueuedGuestDeliveries) {
-    await processQueuedNotificationDeliveries(supabase, 10)
+    await drainQueuedNotificationDeliveries(supabase, { batchSize: 10, maxBatches: 5 })
   }
 
   revalidatePath('/dashboard')

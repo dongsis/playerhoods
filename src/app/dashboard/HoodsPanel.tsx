@@ -39,6 +39,7 @@ import {
 import {
   createRosterGuest,
   getContactPlayerResolution,
+  updateRosterGuest,
   type ContactPlayerResolved,
 } from '@/lib/api/roster'
 import { Avatar } from '@/app/components/Avatar'
@@ -47,7 +48,11 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import { setGuestSports } from '@/lib/api/sports'
-import { AVAILABILITY_STATUS_OPTIONS } from '@/lib/profile-options'
+import { getLevelLabel } from '@/lib/profile-options'
+import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
+import { getPreferredPlayTimeLabel } from '@/lib/profile-options'
+import { getGroupIconMeta } from '@/lib/group-icons'
+import { getVenueDisplayName } from '@/lib/venues/display'
 import type {
   AvailabilityStatus,
   Sport,
@@ -57,12 +62,13 @@ import type {
 
 type SupportedSportCode = 'tennis' | 'pickleball' | 'badminton'
 type HoodSection = 'hood' | 'discover'
-type HoodFilter = 'all' | 'contacts' | 'saved' | 'group'
+type HoodFilter = 'all' | 'saved' | 'group'
 type DiscoverSource = 'club_members' | 'played_with'
 type IdentityType = 'platform' | 'contact' | 'linked'
+type ContactGender = 'male' | 'female' | 'unspecified' | null
 type SourceBadge =
   | 'My Contact'
-  | 'Saved'
+  | 'Starred'
   | 'From Group'
   | 'Played With'
   | 'Linked'
@@ -88,9 +94,12 @@ type MutablePerson = {
   isClubMember: boolean
   isPlayedWith: boolean
   canEditContact: boolean
+  gender: ContactGender
   level: string | null
   playType: string | null
-  availability: string | null
+  statusLabel: string | null
+  engagedSports: string[]
+  preferredFormats: string[]
   sportLabel: string
   recentInteractionAt: string | null
   sharedMatchCount: number
@@ -117,9 +126,12 @@ type HoodPerson = {
   isClubMember: boolean
   isPlayedWith: boolean
   canEditContact: boolean
+  gender: ContactGender
   level: string | null
   playType: string | null
-  availability: string | null
+  statusLabel: string | null
+  engagedSports: string[]
+  preferredFormats: string[]
   sportLabel: string
   recentInteractionAt: string | null
   sharedMatchCount: number
@@ -133,9 +145,20 @@ type ClubDiscoverPerson = {
   clubNames: string[]
 }
 
+type ClubDiscoverGroup = {
+  groupId: string
+  name: string
+  description: string | null
+  primarySportId: number | null
+  iconKey: string
+  clubNames: string[]
+  memberCount: number
+}
+
 type SupportData = {
   contacts: ContactPlayerResolved[]
   contactsByGuestId: Map<string, ContactPlayerResolved>
+  savedContactPersonIds: Set<string>
   profilesByUserId: Map<string, PublicPlayerProfile | null>
   groupContactsByGroupId: Map<string, GroupContactWithDisplay[]>
   guestLookupByGuestId: Map<string, GuestLookupRow>
@@ -183,9 +206,157 @@ function normalizeDisplayName(value: string | null | undefined): string {
   return value.replace(/\s+\(Not registered\)$/i, '').trim() || 'Unknown player'
 }
 
-function formatAvailability(profile: PublicPlayerProfile | null | undefined): string | null {
-  if (!profile?.preferred_play_times?.length) return null
-  return profile.preferred_play_times.map((entry) => entry.replace(/_/g, ' ')).join(', ')
+function formatStatusLabel(
+  profile: PublicPlayerProfile | null | undefined,
+  contact?: ContactPlayerResolved | null,
+): string | null {
+  if (contact?.availability_status) {
+    switch (contact.availability_status) {
+      case 'busy':
+        return 'Busy'
+      case 'away':
+        return 'Away'
+      case 'inactive':
+        return 'Inactive'
+      case 'available':
+      default:
+        return 'Available'
+    }
+  }
+
+  switch (profile?.looking_to_play) {
+    case 'quite_full':
+      return 'Busy'
+    case 'not_looking':
+      return 'Away'
+    case 'occasional':
+      return 'Occasionally'
+    case 'very_open':
+    case 'open':
+      return 'Open'
+    default:
+      return null
+  }
+}
+
+function formatGenderPill(gender: 'male' | 'female' | 'unspecified' | null): string | null {
+  switch (gender) {
+    case 'female':
+      return 'F'
+    case 'male':
+      return 'M'
+    default:
+      return null
+  }
+}
+
+const CONTACT_GENDER_OPTIONS: Array<{
+  value: Exclude<ContactGender, null> | ''
+  label: string
+}> = [
+  { value: '', label: 'Not shared yet' },
+  { value: 'female', label: 'Female' },
+  { value: 'male', label: 'Male' },
+  { value: 'unspecified', label: 'Prefer not to say' },
+]
+
+function formatFormatLabel(value: string): string {
+  switch (value) {
+    case 'singles':
+      return 'Singles'
+    case 'doubles':
+      return 'Doubles'
+    case 'open_play':
+      return 'Open play'
+    default:
+      return value.replace(/_/g, ' ')
+  }
+}
+
+function formatAvailabilityLabel(value: string | null | undefined): string {
+  switch (value) {
+    case 'quite_full':
+      return 'Busy'
+    case 'not_looking':
+      return 'Away'
+    case 'occasional':
+      return 'Occasional'
+    case 'very_open':
+      return 'Very open'
+    case 'open':
+      return 'Open'
+    default:
+      return 'Not shared yet'
+  }
+}
+
+function getStatusBadgeTone(statusLabel: string | null | undefined): {
+  label: string
+  shortLabel: string
+  className: string
+} | null {
+  switch (statusLabel?.trim().toLowerCase()) {
+    case 'very open':
+      return {
+        label: 'Very open',
+        shortLabel: 'VO',
+        className: 'bg-[#22C55E] text-white ring-1 ring-[#16A34A]/20',
+      }
+    case 'open':
+    case 'available':
+      return {
+        label: 'Open',
+        shortLabel: 'O',
+        className: 'bg-[#4CAF72] text-white ring-1 ring-[#3C915E]/20',
+      }
+    case 'occasionally':
+    case 'occasional':
+      return {
+        label: 'Occasionally',
+        shortLabel: 'OC',
+        className: 'bg-[#6E8B6D] text-white ring-1 ring-[#5C755B]/20',
+      }
+    case 'busy':
+      return {
+        label: 'Busy',
+        shortLabel: 'B',
+        className: 'bg-[#5B6472] text-white ring-1 ring-[#4B5563]/20',
+      }
+    case 'away':
+      return {
+        label: 'Away',
+        shortLabel: 'A',
+        className: 'bg-[#475569] text-white ring-1 ring-[#334155]/20',
+      }
+    case 'not looking right now':
+    case 'inactive':
+      return {
+        label: 'Not looking right now',
+        shortLabel: 'N',
+        className: 'bg-[#1E293B] text-white ring-1 ring-[#0F172A]/20',
+      }
+    default:
+      return null
+  }
+}
+
+function formatPreferredTimes(value: string[] | null | undefined): string {
+  if (!value || value.length === 0) return 'Not shared yet'
+  return value
+    .map((item) => getPreferredPlayTimeLabel(item) ?? item)
+    .join(', ')
+}
+
+function formatCompactLevel(value: string | null | undefined): string | null {
+  if (!value) return null
+
+  const label = getLevelLabel(value) ?? value
+  const match = label.match(/\(([^)]+)\)/)
+  if (match?.[1]) {
+    return match[1].replace(/\s*-\s*/g, '/')
+  }
+
+  return value
 }
 
 function getSportProfile(
@@ -248,9 +419,20 @@ function ensurePerson(
     if (seed.linkedUserId) existing.linkedUserId = seed.linkedUserId
     if (seed.avatarUrl) existing.avatarUrl = seed.avatarUrl
     if (seed.displayName && (!existing.displayName || existing.displayName === 'Unknown player')) existing.displayName = seed.displayName
+    if (seed.gender && !existing.gender) existing.gender = seed.gender
     if (seed.level && !existing.level) existing.level = seed.level
     if (seed.playType && !existing.playType) existing.playType = seed.playType
-    if (seed.availability && !existing.availability) existing.availability = seed.availability
+    if (seed.statusLabel && !existing.statusLabel) existing.statusLabel = seed.statusLabel
+    if ((seed.engagedSports?.length ?? 0) > 0) {
+      for (const sportName of seed.engagedSports ?? []) {
+        if (!existing.engagedSports.includes(sportName)) existing.engagedSports.push(sportName)
+      }
+    }
+    if ((seed.preferredFormats?.length ?? 0) > 0) {
+      for (const format of seed.preferredFormats ?? []) {
+        if (!existing.preferredFormats.includes(format)) existing.preferredFormats.push(format)
+      }
+    }
     if (seed.canEditContact) existing.canEditContact = true
     if (seed.isMyContact) existing.isMyContact = true
     if (seed.isSaved) existing.isSaved = true
@@ -288,9 +470,12 @@ function ensurePerson(
     isClubMember: seed.isClubMember ?? false,
     isPlayedWith: seed.isPlayedWith ?? false,
     canEditContact: seed.canEditContact ?? false,
+    gender: seed.gender ?? null,
     level: seed.level ?? null,
     playType: seed.playType ?? null,
-    availability: seed.availability ?? null,
+    statusLabel: seed.statusLabel ?? null,
+    engagedSports: seed.engagedSports ?? [],
+    preferredFormats: seed.preferredFormats ?? [],
     sportLabel: seed.sportLabel,
     recentInteractionAt: seed.recentInteractionAt ?? null,
     sharedMatchCount: seed.sharedMatchCount ?? 0,
@@ -312,10 +497,8 @@ function finalizePeople(map: Map<string, MutablePerson>): HoodPerson[] {
 
 function matchesFilter(person: HoodPerson, filter: HoodFilter): boolean {
   switch (filter) {
-    case 'contacts':
-      return person.isMyContact
     case 'saved':
-      return person.isSaved
+      return isPersonStarred(person)
     case 'group':
       return person.isFromGroup
     case 'all':
@@ -331,7 +514,7 @@ function sortHoodPeople(left: HoodPerson, right: HoodPerson, openMatchCount: Map
   const rightRecent = right.recentInteractionAt ?? ''
   if (leftRecent !== rightRecent) return rightRecent.localeCompare(leftRecent)
   if (left.isMyContact !== right.isMyContact) return left.isMyContact ? -1 : 1
-  if (left.isSaved !== right.isSaved) return left.isSaved ? -1 : 1
+  if (isPersonStarred(left) !== isPersonStarred(right)) return isPersonStarred(left) ? -1 : 1
   if (left.isFromGroup !== right.isFromGroup) return left.isFromGroup ? -1 : 1
   return left.displayName.localeCompare(right.displayName)
 }
@@ -342,9 +525,50 @@ function sortDiscoverPeople(left: HoodPerson, right: HoodPerson): number {
   return left.displayName.localeCompare(right.displayName)
 }
 
+function getHoodsUiStorageKey(userId: string) {
+  return `dashboard:hoods-ui:${userId}`
+}
+
+function readPersistedHoodsUiState(userId: string): {
+  section: HoodSection
+  selectedSportCode: SupportedSportCode
+  hoodFilter: HoodFilter
+  discoverSource: DiscoverSource
+} | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(getHoodsUiStorageKey(userId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<{
+      section: HoodSection
+      selectedSportCode: SupportedSportCode
+      hoodFilter: HoodFilter | 'contacts'
+      discoverSource: DiscoverSource
+    }>
+
+    const section = parsed.section === 'discover' ? 'discover' : 'hood'
+    const selectedSportCode = parsed.selectedSportCode && SUPPORTED_SPORTS.includes(parsed.selectedSportCode)
+      ? parsed.selectedSportCode
+      : 'tennis'
+    const hoodFilter: HoodFilter =
+      parsed.hoodFilter === 'contacts' || parsed.hoodFilter === 'saved'
+        ? 'saved'
+        : parsed.hoodFilter === 'group'
+          ? 'group'
+          : 'all'
+    const discoverSource: DiscoverSource =
+      parsed.discoverSource === 'played_with' ? 'played_with' : 'club_members'
+
+    return { section, selectedSportCode, hoodFilter, discoverSource }
+  } catch {
+    return null
+  }
+}
+
 function sourceBadgeClass(badge: SourceBadge) {
   switch (badge) {
-    case 'Saved':
+    case 'Starred':
       return 'bg-emerald-50 text-emerald-700'
     case 'From Group':
       return 'bg-amber-50 text-amber-700'
@@ -357,6 +581,10 @@ function sourceBadgeClass(badge: SourceBadge) {
     default:
       return 'bg-slate-100 text-slate-700'
   }
+}
+
+function isPersonStarred(person: Pick<HoodPerson, 'isSaved' | 'isMyContact'>): boolean {
+  return person.isSaved || person.isMyContact
 }
 
 function getVisibleSourceBadges(person: HoodPerson): SourceBadge[] {
@@ -379,10 +607,8 @@ function getPeopleEmptyState(
   }
 
   switch (hoodFilter) {
-    case 'contacts':
-      return `No contact people are in your ${sportName.toLowerCase()} hood yet.`
     case 'saved':
-      return `No saved people are in your ${sportName.toLowerCase()} hood yet.`
+      return `No starred people are in your ${sportName.toLowerCase()} hood yet.`
     case 'group':
       return `No people from groups are in your ${sportName.toLowerCase()} hood yet.`
     case 'all':
@@ -411,15 +637,15 @@ function AddToGroupDialog({
       <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">Add to Shared Group</h3>
-            <p className="mt-1 text-sm text-slate-500">
+            <h3 className="text-h2 text-slate-900">Add to Shared Group</h3>
+            <p className="text-body-sub mt-1 text-slate-500">
               Choose which Shared Group should include {person.displayName}.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-sm text-slate-400 transition hover:text-slate-700"
+            className="text-body-sub text-slate-400 transition hover:text-slate-700"
           >
             Close
           </button>
@@ -427,7 +653,7 @@ function AddToGroupDialog({
 
         <div className="mt-4 space-y-2">
           {groups.length === 0 && (
-            <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+            <p className="text-body-main rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-500">
               {emptyMessage}
             </p>
           )}
@@ -440,13 +666,13 @@ function AddToGroupDialog({
               className="flex w-full items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
             >
               <span>
-                <span className="block text-sm font-medium text-slate-900">{groupRow.group.name}</span>
-                <span className="block text-xs text-slate-500">
+                <span className="text-body-main block font-medium text-slate-900">{groupRow.group.name}</span>
+                <span className="text-body-sub block text-slate-500">
                   {groupRow.members.length} member{groupRow.members.length === 1 ? '' : 's'}
                 </span>
               </span>
               {groupRow.group.primary_sport_id ? (
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
+                <span className="text-body-sub rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-600">
                   Shared Group
                 </span>
               ) : null}
@@ -462,32 +688,57 @@ function HoodPersonDrawer({
   open,
   person,
   sport,
+  myClubNames,
   items,
+  contactRecord,
   onClose,
   onSaveToggle,
   onOpenAddToGroup,
-  onOpenInvite,
   onOpenProxyManager,
+  onUpdateContact,
 }: {
   open: boolean
   person: HoodPerson | null
   sport: HoodSport
+  myClubNames: string[]
   items: MatchListItem[]
+  contactRecord: ContactPlayerResolved | null
   onClose: () => void
   onSaveToggle: (person: HoodPerson) => Promise<void>
   onOpenAddToGroup: (person: HoodPerson) => void
-  onOpenInvite: (person: HoodPerson) => void
   onOpenProxyManager: () => void
+  onUpdateContact: (input: {
+    guest_id: string
+    display_name: string
+    gender?: ContactGender
+    email?: string | null
+    phone?: string | null
+  }) => Promise<void>
 }) {
   const [profile, setProfile] = useState<PublicPlayerProfile | null>(null)
   const [proxyPending, setProxyPending] = useState(false)
+  const [editingContact, setEditingContact] = useState(false)
+  const [savingContact, setSavingContact] = useState(false)
+  const [contactName, setContactName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+  const [contactGender, setContactGender] = useState<ContactGender>(null)
   const [proxyRequestState, setProxyRequestState] = useState<{
     tone: 'success' | 'error'
     message: string
   } | null>(null)
 
   useEffect(() => {
-    if (!open || !person?.userId) return
+    if (!open) {
+      setProfile(null)
+      return
+    }
+
+    if (!person?.userId) {
+      setProfile(null)
+      return
+    }
+
     let cancelled = false
     const supabase = createSupabaseBrowserClient()
 
@@ -506,12 +757,21 @@ function HoodPersonDrawer({
 
   useEffect(() => {
     if (!open) return
+    setEditingContact(false)
     const onEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onEscape)
     return () => document.removeEventListener('keydown', onEscape)
   }, [onClose, open])
+
+  useEffect(() => {
+    if (!open || !person) return
+    setContactName(contactRecord?.display_name ?? person.displayName)
+    setContactEmail(contactRecord?.email ?? '')
+    setContactPhone(contactRecord?.phone ?? '')
+    setContactGender(contactRecord?.gender ?? person.gender ?? null)
+  }, [contactRecord, open, person])
 
   const selectedSportProfile = useMemo(
     () => getSportProfile(profile, sport.id),
@@ -532,9 +792,21 @@ function HoodPersonDrawer({
       .slice(0, 5)
   }, [items, person, sport.id])
 
+  const sharedClubNames = useMemo(() => {
+    if (!person) return [] as string[]
+    const clubSet = new Set(myClubNames)
+    return person.clubNames.filter((clubName) => clubSet.has(clubName))
+  }, [myClubNames, person])
+
   if (!open || !person) return null
 
   const visibleSourceBadges = getVisibleSourceBadges(person)
+  const genderPill = formatGenderPill(profile?.gender ?? person.gender)
+  const activeSportProfile = profile?.sport_profiles.find((sportProfile) => sportProfile.sport_id === sport.id) ?? null
+  const currentStatusLabel = person.statusLabel ?? formatAvailabilityLabel(profile?.looking_to_play)
+  const currentStatusDotClass = getAvailabilityStatusDotClass(currentStatusLabel)
+  const isStarred = isPersonStarred(person)
+  const isAutoStarredContact = person.isMyContact && !person.isSaved
 
   return (
     <div className="fixed inset-0 z-[125]">
@@ -551,22 +823,22 @@ function HoodPersonDrawer({
               src={person.avatarUrl}
               displayName={person.displayName}
               size="md"
-              className="h-12 w-12 text-base"
+              className="h-12 w-12 text-body-main"
             />
             <div>
-              <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+              <h2 className="text-h2 text-slate-900">
                 {person.displayName}
               </h2>
               <div className="mt-2 flex flex-wrap gap-2">
                 {shouldShowIdentityBadge(person) && (
-                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white">
+                  <span className="text-label rounded-full bg-slate-900 px-2.5 py-1 text-white">
                     {getIdentityLabel(person.identityType)}
                   </span>
                 )}
                 {visibleSourceBadges.map((badge) => (
                   <span
                     key={badge}
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${sourceBadgeClass(badge)}`}
+                    className={`text-body-sub rounded-full px-2.5 py-1 font-medium ${sourceBadgeClass(badge)}`}
                   >
                     {badge}
                   </span>
@@ -577,7 +849,7 @@ function HoodPersonDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="text-sm text-slate-400 transition hover:text-slate-700"
+            className="text-body-sub text-slate-400 transition hover:text-slate-700"
           >
             Close
           </button>
@@ -585,91 +857,168 @@ function HoodPersonDrawer({
 
         <div className="mt-6 space-y-4">
           <section className="rounded-3xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Overview</h3>
+            <h3 className="text-h2 text-slate-900">Overview</h3>
             <dl className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Sport</dt>
-                <dd className="mt-1 text-sm text-slate-700">{person.sportLabel}</dd>
+                <dt className="text-label">Gender</dt>
+                <dd className="text-body-main mt-1 text-slate-700">{genderPill ?? 'Not shared yet'}</dd>
               </div>
               <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Level</dt>
-                <dd className="mt-1 text-sm text-slate-700">{selectedSportProfile?.level ?? person.level ?? 'Not shared yet'}</dd>
+                <dt className="text-label">Current status</dt>
+                <dd className="text-body-main mt-1 inline-flex items-center gap-2 text-slate-700">
+                  <span>{currentStatusLabel}</span>
+                  {currentStatusDotClass ? (
+                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${currentStatusDotClass}`} aria-hidden="true" />
+                  ) : null}
+                </dd>
               </div>
               <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Club</dt>
-                <dd className="mt-1 text-sm text-slate-700">{person.clubNames.join(', ') || 'Not shared yet'}</dd>
+                <dt className="text-label">Shared clubs</dt>
+                <dd className="text-body-main mt-1 text-slate-700">{sharedClubNames.join(', ') || 'None shared yet'}</dd>
               </div>
               <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Preferred play type</dt>
-                <dd className="mt-1 text-sm text-slate-700">{selectedSportProfile?.play_style ?? person.playType ?? 'Not shared yet'}</dd>
+                <dt className="text-label">Preferred times</dt>
+                <dd className="text-body-main mt-1 text-slate-700">{formatPreferredTimes(profile?.preferred_play_times)}</dd>
               </div>
             </dl>
           </section>
 
           <section className="rounded-3xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Relationship</h3>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {visibleSourceBadges.map((badge) => (
-                <span
-                  key={badge}
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${sourceBadgeClass(badge)}`}
-                >
-                  {badge}
-                </span>
-              ))}
-            </div>
-            {person.groupNames.length > 0 && (
-              <p className="mt-4 text-sm text-slate-600">
-                From Shared Groups: {person.groupNames.join(', ')}
-              </p>
-            )}
-            {person.sharedMatchCount > 0 && (
-              <p className="mt-2 text-sm text-slate-600">
-                Shared matches: {person.sharedMatchCount}
-              </p>
+            <h3 className="text-h2 text-slate-900">Playing Profile</h3>
+            {activeSportProfile ? (
+              <div className="mt-4">
+                <div className="text-title-main text-slate-900">{activeSportProfile.sport_name}</div>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-label">Level</dt>
+                    <dd className="text-body-main mt-1 text-slate-700">{getLevelLabel(activeSportProfile.level) ?? activeSportProfile.level ?? 'Not shared yet'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-label">Preferred format</dt>
+                    <dd className="text-body-main mt-1 text-slate-700">
+                      {activeSportProfile.preferred_formats.length > 0
+                        ? activeSportProfile.preferred_formats.map(formatFormatLabel).join(', ')
+                        : 'Not shared yet'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-label">Play style</dt>
+                    <dd className="text-body-main mt-1 text-slate-700">{activeSportProfile.play_style ?? 'Not shared yet'}</dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-label">Tournament / league experience</dt>
+                    <dd className="text-body-main mt-1 whitespace-pre-wrap text-slate-700">{activeSportProfile.competition_experience ?? 'Not shared yet'}</dd>
+                  </div>
+                </dl>
+              </div>
+            ) : (
+              <p className="text-body-main mt-4 text-slate-500">No sport profile details shared yet.</p>
             )}
           </section>
 
           <section className="rounded-3xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Actions</h3>
+            <h3 className="text-label text-slate-400">Actions</h3>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => onOpenInvite(person)}
-                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-              >
-                Invite to Match
-              </button>
               {(person.userId || person.guestId) && (
                 <button
                   type="button"
                   onClick={() => void onSaveToggle(person)}
-                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                  className="text-body-main rounded-full border border-slate-200 bg-white px-4 py-2 font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                 >
-                  {person.isSaved && person.userId ? 'Unsave' : person.isSaved ? 'Saved' : 'Save'}
+                  {isAutoStarredContact ? 'Starred contact' : isStarred ? 'Unstar' : 'Star player'}
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => onOpenAddToGroup(person)}
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                className="text-body-main rounded-full border border-slate-200 bg-white px-4 py-2 font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
               >
                 Add to Shared Group
               </button>
               {person.canEditContact && (
-                <p className="w-full text-xs text-slate-500">
-                  Edit Contact stays in the detail flow for now.
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setEditingContact((current) => !current)}
+                  className="text-body-main rounded-full border border-slate-200 bg-white px-4 py-2 font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  {editingContact ? 'Close editor' : 'Edit Contact'}
+                </button>
               )}
             </div>
+            {person.canEditContact && editingContact && person.guestId && (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input
+                    value={contactName}
+                    onChange={(event) => setContactName(event.target.value)}
+                    placeholder="Display name"
+                    className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-300"
+                  />
+                  <input
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                    placeholder="Email"
+                    className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-300"
+                  />
+                  <input
+                    value={contactPhone}
+                    onChange={(event) => setContactPhone(event.target.value)}
+                    placeholder="Phone"
+                    className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-300"
+                  />
+                  <select
+                    value={contactGender ?? ''}
+                    onChange={(event) => setContactGender((event.target.value || null) as ContactGender)}
+                    className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-300"
+                  >
+                    {CONTACT_GENDER_OPTIONS.map((option) => (
+                      <option key={option.value || 'empty'} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingContact(false)}
+                    className="text-body-main rounded-full border border-slate-200 bg-white px-4 py-2 font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingContact || !contactName.trim()}
+                    onClick={async () => {
+                      setSavingContact(true)
+                      try {
+                        await onUpdateContact({
+                          guest_id: person.guestId!,
+                          display_name: contactName.trim(),
+                          gender: contactGender,
+                          email: contactEmail.trim() || null,
+                          phone: contactPhone.trim() || null,
+                        })
+                        setEditingContact(false)
+                      } finally {
+                        setSavingContact(false)
+                      }
+                    }}
+                    className="text-body-main rounded-full bg-slate-900 px-4 py-2 font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
+                  >
+                    {savingContact ? 'Saving...' : 'Save contact'}
+                  </button>
+                </div>
+              </div>
+            )}
             {sharedMatches.length > 0 && (
               <div className="mt-5 border-t border-slate-200 pt-4">
-                <h4 className="text-sm font-semibold text-slate-900">Match History</h4>
+                <h4 className="text-title-main text-slate-900">Match History</h4>
                 <div className="mt-3 space-y-2">
                   {sharedMatches.map((item) => (
                     <div key={item.match.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                      <div className="text-sm font-medium text-slate-800">{item.sportName ?? person.sportLabel}</div>
-                      <div className="mt-1 text-xs text-slate-500">
+                      <div className="text-body-main font-medium text-slate-800">{item.sportName ?? person.sportLabel}</div>
+                      <div className="text-body-sub mt-1 text-slate-500">
                         {formatTimeWindow(
                           item.match.start_at_utc,
                           item.match.match_date,
@@ -685,61 +1034,6 @@ function HoodPersonDrawer({
             )}
           </section>
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Proxy</h3>
-            <p className="mt-3 text-sm text-slate-600">
-                  Principal keeps full self-service control. Proxy only covers player-side match actions.
-            </p>
-            <p className="mt-3 text-sm text-slate-500">
-              Full Match Proxy management lives in My Profile, not in Hoods.
-            </p>
-            {proxyRequestState && (
-              <p
-                className={`mt-3 text-sm ${
-                  proxyRequestState.tone === 'success' ? 'text-emerald-700' : 'text-rose-600'
-                }`}
-              >
-                {proxyRequestState.message}
-              </p>
-            )}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={onOpenProxyManager}
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-              >
-                Open Match Proxy Settings
-              </button>
-            </div>
-            {person.guestId && (
-              <button
-                type="button"
-                disabled={proxyPending}
-                onClick={async () => {
-                  const supabase = createSupabaseBrowserClient()
-                  setProxyPending(true)
-                  setProxyRequestState(null)
-                  try {
-                    await requestMatchProxyBindingForContactPlayer(supabase, person.guestId!)
-                    setProxyRequestState({
-                      tone: 'success',
-                      message: `Proxy request sent for ${person.displayName}.`,
-                    })
-                  } catch (error) {
-                    setProxyRequestState({
-                      tone: 'error',
-                      message: (error as Error).message,
-                    })
-                  } finally {
-                    setProxyPending(false)
-                  }
-                }}
-                className="mt-4 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
-              >
-                {proxyPending ? 'Requesting...' : 'Request Match Proxy'}
-              </button>
-            )}
-          </section>
         </div>
       </aside>
     </div>
@@ -761,10 +1055,10 @@ function InvitePopover({
 }) {
   return (
     <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_22px_44px_-26px_rgba(15,23,42,0.32)]">
-      <h4 className="text-sm font-semibold text-slate-900">Open Matches</h4>
+      <h4 className="text-title-main text-slate-900">Open Matches</h4>
       <div className="mt-3 space-y-2">
         {matches.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
+          <div className="text-body-main rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-slate-500">
             No open matches
           </div>
         ) : (
@@ -776,10 +1070,10 @@ function InvitePopover({
               disabled={pendingId === item.match.id}
               className="w-full rounded-2xl border border-slate-200 px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
             >
-              <span className="block text-sm font-medium text-slate-900">
+              <span className="text-body-main block font-medium text-slate-900">
                 {item.venueName ?? item.sportName ?? 'Open match'}
               </span>
-              <span className="mt-1 block text-xs text-slate-500">
+              <span className="text-body-sub mt-1 block text-slate-500">
                 {formatTimeWindow(
                   item.match.start_at_utc,
                   item.match.match_date,
@@ -788,7 +1082,7 @@ function InvitePopover({
                   item.venueTimezone ?? 'UTC',
                 )}
               </span>
-              <span className="mt-1 block text-xs text-slate-400">
+              <span className="text-body-sub mt-1 block text-slate-400">
                 {pendingId === item.match.id
                   ? 'Invitingâ€¦'
                   : `${Math.max(item.match.required_count - item.confirmedCount, 0)} spot${Math.max(item.match.required_count - item.confirmedCount, 0) === 1 ? '' : 's'} left`}
@@ -800,7 +1094,7 @@ function InvitePopover({
       <button
         type="button"
         onClick={() => onInviteNew(person)}
-        className="mt-3 w-full rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        className="text-body-main mt-3 w-full rounded-full bg-slate-900 px-4 py-2 font-medium text-white transition hover:bg-slate-700"
       >
         Invite to New Match
       </button>
@@ -810,6 +1104,7 @@ function InvitePopover({
 
 function HoodCard({
   person,
+  myClubNames,
   openMatchCount,
   onOpenDrawer,
   onOpenMenuAddToGroup,
@@ -824,6 +1119,7 @@ function HoodCard({
   pendingInviteMatchId,
 }: {
   person: HoodPerson
+  myClubNames: string[]
   openMatchCount: number
   onOpenDrawer: (person: HoodPerson) => void
   onOpenMenuAddToGroup: (person: HoodPerson) => void
@@ -837,58 +1133,116 @@ function HoodCard({
   onInviteNew: (person: HoodPerson) => void
   pendingInviteMatchId: string | null
 }) {
+  const compactContactCard = person.identityType === 'contact' && !person.isLinked
+  const genderPill = formatGenderPill(person.gender)
+  const sharedClubSet = new Set(myClubNames)
+  const sharedClubNames = person.clubNames.filter((clubName) => sharedClubSet.has(clubName))
+  const clubSummary = sharedClubNames.slice(0, 2).join(' · ')
+  const levelLabel = formatCompactLevel(person.level)
+  const currentStatusDotClass = getAvailabilityStatusDotClass(person.statusLabel)
+  const shouldShowAvailabilityDot = person.identityType !== 'contact'
+  const isStarred = isPersonStarred(person)
+  const starButtonLabel = person.isMyContact && !person.isSaved
+    ? 'Starred contact'
+    : isStarred
+      ? 'Unstar player'
+      : 'Star player'
+
   return (
-    <article className="relative rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.3)] transition hover:border-slate-300">
+    <article
+      className="relative rounded-[22px] border border-slate-200 bg-white p-2.5 shadow-[0_14px_30px_-28px_rgba(15,23,42,0.28)] transition hover:border-slate-300"
+      data-hood-menu-root
+      data-hood-invite-root
+    >
       <button
         type="button"
         onClick={() => onOpenDrawer(person)}
         className="w-full text-left"
       >
-        <div className="flex items-center gap-3">
-          <Avatar
-            src={person.avatarUrl}
-            displayName={person.displayName}
-            size="md"
-            className="h-11 w-11 text-sm"
-          />
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate text-base font-semibold text-slate-900">{person.displayName}</h3>
+        <div className="flex items-start gap-2.5">
+          <div className="relative shrink-0">
+            <Avatar
+              src={person.avatarUrl}
+              displayName={person.displayName}
+              size="md"
+              className="h-9 w-9 text-body-sub"
+            />
+            {shouldShowAvailabilityDot && currentStatusDotClass ? (
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-white ${currentStatusDotClass}`}
+                aria-hidden="true"
+              />
+            ) : null}
+          </div>
+          <div className="min-w-0 flex-1 pr-12 pt-0.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <h3 className="text-title-main truncate leading-none text-slate-900">{person.displayName}</h3>
+              {genderPill ? (
+                <span className="text-label rounded-full bg-slate-100 px-1.5 py-[2px] text-slate-500">
+                  {genderPill}
+                </span>
+              ) : null}
+              {compactContactCard && (
+                <span className="text-label rounded-full bg-slate-100 px-1.5 py-[2px]">
+                  Contact
+                </span>
+              )}
+            </div>
+            {(clubSummary || levelLabel) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {clubSummary ? (
+                  <span className="text-body-sub truncate text-[#3B82F6]">
+                    {clubSummary}
+                  </span>
+                ) : null}
+                {levelLabel ? (
+                  <span className="text-label rounded-full border border-slate-200 bg-white px-1.5 py-[2px] text-slate-700">
+                    {levelLabel}
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
       </button>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onToggleInvite(person)}
-          className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-        >
-          Invite to Match{openMatchCount > 0 ? ` (${openMatchCount})` : ''}
-        </button>
-        {!person.isSaved && (person.userId || person.guestId) && (
+      <div className="absolute right-2 top-2 flex flex-col items-center gap-1">
+        {(person.userId || person.guestId) && (
           <button
             type="button"
-            onClick={() => void onSaveToggle(person)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            onClick={(event) => {
+              event.stopPropagation()
+              void onSaveToggle(person)
+            }}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            aria-label={starButtonLabel}
+            title={starButtonLabel}
           >
-            Save
-          </button>
-        )}
-        {person.isSaved && person.userId && (
-          <button
-            type="button"
-            onClick={() => void onSaveToggle(person)}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            Unsave
+            <span
+              aria-hidden="true"
+              className={[
+                'text-[12px] leading-none transition',
+                isStarred ? 'text-[#FACC15]' : 'text-slate-300',
+              ].join(' ')}
+            >
+              {isStarred ? '★' : '☆'}
+            </span>
           </button>
         )}
         <button
           type="button"
-          onClick={() => onToggleMenu(person)}
-          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggleMenu(person)
+          }}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+          aria-label="More actions"
         >
-          More
+          <span className="flex flex-col items-center gap-0.5" aria-hidden="true">
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
+            <span className="h-0.5 w-0.5 rounded-full bg-current" />
+          </span>
         </button>
       </div>
 
@@ -904,35 +1258,27 @@ function HoodCard({
 
       {menuOpen && (
         <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-3xl border border-slate-200 bg-white p-2 shadow-[0_22px_44px_-26px_rgba(15,23,42,0.32)]">
-          {!person.isSaved && (person.userId || person.guestId) && (
-            <button
-              type="button"
-              onClick={() => void onSaveToggle(person)}
-              className="w-full rounded-2xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              Save
-            </button>
-          )}
-          {person.isSaved && person.userId && (
-            <button
-              type="button"
-              onClick={() => void onSaveToggle(person)}
-              className="w-full rounded-2xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              Unsave
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              onToggleInvite(person)
+              onToggleMenu(person)
+            }}
+            className="text-body-main w-full rounded-2xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50"
+          >
+            Invite to Match{openMatchCount > 0 ? ` (${openMatchCount})` : ''}
+          </button>
           <button
             type="button"
             onClick={() => onOpenMenuAddToGroup(person)}
-            className="w-full rounded-2xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+            className="text-body-main w-full rounded-2xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50"
           >
             Add to Shared Group
           </button>
           <button
             type="button"
             onClick={() => onOpenDrawer(person)}
-            className="w-full rounded-2xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+            className="text-body-main w-full rounded-2xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50"
           >
             View
           </button>
@@ -940,7 +1286,7 @@ function HoodCard({
             <button
               type="button"
               onClick={() => onOpenDrawer(person)}
-              className="w-full rounded-2xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+              className="text-body-main w-full rounded-2xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50"
             >
               Edit Contact
             </button>
@@ -978,20 +1324,24 @@ export function HoodsPanel({
     [enabledSportIds, sports],
   )
 
-  const [section, setSection] = useState<HoodSection>('hood')
-  const [selectedSportCode, setSelectedSportCode] = useState<SupportedSportCode>('tennis')
-  const [hoodFilter, setHoodFilter] = useState<HoodFilter>('all')
-  const [discoverSource, setDiscoverSource] = useState<DiscoverSource>('club_members')
+  const persistedUiState = readPersistedHoodsUiState(userId)
+  const [section, setSection] = useState<HoodSection>(persistedUiState?.section ?? 'hood')
+  const [selectedSportCode, setSelectedSportCode] = useState<SupportedSportCode>(persistedUiState?.selectedSportCode ?? 'tennis')
+  const [hoodFilter, setHoodFilter] = useState<HoodFilter>(persistedUiState?.hoodFilter ?? 'all')
+  const [discoverSource, setDiscoverSource] = useState<DiscoverSource>(persistedUiState?.discoverSource ?? 'club_members')
   const [search, setSearch] = useState('')
+  const [contactToolsOpen, setContactToolsOpen] = useState(false)
   const [supportData, setSupportData] = useState<SupportData>({
     contacts: [],
     contactsByGuestId: new Map(),
+    savedContactPersonIds: new Set(),
     profilesByUserId: new Map(),
     groupContactsByGroupId: new Map(),
     guestLookupByGuestId: new Map(),
     guestSportsByGuestId: new Map(),
   })
   const [clubDiscover, setClubDiscover] = useState<ClubDiscoverPerson[]>([])
+  const [clubDiscoverGroups, setClubDiscoverGroups] = useState<ClubDiscoverGroup[]>([])
   const [clubProfiles, setClubProfiles] = useState<Map<string, PublicPlayerProfile | null>>(new Map())
   const [directInviteClubMemberIds, setDirectInviteClubMemberIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -1009,10 +1359,7 @@ export function HoodsPanel({
   const [contactDisplayName, setContactDisplayName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
-  const [contactNotes, setContactNotes] = useState('')
-  const [contactAvailabilityStatus, setContactAvailabilityStatus] = useState<AvailabilityStatus>('available')
-  const [contactAvailabilityNote, setContactAvailabilityNote] = useState('')
-  const [contactAvailabilityUntil, setContactAvailabilityUntil] = useState('')
+  const [contactGender, setContactGender] = useState<ContactGender>(null)
   const [creatingContact, setCreatingContact] = useState(false)
 
   useEffect(() => {
@@ -1020,9 +1367,54 @@ export function HoodsPanel({
     if (sportOptions[0]) setSelectedSportCode(sportOptions[0].code)
   }, [selectedSportCode, sportOptions])
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        getHoodsUiStorageKey(userId),
+        JSON.stringify({
+          section,
+          selectedSportCode,
+          hoodFilter,
+          discoverSource,
+        }),
+      )
+    } catch {
+      // Ignore localStorage failures and keep the in-memory UI state.
+    }
+  }, [discoverSource, hoodFilter, section, selectedSportCode, userId])
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      if (target.closest('[data-hood-menu-root]')) return
+      if (target.closest('[data-hood-invite-root]')) return
+      setActiveMenuKey(null)
+      setActiveInviteKey(null)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+    }
+  }, [])
+
   const selectedSport = useMemo(
     () => sportOptions.find((sport) => sport.code === selectedSportCode) ?? sportOptions[0] ?? null,
     [selectedSportCode, sportOptions],
+  )
+  const venueNameAliasMap = useMemo(
+    () => new Map(myIdentities.map((identity) => [identity.venue.name, getVenueDisplayName(identity.venue)])),
+    [myIdentities],
+  )
+  const myClubNames = useMemo(
+    () => Array.from(new Set(myIdentities.map((identity) => getVenueDisplayName(identity.venue)).filter(Boolean))),
+    [myIdentities],
+  )
+
+  const sportNameByIdAll = useMemo(
+    () => new Map(sports.map((sport) => [sport.id, sport.display_name])),
+    [sports],
   )
 
   const addToGroupOptions = useMemo(() => {
@@ -1081,6 +1473,13 @@ export function HoodsPanel({
 
       const guestLookupByGuestId = await fetchGuestLookupMap(supabase, guestIds)
       const guestSportsByGuestId = await fetchGuestSportsMap(supabase, guestIds)
+      const guestPersonIds = Array.from(
+        new Set(
+          Array.from(guestLookupByGuestId.values())
+            .map((row) => row.person_id)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      )
 
       const userIds = Array.from(
         new Set([
@@ -1095,11 +1494,30 @@ export function HoodsPanel({
         ]),
       )
 
-      const profilesByUserId = await fetchPublicPlayerProfiles(supabase, userIds)
+      const [profilesByUserId, savedRelationshipsRes] = await Promise.all([
+        fetchPublicPlayerProfiles(supabase, userIds),
+        guestPersonIds.length > 0
+          ? supabase
+              .from('person_relationships')
+              .select('person_id')
+              .eq('relationship_type', 'saved')
+              .in('person_id', guestPersonIds)
+          : Promise.resolve({ data: [], error: null }),
+      ])
+
+      if ('error' in savedRelationshipsRes && savedRelationshipsRes.error) {
+        throw savedRelationshipsRes.error
+      }
+
+      const savedContactPersonIds = new Set(
+        (((savedRelationshipsRes.data ?? []) as { person_id: string }[]))
+          .map((relationship) => relationship.person_id),
+      )
 
       setSupportData({
         contacts,
         contactsByGuestId,
+        savedContactPersonIds,
         profilesByUserId,
         groupContactsByGroupId,
         guestLookupByGuestId,
@@ -1124,15 +1542,16 @@ export function HoodsPanel({
     const loadClubDiscover = async () => {
       try {
         setClubDiscoverError(null)
+        const venueIds = Array.from(new Set(myIdentities.map((identity) => identity.venue_id)))
         const entries = await Promise.all(
-          Array.from(new Set(myIdentities.map((identity) => identity.venue_id))).map(async (venueId) => {
+          venueIds.map(async (venueId) => {
             const identity = myIdentities.find((item) => item.venue_id === venueId)
             const invitableRows = await getVenueInvitableMembers(supabase, venueId, userId)
             return {
               people: invitableRows.map((row) => ({
                 userId: row.user_id,
                 displayName: normalizeDisplayName(row.display_name),
-                clubName: identity?.venue.name ?? 'Club',
+                clubName: identity ? getVenueDisplayName(identity.venue) : 'Club',
               })),
             }
           }),
@@ -1153,6 +1572,31 @@ export function HoodsPanel({
         }
 
         const profiles = await fetchPublicPlayerProfiles(supabase, Array.from(deduped.keys()))
+        const candidateGroups = groups.filter(({ group, members }) =>
+          group.open_to_club_members
+          && group.venue_id != null
+          && venueIds.includes(group.venue_id)
+          && !members.some((member) => member.userId === userId)
+          && (group.primary_sport_id == null || group.primary_sport_id === selectedSport.id),
+        )
+
+        const nextDiscoverGroups = candidateGroups.reduce<ClubDiscoverGroup[]>((acc, { group, members }) => {
+            const venue = myIdentities.find((identity) => identity.venue_id === group.venue_id)?.venue
+            const clubName = venue ? getVenueDisplayName(venue) : null
+            if (!clubName) return acc
+
+            acc.push({
+              groupId: group.id,
+              name: group.name,
+              description: group.description ?? null,
+              primarySportId: group.primary_sport_id ?? null,
+              iconKey: group.icon_key ?? 'spark',
+              clubNames: [clubName],
+              memberCount: members.length,
+            })
+            return acc
+          }, [])
+
         if (cancelled) return
 
         setClubProfiles(profiles)
@@ -1162,11 +1606,13 @@ export function HoodsPanel({
             profileMatchesSport(profiles.get(person.userId), selectedSport.id),
           ),
         )
+        setClubDiscoverGroups(nextDiscoverGroups)
       } catch (clubError) {
         console.error('[hoods] club discover:', clubError)
         if (!cancelled) {
           setClubProfiles(new Map())
           setClubDiscover([])
+          setClubDiscoverGroups([])
           setDirectInviteClubMemberIds(new Set())
           setClubDiscoverError((clubError as Error).message || 'Failed to load club members.')
         }
@@ -1177,7 +1623,7 @@ export function HoodsPanel({
     return () => {
       cancelled = true
     }
-  }, [myIdentities, selectedSport, userId])
+  }, [groups, myIdentities, selectedSport, userId])
 
   const combinedProfiles = useMemo(
     () => new Map([...supportData.profilesByUserId, ...clubProfiles]),
@@ -1210,28 +1656,34 @@ export function HoodsPanel({
         personId: lookup?.person_id ?? null,
         linkedUserId,
         displayName: normalizeDisplayName(linkedProfile?.display_name ?? contact.display_name),
-        avatarUrl: linkedProfile?.avatar_url ?? lookup?.avatar_url ?? null,
+        avatarUrl: linkedProfile?.avatar_url ?? null,
         identityType: linkedUserId ? 'linked' : 'contact',
         isMyContact: true,
         isLinked: Boolean(linkedUserId),
         canEditContact: true,
+        gender: linkedProfile?.gender ?? contact.gender ?? null,
         level: selectedSportProfile?.level ?? null,
         playType: selectedSportProfile?.play_style ?? null,
-        availability: formatAvailability(linkedProfile),
+        statusLabel: formatStatusLabel(linkedProfile, contact),
+        engagedSports: linkedProfile
+          ? linkedProfile.sport_profiles.map((item) => item.sport_name)
+          : guestSportIds.map((sportId) => sportNameByIdAll.get(sportId) ?? selectedSport.display_name),
+        preferredFormats: selectedSportProfile?.preferred_formats ?? [],
         sportLabel: selectedSport.display_name,
       })
       person.sourceBadges.add('My Contact')
+      person.sourceBadges.add('Starred')
       if (linkedUserId) person.sourceBadges.add('Linked')
       if (savedUserIds.has(linkedUserId ?? '')) {
         person.isSaved = true
-        person.sourceBadges.add('Saved')
+        person.sourceBadges.add('Starred')
       }
       const sharedVenueNames = linkedProfile?.shared_venue_names ?? []
       if (linkedUserId && directInviteClubMemberIds.has(linkedUserId)) {
         person.isClubMember = true
       }
       for (const venueName of sharedVenueNames) {
-        person.clubNames.add(venueName)
+        person.clubNames.add(venueNameAliasMap.get(venueName) ?? venueName)
       }
     }
 
@@ -1249,19 +1701,22 @@ export function HoodsPanel({
         avatarUrl: profile?.avatar_url ?? row.target_avatar_url,
         identityType: 'platform',
         isSaved: true,
+        gender: profile?.gender ?? null,
         level: selectedSportProfile?.level ?? null,
         playType: selectedSportProfile?.play_style ?? null,
-        availability: formatAvailability(profile),
+        statusLabel: formatStatusLabel(profile),
+        engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
+        preferredFormats: selectedSportProfile?.preferred_formats ?? [],
         sportLabel: selectedSport.display_name,
       })
       person.isSaved = true
-      person.sourceBadges.add('Saved')
+      person.sourceBadges.add('Starred')
       const sharedVenueNames = profile?.shared_venue_names ?? []
       if (directInviteClubMemberIds.has(row.target_user_id)) {
         person.isClubMember = true
       }
       for (const venueName of sharedVenueNames) {
-        person.clubNames.add(venueName)
+        person.clubNames.add(venueNameAliasMap.get(venueName) ?? venueName)
       }
     }
 
@@ -1278,9 +1733,12 @@ export function HoodsPanel({
           avatarUrl: profile?.avatar_url ?? null,
           identityType: 'platform',
           isFromGroup: true,
+          gender: profile?.gender ?? null,
           level: selectedSportProfile?.level ?? null,
           playType: selectedSportProfile?.play_style ?? null,
-          availability: formatAvailability(profile),
+          statusLabel: formatStatusLabel(profile),
+          engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
+          preferredFormats: selectedSportProfile?.preferred_formats ?? [],
           sportLabel: selectedSport.display_name,
         })
         person.isFromGroup = true
@@ -1291,7 +1749,7 @@ export function HoodsPanel({
           person.isClubMember = true
         }
         for (const venueName of sharedVenueNames) {
-          person.clubNames.add(venueName)
+          person.clubNames.add(venueNameAliasMap.get(venueName) ?? venueName)
         }
       }
 
@@ -1314,34 +1772,42 @@ export function HoodsPanel({
           personId: lookup?.person_id ?? contact.person_id,
           linkedUserId,
           displayName: normalizeDisplayName(linkedProfile?.display_name ?? contact.display_name),
-          avatarUrl: linkedProfile?.avatar_url ?? contact.avatar_url,
+          avatarUrl: linkedProfile?.avatar_url ?? null,
           identityType: linkedUserId ? 'linked' : 'contact',
           isFromGroup: true,
           isLinked: Boolean(linkedUserId),
           isMyContact: Boolean(ownedContact),
+          isSaved: Boolean((lookup?.person_id ?? contact.person_id) && supportData.savedContactPersonIds.has((lookup?.person_id ?? contact.person_id)!)),
           canEditContact: Boolean(ownedContact),
+          gender: linkedProfile?.gender ?? ownedContact?.gender ?? null,
           level: selectedSportProfile?.level ?? null,
           playType: selectedSportProfile?.play_style ?? null,
-          availability: formatAvailability(linkedProfile),
+          statusLabel: formatStatusLabel(linkedProfile, ownedContact ?? null),
+          engagedSports: linkedProfile
+            ? linkedProfile.sport_profiles.map((item) => item.sport_name)
+            : ((supportData.guestSportsByGuestId.get(contact.guest_id) ?? []).map((sportId) => sportNameByIdAll.get(sportId) ?? selectedSport.display_name)),
+          preferredFormats: selectedSportProfile?.preferred_formats ?? [],
           sportLabel: selectedSport.display_name,
+          saveSourceGroupId: group.group.id,
         })
         person.isFromGroup = true
         person.sourceBadges.add('From Group')
         person.groupNames.add(group.group.name)
         if (linkedUserId) person.sourceBadges.add('Linked')
         if (ownedContact) person.sourceBadges.add('My Contact')
+        if (person.isSaved || person.isMyContact) person.sourceBadges.add('Starred')
         const sharedVenueNames = linkedProfile?.shared_venue_names ?? []
         if (linkedUserId && directInviteClubMemberIds.has(linkedUserId)) {
           person.isClubMember = true
         }
         for (const venueName of sharedVenueNames) {
-          person.clubNames.add(venueName)
+          person.clubNames.add(venueNameAliasMap.get(venueName) ?? venueName)
         }
       }
     }
 
     return finalizePeople(map)
-  }, [combinedProfiles, directInviteClubMemberIds, groups, inviteCircle, selectedSport, supportData, userId])
+  }, [combinedProfiles, directInviteClubMemberIds, groups, inviteCircle, selectedSport, sportNameByIdAll, supportData, userId])
 
   const hoodKeySet = useMemo(
     () => new Set(hoodPeople.map((person) => toPersonMatchKey(person))),
@@ -1370,9 +1836,12 @@ export function HoodsPanel({
             avatarUrl: profile?.avatar_url ?? participant.avatar_url ?? null,
             identityType: 'platform',
             isPlayedWith: true,
+            gender: profile?.gender ?? null,
             level: sportProfile?.level ?? null,
             playType: sportProfile?.play_style ?? null,
-            availability: formatAvailability(profile),
+            statusLabel: formatStatusLabel(profile),
+            engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
+            preferredFormats: sportProfile?.preferred_formats ?? [],
             sportLabel: selectedSport.display_name,
             recentInteractionAt: item.match.start_at_utc ?? item.match.created_at,
             sharedMatchCount: 0,
@@ -1387,7 +1856,7 @@ export function HoodsPanel({
             person.isClubMember = true
           }
           for (const venueName of sharedVenueNames) {
-            person.clubNames.add(venueName)
+            person.clubNames.add(venueNameAliasMap.get(venueName) ?? venueName)
           }
           continue
         }
@@ -1412,13 +1881,21 @@ export function HoodsPanel({
           personId: lookup?.person_id ?? null,
           linkedUserId,
           displayName: normalizeDisplayName(linkedProfile?.display_name ?? participant.display_name),
-          avatarUrl: linkedProfile?.avatar_url ?? lookup?.avatar_url ?? participant.avatar_url ?? null,
+          avatarUrl: linkedProfile?.avatar_url ?? null,
           identityType: linkedUserId ? 'linked' : 'contact',
           isPlayedWith: true,
           isLinked: Boolean(linkedUserId),
+          isMyContact: Boolean(ownedContact),
+          isSaved: Boolean(lookup?.person_id && supportData.savedContactPersonIds.has(lookup.person_id)),
+          canEditContact: Boolean(ownedContact),
+          gender: linkedProfile?.gender ?? ownedContact?.gender ?? null,
           level: sportProfile?.level ?? null,
           playType: sportProfile?.play_style ?? null,
-          availability: formatAvailability(linkedProfile),
+          statusLabel: formatStatusLabel(linkedProfile, ownedContact ?? null),
+          engagedSports: linkedProfile
+            ? linkedProfile.sport_profiles.map((entry) => entry.sport_name)
+            : ((supportData.guestSportsByGuestId.get(participant.guest_id) ?? []).map((sportId) => sportNameByIdAll.get(sportId) ?? selectedSport.display_name)),
+          preferredFormats: sportProfile?.preferred_formats ?? [],
           sportLabel: selectedSport.display_name,
           recentInteractionAt: item.match.start_at_utc ?? item.match.created_at,
           sharedMatchCount: 0,
@@ -1429,18 +1906,20 @@ export function HoodsPanel({
         person.sourceBadges.add('Played With')
         person.recentInteractionAt = item.match.start_at_utc ?? item.match.created_at
         if (linkedUserId) person.sourceBadges.add('Linked')
+        if (ownedContact) person.sourceBadges.add('My Contact')
+        if (person.isSaved || person.isMyContact) person.sourceBadges.add('Starred')
         const sharedVenueNames = linkedProfile?.shared_venue_names ?? []
         if (linkedUserId && directInviteClubMemberIds.has(linkedUserId)) {
           person.isClubMember = true
         }
         for (const venueName of sharedVenueNames) {
-          person.clubNames.add(venueName)
+          person.clubNames.add(venueNameAliasMap.get(venueName) ?? venueName)
         }
       }
     }
 
     return finalizePeople(map).filter((person) => !hoodKeySet.has(toPersonMatchKey(person)))
-  }, [combinedProfiles, directInviteClubMemberIds, hoodKeySet, items, selectedSport, supportData, userId])
+  }, [combinedProfiles, directInviteClubMemberIds, hoodKeySet, items, selectedSport, sportNameByIdAll, supportData, userId])
 
   const discoverPeople = useMemo(() => {
     if (!selectedSport) return [] as HoodPerson[]
@@ -1459,9 +1938,12 @@ export function HoodsPanel({
           avatarUrl: profile?.avatar_url ?? null,
           identityType: 'platform',
           isClubMember: true,
+          gender: profile?.gender ?? null,
           level: sportProfile?.level ?? null,
           playType: sportProfile?.play_style ?? null,
-          availability: formatAvailability(profile),
+          statusLabel: formatStatusLabel(profile),
+          engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
+          preferredFormats: sportProfile?.preferred_formats ?? [],
           sportLabel: selectedSport.display_name,
         })
         person.isClubMember = true
@@ -1581,6 +2063,30 @@ export function HoodsPanel({
       .sort(sortDiscoverPeople)
   }, [discoverPeople, search])
 
+  const sportNameById = useMemo(
+    () => new Map(sports.map((sport) => [sport.id, sport.display_name])),
+    [sports],
+  )
+
+  const filteredDiscoverGroups = useMemo(() => {
+    if (section !== 'discover' || discoverSource !== 'club_members') return [] as ClubDiscoverGroup[]
+    const query = search.trim().toLowerCase()
+    return clubDiscoverGroups
+      .filter((group) => {
+        if (!query) return true
+        return [
+          group.name,
+          group.description ?? '',
+          group.clubNames.join(' '),
+          group.primarySportId ? sportNameById.get(group.primarySportId) ?? '' : '',
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(query)
+      })
+      .sort((left, right) => left.name.localeCompare(right.name))
+  }, [clubDiscoverGroups, discoverSource, search, section, sportNameById])
+
   const activeDrawerPerson = useMemo(
     () => [...hoodPeople, ...discoverPeople].find((person) => person.key === activeDrawerKey) ?? null,
     [activeDrawerKey, discoverPeople, hoodPeople],
@@ -1601,19 +2107,32 @@ export function HoodsPanel({
     setError(null)
     setMessage(null)
     try {
+      if (person.isMyContact && !person.isSaved) {
+        setMessage(`${person.displayName} is one of your starred contacts.`)
+        return
+      }
       if (person.isSaved && person.userId) {
         await removeFromInviteCircle(supabase, person.userId)
-        setMessage(`${person.displayName} was removed from Saved.`)
+        setMessage(`${person.displayName} was removed from Starred.`)
+      } else if (person.isSaved && person.personId) {
+        const { error: removeError } = await supabase
+          .from('person_relationships')
+          .delete()
+          .eq('actor_user_id', userId)
+          .eq('person_id', person.personId)
+          .eq('relationship_type', 'saved')
+        if (removeError) throw removeError
+        setMessage(`${person.displayName} was removed from Starred.`)
       } else if (person.userId) {
         await saveToInviteCircle(supabase, person.userId, person.isPlayedWith ? 'played_with_auto' : 'manual')
-        setMessage(`${person.displayName} is now in this hood.`)
+        setMessage(`${person.displayName} is now starred.`)
       } else if (person.guestId) {
         await saveContactPlayer(supabase, person.guestId, {
           source: person.saveSourceGroupId ? 'group_contact' : person.saveSourceMatchId ? 'shared_match' : 'manual',
           groupId: person.saveSourceGroupId,
           matchId: person.saveSourceMatchId,
         })
-        setMessage(`${person.displayName} is now in this hood.`)
+        setMessage(`${person.displayName} is now starred.`)
       }
       await loadSupportData()
       router.refresh()
@@ -1679,9 +2198,6 @@ export function HoodsPanel({
     const displayName = contactDisplayName.trim()
     const email = contactEmail.trim().toLowerCase() || null
     const phone = contactPhone.trim() || null
-    const notes = contactNotes.trim() || null
-    const availabilityNote = contactAvailabilityNote.trim() || null
-    const availabilityUntil = contactAvailabilityUntil || null
 
     if (!displayName) {
       setError('Contact name is required.')
@@ -1699,22 +2215,16 @@ export function HoodsPanel({
     try {
       const newGuest = await createRosterGuest(supabase, {
         display_name: displayName,
+        gender: contactGender,
         email,
         phone,
-        notes,
-        availability_status: contactAvailabilityStatus,
-        availability_note: availabilityNote,
-        availability_until: availabilityUntil,
       })
       await setGuestSports(supabase, newGuest.id, [selectedSport.code])
       setMessage(`${displayName} was added to your ${selectedSport.display_name} contacts.`)
       setContactDisplayName('')
       setContactEmail('')
       setContactPhone('')
-      setContactNotes('')
-      setContactAvailabilityStatus('available')
-      setContactAvailabilityNote('')
-      setContactAvailabilityUntil('')
+      setContactGender(null)
       setContactComposerMode(null)
       await loadSupportData()
       router.refresh()
@@ -1723,7 +2233,28 @@ export function HoodsPanel({
     } finally {
       setCreatingContact(false)
     }
-  }, [contactAvailabilityNote, contactAvailabilityStatus, contactAvailabilityUntil, contactDisplayName, contactEmail, contactNotes, contactPhone, loadSupportData, router, selectedSport])
+  }, [contactDisplayName, contactEmail, contactGender, contactPhone, loadSupportData, router, selectedSport])
+
+  const handleUpdateContact = useCallback(async (input: {
+    guest_id: string
+    display_name: string
+    gender?: ContactGender
+    email?: string | null
+    phone?: string | null
+  }) => {
+    const supabase = createSupabaseBrowserClient()
+    setError(null)
+    setMessage(null)
+    try {
+      await updateRosterGuest(supabase, input)
+      await loadSupportData()
+      router.refresh()
+      setMessage(`${input.display_name} updated.`)
+    } catch (updateError) {
+      setError((updateError as Error).message)
+      throw updateError
+    }
+  }, [loadSupportData, router])
 
   const handleScreenshotImported = useCallback(async () => {
     if (!selectedSport) return
@@ -1749,17 +2280,21 @@ export function HoodsPanel({
     }
   }, [loadSupportData, router, selectedSport, supportData.contacts])
 
+  const clearMessage = useCallback(() => {
+    setMessage(null)
+  }, [])
+
   if (!selectedSport) {
     return (
       <div className="rounded-[28px] border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900">Enable a sport to open Hoods</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-500">
+        <h2 className="text-h2 text-slate-900">Enable a sport to open Hoods</h2>
+        <p className="text-body-main mt-2 leading-6 text-slate-500">
           Hoods only appear for sports you enable in your profile. Turn on at least one sport in My Profile first.
         </p>
         <button
           type="button"
           onClick={onOpenProfile}
-          className="mt-4 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+          className="text-body-main mt-4 rounded-full bg-slate-900 px-4 py-2 font-medium text-white transition hover:bg-slate-700"
         >
           Open My Profile
         </button>
@@ -1768,167 +2303,167 @@ export function HoodsPanel({
   }
 
   const activePeople = section === 'discover' ? filteredDiscoverPeople : filteredHoodPeople
-  const showContactTools = section === 'hood' && hoodFilter === 'contacts'
-
+  const showSavedContactTools = section === 'hood' && hoodFilter === 'saved'
+  const showContactTools = showSavedContactTools && contactToolsOpen
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
-        {sportOptions.map((sport) => (
+      <div className="rounded-[30px] border border-[#E2E8F0] bg-white px-5 py-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
+        <div className="flex flex-wrap gap-2">
+          {sportOptions.map((sport) => (
+            <button
+              key={sport.id}
+              type="button"
+              onClick={() => {
+                clearMessage()
+                setSection('hood')
+                setSelectedSportCode(sport.code)
+              }}
+              className={[
+                'text-body-main rounded-full px-4 py-2 font-semibold transition',
+                section === 'hood' && selectedSport.code === sport.code
+                  ? 'bg-[#1E293B] text-white'
+                  : 'bg-[#F0F7FF] text-[#475569] hover:bg-[#E8F1FB]',
+              ].join(' ')}
+            >
+              {`My ${sport.display_name} Hood`}
+            </button>
+          ))}
           <button
-            key={sport.id}
             type="button"
             onClick={() => {
-              setSelectedSportCode(sport.code)
-              setHoodFilter('all')
+              clearMessage()
+              setSection('discover')
             }}
             className={[
-              'rounded-full px-4 py-2 text-sm font-medium transition',
-              selectedSport.code === sport.code
-                ? 'bg-slate-900 text-white'
-                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50',
+              'text-body-main rounded-full px-4 py-2 font-semibold transition',
+              section === 'discover'
+                ? 'bg-[#1E293B] text-white'
+                : 'bg-[#F0F7FF] text-[#475569] hover:bg-[#E8F1FB]',
             ].join(' ')}
           >
-            My {sport.display_name} Hood
-          </button>
-        ))}
-      </div>
-
-      <div className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_20px_42px_-34px_rgba(15,23,42,0.34)]">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
-              My {selectedSport.display_name} Hood
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              {section === 'discover'
-                ? `Discover people for ${selectedSport.display_name.toLowerCase()} without leaving the hood framework. Search, preview, and invite flows stay consistent with In My Hood.`
-                : `People already in your ${selectedSport.display_name.toLowerCase()} hood. Use filters and details to understand source and context without splitting the page into separate source tabs.`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => navigateToNewMatch(null)}
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
-            Create Match
+            Discover
           </button>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2 md:gap-3">
           <div className="flex flex-wrap gap-2">
-            {([
-              ['hood', 'In My Hood'],
-              ['discover', 'Discover'],
-            ] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setSection(value)}
-                className={[
-                  'rounded-full px-3 py-1.5 text-sm font-medium transition',
-                  section === value
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
-                ].join(' ')}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {section === 'hood' ? (
-            <div className="flex flex-wrap gap-2">
-              {([
-                ['all', 'All'],
-                ['contacts', 'Contacts'],
-                ['saved', 'Saved'],
-                ['group', 'From Shared Groups'],
-              ] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setHoodFilter(value)}
-                  className={[
-                    'rounded-full px-3 py-1.5 text-sm font-medium transition',
-                    hoodFilter === value
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
-                  ].join(' ')}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          ) : section === 'discover' ? (
-            <>
-              <div className="flex flex-wrap gap-2">
-                {([
-                  ['club_members', 'Club Members'],
-                  ['played_with', 'Played With'],
+            {section === 'hood'
+              ? ([
+                  ['all', 'All'],
+                  ['saved', 'Starred'],
+                  ['group', 'From Group'],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setDiscoverSource(value)}
+                    onClick={() => {
+                      clearMessage()
+                      setHoodFilter(value)
+                    }}
                     className={[
-                      'rounded-full px-3 py-1.5 text-sm font-medium transition',
-                      discoverSource === value
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                      'text-body-main rounded-full px-4 py-2 font-medium transition',
+                      hoodFilter === value
+                        ? 'bg-[#1E293B] text-white'
+                        : 'bg-[#F0F7FF] text-[#475569] hover:bg-[#E8F1FB]',
                     ].join(' ')}
                   >
                     {label}
                   </button>
+                ))
+              : ([
+                  ['club_members', 'Club Members'],
+                  ['played_with', 'Played With'],
+                ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    clearMessage()
+                    setDiscoverSource(value)
+                  }}
+                  className={[
+                    'text-body-main rounded-full px-4 py-2 font-medium transition',
+                    discoverSource === value
+                    ? 'bg-[#1E293B] text-white'
+                    : 'bg-[#F0F7FF] text-[#475569] hover:bg-[#E8F1FB]',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
                 ))}
-              </div>
-            </>
-          ) : null}
+          </div>
 
           <input
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search people"
-            className="min-w-[220px] flex-1 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300"
+            placeholder={section === 'discover' && discoverSource === 'club_members' ? 'Search people or groups' : 'Search people'}
+            className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
           />
         </div>
       </div>
 
       {message && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="text-body-main rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700">
           {message}
         </div>
       )}
       {error && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="text-body-main rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
           {error}
         </div>
       )}
       {!error && clubDiscoverError && section === 'discover' && discoverSource === 'club_members' && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="text-body-main rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
           Club Members discovery is temporarily unavailable: {clubDiscoverError}
         </div>
       )}
 
+      {showSavedContactTools ? (
+        <div className="flex justify-start">
+          <button
+            type="button"
+            onClick={() => {
+              clearMessage()
+              setError(null)
+              setContactToolsOpen((current) => {
+                const next = !current
+                setContactComposerMode(next ? 'manual' : null)
+                return next
+              })
+            }}
+            className={[
+              'text-body-main rounded-full px-4 py-2 font-medium transition',
+              contactToolsOpen
+                ? 'bg-[#1E293B] text-white'
+                : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]',
+            ].join(' ')}
+          >
+            {contactToolsOpen ? 'Close contact player tools' : 'Add contact player'}
+          </button>
+        </div>
+      ) : null}
+
       {showContactTools && (
-        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_20px_42px_-34px_rgba(15,23,42,0.34)]">
+        <div className="rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h3 className="text-lg font-semibold tracking-tight text-slate-900">Contact Tools</h3>
-              <p className="mt-1 text-sm text-slate-500">Add or import contacts.</p>
+              <h3 className="text-h2 text-[#1E293B]">Contact Tools</h3>
+              <p className="text-body-sub mt-1 text-[#64748B]">Add or import contacts.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => {
+                  clearMessage()
                   setContactComposerMode((current) => current === 'manual' ? null : 'manual')
                   setError(null)
                 }}
                 className={[
-                  'rounded-full px-4 py-2 text-sm font-medium transition',
+                  'text-body-main rounded-full px-4 py-2 font-medium transition',
                   contactComposerMode === 'manual'
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+                    ? 'bg-[#C25E46] text-white'
+                    : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]',
                 ].join(' ')}
               >
                 {contactComposerMode === 'manual' ? 'Close Add Contact' : 'Add Contact'}
@@ -1936,14 +2471,15 @@ export function HoodsPanel({
               <button
                 type="button"
                 onClick={() => {
+                  clearMessage()
                   setContactComposerMode((current) => current === 'screenshot' ? null : 'screenshot')
                   setError(null)
                 }}
                 className={[
-                  'rounded-full px-4 py-2 text-sm font-medium transition',
+                  'text-body-main rounded-full px-4 py-2 font-medium transition',
                   contactComposerMode === 'screenshot'
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+                    ? 'bg-[#C25E46] text-white'
+                    : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]',
                 ].join(' ')}
               >
                 {contactComposerMode === 'screenshot' ? 'Close Import' : 'Import from Screenshot'}
@@ -1954,89 +2490,60 @@ export function HoodsPanel({
           {contactComposerMode === 'manual' && (
             <form onSubmit={handleCreateContact} className="mt-4 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
               <div className="md:col-span-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                <div className="text-label text-slate-400">
                   Add to {selectedSport.display_name}
                 </div>
               </div>
-              <label className="text-sm text-slate-600">
+              <label className="text-body-main text-slate-600">
                 <span className="mb-1 block">Name</span>
                 <input
                   type="text"
                   value={contactDisplayName}
                   onChange={(event) => setContactDisplayName(event.target.value)}
                   placeholder="Display name"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
+                  className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
                 />
               </label>
-              <label className="text-sm text-slate-600">
-                <span className="mb-1 block">Notes</span>
-                <input
-                  type="text"
-                  value={contactNotes}
-                  onChange={(event) => setContactNotes(event.target.value)}
-                  placeholder="Optional note"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
-                />
-              </label>
-              <label className="text-sm text-slate-600">
+              <label className="text-body-main text-slate-600">
                 <span className="mb-1 block">Email</span>
                 <input
                   type="email"
                   value={contactEmail}
                   onChange={(event) => setContactEmail(event.target.value)}
                   placeholder="Email"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
+                  className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
                 />
               </label>
-              <label className="text-sm text-slate-600">
+              <label className="text-body-main text-slate-600">
                 <span className="mb-1 block">Phone</span>
                 <input
                   type="tel"
                   value={contactPhone}
                   onChange={(event) => setContactPhone(event.target.value)}
                   placeholder="Phone"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
+                  className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
                 />
               </label>
-              <label className="text-sm text-slate-600">
-                <span className="mb-1 block">Availability</span>
+              <label className="text-body-main text-slate-600">
+                <span className="mb-1 block">Gender</span>
                 <select
-                  value={contactAvailabilityStatus}
-                  onChange={(event) => setContactAvailabilityStatus(event.target.value as AvailabilityStatus)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
+                  value={contactGender ?? ''}
+                  onChange={(event) => setContactGender((event.target.value || null) as ContactGender)}
+                  className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
                 >
-                  {AVAILABILITY_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
+                  {CONTACT_GENDER_OPTIONS.map((option) => (
+                    <option key={option.value || 'empty'} value={option.value}>
                       {option.label}
                     </option>
                   ))}
                 </select>
               </label>
-              <label className="text-sm text-slate-600">
-                <span className="mb-1 block">Availability note</span>
-                <input
-                  type="text"
-                  value={contactAvailabilityNote}
-                  onChange={(event) => setContactAvailabilityNote(event.target.value)}
-                  placeholder="On vacation, exam season..."
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300"
-                />
-              </label>
-              <label className="text-sm text-slate-600 md:col-span-2">
-                <span className="mb-1 block">Available again</span>
-                <input
-                  type="date"
-                  value={contactAvailabilityUntil}
-                  onChange={(event) => setContactAvailabilityUntil(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 md:max-w-[240px]"
-                />
-              </label>
               <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-slate-500">Adds to your hood.</p>
+                <p className="text-body-sub text-slate-500">Adds to your hood.</p>
                 <button
                   type="submit"
                   disabled={creatingContact}
-                  className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-wait disabled:bg-slate-400"
+                  className="text-body-main rounded-full bg-slate-900 px-4 py-2 font-medium text-white transition hover:bg-slate-700 disabled:cursor-wait disabled:bg-slate-400"
                 >
                   {creatingContact ? 'Adding...' : 'Add Contact'}
                 </button>
@@ -2059,42 +2566,88 @@ export function HoodsPanel({
       )}
 
       {loading ? (
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-500">
+        <div className="text-body-main rounded-[28px] border border-slate-200 bg-white p-6 text-slate-500">
           Loading hood...
         </div>
-      ) : activePeople.length === 0 ? (
-        <div className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+      ) : activePeople.length === 0 && filteredDiscoverGroups.length === 0 ? (
+        <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
           {getPeopleEmptyState(section, hoodFilter, discoverSource, selectedSport.display_name)}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {activePeople.map((person) => (
-            <HoodCard
-              key={person.key}
-              person={person}
-              openMatchCount={openMatchCount.get(person.key) ?? 0}
-              onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
-              onOpenMenuAddToGroup={(nextPerson) => {
-                setGroupDialogPerson(nextPerson)
-                setActiveMenuKey(null)
-              }}
-              onSaveToggle={handleSaveToggle}
-              inviteOpen={activeInviteKey === person.key}
-              menuOpen={activeMenuKey === person.key}
-              onToggleInvite={(nextPerson) => {
-                setActiveMenuKey(null)
-                setActiveInviteKey((current) => (current === nextPerson.key ? null : nextPerson.key))
-              }}
-              onToggleMenu={(nextPerson) => {
-                setActiveInviteKey(null)
-                setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))
-              }}
-              inviteMatches={openMatchTargetsByPerson.get(person.key) ?? []}
-              onInviteExisting={handleInviteExisting}
-              onInviteNew={navigateToNewMatch}
-              pendingInviteMatchId={pendingInviteMatchId}
-            />
-          ))}
+        <div className="space-y-5">
+          {activePeople.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {activePeople.map((person) => (
+                <HoodCard
+                  key={person.key}
+                  person={person}
+                  myClubNames={myClubNames}
+                  openMatchCount={openMatchCount.get(person.key) ?? 0}
+                  onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
+                  onOpenMenuAddToGroup={(nextPerson) => {
+                    setGroupDialogPerson(nextPerson)
+                    setActiveMenuKey(null)
+                  }}
+                  onSaveToggle={handleSaveToggle}
+                  inviteOpen={activeInviteKey === person.key}
+                  menuOpen={activeMenuKey === person.key}
+                  onToggleInvite={(nextPerson) => {
+                    setActiveMenuKey(null)
+                    setActiveInviteKey((current) => (current === nextPerson.key ? null : nextPerson.key))
+                  }}
+                  onToggleMenu={(nextPerson) => {
+                    setActiveInviteKey(null)
+                    setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))
+                  }}
+                  inviteMatches={openMatchTargetsByPerson.get(person.key) ?? []}
+                  onInviteExisting={handleInviteExisting}
+                  onInviteNew={navigateToNewMatch}
+                  pendingInviteMatchId={pendingInviteMatchId}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {section === 'discover' && discoverSource === 'club_members' && filteredDiscoverGroups.length > 0 ? (
+            <section className="rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
+              <div className="mb-4">
+                <div className="text-label text-[#94A3B8]">Groups</div>
+                <p className="text-body-sub mt-1 text-[#64748B]">Open groups people from your club can discover.</p>
+              </div>
+              <div className="space-y-3">
+                {filteredDiscoverGroups.map((group) => {
+                  const icon = getGroupIconMeta(group.iconKey)
+                  const sportName = group.primarySportId ? sportNameById.get(group.primarySportId) ?? 'Shared Group' : 'Shared Group'
+                  const preview = group.description?.trim() || `Open to ${group.clubNames.join(', ')}.`
+                  return (
+                    <button
+                      key={group.groupId}
+                      type="button"
+                      onClick={() => router.push(`/groups/${group.groupId}`)}
+                      className="flex w-full items-center gap-4 rounded-[22px] border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4 text-left transition hover:border-[#C25E46]/35 hover:bg-white"
+                    >
+                      <div className="flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#EEF2F7] bg-white text-[22px] shadow-[0_10px_24px_-22px_rgba(30,41,59,0.25)]">
+                        {icon.emoji}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-h2 truncate text-[#1E293B]">{group.name}</div>
+                          <span className="text-label rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[#C25E46]">
+                            {sportName}
+                          </span>
+                        </div>
+                        <div className="text-body-sub mt-1 text-[#64748B]">{preview}</div>
+                        <div className="text-body-sub mt-2 text-[#94A3B8]">{group.clubNames.join(' · ')}</div>
+                      </div>
+                      <div className="text-body-sub shrink-0 rounded-[10px] bg-white px-2 py-1 font-bold text-[#94A3B8]">
+                        {group.memberCount}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          ) : null}
         </div>
       )}
 
@@ -2102,15 +2655,17 @@ export function HoodsPanel({
         open={Boolean(activeDrawerPerson)}
         person={activeDrawerPerson}
         sport={selectedSport}
+        myClubNames={myClubNames}
         items={items}
+        contactRecord={activeDrawerPerson?.guestId ? supportData.contactsByGuestId.get(activeDrawerPerson.guestId) ?? null : null}
         onClose={() => setActiveDrawerKey(null)}
         onSaveToggle={handleSaveToggle}
         onOpenAddToGroup={(person) => setGroupDialogPerson(person)}
-        onOpenInvite={(person) => setActiveInviteKey(person.key)}
         onOpenProxyManager={() => {
           setActiveDrawerKey(null)
           onOpenProfile()
         }}
+        onUpdateContact={handleUpdateContact}
       />
 
       {groupDialogPerson && (

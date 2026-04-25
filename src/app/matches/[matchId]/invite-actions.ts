@@ -2,19 +2,21 @@
 
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { createEmailInvitation } from '@/lib/invitations/create-email-invitation'
-import { processQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
+import { drainQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
 
 export async function createMatchEmailInvitationAndSend(params: {
   matchId: string
-  targetEmail: string
+  targetEmail?: string | null
+  targetPhone?: string | null
   targetName?: string | null
 }) {
   const supabase = await createSupabaseServerClient()
   await createEmailInvitation(supabase, {
-    targetEmail: params.targetEmail.trim(),
+    targetEmail: params.targetEmail?.trim() || null,
+    targetPhone: params.targetPhone?.trim() || null,
     targetName: params.targetName?.trim() || null,
     relatedType: 'match',
     relatedId: params.matchId,
   })
-  await processQueuedNotificationDeliveries(supabase, 5)
+  await drainQueuedNotificationDeliveries(supabase, { batchSize: 10, maxBatches: 5 })
 }

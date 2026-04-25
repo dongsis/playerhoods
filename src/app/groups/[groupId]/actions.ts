@@ -70,6 +70,36 @@ export async function createGroupFileResourceAction(
   revalidateGroupSurfaces(groupId)
 }
 
+export async function createGroupDiscussionPhotoResourceAction(
+  groupId: string,
+  data: {
+    title: string
+    storage_bucket: string
+    storage_path: string
+    public_url: string
+    mime_type: string | null
+    byte_size: number | null
+  },
+) {
+  const supabase = await createSupabaseServerClient()
+  const user = await getUser()
+  if (!user) {
+    throw new Error('not_authenticated')
+  }
+
+  const resource = await createGroupFileResource(supabase, groupId, user.id, {
+    ...data,
+    tag: 'Photo',
+  })
+  revalidateGroupSurfaces(groupId)
+  return {
+    id: resource.id,
+    title: resource.title,
+    public_url: resource.public_url,
+    mime_type: resource.mime_type,
+  }
+}
+
 export async function setGroupResourcePinnedAction(groupId: string, resourceId: string, isPinned: boolean) {
   const supabase = await createSupabaseServerClient()
   await setGroupResourcePinned(supabase, resourceId, isPinned)
@@ -94,6 +124,9 @@ export async function updateGroupSettingsAction(
     name: string
     description?: string | null
     primary_sport_id?: number | null
+    venue_id?: string | null
+    open_to_club_members?: boolean
+    icon_key?: string | null
   },
 ) {
   const supabase = await createSupabaseServerClient()

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { VenueIdentity, Venue } from '@/lib/types/database'
 import { SHARED_GROUP_JOIN_PREFERENCE_OPTIONS } from '@/lib/profile-options'
+import { getVenueDisplayName } from '@/lib/venues/display'
 
 interface Props {
   showTitle?: boolean
@@ -197,7 +198,7 @@ export function DiscoveryAndInvitesSection({
                   disabled={!showInDiscovery || venuePending === identity.venue_id}
                   style={{ margin: 0 }}
                 />
-                <span style={{ fontSize: '0.9rem' }}>{identity.venue.name}</span>
+                <span style={{ fontSize: '0.9rem' }}>{getVenueDisplayName(identity.venue)}</span>
               </label>
             ))}
           </div>
@@ -255,7 +256,7 @@ export function DiscoveryAndInvitesSection({
                   disabled={!effectiveAllowDirectInvites || venuePending === identity.venue_id}
                   style={{ margin: 0 }}
                 />
-                <span style={{ fontSize: '0.9rem' }}>{identity.venue.name}</span>
+                <span style={{ fontSize: '0.9rem' }}>{getVenueDisplayName(identity.venue)}</span>
               </label>
             ))}
           </div>

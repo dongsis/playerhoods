@@ -7,6 +7,7 @@ import { acceptGroupInvite, rejectGroupInvite, inviteUserToGroup, createGroup, l
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Group } from '@/lib/types/database'
 import type { InviteCircleRow } from '@/lib/api/play-network'
+import { getVenueDisplayName } from '@/lib/venues/display'
 import { SavedPlayerButton } from '@/app/components/SavedPlayerButton'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { InviteCirclePanel } from './InviteCirclePanel'
@@ -654,7 +655,7 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
           {filteredVenues.map(({ venue, members }) => (
             <section key={venue.id}>
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                {venue.name}
+                {getVenueDisplayName(venue)}
                 <span className="ml-2 text-gray-300 normal-case font-normal">{members.length}</span>
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

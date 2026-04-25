@@ -17,6 +17,7 @@ interface Props {
   userId: string
   currentAvatarUrl: string | null
   onSaved: () => void
+  compact?: boolean
 }
 
 function getCroppedCanvas(
@@ -81,7 +82,7 @@ function centerAspectCrop(
   )
 }
 
-export function AvatarUpload({ userId, currentAvatarUrl, onSaved }: Props) {
+export function AvatarUpload({ userId, currentAvatarUrl, onSaved, compact = false }: Props) {
   const [src, setSrc] = useState<string | null>(null)
   const [crop, setCrop] = useState<Crop>()
   const [completedCrop, setCompletedCrop] = useState<Crop>()
@@ -172,6 +173,88 @@ export function AvatarUpload({ userId, currentAvatarUrl, onSaved }: Props) {
     setCrop(undefined)
     setCompletedCrop(undefined)
     setError(null)
+  }
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        {!src ? (
+          <div className="space-y-2">
+            <div className="relative h-16 w-16">
+              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[20px] border-2 border-white bg-slate-100 shadow-sm">
+                {currentAvatarUrl ? (
+                  <img src={currentAvatarUrl} alt="Profile photo" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-2xl text-slate-300">?</span>
+                )}
+              </div>
+              <label className="absolute -bottom-1 -right-1 cursor-pointer">
+                <span className="inline-flex rounded-lg border-2 border-white bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-sm transition hover:bg-slate-800">
+                  Edit
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={onFileChange}
+                />
+              </label>
+            </div>
+            {currentAvatarUrl && (
+              <button
+                type="button"
+                onClick={handleRemove}
+                disabled={uploading}
+                className="text-[11px] font-semibold text-slate-500 transition hover:text-rose-600 disabled:opacity-50"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="max-w-xs">
+              <ReactCrop
+                crop={crop}
+                onChange={setCrop}
+                onComplete={handleCropComplete}
+                aspect={ASPECT}
+                circularCrop
+                className="max-w-full"
+              >
+                <img
+                  ref={imgRef}
+                  src={src}
+                  alt="Crop preview"
+                  onLoad={onImageLoad}
+                  style={{ maxHeight: 240 }}
+                />
+              </ReactCrop>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={uploading || !completedCrop}
+                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                {uploading ? 'Saving...' : 'Save photo'}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={uploading}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+      </div>
+    )
   }
 
   return (

@@ -69,7 +69,7 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
       </p>
       <input
         type="text"
-        placeholder="Search by name or handle..."
+        placeholder="Search by name..."
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         className="mb-3 w-full max-w-xs rounded-xl border border-gray-200 px-3 py-2 text-sm"
@@ -87,17 +87,14 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
               <PlayerProfileTrigger targetUserId={member.user_id} className="rounded-full">
                 <Avatar
                   src={member.avatar_url}
-                  displayName={member.display_name || member.venue_handle || '?'}
+                  displayName={member.display_name || '?'}
                   size="md"
                 />
               </PlayerProfileTrigger>
               <div className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-gray-800">
-                  {member.display_name || member.venue_handle || 'Unknown'}
+                  {member.display_name || 'Unknown'}
                 </span>
-                {member.venue_handle && (
-                  <span className="mt-1 block text-xs text-gray-400">@{member.venue_handle}</span>
-                )}
               </div>
               <SavedPlayerButton
                 targetUserId={member.user_id}

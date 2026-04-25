@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import type { VenueAdmin, Venue } from '@/lib/types/database'
+import { getVenueDisplayName } from '@/lib/venues/display'
 
 interface Props {
   myAdminVenues: (VenueAdmin & { venue: Venue })[]
@@ -39,7 +40,7 @@ export function VenueManagementPanel({ myAdminVenues, isSuperAdmin }: Props) {
             >
               <div className="flex items-center justify-between border-b border-gray-50 px-4 py-3">
                 <div>
-                  <div className="text-sm font-medium text-gray-800">{venue.name}</div>
+                  <div className="text-sm font-medium text-gray-800">{getVenueDisplayName(venue)}</div>
                   {venue.location_text && (
                     <div className="text-xs text-gray-400">
                       {venue.location_text} · {venue.timezone}

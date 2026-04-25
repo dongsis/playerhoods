@@ -1,6 +1,6 @@
 -- supabase/seed.sql
 -- Idempotent seed (no temp tables, no ON CONFLICT requirements)
--- Test env: Whiteoak Tennis Venue, orc2 group, OldChai/U3/Real/Outsider for test_runner_v161 & test_runner_match_regression_v2
+-- Test env: Whiteoak Tennis Club, orc2 group, OldChai/U3/Real/Outsider for test_runner_v161 & test_runner_match_regression_v2
 
 SET search_path = public, extensions;
 
@@ -90,10 +90,10 @@ WHERE NOT EXISTS (
 );
 
 -- -----------------------------------------------------------------------------
--- Venue: Whiteoak Tennis Venue (fixed id for test runners, timezone Toronto)
+-- Venue: Whiteoak Tennis Club (fixed id for test runners, timezone Toronto)
 -- -----------------------------------------------------------------------------
-INSERT INTO public.venues (id, name, location_text, timezone, notes)
-SELECT '3802862a-db80-40e5-bed0-c76e8a631fa8', 'Whiteoak Tennis Venue', 'Toronto, ON', 'America/Toronto', 'Test club for regression'
+INSERT INTO public.venues (id, name, abbreviation, location_text, timezone, notes)
+SELECT '3802862a-db80-40e5-bed0-c76e8a631fa8', 'Whiteoak Tennis Club', 'wtc', 'Toronto, ON', 'America/Toronto', 'Test club for regression'
 WHERE NOT EXISTS (SELECT 1 FROM public.venues WHERE id = '3802862a-db80-40e5-bed0-c76e8a631fa8');
 
 -- Courts for Whiteoak
@@ -151,8 +151,8 @@ WHERE g.id = 'c0000000-0000-0000-0000-000000000001'
 -- -----------------------------------------------------------------------------
 -- Venue 1: Ontario Racquet Club
 WITH ins AS (
-  INSERT INTO public.venues (name, location_text, timezone, notes)
-  SELECT 'Ontario Racquet Club', 'Oakville, ON', 'America/Toronto', NULL
+  INSERT INTO public.venues (name, abbreviation, location_text, timezone, notes)
+  SELECT 'Ontario Racquet Club', 'orc', 'Oakville, ON', 'America/Toronto', NULL
   WHERE NOT EXISTS (
     SELECT 1
     FROM public.venues
@@ -389,18 +389,24 @@ BEGIN
 END $$;
 
 -- -----------------------------------------------------------------------------
--- Venue 2: Wallace Park Tennis Venue
+-- Venue 2: Wallace Park Tennis Club
 -- -----------------------------------------------------------------------------
 WITH ins AS (
-  INSERT INTO public.venues (name, location_text, timezone, notes)
-  SELECT 'Wallace Park Tennis Venue', 'Toronto, ON', 'America/Toronto', NULL
-  WHERE NOT EXISTS (SELECT 1 FROM public.venues WHERE name = 'Wallace Park Tennis Venue')
+  INSERT INTO public.venues (name, abbreviation, location_text, timezone, notes)
+  SELECT 'Wallace Park Tennis Club', 'wptc', 'Toronto, ON', 'America/Toronto', NULL
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.venues WHERE name IN ('Wallace Park Tennis Club', 'Wallace Park Tennis Venue')
+  )
   RETURNING id
 ),
 club AS (
   SELECT id FROM ins
   UNION ALL
-  SELECT id FROM public.venues WHERE name = 'Wallace Park Tennis Venue' LIMIT 1
+  SELECT id
+  FROM public.venues
+  WHERE name IN ('Wallace Park Tennis Club', 'Wallace Park Tennis Venue')
+  ORDER BY CASE WHEN name = 'Wallace Park Tennis Club' THEN 0 ELSE 1 END, created_at
+  LIMIT 1
 )
 INSERT INTO public.courts (venue_id, sport_id, court_code, surface, notes)
 SELECT club.id, 1, v.court_code, NULL, NULL
@@ -413,7 +419,11 @@ WHERE NOT EXISTS (
 );
 
 WITH club AS (
-  SELECT id FROM public.venues WHERE name = 'Wallace Park Tennis Venue' LIMIT 1
+  SELECT id
+  FROM public.venues
+  WHERE name IN ('Wallace Park Tennis Club', 'Wallace Park Tennis Venue')
+  ORDER BY CASE WHEN name = 'Wallace Park Tennis Club' THEN 0 ELSE 1 END, created_at
+  LIMIT 1
 ),
 tennis AS (SELECT id FROM public.sports WHERE code='tennis' LIMIT 1)
 INSERT INTO public.venue_sports (venue_id, sport_id, court_count)

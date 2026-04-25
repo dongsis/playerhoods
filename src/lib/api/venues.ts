@@ -147,6 +147,7 @@ export async function createVenue(
   supabase: Client,
   data: {
     name: string
+    abbreviation?: string
     location_text?: string
     timezone?: string
     notes?: string
@@ -156,6 +157,7 @@ export async function createVenue(
 ): Promise<Venue> {
   const { data: venue, error } = await supabase.rpc('rpc_venue_create', {
     p_name: data.name,
+    p_abbreviation: data.abbreviation ?? null,
     p_location_text: data.location_text ?? null,
     p_timezone: data.timezone ?? 'America/Toronto',
     p_notes: data.notes ?? null,
@@ -175,6 +177,7 @@ export async function updateVenue(
   venueId: string,
   data: {
     name?: string
+    abbreviation?: string | null
     location_text?: string
     timezone?: string
     notes?: string
@@ -185,6 +188,7 @@ export async function updateVenue(
   const { error } = await supabase.rpc('rpc_venue_update', {
     p_venue_id: venueId,
     p_name: data.name ?? null,
+    p_abbreviation: data.abbreviation === undefined ? null : data.abbreviation,
     p_location_text: data.location_text ?? null,
     p_timezone: data.timezone ?? null,
     p_notes: data.notes ?? null,

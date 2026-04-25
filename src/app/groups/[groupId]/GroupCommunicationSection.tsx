@@ -1,8 +1,34 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { GroupMessageEnriched } from '@/lib/api/groups'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import type { GroupMessageEnriched, GroupResourceEnriched } from '@/lib/api/groups'
+
+const GROUP_RESOURCE_MESSAGE_PREFIX = '[[group-resource:'
+const GROUP_RESOURCE_MESSAGE_SUFFIX = ']]'
+
+function buildGroupResourceMessage(resourceId: string) {
+  return `${GROUP_RESOURCE_MESSAGE_PREFIX}${resourceId}${GROUP_RESOURCE_MESSAGE_SUFFIX}`
+}
+
+function parseGroupResourceMessage(body: string): string | null {
+  const trimmed = body.trim()
+  if (!trimmed.startsWith(GROUP_RESOURCE_MESSAGE_PREFIX) || !trimmed.endsWith(GROUP_RESOURCE_MESSAGE_SUFFIX)) {
+    return null
+  }
+
+  const resourceId = trimmed.slice(
+    GROUP_RESOURCE_MESSAGE_PREFIX.length,
+    trimmed.length - GROUP_RESOURCE_MESSAGE_SUFFIX.length,
+  ).trim()
+
+  return resourceId || null
+}
+
+function sanitizeFilename(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+}
 
 function IconMessageCircle({ size = 12, color = '#0f172a' }: { size?: number; color?: string }) {
   return (
@@ -26,6 +52,15 @@ function IconSend({ size = 14, color = '#cbd5e1' }: { size?: number; color?: str
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M21 3L10 14" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
       <path d="M21 3L14 21L10 14L3 10L21 3Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function IconPhoto({ size = 14, color = '#64748b' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4.5 7.5H8L9.5 5.5H14.5L16 7.5H19.5C20.3 7.5 21 8.2 21 9V18.5C21 19.3 20.3 20 19.5 20H4.5C3.7 20 3 19.3 3 18.5V9C3 8.2 3.7 7.5 4.5 7.5Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
+      <circle cx="12" cy="13" r="3.2" stroke={color} strokeWidth="1.8" />
     </svg>
   )
 }
@@ -77,31 +112,125 @@ function MessageAvatar({
   )
 }
 
+function SharedPhotoCard({
+  resource,
+  align,
+}: {
+  resource: GroupResourceEnriched | null
+  align: 'left' | 'right'
+}) {
+  const href = resource?.public_url ?? resource?.link_url ?? '#'
+  const hasImage = Boolean(resource?.mime_type?.startsWith('image/') && resource.public_url)
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        display: 'block',
+        width: '100%',
+        maxWidth: '360px',
+        textDecoration: 'none',
+        borderRadius: align === 'right' ? '18px 18px 6px 18px' : '18px 18px 18px 6px',
+        overflow: 'hidden',
+        border: align === 'right' ? '1px solid rgba(255,255,255,0.25)' : '1px solid #dbe4ee',
+        background: align === 'right' ? 'rgba(255,255,255,0.14)' : '#ffffff',
+        boxShadow: align === 'right'
+          ? '0 18px 30px -24px rgba(249, 115, 22, 0.55)'
+          : '0 18px 30px -24px rgba(15, 23, 42, 0.18)',
+      }}
+    >
+      {hasImage ? (
+        <img
+          src={resource?.public_url ?? undefined}
+          alt={resource?.title ?? 'Shared photo'}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '180px',
+            objectFit: 'cover',
+            background: '#e2e8f0',
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            height: '110px',
+            background: align === 'right' ? 'rgba(255,255,255,0.12)' : '#f8fafc',
+            color: align === 'right' ? '#fff' : '#475569',
+          }}
+        >
+          <IconPhoto color={align === 'right' ? '#fff' : '#64748b'} />
+        </div>
+      )}
+
+      <div
+        style={{
+          padding: '0.75rem 0.9rem',
+          background: align === 'right' ? '#f97316' : '#ffffff',
+          color: align === 'right' ? '#fff' : '#0f172a',
+        }}
+      >
+        <div style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.85 }}>
+          Shared photo
+        </div>
+        <div style={{ marginTop: '0.25rem', fontSize: '0.96rem', fontWeight: 700, lineHeight: 1.35 }}>
+          {resource?.title ?? 'Open shared photo'}
+        </div>
+      </div>
+    </a>
+  )
+}
+
 type Props = {
+  groupId: string
   announcementText: string | null
   messages: GroupMessageEnriched[]
+  resources: GroupResourceEnriched[]
   viewerUserId: string | null
   canAccess: boolean
   canPost: boolean
+  canSharePhotos: boolean
   onPostMessage: (body: string) => Promise<void>
+  onCreateDiscussionPhotoResource: (data: {
+    title: string
+    storage_bucket: string
+    storage_path: string
+    public_url: string
+    mime_type: string | null
+    byte_size: number | null
+  }) => Promise<{ id: string; title: string; public_url: string | null; mime_type: string | null }>
 }
 
 export function GroupCommunicationSection({
+  groupId,
   announcementText,
   messages,
+  resources,
   viewerUserId,
   canAccess,
   canPost,
+  canSharePhotos,
   onPostMessage,
+  onCreateDiscussionPhotoResource,
 }: Props) {
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [composerValue, setComposerValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSendingMessage, startSendMessage] = useTransition()
+  const [isSharingPhoto, startSharePhoto] = useTransition()
 
   const sortedMessages = useMemo(
     () => [...messages].sort((left, right) => left.created_at.localeCompare(right.created_at)),
     [messages],
+  )
+  const resourceMap = useMemo(
+    () => new Map(resources.map((resource) => [resource.id, resource])),
+    [resources],
   )
 
   if (!canAccess) {
@@ -139,6 +268,53 @@ export function GroupCommunicationSection({
         router.refresh()
       } catch (messageError) {
         setError((messageError as { message?: string })?.message ?? 'Could not send message.')
+      }
+    })
+  }
+
+  const handlePhotoSelected = (file: File | null) => {
+    if (!file) return
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Only jpg, png, and webp images are supported in chat.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    setError(null)
+    startSharePhoto(async () => {
+      const supabase = createSupabaseBrowserClient()
+      const safeName = sanitizeFilename(file.name || 'photo')
+      const storagePath = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+      let resourceCreated = false
+
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from('group-resources')
+          .upload(storagePath, file, { upsert: false, contentType: file.type || undefined })
+
+        if (uploadError) throw uploadError
+
+        const { data: urlData } = supabase.storage.from('group-resources').getPublicUrl(storagePath)
+        const resource = await onCreateDiscussionPhotoResource({
+          title: file.name.replace(/\.[^.]+$/, '') || 'Shared photo',
+          storage_bucket: 'group-resources',
+          storage_path: storagePath,
+          public_url: `${urlData.publicUrl}?t=${Date.now()}`,
+          mime_type: file.type || null,
+          byte_size: file.size || null,
+        })
+        resourceCreated = true
+
+        await onPostMessage(buildGroupResourceMessage(resource.id))
+        router.refresh()
+      } catch (shareError) {
+        if (!resourceCreated) {
+          await supabase.storage.from('group-resources').remove([storagePath])
+        }
+        setError((shareError as { message?: string })?.message ?? 'Could not share photo.')
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = ''
       }
     })
   }
@@ -235,6 +411,8 @@ export function GroupCommunicationSection({
         ) : (
           sortedMessages.map((message) => {
             const isViewer = viewerUserId != null && message.author_user_id === viewerUserId
+            const resourceId = parseGroupResourceMessage(message.body)
+            const linkedResource = resourceId ? (resourceMap.get(resourceId) ?? null) : null
 
             if (isViewer) {
               return (
@@ -245,20 +423,26 @@ export function GroupCommunicationSection({
                       You
                     </span>
                   </div>
-                  <div
-                    style={{
-                      display: 'inline-block',
-                      borderRadius: '18px 18px 6px 18px',
-                      background: '#f97316',
-                      color: '#fff',
-                      padding: '0.75rem 0.95rem',
-                      fontSize: '0.96rem',
-                      lineHeight: 1.45,
-                      boxShadow: '0 18px 30px -24px rgba(249, 115, 22, 0.55)',
-                    }}
-                  >
-                    {message.body}
-                  </div>
+                  {resourceId ? (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <SharedPhotoCard resource={linkedResource} align="right" />
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: 'inline-block',
+                        borderRadius: '18px 18px 6px 18px',
+                        background: '#f97316',
+                        color: '#fff',
+                        padding: '0.75rem 0.95rem',
+                        fontSize: '0.96rem',
+                        lineHeight: 1.45,
+                        boxShadow: '0 18px 30px -24px rgba(249, 115, 22, 0.55)',
+                      }}
+                    >
+                      {message.body}
+                    </div>
+                  )}
                 </div>
               )
             }
@@ -270,21 +454,27 @@ export function GroupCommunicationSection({
                   <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                     {message.author_name}
                   </div>
-                  <div
-                    style={{
-                      marginTop: '0.3rem',
-                      display: 'inline-block',
-                      borderRadius: '18px',
-                      background: '#f1f5f9',
-                      border: '1px solid #dbe4ee',
-                      color: '#0f172a',
-                      padding: '0.8rem 1rem',
-                      fontSize: '0.96rem',
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {message.body}
-                  </div>
+                  {resourceId ? (
+                    <div style={{ marginTop: '0.3rem' }}>
+                      <SharedPhotoCard resource={linkedResource} align="left" />
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        marginTop: '0.3rem',
+                        display: 'inline-block',
+                        borderRadius: '18px',
+                        background: '#f1f5f9',
+                        border: '1px solid #dbe4ee',
+                        color: '#0f172a',
+                        padding: '0.8rem 1rem',
+                        fontSize: '0.96rem',
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {message.body}
+                    </div>
+                  )}
                   <div style={{ marginTop: '0.3rem', color: '#94a3b8', fontSize: '0.68rem' }}>
                     {formatMessageTime(message.created_at)}
                   </div>
@@ -314,7 +504,7 @@ export function GroupCommunicationSection({
             value={composerValue}
             onChange={(event) => setComposerValue(event.target.value)}
             placeholder={canPost ? 'Write a message...' : 'Only current members can chat.'}
-            disabled={!canPost || isSendingMessage}
+            disabled={!canPost || isSendingMessage || isSharingPhoto}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
@@ -330,29 +520,61 @@ export function GroupCommunicationSection({
               fontSize: '1rem',
             }}
           />
-          <div style={{ marginTop: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ marginTop: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{ color: error ? '#dc2626' : '#94a3b8', fontSize: '0.78rem' }}>
-              {error ?? 'Public group coordination only.'}
+              {error ?? (canSharePhotos ? 'Public group coordination only. Photos upload as shared resources.' : 'Public group coordination only.')}
             </div>
-            <button
-              type="button"
-              onClick={handleSendMessage}
-              disabled={!canPost || !composerValue.trim() || isSendingMessage}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: !canPost || !composerValue.trim() ? '#cbd5e1' : '#f97316',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                cursor: !canPost || !composerValue.trim() ? 'default' : 'pointer',
-              }}
-            >
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                Send
-              </span>
-              <IconSend color={!canPost || !composerValue.trim() ? '#cbd5e1' : '#f97316'} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+              {canSharePhotos ? (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => handlePhotoSelected(event.target.files?.[0] ?? null)}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!canPost || isSendingMessage || isSharingPhoto}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: !canPost || isSendingMessage || isSharingPhoto ? '#cbd5e1' : '#64748b',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      cursor: !canPost || isSendingMessage || isSharingPhoto ? 'default' : 'pointer',
+                    }}
+                  >
+                    <IconPhoto color={!canPost || isSendingMessage || isSharingPhoto ? '#cbd5e1' : '#64748b'} />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                      {isSharingPhoto ? 'Sharing...' : 'Photo'}
+                    </span>
+                  </button>
+                </>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleSendMessage}
+                disabled={!canPost || !composerValue.trim() || isSendingMessage || isSharingPhoto}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: !canPost || !composerValue.trim() || isSharingPhoto ? '#cbd5e1' : '#f97316',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  cursor: !canPost || !composerValue.trim() || isSharingPhoto ? 'default' : 'pointer',
+                }}
+              >
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  Send
+                </span>
+                <IconSend color={!canPost || !composerValue.trim() || isSharingPhoto ? '#cbd5e1' : '#f97316'} />
+              </button>
+            </div>
           </div>
         </div>
       </footer>

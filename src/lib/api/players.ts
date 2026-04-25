@@ -4,6 +4,14 @@ import { listMyPendingGroupInvites, type MyPendingGroupInvite } from '@/lib/api/
 
 type Client = SupabaseClient<Database>
 
+function shouldFallbackToLegacyVenueStorage(error: { message?: string; code?: string } | null | undefined): boolean {
+  const message = error?.message?.toLowerCase() ?? ''
+  return error?.code === '42P01'
+    || message.includes('does not exist')
+    || message.includes('could not find the table')
+    || message.includes('schema cache')
+}
+
 export type VenueMember = { userId: string; handle: string }
 
 export type VenueWithMembers = {
@@ -31,18 +39,19 @@ export type PlayersData = {
 
 /**
  * Returns all platform players grouped by venue and by group.
- * Users with no venue identity appear in noVenue list.
- * 5 parallel queries merged in JS — no nested WHERE.
+ * Venue grouping prefers venue_user_relationships(member) and falls back to legacy venue_identities.
+ * The member label is always the player's display name; legacy venue handles are only a last-resort fallback.
  */
 export async function getAllPlayersGroupedByVenue(
   supabase: Client,
   userId: string,
 ): Promise<PlayersData> {
-  const [identitiesRes, venuesRes, profilesRes, groupsRes, groupMembersRes, peopleRes] = await Promise.all([
+  const [memberRelationshipsRes, venuesRes, profilesRes, groupsRes, groupMembersRes, peopleRes] = await Promise.all([
     supabase
-      .from('venue_identities')
-      .select('user_id, venue_id, venue_handle')
-      .order('venue_handle', { ascending: true }),
+      .from('venue_user_relationships')
+      .select('user_id, venue_id')
+      .eq('relationship_type', 'member')
+      .order('created_at', { ascending: true }),
     supabase
       .from('venues')
       .select('*')
@@ -68,11 +77,6 @@ export async function getAllPlayersGroupedByVenue(
       .maybeSingle(),
   ])
 
-  const identities = (identitiesRes.data ?? []) as {
-    user_id: string
-    venue_id: string
-    venue_handle: string
-  }[]
   const venues = (venuesRes.data ?? []) as Venue[]
   const profiles = (profilesRes.data ?? []) as { id: string; display_name: string }[]
   const groups = (groupsRes.data ?? []) as Group[]
@@ -84,18 +88,44 @@ export async function getAllPlayersGroupedByVenue(
     removed_at: string | null
   }[]
   const myPersonId = (peopleRes.data as { person_id: string } | null)?.person_id ?? null
+  const profileMap = new Map(profiles.map((profile) => [profile.id, profile.display_name]))
 
-  // Group identity rows by venue_id
+  let venueMemberships: { user_id: string; venue_id: string; label: string }[] = []
+
+  if (!memberRelationshipsRes.error) {
+    venueMemberships = ((memberRelationshipsRes.data ?? []) as { user_id: string; venue_id: string }[]).map((row) => ({
+      user_id: row.user_id,
+      venue_id: row.venue_id,
+      label: profileMap.get(row.user_id) ?? '',
+    }))
+  } else {
+    if (!shouldFallbackToLegacyVenueStorage(memberRelationshipsRes.error)) throw memberRelationshipsRes.error
+
+    const identitiesRes = await supabase
+      .from('venue_identities')
+      .select('user_id, venue_id')
+      .order('created_at', { ascending: true })
+    if (identitiesRes.error) throw identitiesRes.error
+
+    venueMemberships = ((identitiesRes.data ?? []) as {
+      user_id: string
+      venue_id: string
+    }[]).map((row) => ({
+      user_id: row.user_id,
+      venue_id: row.venue_id,
+      label: profileMap.get(row.user_id) ?? 'Player',
+    }))
+  }
+
   const membersByVenue = new Map<string, VenueMember[]>()
   const usersWithVenue = new Set<string>()
-  for (const row of identities) {
+  for (const row of venueMemberships) {
     usersWithVenue.add(row.user_id)
     const list = membersByVenue.get(row.venue_id) ?? []
-    list.push({ userId: row.user_id, handle: row.venue_handle })
+    list.push({ userId: row.user_id, handle: row.label || 'Player' })
     membersByVenue.set(row.venue_id, list)
   }
 
-  // Build VenueWithMembers list in venue name order
   const venuesResult: VenueWithMembers[] = []
   for (const venue of venues) {
     const members = membersByVenue.get(venue.id)
@@ -104,13 +134,8 @@ export async function getAllPlayersGroupedByVenue(
     }
   }
 
-  // Users not in any venue
-  const noVenue = profiles.filter(p => !usersWithVenue.has(p.id))
+  const noVenue = profiles.filter((profile) => !usersWithVenue.has(profile.id))
 
-  // Build profile display name map
-  const profileMap = new Map(profiles.map(p => [p.id, p.display_name]))
-
-  // Group group_members rows by group_id (only active, non-removed members)
   const membersByGroup = new Map<string, GroupMemberRow[]>()
   for (const row of groupMembers) {
     const list = membersByGroup.get(row.group_id) ?? []
@@ -122,7 +147,6 @@ export async function getAllPlayersGroupedByVenue(
     membersByGroup.set(row.group_id, list)
   }
 
-  // Resolve pending group invites via helper (self-scope, pending+invited+not-removed)
   const pendingGroupInvites = await listMyPendingGroupInvites(supabase, userId)
   const { count: proxyPendingCount } = myPersonId
     ? await supabase
@@ -132,9 +156,7 @@ export async function getAllPlayersGroupedByVenue(
         .eq('principal_person_id', myPersonId)
     : { count: 0 }
 
-  // Build GroupWithMembers list in group name order, excluding pending-invite groups
-  // (those are surfaced as banners via pendingGroupInvites, not in the roster list)
-  const pendingInviteGroupIds = new Set(pendingGroupInvites.map(inv => inv.groupId))
+  const pendingInviteGroupIds = new Set(pendingGroupInvites.map((invite) => invite.groupId))
   const groupsResult: GroupWithMembers[] = []
   for (const group of groups) {
     if (pendingInviteGroupIds.has(group.id)) continue

@@ -4,6 +4,7 @@ import {
   type ActivityItem,
   type MatchMessageEnriched,
 } from '@/lib/api/matches'
+import { isCurrentLineupSnapshot, parseMatchLineupSnapshot, type MatchLineupSnapshot } from '@/lib/match-lineup'
 import { deriveMatchCourtStatus, type MatchCourtState } from '@/lib/utils/match-court'
 import type { MatchRosterInsight } from '@/lib/utils/match-roster'
 import { formatTimeWindow } from '@/lib/utils/format-time'
@@ -65,6 +66,9 @@ export type MatchDetailPageViewModel = {
   canAccessCommunication: boolean
   canPostCommunication: boolean
   canEditOrganizerNote: boolean
+  savedLineup: MatchLineupSnapshot | null
+  canViewLineup: boolean
+  isFormed: boolean
 }
 
 export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData): MatchDetailPageViewModel {
@@ -91,6 +95,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
   } = detail
 
   const isMatchAssociated = isSelfWithdrawAssociated(user?.id, myParticipant)
+  const isFormed = Boolean(match.formed_at) || confirmedCount >= match.required_count
   const canNominate = !isOrganizer && match.can_participants_invite_users && (inScope || isMatchAssociated)
   const canNominateGuest = isOrganizer || (match.can_participants_invite_users && (inScope || isMatchAssociated))
   const courtState = deriveMatchCourtStatus({
@@ -129,17 +134,33 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
           !participant.participant_accepted_at
         ))
 
+  const hasActiveParticipantAccess = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    ['pending', 'confirmed', 'waiting_list'].includes(myParticipant.status),
+  )
+  const hasConfirmedParticipantAccess = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    myParticipant.status === 'confirmed',
+  )
+  const hasPreviewAccess = Boolean(
+    user?.id &&
+    !myParticipant &&
+    (myGroupInvites.length > 0 || inScope),
+  )
   const canAccessCommunication = Boolean(
     user?.id &&
     (
       isOrganizer ||
-      (
-        myParticipant &&
-        myParticipant.removed_at === null &&
-        ['pending', 'confirmed', 'waiting_list'].includes(myParticipant.status)
-      )
+      (isFormed ? hasConfirmedParticipantAccess : (hasActiveParticipantAccess || hasPreviewAccess))
     ),
   )
+  const savedLineup = parseMatchLineupSnapshot(match.lineup_snapshot)
+  const confirmedPlayerIds = participants
+    .filter((participant) => participant.status === 'confirmed')
+    .map((participant) => participant.id)
+  const canViewLineup = isOrganizer || isCurrentLineupSnapshot(savedLineup, confirmedPlayerIds)
 
   return {
     matchId,
@@ -191,5 +212,8 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     canAccessCommunication,
     canPostCommunication: canAccessCommunication,
     canEditOrganizerNote: match.status === 'active' && isOrganizer,
+    savedLineup,
+    canViewLineup,
+    isFormed,
   }
 }

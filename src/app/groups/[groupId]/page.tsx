@@ -16,11 +16,15 @@ import { AcceptInviteButton } from './AcceptInviteButton'
 import { LeaveGroupButton } from './LeaveGroupButton'
 import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
 import { getContactPlayerResolution } from '@/lib/api/roster'
+import { getMyVenueIdentities } from '@/lib/api/identities'
 import { GroupCommunicationSection } from './GroupCommunicationSection'
 import { GroupResourcesSection } from './GroupResourcesSection'
 import { AddGroupMemberPanel } from './AddGroupMemberPanel'
 import { GroupSettingsPanel } from './GroupSettingsPanel'
+import { GroupDetailPageShell } from './GroupDetailPageShell'
+import { getGroupIconMeta } from '@/lib/group-icons'
 import {
+  createGroupDiscussionPhotoResourceAction,
   createGroupFileResourceAction,
   createGroupLinkResourceAction,
   deleteGroupResourceAction,
@@ -35,6 +39,14 @@ interface Props {
   params: Promise<{ groupId: string }>
 }
 
+function getAvatarLabel(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) return '?'
+  const parts = trimmed.split(/\s+/).filter(Boolean)
+  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase()
+  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
+}
+
 function MemberListItem({
   member,
   group,
@@ -45,6 +57,7 @@ function MemberListItem({
   currentUserId: string | null
 }) {
   const name = member.profile?.display_name || member.user_id
+  const avatarUrl = member.profile?.avatar_url ?? null
   const isKeeper = member.user_id === group.boundary_keeper_id
   const isCurrentUser = currentUserId === member.user_id
 
@@ -53,20 +66,59 @@ function MemberListItem({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '0.7rem',
-        padding: '0.3rem 0',
+        gap: '0.55rem',
+        padding: '0.18rem 0',
       }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: '0.45rem',
-          height: '0.45rem',
-          borderRadius: '999px',
-          background: isCurrentUser || isKeeper ? '#22c55e' : '#cbd5e1',
-          flexShrink: 0,
-        }}
-      />
+      <div style={{ position: 'relative', width: '1.8rem', height: '1.8rem', flexShrink: 0 }}>
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: '50%',
+            transform: 'translate(-40%, -50%)',
+            width: '0.38rem',
+            height: '0.38rem',
+            borderRadius: '999px',
+            background: isCurrentUser || isKeeper ? '#22c55e' : '#cbd5e1',
+            border: '2px solid #fff',
+          }}
+        />
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt=""
+            aria-hidden="true"
+            style={{
+              width: '1.8rem',
+              height: '1.8rem',
+              borderRadius: '999px',
+              objectFit: 'cover',
+              background: '#eef2f7',
+            }}
+          />
+        ) : (
+          <div
+            aria-hidden="true"
+            style={{
+              width: '1.8rem',
+              height: '1.8rem',
+              borderRadius: '999px',
+              background: '#eef2f7',
+              color: '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              letterSpacing: '0.02em',
+            }}
+          >
+            {getAvatarLabel(name)}
+          </div>
+        )}
+      </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
           <span style={{ color: '#0f172a', fontSize: '0.98rem', fontWeight: 600 }}>{name}</span>
@@ -100,7 +152,7 @@ function MemberListItem({
               textTransform: 'uppercase',
             }}
           >
-            Keeper
+            Coordinator
           </div>
         ) : null}
       </div>
@@ -121,21 +173,45 @@ function ContactListItem({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: '0.7rem',
-        padding: '0.3rem 0',
+        gap: '0.55rem',
+        padding: '0.18rem 0',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', minWidth: 0 }}>
-        <span
-          aria-hidden="true"
-          style={{
-            width: '0.45rem',
-            height: '0.45rem',
-            borderRadius: '999px',
-            background: '#cbd5e1',
-            flexShrink: 0,
-          }}
-        />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0 }}>
+        <div style={{ position: 'relative', width: '1.8rem', height: '1.8rem', flexShrink: 0 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: '50%',
+              transform: 'translate(-40%, -50%)',
+              width: '0.38rem',
+              height: '0.38rem',
+              borderRadius: '999px',
+              background: '#cbd5e1',
+              border: '2px solid #fff',
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              width: '1.8rem',
+              height: '1.8rem',
+              borderRadius: '999px',
+              background: '#eef2f7',
+              color: '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              letterSpacing: '0.02em',
+            }}
+          >
+            {getAvatarLabel(contact.display_name)}
+          </div>
+        </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
             <span style={{ color: '#0f172a', fontSize: '0.98rem', fontWeight: 600 }}>{contact.display_name}</span>
@@ -146,18 +222,15 @@ function ContactListItem({
                 borderRadius: '999px',
                 background: '#f1f5f9',
                 color: '#64748b',
-                padding: '0.08rem 0.45rem',
-                fontSize: '0.62rem',
+                padding: '0.04rem 0.24rem',
+                fontSize: '0.34rem',
                 fontWeight: 700,
-                letterSpacing: '0.08em',
+                letterSpacing: '0.06em',
                 textTransform: 'uppercase',
               }}
             >
               Contact
             </span>
-          </div>
-          <div style={{ marginTop: '0.12rem', color: '#94a3b8', fontSize: '0.74rem' }}>
-            Contact player in this shared group
           </div>
         </div>
       </div>
@@ -184,7 +257,7 @@ export default async function GroupDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [membership, members, groupContacts, sportRow, sports] = await Promise.all([
+  const [membership, members, groupContacts, sportRow, sports, myIdentities, groupVenueRow] = await Promise.all([
     user ? getMyGroupMembership(supabase, groupId, user.id) : Promise.resolve(null),
     getGroupMembers(supabase, groupId),
     getGroupContacts(supabase, groupId),
@@ -192,6 +265,10 @@ export default async function GroupDetailPage({ params }: Props) {
       ? supabase.from('sports').select('display_name').eq('id', group.primary_sport_id).single()
       : Promise.resolve({ data: null, error: null }),
     listSports(supabase),
+    user ? getMyVenueIdentities(supabase, user.id) : Promise.resolve([]),
+    group.venue_id
+      ? supabase.from('venues').select('id, name').eq('id', group.venue_id).single()
+      : Promise.resolve({ data: null, error: null }),
   ])
 
   const isBoundaryKeeper = user?.id === group.boundary_keeper_id
@@ -200,6 +277,7 @@ export default async function GroupDetailPage({ params }: Props) {
   const canManageMembership = Boolean(isActive)
   const activeMembers = members.filter((member) => member.status === 'active')
   const sportName = sportRow?.data?.display_name ?? null
+  const groupVenueName = ((groupVenueRow.data as { id: string; name: string } | null)?.name) ?? null
   const invitableUsers = canManageMembership ? await getInvitableUsers(supabase, groupId) : []
   const availableContactPlayers = canManageMembership
     ? await getContactPlayerResolution(supabase)
@@ -212,6 +290,7 @@ export default async function GroupDetailPage({ params }: Props) {
       display_name: contact.display_name,
     }))
   const totalListedPeople = activeMembers.length + groupContacts.length
+  const groupIcon = getGroupIconMeta(group.icon_key)
 
   const announcementText = group.description?.trim() || null
   const canAccessDiscussion = Boolean(isActive)
@@ -224,22 +303,40 @@ export default async function GroupDetailPage({ params }: Props) {
     : [[], []]
 
   return (
-    <div style={{ maxWidth: '1320px', margin: '0 auto', padding: '1rem 1.25rem 1.5rem' }}>
+    <GroupDetailPageShell>
+    <div style={{ maxWidth: '1320px', padding: '1rem 1.25rem 1.5rem 0' }}>
+      <div style={{ marginBottom: '0.85rem' }}>
+        <Link
+          href="/groups"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+            color: '#64748b',
+            textDecoration: 'none',
+            fontSize: '0.84rem',
+            fontWeight: 700,
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: '1rem', lineHeight: 1 }}>{'<'}</span>
+          Groups
+        </Link>
+      </div>
       <div
         style={{
           display: 'grid',
           gap: '0',
           gridTemplateColumns: '300px minmax(0, 1fr)',
-          border: '1px solid #e2e8f0',
+          border: '1px solid #E2E8F0',
           borderRadius: '28px',
           background: '#fff',
           overflow: 'hidden',
-          boxShadow: '0 22px 54px -40px rgba(15, 23, 42, 0.28)',
+          boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)',
         }}
       >
         <aside
           style={{
-            borderRight: '1px solid #e2e8f0',
+            borderRight: '1px solid #E2E8F0',
             padding: '1.15rem 0.9rem 1rem',
             background: '#fff',
             display: 'grid',
@@ -249,59 +346,33 @@ export default async function GroupDetailPage({ params }: Props) {
         >
           <div>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.8rem' }}>
-              <div style={{ minWidth: 0 }}>
-                <h1 style={{ margin: 0, color: '#0f172a', fontSize: '2rem', lineHeight: 1.04, fontWeight: 700 }}>
+              <div style={{ minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    width: '2.75rem',
+                    height: '2.75rem',
+                    borderRadius: '18px',
+                    border: '1px solid #E2E8F0',
+                    background: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.2rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  {groupIcon.emoji}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                <h1 style={{ margin: 0, color: '#1E293B', fontSize: '2rem', lineHeight: 1.04, fontWeight: 800 }}>
                   {group.name}
                 </h1>
                 <p style={{ margin: '0.5rem 0 0', color: '#94a3b8', fontSize: '0.92rem' }}>
                   {activeMembers.length} members · {sportName ?? 'Sport to be assigned'}
                 </p>
+                </div>
               </div>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  borderRadius: '999px',
-                  background: '#eef2ff',
-                  color: '#4f46e5',
-                  padding: '0.22rem 0.6rem',
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                  flexShrink: 0,
-                }}
-              >
-                Shared
-              </span>
-            </div>
-            <div style={{ marginTop: '0.85rem', display: 'flex', flexWrap: 'wrap', gap: '0.55rem' }}>
-              <Link
-                href="/groups"
-                style={{
-                  color: '#94a3b8',
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Back to groups
-              </Link>
-              <Link
-                href={`/matches/new?groupId=${group.id}`}
-                style={{
-                  color: '#4f46e5',
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Invite group to match
-              </Link>
             </div>
           </div>
 
@@ -326,7 +397,10 @@ export default async function GroupDetailPage({ params }: Props) {
               groupName={group.name}
               description={group.description}
               primarySportId={group.primary_sport_id}
+              venueId={group.venue_id}
+              openToClubMembers={group.open_to_club_members}
               sports={sports}
+              venues={myIdentities.map((identity) => identity.venue)}
               onSave={updateGroupSettingsAction.bind(null, groupId)}
             />
           ) : null}
@@ -403,13 +477,18 @@ export default async function GroupDetailPage({ params }: Props) {
           <GroupCommunicationSection
             announcementText={announcementText}
             messages={groupMessages}
+            resources={groupResources}
             viewerUserId={user?.id ?? null}
             canAccess={canAccessDiscussion}
             canPost={canPostDiscussion}
+            canSharePhotos={isBoundaryKeeper}
+            groupId={groupId}
             onPostMessage={postGroupMessageAction.bind(null, groupId)}
+            onCreateDiscussionPhotoResource={createGroupDiscussionPhotoResourceAction.bind(null, groupId)}
           />
         </main>
       </div>
     </div>
+    </GroupDetailPageShell>
   )
 }

@@ -131,6 +131,26 @@ export function guestDelegateConfirmedEmail(m: MatchInfo): string {
 `
 }
 
+export function matchRemovedEmail(m: MatchInfo): string {
+  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
+  const location = m.venueName || 'TBD'
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
+<body>
+  <div class="card">
+    <h2>Removed from match</h2>
+    <p>You were removed from <strong>${m.gameType}</strong>.</p>
+    <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
+    <p><a href="${matchLink(m)}" class="btn">View match</a></p>
+    <p class="meta">PlayerHoods</p>
+  </div>
+</body>
+</html>
+`
+}
+
 /** Invite / Nominate: 被邀请或提名 */
 export function inviteOrNominateEmail(m: MatchInfo, inviterName: string): string {
   const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'

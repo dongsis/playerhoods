@@ -3,8 +3,14 @@
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { MatchMessageEnriched } from '@/lib/api/matches'
+import {
+  ORGANIZER_NOTE_PRESETS,
+  applyOrganizerNotePreset,
+  parseOrganizerNoteSentences,
+  type OrganizerNotePresetItem,
+} from '../organizer-note-presets'
 
-function IconMessageCircle({ size = 12, color = '#0f172a' }: { size?: number; color?: string }) {
+function IconMessageCircle({ size = 12, color = '#1E293B' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M7 18L3.5 20L4.4 16.1A8 8 0 1 1 20 12A8 8 0 0 1 7 18Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
@@ -12,7 +18,7 @@ function IconMessageCircle({ size = 12, color = '#0f172a' }: { size?: number; co
   )
 }
 
-function IconInfo({ size = 10, color = '#f97316' }: { size?: number; color?: string }) {
+function IconInfo({ size = 10, color = '#C25E46' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
@@ -31,7 +37,7 @@ function IconSend({ size = 14, color = '#cbd5e1' }: { size?: number; color?: str
   )
 }
 
-function IconEdit({ size = 10, color = '#f97316' }: { size?: number; color?: string }) {
+function IconEdit({ size = 10, color = '#C25E46' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M4 20H8L18 10C18.5 9.5 18.5 8.6 18 8.1L15.9 6C15.4 5.5 14.5 5.5 14 6L4 16V20Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
@@ -41,12 +47,12 @@ function IconEdit({ size = 10, color = '#f97316' }: { size?: number; color?: str
 
 type Props = {
   organizerNoteText: string | null
-  organizerName: string
   messages: MatchMessageEnriched[]
   viewerUserId: string | null
   canAccessCommunication: boolean
   canPostCommunication: boolean
   canEditOrganizerNote: boolean
+  showFormedNotice: boolean
   onUpdateOrganizerNote: (organizerNote: string | null) => Promise<void>
   onPostMessage: (body: string) => Promise<void>
 }
@@ -100,12 +106,12 @@ function MessageAvatar({
 
 export function MatchCommunicationSection({
   organizerNoteText,
-  organizerName,
   messages,
   viewerUserId,
   canAccessCommunication,
   canPostCommunication,
   canEditOrganizerNote,
+  showFormedNotice,
   onUpdateOrganizerNote,
   onPostMessage,
 }: Props) {
@@ -118,6 +124,10 @@ export function MatchCommunicationSection({
   const [isSendingMessage, startSendMessage] = useTransition()
 
   const hasOrganizerNote = Boolean(organizerNoteText?.trim())
+  const organizerNoteSentences = useMemo(
+    () => new Set(parseOrganizerNoteSentences(noteDraft)),
+    [noteDraft],
+  )
   const sortedMessages = useMemo(
     () => [...messages].sort((left, right) => left.created_at.localeCompare(right.created_at)),
     [messages],
@@ -156,21 +166,25 @@ export function MatchCommunicationSection({
     })
   }
 
+  const appendOrganizerNote = (item: OrganizerNotePresetItem) => {
+    setNoteDraft((prev) => applyOrganizerNotePreset(prev, item))
+  }
+
   return (
     <section
       style={{
         marginBottom: '1rem',
         background: '#fff',
-        borderRadius: '20px',
-        border: '1px solid #eef2f7',
-        boxShadow: '0 4px 18px rgba(15, 23, 42, 0.03)',
+        borderRadius: '24px',
+        border: '1px solid #E2E8F0',
+        boxShadow: '0 12px 30px rgba(15, 23, 42, 0.05)',
         overflow: 'hidden',
       }}
     >
       <div
         style={{
           padding: '0.7rem 1rem',
-          borderBottom: '1px solid #f8fafc',
+          borderBottom: '1px solid #F1F5F9',
           display: 'flex',
           alignItems: 'center',
           gap: '0.35rem',
@@ -184,46 +198,84 @@ export function MatchCommunicationSection({
             fontWeight: 800,
             letterSpacing: '0.16em',
             textTransform: 'uppercase',
-            color: '#0f172a',
+            color: '#1E293B',
           }}
         >
           Communication
         </h2>
       </div>
 
+      {showFormedNotice ? (
+        <div
+          style={{
+            padding: '0.65rem 1rem',
+            borderBottom: '1px solid #E2E8F0',
+            background: '#F8FAFC',
+            color: '#64748b',
+            fontSize: '0.74rem',
+            fontWeight: 600,
+          }}
+        >
+          Match formed — only confirmed players can view and chat here.
+        </div>
+      ) : null}
+
       {(hasOrganizerNote || canEditOrganizerNote) ? (
         <div
           style={{
-            background: hasOrganizerNote || isEditingNote ? '#fff7ed' : '#fff',
+            background: hasOrganizerNote || isEditingNote ? '#FFF8F5' : '#fff',
             padding: '0.7rem 1rem',
-            borderBottom: '1px solid rgba(251,146,60,0.12)',
+            borderBottom: '1px solid rgba(194,94,70,0.12)',
           }}
         >
           {isEditingNote ? (
-            <div style={{ display: 'grid', gap: '0.55rem' }}>
+            <div style={{ display: 'grid', gap: '0.7rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.32rem' }}>
                 <IconInfo />
-                <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#f97316' }}>
-                  Organizer Note
+                <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#C25E46' }}>
+                  Host Note
                 </span>
               </div>
-              <textarea
-                value={noteDraft}
-                onChange={(event) => setNoteDraft(event.target.value)}
-                rows={3}
-                placeholder="Add a short note for players..."
-                style={{
-                  width: '100%',
-                  resize: 'vertical',
-                  borderRadius: '12px',
-                  border: '1px solid #fed7aa',
-                  background: '#fff',
-                  padding: '0.65rem 0.75rem',
-                  fontSize: '0.78rem',
-                  color: '#475569',
-                  outline: 'none',
-                }}
-              />
+              <div style={organizerNoteComposerStyle}>
+                <div style={organizerPresetWrapStyle}>
+                  {ORGANIZER_NOTE_PRESETS.map((group) => (
+                    <div key={group.label} style={organizerPresetGroupStyle}>
+                      <span style={organizerPresetLabelStyle}>{group.label}</span>
+                      <div style={organizerPresetItemsStyle}>
+                        {group.items.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => appendOrganizerNote(item)}
+                            style={organizerNoteSentences.has(item.full) ? organizerPresetChipActiveStyle : organizerPresetChipStyle}
+                          >
+                            {item.chip}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <textarea
+                    value={noteDraft}
+                    onChange={(event) => setNoteDraft(event.target.value)}
+                    rows={4}
+                    placeholder="Add a short note for players..."
+                    style={organizerNoteTextareaStyle}
+                  />
+                  {noteDraft.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => setNoteDraft('')}
+                      aria-label="Clear host note"
+                      style={organizerNoteClearStyle}
+                    >
+                      x
+                    </button>
+                  ) : null}
+                </div>
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                 <button
                   type="button"
@@ -251,7 +303,7 @@ export function MatchCommunicationSection({
                   style={{
                     border: 'none',
                     borderRadius: '999px',
-                    background: '#f97316',
+                    background: '#C25E46',
                     color: '#fff',
                     padding: '0.35rem 0.9rem',
                     fontSize: '0.74rem',
@@ -267,11 +319,8 @@ export function MatchCommunicationSection({
             <div style={{ display: 'grid', gap: '0.18rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <IconInfo />
-                <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#f97316' }}>
-                  Organizer Note
-                </span>
-                <span style={{ fontSize: '0.58rem', color: '#fdba74', fontWeight: 600 }}>
-                  Pinned by {organizerName}
+                <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#C25E46' }}>
+                  Host Note
                 </span>
                 {canEditOrganizerNote ? (
                   <button
@@ -281,7 +330,7 @@ export function MatchCommunicationSection({
                       marginLeft: 'auto',
                       border: 'none',
                       background: 'transparent',
-                      color: '#fb923c',
+                      color: '#C25E46',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '0.2rem',
@@ -304,17 +353,17 @@ export function MatchCommunicationSection({
               type="button"
               onClick={() => setIsEditingNote(true)}
               style={{
-                border: '1px dashed #fdba74',
+                border: '1px dashed #C25E46',
                 borderRadius: '999px',
                 background: '#fff',
-                color: '#f97316',
+                color: '#C25E46',
                 padding: '0.38rem 0.8rem',
                 fontSize: '0.72rem',
                 fontWeight: 700,
                 cursor: 'pointer',
               }}
             >
-              Add organizer note
+              Add host note
             </button>
           )}
         </div>
@@ -322,7 +371,7 @@ export function MatchCommunicationSection({
 
       <div style={{ padding: '0.9rem 1rem', display: 'grid', gap: '0.9rem' }}>
         {sortedMessages.length === 0 ? (
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#94a3b8' }}>No messages yet.</p>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#94A3B8' }}>No messages yet.</p>
         ) : (
           sortedMessages.map((message) => {
             const isMine = viewerUserId !== null && message.author_user_id === viewerUserId
@@ -362,7 +411,7 @@ export function MatchCommunicationSection({
                           fontSize: '0.58rem',
                           fontWeight: 800,
                           textTransform: 'uppercase',
-                          color: isMine ? '#f97316' : '#0f172a',
+                        color: isMine ? '#C25E46' : '#1E293B',
                         }}
                       >
                         {isMine ? 'You' : message.author_name}
@@ -376,10 +425,10 @@ export function MatchCommunicationSection({
                       style={{
                         borderRadius: isMine ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
                         padding: '0.5rem 0.7rem',
-                        background: isMine ? '#f97316' : '#f8fafc',
+                        background: isMine ? '#C25E46' : '#F8FAFC',
                         color: isMine ? '#fff' : '#475569',
-                        border: isMine ? 'none' : '1px solid #e2e8f0',
-                        boxShadow: isMine ? '0 8px 18px rgba(249,115,22,0.18)' : 'none',
+                        border: isMine ? 'none' : '1px solid #E2E8F0',
+                        boxShadow: isMine ? '0 8px 18px rgba(194,94,70,0.18)' : 'none',
                       }}
                     >
                       <p style={{ margin: 0, fontSize: '0.76rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
@@ -395,15 +444,15 @@ export function MatchCommunicationSection({
       </div>
 
       {canPostCommunication ? (
-        <div style={{ padding: '0.65rem 0.75rem', borderTop: '1px solid #f8fafc', background: '#fff' }}>
+        <div style={{ padding: '0.65rem 0.75rem', borderTop: '1px solid #F1F5F9', background: '#fff' }}>
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '0.45rem',
-              background: '#f8fafc',
+              background: '#F8FAFC',
               borderRadius: '12px',
-              border: '1px solid #f1f5f9',
+              border: '1px solid #E2E8F0',
               padding: '0.45rem 0.6rem',
             }}
           >
@@ -440,7 +489,7 @@ export function MatchCommunicationSection({
               }}
               aria-label="Send message"
             >
-              <IconSend color={composerValue.trim() ? '#f97316' : '#cbd5e1'} />
+              <IconSend color={composerValue.trim() ? '#C25E46' : '#CBD5E1'} />
             </button>
           </div>
         </div>
@@ -454,3 +503,88 @@ export function MatchCommunicationSection({
     </section>
   )
 }
+
+const organizerNoteComposerStyle = {
+  display: 'grid',
+  gap: '0.7rem',
+  borderRadius: '16px',
+  border: '1px solid #E2E8F0',
+  background: '#F8FAFC',
+  padding: '0.8rem',
+} as const
+
+const organizerPresetWrapStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.7rem 1rem',
+} as const
+
+const organizerPresetGroupStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.45rem',
+  paddingRight: '0.9rem',
+  borderRight: '1px solid #E2E8F0',
+} as const
+
+const organizerPresetLabelStyle = {
+  fontSize: '0.66rem',
+  fontWeight: 800,
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase',
+  color: '#94A3B8',
+} as const
+
+const organizerPresetItemsStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.35rem',
+} as const
+
+const organizerPresetChipStyle = {
+  borderRadius: '8px',
+  border: '1px solid #E2E8F0',
+  background: '#fff',
+  color: '#64748B',
+  padding: '0.34rem 0.55rem',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+  cursor: 'pointer',
+} as const
+
+const organizerPresetChipActiveStyle = {
+  ...organizerPresetChipStyle,
+  border: '1px solid rgba(194, 94, 70, 0.35)',
+  background: '#FFF8F5',
+  color: '#C25E46',
+} as const
+
+const organizerNoteTextareaStyle = {
+  width: '100%',
+  resize: 'vertical' as const,
+  borderRadius: '12px',
+  border: '1px solid #E2E8F0',
+  background: '#fff',
+  padding: '0.75rem 2.1rem 0.75rem 0.8rem',
+  fontSize: '0.78rem',
+  color: '#475569',
+  outline: 'none',
+  minHeight: '6rem',
+  lineHeight: 1.55,
+} as const
+
+const organizerNoteClearStyle = {
+  position: 'absolute',
+  right: '0.55rem',
+  top: '0.55rem',
+  borderRadius: '8px',
+  border: '1px solid #E2E8F0',
+  background: '#fff',
+  color: '#94A3B8',
+  padding: '0.1rem 0.35rem',
+  fontSize: '0.72rem',
+  cursor: 'pointer',
+} as const

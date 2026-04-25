@@ -85,7 +85,10 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     profileRes,
     myVenuePrefs,
   ] = await Promise.all([
-    getMatchListData(supabase, user.id).catch(() => [] as MatchListItem[]),
+    getMatchListData(supabase, user.id).catch((error) => {
+      console.error('[Dashboard] match list:', error)
+      return [] as MatchListItem[]
+    }),
     getUnreadNotificationCount(supabase).catch(() => 0),
     getAllPlayersGroupedByVenue(supabase, user.id).catch(() => ({
       venues: [],

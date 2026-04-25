@@ -4,10 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { getPublicPlayerProfile, type PublicPlayerProfile, type PublicSportProfile } from '@/lib/api/player-profiles'
 import {
-  getCurrentFrequencyLabel,
+  getLevelLabel,
   getLookingToPlayLabel,
   getPreferredPlayTimeLabel,
-  getSportGearLabels,
   getSportFormatOptions,
 } from '@/lib/profile-options'
 import { Avatar } from './Avatar'
@@ -27,7 +26,7 @@ function Section({
 }) {
   return (
     <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.28)]">
-      <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">{title}</h3>
+      <h3 className="text-h2 text-slate-900">{title}</h3>
       <div className="mt-3">{children}</div>
     </section>
   )
@@ -42,8 +41,8 @@ function KeyValue({
 }) {
   return (
     <div>
-      <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</dt>
-      <dd className="mt-1 text-sm text-slate-700">{value}</dd>
+      <dt className="text-label">{label}</dt>
+      <dd className="text-body-main mt-1 text-slate-700">{value}</dd>
     </div>
   )
 }
@@ -83,15 +82,8 @@ function hasSportContent(profile: PublicSportProfile): boolean {
     profile.level
       || profile.years_playing != null
       || profile.preferred_formats.length > 0
-      || profile.current_frequency
       || profile.play_style
       || profile.competition_experience
-      || profile.teams_played_on
-      || profile.line_played
-      || profile.highlights
-      || profile.gear_primary
-      || profile.gear_secondary
-      || profile.gear_shoes,
   )
 }
 
@@ -99,17 +91,14 @@ function SportProfileCard({ profile }: { profile: PublicSportProfile }) {
   const formatLabels = profile.preferred_formats
     .map((value) => getSportFormatOptions(profile.sport_code).find((option) => option.value === value)?.label ?? value)
     .filter(Boolean)
-  const gearLabels = getSportGearLabels(profile.sport_code)
-  const hasCompetition =
-    profile.competition_experience || profile.teams_played_on || profile.line_played || profile.highlights
-  const hasGear = profile.gear_primary || profile.gear_secondary || profile.gear_shoes
+  const hasCompetition = profile.competition_experience
 
   return (
     <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.24)]">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold tracking-tight text-slate-900">{profile.sport_name}</h3>
-          <p className="mt-1 text-sm text-slate-500">
+          <h3 className="text-title-main text-slate-900">{profile.sport_name}</h3>
+          <p className="text-body-sub mt-1 text-slate-500">
             {hasSportContent(profile)
               ? 'Quick snapshot of how they like to play.'
               : 'They play this sport, but have not filled in the details yet.'}
@@ -120,23 +109,11 @@ function SportProfileCard({ profile }: { profile: PublicSportProfile }) {
       {hasSportContent(profile) && (
         <div className="mt-5 space-y-5">
           <div>
-            <h4 className="text-sm font-semibold text-slate-900">Playing Profile</h4>
+            <h4 className="text-title-main text-slate-900">Playing Profile</h4>
             <dl className="mt-3 grid gap-4 sm:grid-cols-2">
-              {profile.level && <KeyValue label="Level" value={profile.level} />}
-              {profile.years_playing != null && (
-                <KeyValue
-                  label="Years playing"
-                  value={profile.years_playing === 1 ? '1 year' : `${profile.years_playing} years`}
-                />
-              )}
+              {profile.level && <KeyValue label="Level" value={getLevelLabel(profile.level) ?? profile.level} />}
               {formatLabels.length > 0 && (
                 <KeyValue label="Preferred format" value={formatLabels.join(', ')} />
-              )}
-              {profile.current_frequency && (
-                <KeyValue
-                  label="Current frequency"
-                  value={getCurrentFrequencyLabel(profile.current_frequency) ?? profile.current_frequency}
-                />
               )}
               {profile.play_style && <KeyValue label="Play style" value={profile.play_style} />}
             </dl>
@@ -144,30 +121,10 @@ function SportProfileCard({ profile }: { profile: PublicSportProfile }) {
 
           {hasCompetition && (
             <div className="border-t border-slate-200 pt-5">
-              <h4 className="text-sm font-semibold text-slate-900">Competition Background</h4>
+              <h4 className="text-title-main text-slate-900">Competition Background</h4>
               <dl className="mt-3 grid gap-4 sm:grid-cols-2">
                 {profile.competition_experience && (
                   <KeyValue label="Tournament / league experience" value={profile.competition_experience} />
-                )}
-                {profile.teams_played_on && (
-                  <KeyValue label="Teams played on" value={profile.teams_played_on} />
-                )}
-                {profile.line_played && <KeyValue label="Line played" value={profile.line_played} />}
-                {profile.highlights && <KeyValue label="Highlights" value={profile.highlights} />}
-              </dl>
-            </div>
-          )}
-
-          {hasGear && (
-            <div className="border-t border-slate-200 pt-5">
-              <h4 className="text-sm font-semibold text-slate-900">Gear</h4>
-              <dl className="mt-3 grid gap-4 sm:grid-cols-2">
-                {profile.gear_primary && <KeyValue label={gearLabels.primary} value={profile.gear_primary} />}
-                {gearLabels.secondary && profile.gear_secondary && (
-                  <KeyValue label={gearLabels.secondary} value={profile.gear_secondary} />
-                )}
-                {gearLabels.shoes && profile.gear_shoes && (
-                  <KeyValue label={gearLabels.shoes} value={profile.gear_shoes} />
                 )}
               </dl>
             </div>
@@ -245,13 +202,13 @@ export function PlayerProfileDrawer({
               src={profile?.avatar_url}
               displayName={profile?.display_name || 'Player'}
               size="md"
-              className="h-12 w-12 text-base"
+              className="h-12 w-12"
             />
             <div>
-              <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+              <h2 className="text-h2 text-slate-900">
                 {profile?.display_name || 'Player profile'}
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="text-body-sub mt-1 text-slate-500">
                 Quick context for getting to know this player.
               </p>
             </div>
@@ -266,11 +223,11 @@ export function PlayerProfileDrawer({
         </div>
 
         {loading && (
-          <p className="mt-6 text-sm text-slate-500">Loading player profile...</p>
+          <p className="text-body-main mt-6 text-slate-500">Loading player profile...</p>
         )}
 
         {error && (
-          <p className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <p className="text-body-main mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
             {error}
           </p>
         )}
@@ -298,13 +255,13 @@ export function PlayerProfileDrawer({
 
             <Section title="Possible shared connections">
               {sharedConnectionLines.length === 0 ? (
-                <p className="text-sm leading-6 text-slate-500">
+                <p className="text-body-main text-slate-500">
                   No strong overlap signal yet, but this profile still gives you a quick feel for how they play.
                 </p>
               ) : (
                 <div className="space-y-2">
                   {sharedConnectionLines.map((line) => (
-                    <p key={line} className="text-sm leading-6 text-slate-700">
+                    <p key={line} className="text-body-main text-slate-700">
                       {line}
                     </p>
                   ))}
@@ -323,7 +280,7 @@ export function PlayerProfileDrawer({
               </div>
             ) : (
               <Section title="Sports">
-                <p className="text-sm text-slate-500">No sports listed yet.</p>
+                <p className="text-body-main text-slate-500">No sports listed yet.</p>
               </Section>
             )}
           </div>

@@ -9,7 +9,6 @@ import { processDeliveriesAction } from './process-deliveries-action'
 interface ContactTarget {
   guest_id: string
   display_name: string
-  email: string | null
   source: string
   sourceLabel: string
 }
@@ -66,9 +65,9 @@ export function InviteGuestForm({ matchId, contactTargets }: Props) {
         >
           <option value="">Select a contact person</option>
           {contactTargets.map((target) => (
-            <option key={target.guest_id} value={target.guest_id}>
-              {`${target.display_name}${target.sourceLabel ? ` - ${target.sourceLabel}` : ''}${(!target.email || !target.email.trim()) ? ' (no email)' : ''}`}
-            </option>
+          <option key={target.guest_id} value={target.guest_id}>
+              {`${target.display_name}${target.sourceLabel ? ` - ${target.sourceLabel}` : ''}`}
+          </option>
           ))}
         </select>
         <button type="submit" disabled={loading || !guestId} style={{ padding: '0.4rem 0.8rem', background: '#0e7490', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>

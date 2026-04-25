@@ -16,6 +16,7 @@ import {
   revokeVenueAdmin,
   searchUsersForAdmin,
 } from '@/lib/api/venues'
+import { getVenueDisplayName } from '@/lib/venues/display'
 import { listSports } from '@/lib/api/sports'
 import { VenueDetailShell } from '../../venues/[venueId]/VenueDetailShell'
 
@@ -49,13 +50,12 @@ export default async function VenueAdminDetailPage({ params }: Props) {
     listSports(supabase),
   ])
 
-  // ---- Server actions ----
-
   async function handleUpdateVenue(formData: FormData) {
     'use server'
-    const supabase = await createSupabaseServerClient()
-    await updateVenue(supabase, venueId, {
+    const nextSupabase = await createSupabaseServerClient()
+    await updateVenue(nextSupabase, venueId, {
       name: (formData.get('name') as string)?.trim() || undefined,
+      abbreviation: (formData.get('abbreviation') as string | null) ?? undefined,
       location_text: (formData.get('location_text') as string)?.trim() || undefined,
       timezone: (formData.get('timezone') as string)?.trim() || undefined,
       notes: (formData.get('notes') as string)?.trim() || undefined,
@@ -67,8 +67,8 @@ export default async function VenueAdminDetailPage({ params }: Props) {
 
   async function handleCreateCourt(formData: FormData) {
     'use server'
-    const supabase = await createSupabaseServerClient()
-    await createCourt(supabase, venueId, {
+    const nextSupabase = await createSupabaseServerClient()
+    await createCourt(nextSupabase, venueId, {
       sport_id: parseInt(formData.get('sport_id') as string, 10),
       court_code: (formData.get('court_code') as string).trim(),
       surface: (formData.get('surface') as string)?.trim() || undefined,
@@ -79,8 +79,8 @@ export default async function VenueAdminDetailPage({ params }: Props) {
 
   async function handleUpdateCourt(courtId: string, formData: FormData) {
     'use server'
-    const supabase = await createSupabaseServerClient()
-    await updateCourt(supabase, courtId, {
+    const nextSupabase = await createSupabaseServerClient()
+    await updateCourt(nextSupabase, courtId, {
       sport_id: formData.get('sport_id') ? parseInt(formData.get('sport_id') as string, 10) : undefined,
       court_code: (formData.get('court_code') as string)?.trim() || undefined,
       surface: (formData.get('surface') as string)?.trim() || undefined,
@@ -91,52 +91,53 @@ export default async function VenueAdminDetailPage({ params }: Props) {
 
   async function handleDeleteCourt(courtId: string) {
     'use server'
-    const supabase = await createSupabaseServerClient()
-    await deleteCourt(supabase, courtId)
+    const nextSupabase = await createSupabaseServerClient()
+    await deleteCourt(nextSupabase, courtId)
     revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleGrantAdmin(userId: string) {
     'use server'
-    const supabase = await createSupabaseServerClient()
-    await grantVenueAdmin(supabase, userId, venueId)
+    const nextSupabase = await createSupabaseServerClient()
+    await grantVenueAdmin(nextSupabase, userId, venueId)
     revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleRevokeAdmin(userId: string) {
     'use server'
-    const supabase = await createSupabaseServerClient()
-    await revokeVenueAdmin(supabase, userId, venueId)
+    const nextSupabase = await createSupabaseServerClient()
+    await revokeVenueAdmin(nextSupabase, userId, venueId)
     revalidatePath(`/admin/venues/${venueId}`)
   }
 
   async function handleSearchUsers(query: string) {
     'use server'
-    const supabase = await createSupabaseServerClient()
-    return searchUsersForAdmin(supabase, query)
+    const nextSupabase = await createSupabaseServerClient()
+    return searchUsersForAdmin(nextSupabase, query)
   }
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem' }}>
-      <nav style={{ fontSize: '0.82rem', color: '#888', marginBottom: '1.25rem' }}>
-        <Link href="/dashboard" style={{ color: '#888', textDecoration: 'none' }}>Dashboard</Link>
-        <span style={{ margin: '0 0.4rem' }}>›</span>
-        {superAdmin && (
+    <div className="ph-page">
+      <nav className="mb-6 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#94A3B8]">
+        <Link href="/dashboard" className="ph-link">Dashboard</Link>
+        <span>›</span>
+        {superAdmin ? (
           <>
-            <Link href="/admin/venues" style={{ color: '#888', textDecoration: 'none' }}>Venue Admin</Link>
-            <span style={{ margin: '0 0.4rem' }}>›</span>
+            <Link href="/admin/venues" className="ph-link">Venue Admin</Link>
+            <span>›</span>
           </>
-        )}
-        <span>{venue.name}</span>
+        ) : null}
+        <span>{getVenueDisplayName(venue)}</span>
       </nav>
 
-      <header style={{ marginBottom: '1.75rem' }}>
-        <h1 style={{ margin: '0 0 0.2rem', fontSize: '1.5rem', fontWeight: 700 }}>{venue.name}</h1>
-        {(venue.location_text || venue.timezone) && (
-          <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
+      <header className="ph-card mb-6 px-6 py-5">
+        <div className="ph-kicker mb-2">Venue Admin</div>
+        <h1 className="ph-title">{getVenueDisplayName(venue)}</h1>
+        {(venue.location_text || venue.timezone) ? (
+          <p className="ph-subtitle mt-2">
             {[venue.location_text, venue.timezone].filter(Boolean).join(' · ')}
           </p>
-        )}
+        ) : null}
       </header>
 
       <VenueDetailShell

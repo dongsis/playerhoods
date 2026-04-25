@@ -24,6 +24,30 @@ export const CURRENT_FREQUENCY_OPTIONS = [
   { value: 'multiple_times_a_week', label: 'Multiple times a week' },
 ] as const
 
+export const PLAY_STYLE_OPTIONS = [
+  { value: 'Patient baseline', label: 'Patient baseline' },
+  { value: 'Aggressive baseline', label: 'Aggressive baseline' },
+  { value: 'All-court', label: 'All-court' },
+  { value: 'Net player', label: 'Net player' },
+  { value: 'Big server', label: 'Big server' },
+  { value: 'Consistent rallyer', label: 'Consistent rallyer' },
+  { value: 'Placement over power', label: 'Placement over power' },
+  { value: 'Power player', label: 'Power player' },
+  { value: 'Defensive', label: 'Defensive' },
+  { value: 'Attacking', label: 'Attacking' },
+  { value: 'Fast hands', label: 'Fast hands' },
+  { value: 'Likes long rallies', label: 'Likes long rallies' },
+] as const
+
+export const LEVEL_OPTIONS = [
+  { value: 'Beginner', label: 'Beginner (2.0-2.5)' },
+  { value: 'Can Rally', label: 'Can Rally (2.5-3.0)' },
+  { value: 'Match Ready', label: 'Match Ready (3.0-3.5)' },
+  { value: 'Club Level', label: 'Club Level (3.5-4.0)' },
+  { value: 'Strong Club Level', label: 'Strong Club Level (4.0-4.5)' },
+  { value: 'Club Elite', label: 'Club Elite (4.5-5.0+)' },
+] as const
+
 export const SHARED_GROUP_JOIN_PREFERENCE_OPTIONS = [
   {
     value: 'approval_required_all',
@@ -58,6 +82,35 @@ export function getCurrentFrequencyLabel(value: string | null | undefined): stri
   return CURRENT_FREQUENCY_OPTIONS.find((option) => option.value === value)?.label ?? null
 }
 
+export function getLevelLabel(value: string | null | undefined): string | null {
+  return LEVEL_OPTIONS.find((option) => option.value === value)?.label ?? null
+}
+
+export function getAvailabilityStatusDotClass(value: string | null | undefined): string | null {
+  switch (value?.trim().toLowerCase()) {
+    case 'very_open':
+    case 'very open':
+      return 'bg-[#22C55E]'
+    case 'open':
+    case 'available':
+      return 'bg-[#4CAF72]'
+    case 'occasional':
+    case 'occasionally':
+      return 'bg-[#6E8B6D]'
+    case 'quite_full':
+    case 'busy':
+      return 'bg-[#5B6472]'
+    case 'away':
+      return 'bg-[#475569]'
+    case 'not_looking':
+    case 'not looking right now':
+    case 'inactive':
+      return 'bg-[#1E293B]'
+    default:
+      return null
+  }
+}
+
 export function getSharedGroupJoinPreferenceLabel(value: string | null | undefined): string | null {
   return SHARED_GROUP_JOIN_PREFERENCE_OPTIONS.find((option) => option.value === value)?.label ?? null
 }
@@ -72,20 +125,17 @@ export function getSportFormatOptions(sportCode: string): { value: string; label
       return [
         { value: 'singles', label: 'Singles' },
         { value: 'doubles', label: 'Doubles' },
-        { value: 'mixed', label: 'Mixed' },
       ]
     case 'pickleball':
       return [
         { value: 'singles', label: 'Singles' },
         { value: 'doubles', label: 'Doubles' },
-        { value: 'mixed', label: 'Mixed' },
         { value: 'open_play', label: 'Open play' },
       ]
     default:
       return [
         { value: 'singles', label: 'Singles' },
         { value: 'doubles', label: 'Doubles' },
-        { value: 'mixed', label: 'Mixed' },
       ]
   }
 }

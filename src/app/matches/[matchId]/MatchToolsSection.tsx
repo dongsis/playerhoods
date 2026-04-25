@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type ComponentType } from 'react'
 import { MatchManagePanel } from './MatchManagePanel'
-import { MatchRoundRobinPanel } from './MatchRoundRobinPanel'
+import { MatchRoundRobinPanel, type MatchRoundRobinPanelProps } from './MatchRoundRobinPanel'
 import type { MatchParticipantEnriched, MatchGroupInvite, ScopeUser } from '@/lib/api/matches'
 import type { Group, MatchCourt, MatchStatus } from '@/lib/types/database'
 import type { MatchUpdateInput } from './match-detail.actions'
+import type { MatchLineupSnapshot } from '@/lib/match-lineup'
 
 type CurrentRequestTarget = {
   id: string
@@ -31,8 +32,10 @@ type Props = {
   candidateUsers: ScopeUser[]
   contactTargets: { guest_id: string; display_name: string; sourceLabel: string; email: string | null }[]
   candidateGroups: Group[]
+  savedLineup: MatchLineupSnapshot | null
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>
-  onRemoveParticipant: (participantId: string) => Promise<void>
+  onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
+  onSaveLineup: (lineup: MatchLineupSnapshot | null) => Promise<void>
 }
 
 export function MatchToolsSection({
@@ -54,17 +57,21 @@ export function MatchToolsSection({
   candidateUsers,
   contactTargets,
   candidateGroups,
+  savedLineup,
   onUpdateMatchDetails,
   onRemoveParticipant,
+  onSaveLineup,
 }: Props) {
+  const RoundRobinPanel = MatchRoundRobinPanel as ComponentType<MatchRoundRobinPanelProps>
+  const sectionRef = useRef<HTMLElement | null>(null)
   const tabs = useMemo(() => {
     const nextTabs: Array<{ key: 'invite' | 'round_robin'; label: string }> = []
     if (showInviteTools) nextTabs.push({ key: 'invite', label: 'Invite Players' })
-    if (showRoundRobinTools) nextTabs.push({ key: 'round_robin', label: 'Round Robin' })
+    if (showRoundRobinTools) nextTabs.push({ key: 'round_robin', label: 'Lineup' })
     return nextTabs
   }, [showInviteTools, showRoundRobinTools])
 
-  const [activeTab, setActiveTab] = useState<'invite' | 'round_robin'>(tabs[0]?.key ?? 'round_robin')
+  const [activeTab, setActiveTab] = useState<'invite' | 'round_robin' | null>(null)
 
   if (tabs.length === 0) {
     return null
@@ -73,7 +80,10 @@ export function MatchToolsSection({
   const inviteMeta = `${confirmedParticipants.length} / ${requiredCount}${confirmedParticipants.length >= requiredCount ? ' Full' : ''}`
 
   return (
-    <section className="mt-5 overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
+    <section
+      ref={sectionRef}
+      className="mt-5 overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
         <div className="flex flex-wrap gap-2">
           {tabs.map((tab) => {
@@ -82,23 +92,33 @@ export function MatchToolsSection({
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => {
+                  setActiveTab((current) => {
+                    const next = current === tab.key ? null : tab.key
+                    if (next) {
+                      requestAnimationFrame(() => {
+                        sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      })
+                    }
+                    return next
+                  })
+                }}
                 className={[
-                  'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition',
+                  'text-label inline-flex items-center gap-2 rounded-full border px-4 py-2 transition',
                   isActive
                     ? 'border-slate-900 bg-slate-900 text-white'
                     : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50',
                 ].join(' ')}
               >
-                <span className="text-[12px]">{tab.key === 'invite' ? '+' : '[]'}</span>
+                <span className="text-body-main">{tab.key === 'invite' ? '+' : '[]'}</span>
                 <span>{tab.label}</span>
               </button>
             )
           })}
         </div>
 
-        <span className="text-sm font-bold text-teal-600">
-          {activeTab === 'invite' ? inviteMeta : `${confirmedParticipants.length} players`}
+        <span className="text-title-main text-teal-600">
+          {activeTab === 'invite' ? inviteMeta : savedLineup ? `${savedLineup.playersCount} players` : `${confirmedParticipants.length} players`}
         </span>
       </div>
 
@@ -123,13 +143,15 @@ export function MatchToolsSection({
       ) : null}
 
       {activeTab === 'round_robin' && showRoundRobinTools ? (
-        <MatchRoundRobinPanel
+        <RoundRobinPanel
           gameType={gameType}
           matchStatus={matchStatus}
           isOrganizer={isOrganizer}
           confirmedParticipants={confirmedParticipants}
           matchCourts={matchCourts}
           finalCourtLabel={finalCourtLabel}
+          savedLineup={savedLineup}
+          onSaveLineup={onSaveLineup}
         />
       ) : null}
     </section>

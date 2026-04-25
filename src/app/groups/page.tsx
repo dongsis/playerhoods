@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { GroupsPanel } from '@/app/dashboard/GroupsPanel'
+import { GroupsPageShell } from './GroupsPageShell'
 import { getAllPlayersGroupedByVenue } from '@/lib/api/players'
 import { listSports } from '@/lib/api/sports'
 
@@ -17,13 +17,10 @@ export default async function GroupsPage() {
   ])
 
   return (
-    <div style={{ maxWidth: '1120px', margin: '0 auto', padding: '1.5rem' }}>
-      <GroupsPanel
-        groups={playersData.groups}
-        pendingInvites={playersData.pendingGroupInvites}
-        sports={sports}
-        showBackToDashboard
-      />
-    </div>
+    <GroupsPageShell
+      groups={playersData.groups}
+      pendingInvites={playersData.pendingGroupInvites}
+      sports={sports}
+    />
   )
 }
