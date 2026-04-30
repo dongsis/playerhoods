@@ -1,7 +1,9 @@
 # Delegate Model — Final (Post-Simplification)
 
-**Status:** Authoritative summary of the delegate-confirm flow after 2026-03-21 simplification.  
-**Migration:** `20260321000000_delegate_simplify_unify_confirm_only.sql`
+**Status:** Historical reference only. Superseded on 2026-04-10 by Contact Player + Match Proxy canonical spec v1.2.  
+**Superseded by:** `Contact_Player_and_Match_Proxy_Canonical_v1_2.md`, `Match_Participant_Lifecycle_Canonical.md`
+
+This file describes the retired ad-hoc delegate-confirm model and should not be used as current product guidance.
 
 ---
 

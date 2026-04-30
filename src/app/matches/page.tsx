@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getMatchListData } from '@/lib/api/matches'
-import { isSuperAdmin, getMyAdminClubs } from '@/lib/api/clubs'
+import { isSuperAdmin, getMyAdminVenues } from '@/lib/api/venues'
 import type { Profile } from '@/lib/types/database'
 import { MatchesShell } from './MatchesShell'
 import { CreateMatchInline } from './CreateMatchInline'
@@ -14,58 +14,63 @@ export default async function MatchesPage() {
 
   const supabase = await createSupabaseServerClient()
 
-  // Fetch all items server-side; inbox/history split is done client-side in MatchesShell
-  const [items, profileRes, superAdmin, myAdminClubs] = await Promise.all([
+  const [items, profileRes, superAdmin, myAdminVenues] = await Promise.all([
     getMatchListData(supabase, user.id),
-    supabase.from('profiles').select('primary_club_id').eq('id', user.id).single(),
+    supabase.from('profiles').select('primary_venue_id').eq('id', user.id).single(),
     isSuperAdmin(supabase),
-    getMyAdminClubs(supabase).catch(() => []),
+    getMyAdminVenues(supabase).catch(() => []),
   ])
 
-  const defaultClubId =
-    (profileRes.data as Pick<Profile, 'primary_club_id'> | null)?.primary_club_id ?? ''
+  const defaultVenueId =
+    (profileRes.data as Pick<Profile, 'primary_venue_id'> | null)?.primary_venue_id ?? ''
 
-  const isAdmin = superAdmin || myAdminClubs.length > 0
+  const isAdmin = superAdmin || myAdminVenues.length > 0
 
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1rem' }}>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          marginBottom: '1.5rem',
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Matches</h1>
-        <nav style={{ fontSize: '0.85rem' }}>
-          <Link href="/dashboard">Dashboard</Link>
-          {' · '}
-          <Link href="/profile">Profile</Link>
-          {isAdmin && (
-            <>
-              {' · '}
-              <Link href="/admin/clubs">Club Admin</Link>
-            </>
-          )}
-        </nav>
+    <div className="min-h-screen bg-[#F0F7FF]">
+      <div className="mx-auto max-w-[1040px] px-4 py-8 sm:px-6 lg:px-8">
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-label text-[#94A3B8]">
+            Playerhoods
+          </p>
+          <h1 className="text-h1 mt-2 text-[#1E293B]">Matches</h1>
+          <p className="text-body-main mt-2 text-[#64748B]">
+            Stay on top of upcoming sessions, invitations, and recent match history.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/dashboard"
+            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#C25E46]/30 hover:bg-[#FFF8F5]"
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/profile"
+            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#C25E46]/30 hover:bg-[#FFF8F5]"
+          >
+            Profile
+          </Link>
+          {isAdmin ? (
+            <Link
+              href="/admin/venues"
+              className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#C25E46]/30 hover:bg-[#FFF8F5]"
+            >
+              Venue Admin
+            </Link>
+          ) : null}
+        </div>
       </header>
 
-      {/* Tabs + match list (all splitting is client-side) */}
-      <MatchesShell items={items} userId={user.id} />
-
-      {/* Create match */}
-      <section
-        style={{
-          padding: '1rem',
-          border: '1px solid #ddd',
-          borderRadius: '6px',
-          marginTop: '2rem',
-        }}
-      >
-        <h2 style={{ marginTop: 0, fontSize: '0.95rem' }}>Create Match</h2>
-        <CreateMatchInline defaultClubId={defaultClubId} />
-      </section>
+      <div className="space-y-8">
+        <MatchesShell items={items} userId={user.id} />
+        <div id="create-match">
+          <CreateMatchInline defaultVenueId={defaultVenueId} />
+        </div>
+      </div>
+      </div>
     </div>
   )
 }

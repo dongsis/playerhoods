@@ -4,6 +4,9 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
+import { HostPlayerMark } from '@/app/components/HostPlayerMark'
+import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
 import {
   acceptMatchInvite,
   userWithdraw,
@@ -19,20 +22,51 @@ interface Props {
   userId: string | null
 }
 
+function StatusBadge({
+  label,
+  tone,
+}: {
+  label: string
+  tone: 'green' | 'amber' | 'blue' | 'red' | 'slate'
+}) {
+  const toneClass =
+    tone === 'green'
+      ? 'bg-[#ECFDF5] text-[#22C55E] ring-[#DCFCE7]'
+      : tone === 'blue'
+        ? 'bg-[#EFF6FF] text-[#3B82F6] ring-[#DBEAFE]'
+        : tone === 'red'
+          ? 'bg-[#FEF2F2] text-[#EF4444] ring-[#FECACA]'
+          : tone === 'slate'
+            ? 'bg-[#F8FAFC] text-[#64748B] ring-[#E2E8F0]'
+            : 'bg-[#FFF7ED] text-[#F97316] ring-[#FFEDD5]'
+
+  return (
+    <span
+      className={[
+        'text-label inline-flex items-center rounded-full px-2.5 py-1 ring-1',
+        toneClass,
+      ].join(' ')}
+    >
+      {label}
+    </span>
+  )
+}
+
 export function MatchCard({ item, userId }: Props) {
   const {
     match,
-    clubTimezone,
-    clubName,
+    venueTimezone,
+    venueName,
+    courtState,
     confirmedCount,
-    pendingCount,
     isFormed,
     participants,
     myParticipant,
+    sportName,
   } = item
 
   const isOrganizer = userId === match.organizer_id
-  const need = Math.max(match.required_count - confirmedCount, 0)
+  const isCancelled = match.status === 'cancelled'
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -41,30 +75,38 @@ export function MatchCard({ item, userId }: Props) {
   const supabase = createSupabaseBrowserClient()
 
   const pendingApprovals = participants.filter(
-    p => p.status === 'pending' &&
-         p.participant_accepted_at !== null &&
-         p.org_approved_at === null,
+    (participant) =>
+      participant.status === 'pending'
+      && participant.participant_accepted_at !== null
+      && participant.org_approved_at === null,
   )
 
   const cta = computeCardCTA({
     matchStatus: match.status,
-    // v1.5: use invitation_scope_group_ids instead of deprecated admissionMode
-    hasScope: (match.invitation_scope_group_ids ?? []).length > 0,
+    hasScope:
+      (match.invitation_scope_group_ids ?? []).length > 0
+      || (match.invitation_scope_user_ids ?? []).length > 0,
     myParticipant,
     isOrganizer,
     pendingApprovals,
   })
 
-  const confirmedList = participants.filter(p => p.status === 'confirmed')
+  const confirmedList = participants
+    .filter((participant) => participant.status === 'confirmed')
+    .sort((a, b) => {
+      const aIsHost = a.user_id === match.organizer_id
+      const bIsHost = b.user_id === match.organizer_id
+      if (aIsHost === bIsHost) return 0
+      return aIsHost ? -1 : 1
+    })
   const detailsHref = `/matches/${match.id}`
 
-  // Line 1: full datetime window in club timezone
   const timeStr = formatTimeWindow(
     match.start_at_utc,
     match.match_date,
     match.start_time,
     match.duration_minutes,
-    clubTimezone,
+    venueTimezone,
   )
 
   const handleCTA = () => {
@@ -72,10 +114,10 @@ export function MatchCard({ item, userId }: Props) {
     startTransition(async () => {
       try {
         if (!cta) return
-        if (cta.kind === 'accept')   await acceptMatchInvite(supabase, match.id)
+        if (cta.kind === 'accept') await acceptMatchInvite(supabase, match.id)
         if (cta.kind === 'withdraw') await userWithdraw(supabase, match.id)
-        if (cta.kind === 'request')  await requestJoinMatch(supabase, match.id)
-        if (cta.kind === 'approve')  await orgApproveParticipant(supabase, cta.participantId)
+        if (cta.kind === 'request') await requestJoinMatch(supabase, match.id)
+        if (cta.kind === 'approve') await orgApproveParticipant(supabase, cta.participantId)
         router.refresh()
       } catch (err: unknown) {
         setError((err as { message?: string })?.message ?? 'Action failed')
@@ -83,229 +125,186 @@ export function MatchCard({ item, userId }: Props) {
     })
   }
 
-  // Line 3: people summary
-  const nameParts = confirmedList.slice(0, 3).map(p => p.display_name)
-  if (confirmedCount > 3) nameParts.push(`+${confirmedCount - 3}`)
-  const peopleParts: string[] = [...nameParts]
-  if (pendingCount > 0) peopleParts.push(`⏳${pendingCount}`)
-  if (need > 0) peopleParts.push(`need ${need}`)
-  const peopleSummary = peopleParts.join(' · ')
+  const visiblePlayers = confirmedList.slice(0, 4)
+  const extraPlayers = confirmedCount > visiblePlayers.length ? confirmedCount - visiblePlayers.length : 0
+
+  const primaryBadge = isCancelled
+    ? <StatusBadge label="Match cancelled" tone="red" />
+    : isFormed
+      ? <StatusBadge label="Formed" tone="green" />
+      : <StatusBadge label={`${confirmedCount}/${match.required_count}`} tone="amber" />
+
+  const courtTone =
+    courtState.status === 'secured'
+      ? 'green'
+      : courtState.status === 'walk_in'
+        ? 'blue'
+        : 'amber'
 
   return (
-    <div
-      style={{
-        border: '1px solid #d0d0d0',
-        borderRadius: '6px',
-        padding: '0.65rem 0.85rem',
-        marginBottom: '0.5rem',
-        background: match.status !== 'active' ? '#fafafa' : 'white',
-      }}
-    >
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-
-        {/* Left: 3-line layout */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-
-          {/* Line 1: time window · game type · club */}
-          <div
-            style={{
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              color: '#222',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {timeStr}
-            {match.game_type && (
-              <span style={{ fontWeight: 400, color: '#555', marginLeft: '0.5rem' }}>
+    <div className="rounded-[24px] border border-[#E2E8F0] bg-white px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+      <div className="flex gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {sportName ? (
+              <span className="text-label text-[#94A3B8]">
+                {sportName}
+              </span>
+            ) : null}
+            {match.game_type ? (
+              <span className="text-label rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[#64748B]">
                 {match.game_type}
               </span>
-            )}
-            {clubName && (
-              <span style={{ fontWeight: 400, color: '#999', marginLeft: '0.5rem', fontSize: '0.8rem' }}>
-                {clubName}
-              </span>
-            )}
+            ) : null}
           </div>
 
-          {/* Line 2: formed / forming badge */}
-          <div style={{ marginTop: '0.2rem' }}>
-            {isFormed ? (
-              <span
-                style={{
-                  background: '#2d8a4e',
-                  color: 'white',
-                  padding: '0.05rem 0.4rem',
-                  fontSize: '0.7rem',
-                  borderRadius: '3px',
-                  fontWeight: 600,
-                }}
-              >
-                FORMED
-              </span>
-            ) : (
-              <span
-                style={{
-                  background: '#d97706',
-                  color: 'white',
-                  padding: '0.05rem 0.4rem',
-                  fontSize: '0.7rem',
-                  borderRadius: '3px',
-                }}
-              >
-                {confirmedCount}/{match.required_count}
-              </span>
-            )}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h3 className="text-title-main tracking-tight text-[#1E293B]">
+              {timeStr || 'No time set'}
+            </h3>
+            {venueName ? <p className="text-body-sub text-[#64748B]">{venueName}</p> : null}
           </div>
 
-          {/* Line 3: people summary */}
-          {peopleSummary && (
-            <div
-              style={{
-                fontSize: '0.78rem',
-                color: '#555',
-                marginTop: '0.2rem',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {peopleSummary}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {primaryBadge}
+            {!isCancelled ? <StatusBadge label={courtState.badgeLabel} tone={courtTone} /> : null}
+            {myParticipant?.status === 'waiting_list' ? (
+              <StatusBadge label="Waiting list" tone="slate" />
+            ) : null}
+          </div>
+
+          {visiblePlayers.length > 0 ? (
+            <div className="mt-4">
+              <div className="text-title-main flex flex-wrap items-center gap-x-2 gap-y-1 text-[#1E293B]">
+              {visiblePlayers.map((participant) => (
+                <span key={participant.id} className="inline-flex min-w-0 items-center gap-1">
+                  <ParticipantDetailTrigger
+                    participant={participant}
+                    items={[item]}
+                    className="min-w-0 max-w-full text-left transition hover:text-[#C25E46]"
+                    label={`View details for ${participant.display_name}`}
+                  >
+                    <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                      <span className="relative inline-flex min-w-0 max-w-full pr-3">
+                        {!participant.user_id ? (
+                          <span className="pointer-events-none absolute -right-0.5 -top-1.5 z-0">
+                            <ContactPlayerMark className="h-[1.2rem] w-[1.2rem]" variant="badge" />
+                          </span>
+                        ) : null}
+                        <span className="relative z-10 inline-flex min-w-0 items-center gap-1">
+                        <span
+                          className={
+                            participant.user_id === match.organizer_id
+                              ? 'truncate font-semibold text-[#0F172A]'
+                              : 'truncate'
+                          }
+                        >
+                          {participant.display_name}
+                        </span>
+                        {participant.user_id === match.organizer_id ? (
+                          <HostPlayerMark className="h-6 w-6 shrink-0 text-[11px]" />
+                        ) : null}
+                        </span>
+                      </span>
+                    </span>
+                  </ParticipantDetailTrigger>
+                </span>
+              ))}
+                {extraPlayers > 0 ? (
+                  <span className="text-body-sub text-slate-500">
+                    +{extraPlayers}
+                  </span>
+                ) : null}
+              </div>
             </div>
+          ) : (
+            <p className="text-body-main mt-4 text-[#94A3B8]">No confirmed players yet.</p>
           )}
         </div>
 
-        {/* Right: primary CTA + Details + ⋯ */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
-          {/* Withdraw is menu-only — only show other CTAs as primary button */}
-          {cta && cta.kind !== 'withdraw' && (
+        <div className="flex shrink-0 items-start gap-2">
+          {cta && cta.kind !== 'withdraw' ? (
             <button
               onClick={handleCTA}
               disabled={isPending}
+              className="text-body-main rounded-full px-4 py-2 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60"
               style={{
-                background: CTA_COLOR[cta.kind],
-                color: 'white',
-                border: 'none',
-                padding: '0.3rem 0.7rem',
-                fontSize: '0.8rem',
-                borderRadius: '4px',
-                cursor: isPending ? 'not-allowed' : 'pointer',
-                opacity: isPending ? 0.7 : 1,
-                whiteSpace: 'nowrap',
+                backgroundColor:
+                  cta.kind === 'accept' || cta.kind === 'approve'
+                    ? '#C25E46'
+                    : CTA_COLOR[cta.kind],
               }}
             >
               {isPending
-                ? '...'
+                ? 'Working...'
                 : cta.kind === 'approve'
                   ? `${CTA_LABEL.approve} (${cta.count})`
                   : CTA_LABEL[cta.kind]}
             </button>
-          )}
+          ) : null}
 
           <Link
             href={detailsHref}
-            style={{
-              padding: '0.3rem 0.6rem',
-              fontSize: '0.8rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              textDecoration: 'none',
-              color: '#333',
-              whiteSpace: 'nowrap',
-            }}
+            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#C25E46]/30 hover:bg-[#FFF8F5]"
           >
             Details
           </Link>
 
-          {/* ⋯ overflow menu — only render when there's at least one action */}
-          {(isOrganizer || (myParticipant && myParticipant.status !== 'removed')) && (
-            <div style={{ position: 'relative' }}>
+          {(isOrganizer || (myParticipant && myParticipant.status !== 'removed')) ? (
+            <div className="relative">
               <button
-                onClick={() => setMenuOpen(o => !o)}
-                style={{
-                  background: 'none',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  padding: '0.3rem 0.5rem',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
+                onClick={() => setMenuOpen((open) => !open)}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#94A3B8] transition hover:border-[#CBD5E1] hover:text-[#1E293B]"
               >
-                ⋯
+                <span className="text-base leading-none">...</span>
               </button>
 
-              {menuOpen && (
+              {menuOpen ? (
                 <>
-                  <div
-                    onClick={() => setMenuOpen(false)}
-                    style={{ position: 'fixed', inset: 0, zIndex: 9 }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      right: 0,
-                      top: '110%',
-                      background: 'white',
-                      border: '1px solid #ccc',
-                      borderRadius: '4px',
-                      zIndex: 10,
-                      minWidth: '150px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-                    }}
-                  >
-                    {isOrganizer && (
+                  <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 top-[calc(100%+0.5rem)] z-20 min-w-[180px] overflow-hidden rounded-[20px] border border-[#E2E8F0] bg-white p-1 shadow-[0_20px_44px_-28px_rgba(15,23,42,0.18)]">
+                    {isOrganizer ? (
                       <>
                         <Link
                           href={`${detailsHref}#invite`}
                           onClick={() => setMenuOpen(false)}
-                          style={{ display: 'block', padding: '0.4rem 0.75rem', textDecoration: 'none', color: '#333', fontSize: '0.85rem' }}
+                          className="text-body-main block rounded-2xl px-3 py-2 text-[#64748B] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
                         >
-                          Invite User
+                          Invite user
                         </Link>
                         <Link
                           href={`${detailsHref}#guest`}
                           onClick={() => setMenuOpen(false)}
-                          style={{ display: 'block', padding: '0.4rem 0.75rem', textDecoration: 'none', color: '#333', fontSize: '0.85rem' }}
+                          className="text-body-main block rounded-2xl px-3 py-2 text-[#64748B] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
                         >
-                          Add Contact Player
+                          Add contact player
                         </Link>
-                        {myParticipant && myParticipant.status !== 'removed' && (
-                          <hr style={{ margin: '0.2rem 0', border: 'none', borderTop: '1px solid #eee' }} />
-                        )}
+                        {myParticipant && myParticipant.status !== 'removed' ? (
+                          <div className="my-1 border-t border-[#F1F5F9]" />
+                        ) : null}
                       </>
-                    )}
+                    ) : null}
 
-                    {myParticipant && myParticipant.status !== 'removed' && (
+                    {myParticipant && myParticipant.status !== 'removed' ? (
                       <button
-                        onClick={() => { setMenuOpen(false); handleCTA() }}
-                        style={{
-                          display: 'block',
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '0.4rem 0.75rem',
-                          background: 'none',
-                          border: 'none',
-                          color: '#c00',
-                          fontSize: '0.85rem',
-                          cursor: 'pointer',
+                        onClick={() => {
+                          setMenuOpen(false)
+                          handleCTA()
                         }}
+                        className="text-body-main block w-full rounded-2xl px-3 py-2 text-left text-[#EF4444] transition hover:bg-[#FEF2F2]"
                       >
                         Withdraw
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </>
-              )}
+              ) : null}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {error && (
-        <p style={{ color: 'red', fontSize: '0.75rem', margin: '0.3rem 0 0' }}>{error}</p>
-      )}
+      {error ? <p className="text-body-sub mt-3 text-[#EF4444]">{error}</p> : null}
     </div>
   )
 }

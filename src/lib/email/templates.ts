@@ -14,7 +14,7 @@ export type MatchInfo = {
   gameType: string
   matchDate: string | null
   startTime: string | null
-  clubName: string | null
+  venueName: string | null
   siteUrl: string
 }
 
@@ -28,7 +28,7 @@ function matchLink(m: MatchInfo): string {
 /** Game formed: 比赛成局 */
 export function gameFormedEmail(m: MatchInfo): string {
   const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.clubName || 'TBD'
+  const location = m.venueName || 'TBD'
   return `
 <!DOCTYPE html>
 <html>
@@ -49,7 +49,7 @@ export function gameFormedEmail(m: MatchInfo): string {
 /** Match time change pending: 比赛改时间待确认 */
 export function matchTimeChangePendingEmail(m: MatchInfo): string {
   const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.clubName || 'TBD'
+  const location = m.venueName || 'TBD'
   return `
 <!DOCTYPE html>
 <html>
@@ -71,7 +71,7 @@ export function matchTimeChangePendingEmail(m: MatchInfo): string {
 /** Guest nominated: Contact Player 被提名 */
 export function guestNominatedEmail(m: MatchInfo, nominatorName: string): string {
   const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.clubName || 'TBD'
+  const location = m.venueName || 'TBD'
   return `
 <!DOCTYPE html>
 <html>
@@ -89,18 +89,18 @@ export function guestNominatedEmail(m: MatchInfo, nominatorName: string): string
 `
 }
 
-/** Guest org approved: 组织者已批准 */
-export function guestOrgApprovedEmail(m: MatchInfo): string {
+/** Guest org approved: wording aligned with invite copy */
+export function guestOrgApprovedEmail(m: MatchInfo, inviterName: string): string {
   const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.clubName || 'TBD'
+  const location = m.venueName || 'TBD'
   return `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
 <body>
   <div class="card">
-    <h2>Match approval</h2>
-    <p>The organizer approved your participation in <strong>${m.gameType}</strong>.</p>
+    <h2>You're invited</h2>
+    <p><strong>${inviterName}</strong> invited you to a match: <strong>${m.gameType}</strong>.</p>
     <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
     <p><a href="${matchLink(m)}" class="btn">View match</a></p>
     <p class="meta">PlayerHoods</p>
@@ -113,7 +113,7 @@ export function guestOrgApprovedEmail(m: MatchInfo): string {
 /** Guest delegate confirmed: 已确认能来 */
 export function guestDelegateConfirmedEmail(m: MatchInfo): string {
   const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.clubName || 'TBD'
+  const location = m.venueName || 'TBD'
   return `
 <!DOCTYPE html>
 <html>
@@ -131,10 +131,30 @@ export function guestDelegateConfirmedEmail(m: MatchInfo): string {
 `
 }
 
+export function matchRemovedEmail(m: MatchInfo): string {
+  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
+  const location = m.venueName || 'TBD'
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
+<body>
+  <div class="card">
+    <h2>Removed from match</h2>
+    <p>You were removed from <strong>${m.gameType}</strong>.</p>
+    <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
+    <p><a href="${matchLink(m)}" class="btn">View match</a></p>
+    <p class="meta">PlayerHoods</p>
+  </div>
+</body>
+</html>
+`
+}
+
 /** Invite / Nominate: 被邀请或提名 */
 export function inviteOrNominateEmail(m: MatchInfo, inviterName: string): string {
   const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.clubName || 'TBD'
+  const location = m.venueName || 'TBD'
   return `
 <!DOCTYPE html>
 <html>

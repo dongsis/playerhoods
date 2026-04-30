@@ -26,16 +26,19 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: '480px', margin: '4rem auto', padding: '0 1rem' }}>
-      <h1>Welcome! Set up your profile</h1>
-      <p style={{ color: '#666', marginBottom: '2rem' }}>
+    <div className="ph-page-narrow">
+      <section className="ph-card px-6 py-6">
+        <div className="ph-kicker mb-2">Welcome</div>
+        <h1 className="ph-title">Set up your profile</h1>
+        <p className="ph-subtitle mb-8 mt-2">
         Choose a display name so other players can recognize you.
-      </p>
-      <ProfileForm
-        userId={user.id}
-        existing={profile as Profile | null}
-        next={next || '/dashboard'}
-      />
+        </p>
+        <ProfileForm
+          userId={user.id}
+          existing={profile as Profile | null}
+          next={next || '/dashboard'}
+        />
+      </section>
     </div>
   )
 }

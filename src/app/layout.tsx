@@ -1,7 +1,45 @@
 import type { Metadata } from 'next'
+import { maskEmail } from '@/lib/auth-ui'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import type { Profile } from '@/lib/types/database'
+import { ChunkRecovery } from '@/app/components/ChunkRecovery'
 import './globals.css'
+
+const chunkRecoveryScript = `
+(() => {
+  const FLAG = 'ph_chunk_recovery_once';
+  const pattern = /ChunkLoadError|Loading chunk [\\w-]+ failed|Failed to fetch dynamically imported module/i;
+
+  const shouldRecover = (value) => {
+    const message =
+      typeof value === 'string'
+        ? value
+        : value && typeof value === 'object' && 'message' in value
+          ? String(value.message ?? '')
+          : '';
+    return pattern.test(message);
+  };
+
+  const recover = () => {
+    try {
+      if (window.sessionStorage.getItem(FLAG) === '1') return;
+      window.sessionStorage.setItem(FLAG, '1');
+    } catch {}
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('__chunk_reload', String(Date.now()));
+    window.location.replace(nextUrl.toString());
+  };
+
+  window.addEventListener('error', (event) => {
+    if (shouldRecover(event.error) || shouldRecover(event.message)) recover();
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    if (shouldRecover(event.reason)) recover();
+  });
+})();
+`
 
 export const metadata: Metadata = {
   title: 'Playerhoods',
@@ -23,15 +61,32 @@ export default async function RootLayout({
       .select('display_name')
       .eq('id', user.id)
       .single()
-    displayLabel = (profile as Profile | null)?.display_name || user.email || user.id.slice(0, 8)
+    displayLabel = (profile as Profile | null)?.display_name || maskEmail(user.email) || user.id.slice(0, 8)
   }
 
   return (
     <html lang="en">
-      <body className="font-sans bg-gray-50 text-gray-900" style={{ margin: 0 }}>
+      <body className="font-sans bg-[#F0F7FF] text-[#1E293B]">
+        <script dangerouslySetInnerHTML={{ __html: chunkRecoveryScript }} />
+        <ChunkRecovery />
         {user && (
-          <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#222', color: '#aaa', fontSize: '0.75rem', padding: '0.25rem 0.5rem', zIndex: 9999, fontFamily: 'monospace' }}>
-            {displayLabel} | {user.email}
+          <div
+            style={{
+              position: 'fixed',
+              bottom: '0.85rem',
+              right: '0.85rem',
+              background: 'rgba(255,255,255,0.92)',
+              color: '#64748B',
+              fontSize: '0.72rem',
+              padding: '0.45rem 0.75rem',
+              zIndex: 9999,
+              border: '1px solid #E2E8F0',
+              borderRadius: '999px',
+              boxShadow: '0 12px 24px rgba(15,23,42,0.08)',
+              backdropFilter: 'blur(10px)',
+            }}
+          >
+            {displayLabel}
           </div>
         )}
         {children}

@@ -1,5 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Club, ClubIdentity, ClubHandleCheckResult, Group, GroupMember } from '@/lib/types/database'
+import type {
+  AvailabilityStatus,
+  Database,
+  Group,
+  GroupMember,
+  SharedGroupJoinPreference,
+  Venue,
+  VenueIdentity,
+  VenueUserRelationship,
+} from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -26,11 +35,18 @@ export async function updateProfile(
   params: {
     first_name?: string
     last_name?: string
+    gender?: 'male' | 'female' | 'unspecified' | null
     contact_channel?: 'email' | 'sms'
     contact_email?: string | null
     contact_phone?: string | null
-    show_in_club_member_discovery?: boolean
+    show_in_venue_member_discovery?: boolean
     allow_non_group_invites?: boolean
+    shared_group_join_preference?: SharedGroupJoinPreference
+    looking_to_play?: string | null
+    preferred_play_times?: string[]
+    availability_status?: AvailabilityStatus | null
+    availability_note?: string | null
+    availability_until?: string | null
   }
 ): Promise<void> {
   const rpcParams: Record<string, unknown> = {
@@ -40,29 +56,36 @@ export async function updateProfile(
   }
   if (params.contact_email !== undefined) rpcParams.p_contact_email = params.contact_email
   if (params.contact_phone !== undefined) rpcParams.p_contact_phone = params.contact_phone
-  if (params.show_in_club_member_discovery !== undefined) rpcParams.p_show_in_club_member_discovery = params.show_in_club_member_discovery
+  if (params.show_in_venue_member_discovery !== undefined) rpcParams.p_show_in_venue_member_discovery = params.show_in_venue_member_discovery
   if (params.allow_non_group_invites !== undefined) rpcParams.p_allow_non_group_invites = params.allow_non_group_invites
+  if (params.shared_group_join_preference !== undefined) rpcParams.p_shared_group_join_preference = params.shared_group_join_preference
+  if (params.looking_to_play !== undefined) rpcParams.p_looking_to_play = params.looking_to_play
+  if (params.preferred_play_times !== undefined) rpcParams.p_preferred_play_times = params.preferred_play_times
+  if (params.gender !== undefined) rpcParams.p_gender = params.gender
+  if (params.availability_status !== undefined) rpcParams.p_availability_status = params.availability_status
+  if (params.availability_note !== undefined) rpcParams.p_availability_note = params.availability_note
+  if (params.availability_until !== undefined) rpcParams.p_availability_until = params.availability_until
   const { error } = await supabase.rpc('rpc_profile_update', rpcParams)
   if (error) throw error
 }
 
-/** Set club-scoped preference overrides. 'inherit' = use global (NULL). Omit = don't change. */
-export async function setClubIdentityPreferences(
+/** Set venue-scoped preference overrides. 'inherit' = use global (NULL). Omit = don't change. */
+export async function setVenueIdentityPreferences(
   supabase: Client,
-  clubId: string,
+  venueId: string,
   params: {
-    visible_in_club_member_discovery?: 'true' | 'false' | 'inherit'
-    accept_non_group_invites_in_club?: 'true' | 'false' | 'inherit'
+    visible_in_venue_member_discovery?: 'true' | 'false' | 'inherit'
+    accept_non_group_invites_in_venue?: 'true' | 'false' | 'inherit'
   }
 ): Promise<void> {
   const rpcParams: {
-    p_club_id: string
-    p_visible_in_club_member_discovery?: string | null
-    p_accept_non_group_invites_in_club?: string | null
-  } = { p_club_id: clubId }
-  if (params.visible_in_club_member_discovery !== undefined) rpcParams.p_visible_in_club_member_discovery = params.visible_in_club_member_discovery
-  if (params.accept_non_group_invites_in_club !== undefined) rpcParams.p_accept_non_group_invites_in_club = params.accept_non_group_invites_in_club
-  const { error } = await supabase.rpc('rpc_club_identity_set_preferences', rpcParams)
+    p_venue_id: string
+    p_visible_in_venue_member_discovery?: string | null
+    p_accept_non_group_invites_in_venue?: string | null
+  } = { p_venue_id: venueId }
+  if (params.visible_in_venue_member_discovery !== undefined) rpcParams.p_visible_in_venue_member_discovery = params.visible_in_venue_member_discovery
+  if (params.accept_non_group_invites_in_venue !== undefined) rpcParams.p_accept_non_group_invites_in_venue = params.accept_non_group_invites_in_venue
+  const { error } = await supabase.rpc('rpc_venue_identity_set_preferences', rpcParams)
   if (error) throw error
 }
 
@@ -76,7 +99,6 @@ export async function setAvatarUrl(supabase: Client, avatarUrl: string | null): 
 
 /**
  * v1.5 Identity: directly set the user's global display_name.
- * Does not sync club_identities (club handle is legacy in v1.5).
  * RPC: rpc_profile_set_display_name
  */
 export async function setDisplayName(
@@ -90,55 +112,35 @@ export async function setDisplayName(
 }
 
 // ============================================================================
-// Club handle RPCs
+// Venue membership RPCs
 // ============================================================================
 
-/** Check if a handle is available in a club; returns suggestions if taken. */
-export async function checkClubHandle(
+/** Join a venue as a member without creating a venue-scoped handle. */
+export async function joinVenue(
   supabase: Client,
-  clubId: string,
-  handle: string
-): Promise<ClubHandleCheckResult> {
-  const { data, error } = await supabase.rpc('rpc_club_handle_check', {
-    p_club_id: clubId,
-    p_handle: handle,
-  })
-  if (error) throw error
-  // RPC returns a table row as array; take first element
-  const row = (data as ClubHandleCheckResult[])?.[0]
-  return row ?? { available: false, suggestions: [] }
-}
-
-/** Join a club with the given handle. */
-export async function joinClub(
-  supabase: Client,
-  clubId: string,
-  handle: string
+  venueId: string,
 ): Promise<void> {
-  const { error } = await supabase.rpc('rpc_club_join', {
-    p_club_id: clubId,
-    p_handle: handle,
+  const { error } = await supabase.rpc('rpc_venue_member_join_v2', {
+    p_venue_id: venueId,
   })
   if (error) throw error
 }
 
-/** Rename the user's handle in a specific club. Updates display_name if primary club. */
-export async function setClubHandle(
+/** Leave a venue the current user has joined. */
+export async function leaveVenue(
   supabase: Client,
-  clubId: string,
-  newHandle: string
+  venueId: string
 ): Promise<void> {
-  const { error } = await supabase.rpc('rpc_club_handle_set', {
-    p_club_id: clubId,
-    p_new_handle: newHandle,
+  const { error } = await supabase.rpc('rpc_venue_member_leave_v2', {
+    p_venue_id: venueId,
   })
   if (error) throw error
 }
 
-/** Change the user's primary club; syncs display_name to that club's handle. */
-export async function setPrimaryClub(supabase: Client, clubId: string): Promise<void> {
-  const { error } = await supabase.rpc('rpc_profile_set_primary_club', {
-    p_club_id: clubId,
+/** Change the user's primary venue. */
+export async function setPrimaryVenue(supabase: Client, venueId: string): Promise<void> {
+  const { error } = await supabase.rpc('rpc_profile_set_primary_venue', {
+    p_venue_id: venueId,
   })
   if (error) throw error
 }
@@ -147,99 +149,127 @@ export async function setPrimaryClub(supabase: Client, clubId: string): Promise<
 // Queries
 // ============================================================================
 
-/** Get all club memberships (with club info) for the current user. */
-export async function getMyClubIdentities(
+/** v1 venue relationships. venue_user_relationships is the canonical source. */
+export async function getMyVenueRelationships(
   supabase: Client,
   userId: string,
-): Promise<(ClubIdentity & { club: Club })[]> {
-  const { data, error } = await supabase
-    .from('club_identities')
-    .select('*, club:clubs(*)')
+): Promise<(VenueUserRelationship & { venue: Venue })[]> {
+  const next = await supabase
+    .from('venue_user_relationships')
+    .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as unknown as (ClubIdentity & { club: Club })[]
+
+  if (next.error) throw next.error
+
+  const rows = (next.data ?? []) as VenueUserRelationship[]
+  if (rows.length === 0) return []
+
+  const venueIds = [...new Set(rows.map((row) => row.venue_id))]
+  const { data: venuesData, error: venuesError } = await supabase
+    .from('venues')
+    .select('*')
+    .in('id', venueIds)
+  if (venuesError) throw venuesError
+
+  const venueMap = new Map(((venuesData ?? []) as Venue[]).map((venue) => [venue.id, venue]))
+  return rows
+    .filter((row) => venueMap.has(row.venue_id))
+    .map((row) => ({
+      ...row,
+      venue: venueMap.get(row.venue_id)!,
+    }))
 }
 
-/** Get all clubs the user has NOT yet joined (for the join UI). */
-export async function getJoinableClubs(
+/** Get all venue memberships for the current user. */
+export async function getMyVenueIdentities(
   supabase: Client,
   userId: string,
-): Promise<Club[]> {
-  // First get clubs this user has joined
-  const { data: myIds, error: err1 } = await supabase
-    .from('club_identities')
-    .select('club_id')
-    .eq('user_id', userId)
-  if (err1) throw err1
+): Promise<(VenueIdentity & { venue: Venue })[]> {
+  const next = await getMyVenueRelationships(supabase, userId)
+  const memberRows = next.filter((row) => row.relationship_type === 'member')
+  return memberRows.map((row) => ({
+    id: row.id,
+    venue_id: row.venue_id,
+    user_id: row.user_id,
+    created_at: row.created_at,
+    visible_in_venue_member_discovery: null,
+    accept_non_group_invites_in_venue: null,
+    venue: row.venue,
+  }))
+}
 
-  const joinedIds = (myIds ?? []).map(r => r.club_id)
+/** Get all venues the user has NOT yet joined (for the join UI). */
+export async function getJoinableVenues(
+  supabase: Client,
+  userId: string,
+): Promise<Venue[]> {
+  const relationshipRows = await supabase
+    .from('venue_user_relationships')
+    .select('venue_id')
+    .eq('user_id', userId)
+    .eq('relationship_type', 'member')
+  if (relationshipRows.error) throw relationshipRows.error
+
+  const joinedIds = ((relationshipRows.data ?? []) as { venue_id: string }[]).map((row) => row.venue_id)
 
   const query = supabase
-    .from('clubs')
+    .from('venues')
     .select('*')
     .order('name', { ascending: true })
 
   if (joinedIds.length > 0) {
     const { data, error } = await query.not('id', 'in', `(${joinedIds.join(',')})`)
     if (error) throw error
-    return (data ?? []) as Club[]
+    return (data ?? []) as Venue[]
   }
 
   const { data, error } = await query
   if (error) throw error
-  return (data ?? []) as Club[]
+  return (data ?? []) as Venue[]
 }
 
 // ============================================================================
-// Venue preferences (secondary_club_ids — lightweight "save" without a handle)
+// Venue preferences (starred relationship)
 // ============================================================================
 
-/** Return the clubs stored in profiles.secondary_club_ids for the user. */
+/** Return the venues starred by the user. */
 export async function getMyVenuePreferences(
   supabase: Client,
   userId: string,
-): Promise<Club[]> {
-  const { data: profile, error: profErr } = await supabase
-    .from('profiles')
-    .select('secondary_club_ids')
-    .eq('id', userId)
-    .single()
-  if (profErr) throw profErr
+): Promise<Venue[]> {
+  const relationshipRows = await supabase
+    .from('venue_user_relationships')
+    .select('venue_id')
+    .eq('user_id', userId)
+    .eq('relationship_type', 'starred')
+    .order('created_at', { ascending: true })
 
-  const ids: string[] = profile?.secondary_club_ids ?? []
+  if (relationshipRows.error) throw relationshipRows.error
+
+  const ids = [...new Set(((relationshipRows.data ?? []) as { venue_id: string }[]).map((row) => row.venue_id))]
   if (ids.length === 0) return []
 
   const { data, error } = await supabase
-    .from('clubs')
+    .from('venues')
     .select('*')
     .in('id', ids)
     .order('name', { ascending: true })
   if (error) throw error
-  return (data ?? []) as Club[]
+  return (data ?? []) as Venue[]
 }
 
-/** Add a venue to profiles.secondary_club_ids (idempotent). */
+/** Add a starred relationship for the current user. */
 export async function addVenuePreference(
   supabase: Client,
-  userId: string,
+  _userId: string,
   venueId: string,
 ): Promise<void> {
-  const { data, error: fetchErr } = await supabase
-    .from('profiles')
-    .select('secondary_club_ids')
-    .eq('id', userId)
-    .single()
-  if (fetchErr) throw fetchErr
-
-  const current: string[] = data?.secondary_club_ids ?? []
-  if (current.includes(venueId)) return
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({ secondary_club_ids: [...current, venueId] })
-    .eq('id', userId)
-  if (error) throw error
+  const next = await supabase.rpc('rpc_venue_relationship_set', {
+    p_venue_id: venueId,
+    p_relationship_type: 'starred',
+  })
+  if (next.error) throw next.error
 }
 
 // ============================================================================
@@ -282,25 +312,15 @@ export async function setGroupDisplayName(
   if (error) throw error
 }
 
-/** Remove a venue from profiles.secondary_club_ids (idempotent). */
+/** Remove a starred relationship for the current user. */
 export async function removeVenuePreference(
   supabase: Client,
-  userId: string,
+  _userId: string,
   venueId: string,
 ): Promise<void> {
-  const { data, error: fetchErr } = await supabase
-    .from('profiles')
-    .select('secondary_club_ids')
-    .eq('id', userId)
-    .single()
-  if (fetchErr) throw fetchErr
-
-  const current: string[] = data?.secondary_club_ids ?? []
-  const updated = current.filter(id => id !== venueId)
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({ secondary_club_ids: updated })
-    .eq('id', userId)
-  if (error) throw error
+  const next = await supabase.rpc('rpc_venue_relationship_remove', {
+    p_venue_id: venueId,
+    p_relationship_type: 'starred',
+  })
+  if (next.error) throw next.error
 }

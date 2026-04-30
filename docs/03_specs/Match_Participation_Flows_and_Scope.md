@@ -1,135 +1,146 @@
-# Match Participation: Invite, Nominate, Confirm, Accept, Remove — Flows & Scope
+# Match Participation: Entry, Acceptance, Approval, Exit, and Proxy Scope
 
-**Status:** Authoritative reference (align with v1.6.3 + v1.7 guest/nominate behaviour)  
-**Last updated:** 2026-03 (post re-entry via nominate, delegate confirm, guest flows)
+**Status:** authoritative working reference  
+**Last updated:** 2026-04-10  
+**Canonical companions:** `../01_authority/Contact_Player_and_Match_Proxy_Canonical_v1_2.md`, `../01_authority/Match_Participant_Lifecycle_Canonical.md`
 
 ---
 
-## 1. Scope & helper definitions
+## 1. Core Scope Rules
 
 ### 1.1 Match-level scope
 
 | Term | Definition | Used for |
 |------|------------|----------|
-| **invitation_scope_group_ids** | `matches.invitation_scope_group_ids` — array of group IDs. Can be empty/NULL. | Who can be invited (target), who can request join, who can see invite/nominate targets. |
-| **is_user_in_scope_groups(scope_group_ids, user_id)** | True iff user is an **active** member of at least one of the given groups. | Target eligibility (invite/request_join); caller eligibility (nominate targets). |
-| **is_caller_in_match_scope(match_id)** | `is_user_in_match_scope(match_id, auth.uid())`. | RLS, UI “in scope” for match. |
-| **is_user_in_match_scope(match_id, user_id)** | True iff `invitation_scope_group_ids` is non-empty and `is_user_in_scope_groups(invitation_scope_group_ids, user_id)`. | Whether a user is “in scope” for that match. |
+| `invitation_scope_group_ids` | `matches.invitation_scope_group_ids` | user invite / request-join targeting |
+| `is_user_in_scope_groups(scope_group_ids, user_id)` | user is an active member of at least one scope group | target eligibility and caller eligibility |
+| `is_user_in_match_scope(match_id, user_id)` | wrapper over scope group membership for a specific match | request-join and nominate gating |
 
-### 1.2 Association & share group
+### 1.2 Association and trust
 
 | Term | Definition | Used for |
 |------|------------|----------|
-| **is_user_match_associated(match_id, user_id)** | True iff user has a **non-removed** participant row (pending or confirmed). Removed participants are **not** match-associated. | Caller gates (nominate, delegate confirm), target lists (nominate_targets), “already a participant” checks. |
-| **is_caller_match_associated(match_id)** | `is_user_match_associated(match_id, auth.uid())`. | RLS, UI “match associated”. |
-| **do_users_share_group(user_a, user_b)** | True iff both are active members of at least one **friend** group (`group_kind = 'friend'`). Club groups do **not** count. | Nominate/delegate-confirm **target**: caller may only nominate/delegate-confirm users in a shared friend group. Invite **target**: organizer may invite if target in scope OR share group with organizer. |
-| **sharegroup_exists(user_a, user_b)** | Same idea as `do_users_share_group` (used in RLS). | RLS: who can see pending invited/nominated rows. |
+| `is_user_match_associated(match_id, user_id)` | user has a non-removed participant row, or a self-withdraw / self-decline removed row | caller gates and visibility |
+| `do_users_share_group(user_a, user_b)` | both users are active members of at least one friend group | user-to-user trust checks |
 
-### 1.3 Organizer & confirmation helpers
+### 1.3 Explicit proxy authority
 
-| Term | Definition |
-|------|------------|
-| **is_match_organizer(match_id, user_id)** | `matches.organizer_id = user_id`. |
-| **is_caller_confirmed_in_match(match_id)** | Caller has a **confirmed** participant row. Used in RLS so confirmed participants can see certain pending rows. |
-
----
-
-## 2. Entry points (how a user/guest gets into a match)
-
-| Action | RPC | Caller | Target | Scope / gates | Re-entry (removed → active)? | Result (join_method, timestamps) |
-|--------|-----|--------|--------|----------------|------------------------------|-----------------------------------|
-| **Invite (user)** | `rpc_match_invite_user` (organizer wrapper → `rpc_match_admit_user`) | **Organizer only** | User | Target: **InScope(target) OR ShareGroup(target, organizer)**. No scope required for organizer to invite. | **Yes.** Re-entry: clear removed_at, set join_method=invited, **org_approved_at=now()**; participant_accepted_at=NULL → user must Accept to confirm. | invited; org_approved_at set; participant_accepted_at NULL → pending until user Accept. |
-| **Request join** | `rpc_match_request_join` | User (self) | — | Caller must be **InScope(caller)** (match must have non-empty scope; caller in one of those groups). | **Yes.** Re-entry: clear removed_at, join_method=requested, participant_accepted_at=now(); org_approved_at=NULL → pending until org Approve. | requested; participant_accepted_at set; org_approved_at NULL → pending until org Approve. |
-| **Nominate (user)** | `rpc_match_nominate_user` | **Non-organizer** + match.can_participants_invite_users + **(InScope(caller) OR MatchAssociated(caller))** | User | Target: **ShareGroup(target, caller)** only; target ≠ caller; target **not** match-associated (so removed is OK — we re-entry). | **Yes.** Re-entry: clear removed_at, join_method=nominated, nominated_by=caller; participant_accepted_at=NULL, org_approved_at=NULL. | nominated; both timestamps NULL → pending until user Accept **and** org Approve (order arbitrary). |
-| **Nominate (guest / Contact Player)** | `rpc_match_nominate_guest` | **Organizer OR MatchAssociated** | Guest (from caller’s roster) | Guest in caller’s `user_roster_guests`; guest active. | N/A (no “removed” re-entry for guest in same row; duplicate active guest rejected). **Organizer:** org_approved_at only (auto org confirm); participant_accepted_at NULL → guest pending until "Confirm can come". **Non-org:** org_approved_at NULL → pending until delegate_confirm_participant + org Approve. | nominated; organizer auto-approves; guest stays pending until delegate_confirm. |
+| Term | Definition | Used for |
+|------|------------|----------|
+| `is_active_match_proxy_for_participant(match_participant_id, proxy_user_id)` | proxy user has an active explicit binding for the participant's principal person | participant-side proxy actions |
+| `resolve_person_id_for_user(user_id)` | registered user -> canonical person node | proxy binding and person relationships |
+| `resolve_person_id_for_guest(guest_id)` | Contact Player contact record -> canonical person node | proxy binding and person relationships |
 
 ---
 
-## 3. Confirm / Accept (getting to confirmed)
+## 2. Entry Paths
 
-Unified invariant: **confirmed ⇔ participant_accepted_at IS NOT NULL AND org_approved_at IS NOT NULL**. Status is derived by `match_participant_reconcile_status` only.
-
-| Action | RPC | Caller | Target / row | Effect | Note |
-|--------|-----|--------|--------------|--------|------|
-| **Accept (user)** | `rpc_match_accept_invite` | Participant (self) | Own row | Sets participant_accepted_at=now(), participant_accepted_via=in_app. Reconcile → confirmed if org_approved_at already set. | For invited/nominated/requested; also used to re-confirm after match detail change. |
-| **Approve (org)** | `rpc_match_org_approve_participant` | **Organizer only** | Any pending participant (user or guest) | Sets org_approved_at (and org_approved_by). Reconcile → confirmed if participant_accepted_at already set. | **Order-free:** org can Approve first or user Accept first. |
-| **Manual confirm (org, existing row)** | `rpc_match_delegate_confirm_participant` + `rpc_match_org_approve_participant` | **Organizer only** | Pending **user** participant row | Composed: delegate_confirm sets participant side, org_approve sets org side → confirmed. | Replaces deprecated rpc_match_manual_confirm. For guest use Approve + delegate_confirm_participant. |
-| **Manual confirm user (by id)** | `rpc_match_admit_user` + `rpc_match_delegate_confirm_participant` | **Organizer only** | User not yet in match (by user_id) | Composed: admit_user adds/re-entries (org_approved_at set), delegate_confirm sets participant side → confirmed. | Replaces deprecated rpc_match_manual_confirm_user. Canonical write: rpc_match_admit_user. |
-| **Delegate confirm (participant)** | `rpc_match_delegate_confirm_participant` | **User:** Non-org, InScope or MatchAssociated, ShareGroup(caller, participant). **Guest:** Any active participant (incl. organizer) | Pending **user** (invited/nominated) or **guest** participant row | Sets participant_accepted_at=now(), participant_accepted_via=delegate_manual. **Does not** set org_approved_at. Guest branch emits `match.guest_delegate_confirmed`. | Single entry point for both user and guest. User needs org Approve; guest needs org Approve. |
-
----
-
-## 4. Remove
-
-| Action | RPC | Caller | Target | Effect |
+| Action | RPC | Caller | Target | Result |
 |--------|-----|--------|--------|--------|
-| **Remove participant** | `rpc_match_remove_participant` | **Organizer only** (or policy that allows “manager”) | Any non-removed participant row | Sets removed_at, removed_by. Reconcile → status=removed, confirmed_at=NULL. |
-| **User withdraw** | `rpc_match_user_withdraw` | Participant (self) | Own row | Sets removed_at, removed_by=self. Reconcile → removed. |
+| Invite user | `rpc_match_invite_user` | organizer | registered user | invited pending row; organizer side already approved |
+| Request join | `rpc_match_request_join` | self | self | requested pending row; participant side already accepted |
+| Nominate user | `rpc_match_nominate_user` | eligible non-organizer | registered user | nominated pending row |
+| Direct-invite Contact Player | `rpc_match_nominate_guest` | organizer or eligible non-organizer | Contact Player | nominated pending Contact Player row |
 
-After remove, **re-entry** is allowed only via:
-- **User:** `rpc_match_request_join` (if in scope) or `rpc_match_invite_user` (organizer; wrapper around `rpc_match_admit_user`) or **`rpc_match_nominate_user`** (same-group non-org; re-entry supported).
-- **Guest:** No “removed” state re-use; new nominate only.
+### Contact Player Entry Rules
 
----
-
-## 5. Target RPCs (who can be invited / nominated)
-
-| RPC | Returns | Caller gate | Who is in the list |
-|-----|---------|-------------|--------------------|
-| **rpc_match_admission_targets** | (user_id, display_name, avatar_url, club_handle, source, eligible, eligible_via, sort_name) | Organizer OR (can_participants_invite + InScope/MatchAssociated) | Reentry, invite_circle, club_members, groups. API maps to (user_id, display_name) for invite/nominate UI. |
+- Contact Player enters a match through direct invite only.
+- Contact Player does not enter recruit flows.
+- Contact Player is person-specific, not broadcast-targeted.
+- Contact Player self response uses the invitation-link flow and does not require registration.
 
 ---
 
-## 6. RLS (match_participants visibility)
+## 3. Acceptance and Approval
 
-- **Organizer:** sees all rows.
-- **Self:** sees own row (user_id = auth.uid()).
-- **Others:** see a row if: status=confirmed (and caller in scope or share group with org or match-associated), **or** additional policies:
-  - Pending **invited** user, sharegroup_exists(caller, user_id), caller confirmed in match, (in scope or match-associated).
-  - Pending **nominated** user, sharegroup_exists(caller, user_id), (in scope or match-associated).
-  - Pending **guest**, caller confirmed in match, (in scope or match-associated).
+Unified invariant:
 
-So: confirmed participants see other confirmed; confirmed participants who share a group with a pending invited/nominated user see that user; confirmed see pending guests.
+**confirmed iff `participant_accepted_at IS NOT NULL` and `org_approved_at IS NOT NULL`**
+
+| Action | RPC | Authority source | Notes |
+|--------|-----|------------------|-------|
+| User self accept | `rpc_match_accept_invite` | self | participant-side confirmation |
+| Contact Player self accept | `rpc_email_invitation_accept_as_guest` | self via private invitation link | participant-side confirmation without registration |
+| Organizer approve | `rpc_match_org_approve_participant` | organizer role | organizer-side approval only |
+| Proxy confirm | `rpc_match_proxy_confirm_participant` | explicit active Match Proxy binding only | canonical proxy participant confirmation |
+
+### Retired Model
+
+The following are no longer valid participant-side authority sources:
+
+- shared group
+- shared match
+- participant status
+- contact owner status
+- organizer convenience flows that write participant-side confirmation without explicit proxy authority
+
+### Principal Retained Authority
+
+Even when an active Match Proxy exists:
+
+- the principal keeps full self-service participant-side rights
+- principal and proxy may both act
+- audit must distinguish self action vs proxy action
 
 ---
 
-## 7. Match detail change (reconfirm)
+## 4. Exit
 
-When match date / time / duration / club_id / court_ids change:
+| Action | RPC | Caller | Notes |
+|--------|-----|--------|-------|
+| Self withdraw / decline | `rpc_match_user_withdraw` | participant self | removes current participation |
+| Contact Player self decline | `rpc_email_invitation_decline_as_guest` | Contact Player self via invitation link | private-link decline without registration |
+| Organizer remove | `rpc_match_remove_participant` | organizer | organizer-side removal |
 
-- **fn_match_detail_change_reconfirm** clears, for all **confirmed** non-removed participants **except the organizer**: participant_accepted_at, participant_accepted_via, manual_confirmed_by, confirmed_at. org_approved_at **preserved**. Reconcile → status pending. Applies to **both user and guest** participants.
-
----
-
-## 8. Summary table (caller → action)
-
-| Caller | Can invite user | Can nominate user | Can request join | Can Accept | Can Approve | Can Manual confirm | Can Delegate confirm (participant) | Can Remove |
-|--------|------------------|--------------------|-------------------|------------|------------|--------------------|-----------------------------------|------------|
-| **Organizer** | ✓ (invite_user) | ✗ | ✗ | ✓ (own) | ✓ | ✓ (user row) | ✓ (guest only; user uses manual) | ✓ |
-| **Non-org, in scope or match-associated** | ✗ | ✓ (if can_participants_invite_users) | ✓ (if in scope) | ✓ (own) | ✗ | ✗ | ✓ (user: share group; guest: any) | ✗ |
-| **Participant (self)** | — | — | — | ✓ (own) | — | — | — | — | ✓ (withdraw) |
+There is no longer any special remove power derived from being the old delegate confirmer.
 
 ---
 
-## 9. Documents to update
+## 5. Group and Save Effects
 
-After this flow doc is in place, update:
+### Group inclusion
 
-1. **[PlayerHoods_v1.6.3_Consolidated_Master_Spec](../specs/PlayerHoods_v1.6.3_Consolidated_Master_Spec.md)**  
-   - Add explicit note that **nominate supports re-entry** (removed → nominated).  
-   - Optionally add a short “Entry & confirm matrix” referring to this doc.
+- Contact Player may be added to a group only as a limited group contact.
+- Group inclusion allows group members to see, save, and direct-invite that person.
+- Group inclusion does not create Match Proxy authority.
 
-2. **[00_AUTHORITATIVE_INDEX](../01_authority/00_AUTHORITATIVE_INDEX.md)**  
-   - In “Restart Doctrine”, add: **Re-entry also allowed via rpc_match_nominate_user** (non-org, same ShareGroup). So restart channels are: request_join, invite_user, **nominate_user** (for removed user).
+### Save
 
-3. **[FACTS_functions](../02_facts/FACTS_functions.md)**  
-   - For each RPC in §2–§5, ensure **Notes** mention: caller gate, target scope, re-entry yes/no, and “Order-free: org Approve and user Accept in any order” where relevant.  
-   - Add **rpc_match_nominate_guest**, **rpc_match_delegate_confirm_participant** (single entry for user + guest), **setMatchCourts** (if you document API).  
-   - **is_user_match_associated**: note “excludes removed”.
+- Save targets the person node, not another user's private contact row.
+- Save is allowed only after trusted exposure such as ownership, shared match, or explicit group inclusion.
+- Save does not expose contact details and does not create proxy authority.
 
-4. **[FACTS_tables](../02_facts/FACTS_tables.md)**  
-   - **match_participants**: confirm join_method values (invited, requested, nominated, manual, guest_add, etc.) and that confirmation is unified (participant_accepted_at + org_approved_at).  
-   - **match_participant_actions**: add action_type values used in v1.7 (e.g. nominate_guest, delegate_manual_confirm, reenter).
+---
 
-5. **This file (Match_Participation_Flows_and_Scope.md)**  
-   - Keep as the single place for “who can do what, with which scope, and re-entry rules”. Link to it from FACTS and from the Master Spec.
+## 6. Discovery
+
+Contact Players do not enter:
+
+- public player discovery
+- venue member discovery
+- club member discovery
+- default invite candidate pools outside direct-invite context
+
+Proxy binding does not change these discovery rules.
+
+---
+
+## 7. UI Consequences
+
+- Remove old "Confirm on their behalf" UI that was based on shared group / participant proximity.
+- Keep self-service accept / decline flows for both registered users and Contact Players.
+- Label Contact Player actions as direct invite, not recruit.
+- Distinguish owner, saved-by, group-known, and proxy-for relationships in the UI.
+
+---
+
+## 8. Compatibility Note
+
+Some legacy values may still remain temporarily in history rows or old audits:
+
+- `rpc_match_proxy_confirm_participant`
+- legacy `delegate_manual_confirm` history rows may remain in audits, but new proxy confirmations write `participant_accepted_via = 'proxy'`
+- `match_join_method = 'guest_add'`
+- `matches.can_participants_add_guests`
+
+These should be treated as legacy residue, not as canonical semantics.

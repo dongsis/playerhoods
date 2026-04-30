@@ -2,7 +2,7 @@
 
 > 围绕 player 的成长、连接、记忆、组织与服务生态的产品蓝图
 
-**工作基线：** 延续当前的 **Club Members / Invite Circle / Groups** 简化关系模型；**Invite Circle 为单向私有名单，不通知对方。**
+**工作基线：** 延续当前的 **Venue Members / Invite Circle / Groups** 简化关系模型；**Invite Circle 为单向私有名单，不通知对方。**
 
 ---
 
@@ -31,7 +31,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 1. **Player Journey & Player Showcase**
 2. **Play Network**
 3. **Play Memory**
-4. **Club Operations**
+4. **Venue Operations**
 5. **Service Ecosystem**
 
 ---
@@ -43,7 +43,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 - **成长记录：** 起点、里程碑、阶段总结、目标、近期练习主题。
 - **Player Showcase：** favorite player、gear、赛事足迹、照片、one-line intro。
 - **可见性分层：** `private / groups / club / public`。
-- **和约球主链路的关系：** 在 Club Members、Invite、Match、Group 场景里帮助别人理解你。
+- **和约球主链路的关系：** 在 Venue Members、Invite、Match、Group 场景里帮助别人理解你。
 
 ---
 
@@ -51,7 +51,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 
 这是平台的入口引擎，但目标不是“今天凑够人”，而是建立可持续的打球网络。
 
-- **Club Members：** 同 club 的发现池，用于找人、筛人，不等于关系。
+- **Venue Members：** 同 club 的发现池，用于找人、筛人，不等于关系。
 - **Invite Circle：** 我的单向、私有、无通知邀请候选池。
 - **Groups：** 稳定圈子，承担长期组织，而不承担轻关系起点。
 - **Match / Invite：** 真正触达发生在具体邀请时，而不是 Save 时。
@@ -69,7 +69,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 
 ---
 
-## 7. 支柱四：Club Operations
+## 7. 支柱四：Venue Operations
 
 这是平台从个人工具走向 club 基础设施的关键一层。
 
@@ -95,9 +95,9 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 
 - **User** 是根对象；一个 user 可拥有多个角色：Player、Coach、Stringer、Organizer 等。
 - **Player Profile** 承载基础身份；**Player Showcase** 承载可展示的表达内容。
-- **Club Members** 承载“同 club 发现”逻辑；**Invite Circle** 承载“我的私人邀请池”；**Groups** 承载“长期圈子”。
+- **Venue Members** 承载“同 club 发现”逻辑；**Invite Circle** 承载“我的私人邀请池”；**Groups** 承载“长期圈子”。
 - **Match** 是具体成局容器；**Play Memory** 则让 match 在赛后继续留下痕迹。
-- **Club Activities** 是面向 club 的 recurring organizer layer；**Service Ecosystem** 是围绕 player 的角色网络层。
+- **Venue Activities** 是面向 club 的 recurring organizer layer；**Service Ecosystem** 是围绕 player 的角色网络层。
 
 ---
 
@@ -105,7 +105,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 
 - **Private：** 仅自己可见；适合私人 note、个人反思、某些关系判断。
 - **Groups only：** 仅同 group 可见；适合较熟圈层中的内容。
-- **Club only：** 同 club 可见；适合 club discovery 和 club 内社交。
+- **Venue only：** 同 club 可见；适合 club discovery 和 club 内社交。
 - **Public：** 公开可见；适合用户愿意展示的公开身份与内容。
 
 **设计原则：** 不同圈层看到的不是同一份 profile 的等比缩小版，而是“同一个人，在不同边界下展示不同层次的内容”。
@@ -117,7 +117,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 当前 schema 已经具备相当多的基础骨架，可复用部分包括：
 
 - `profiles / profile_display`：基础个人身份信息。
-- `club_identities`：同 club 身份与发现池的基础。
+- `venue_identities`：同 club 身份与发现池的基础。
 - `groups / group_members`：稳定圈子模型。
 - `matches / match_participants / match_participant_actions`：组局与参与者生命周期。
 - `notifications`：通知骨架。
@@ -130,7 +130,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 
 ### P0：Play Network 核心
 - `user_invite_circle`
-- `profiles.show_in_club_member_discovery`
+- `profiles.show_in_venue_member_discovery`
 - `profiles.allow_non_group_invites`
 - `profiles.auto_add_played_users_to_invite_circle`
 
@@ -140,7 +140,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 - `match_memories` 或等价赛后记录结构
 - `played_with_summary`（可由物化视图或聚合视图实现）
 
-### P2：Club Operations
+### P2：Venue Operations
 - `club_activity_templates`
 - `club_activity_runs`
 - `club_activity_roles`
@@ -161,7 +161,7 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 - **Phase 0：** 概念冻结与数据设计
 - **Phase 1：** Play Network Core
 - **Phase 2：** Journey + Showcase + Memory
-- **Phase 3：** Club Operations
+- **Phase 3：** Venue Operations
 - **Phase 4：** Service Ecosystem
 
 ---
@@ -178,15 +178,15 @@ playerhoods.com 的长期价值，不应被定义为“一个约球工具”，�
 
 ### Phase 1：Play Network Core（必须先完成）
 
-- [ ] 完成 Club Members 搜索与筛选。
+- [ ] 完成 Venue Members 搜索与筛选。
 - [ ] 完成 Invite Circle：Save / Remove / List / Invite。
 - [ ] 补齐 `allow_non_group_invites` 与 discoverability 设置。
-- [ ] 让 Match invite 可以直接从 Club Members / Invite Circle 发起，而不是只能依赖 Group。
+- [ ] 让 Match invite 可以直接从 Venue Members / Invite Circle 发起，而不是只能依赖 Group。
 - [ ] 验证 end-to-end：发现 → 保存 → 邀请 → 接受 → 成局。
 
 Phase 1 non-group direct invite rule:
 At the DB permission layer, non-group direct invite is currently permitted when the target user has profiles.allow_non_group_invites = true.
-The DB does not currently enforce that the target must be selected via Club Members discovery or Invite Circle.
+The DB does not currently enforce that the target must be selected via Venue Members discovery or Invite Circle.
 Those are currently treated as product/UI entry paths, not DB authorization prerequisites.
 This is an intentional Phase 1 simplification and may be tightened in a later phase.
 
@@ -198,7 +198,7 @@ This is an intentional Phase 1 simplification and may be tightened in a later ph
 - [ ] 新增 played-with history；赛后自动加入 Invite Circle。
 - [ ] 在 profile / club member card / invite card 中接入展示摘要。
 
-### Phase 3：Club Operations（从个人工具走向 club 组织层）
+### Phase 3：Venue Operations（从个人工具走向 club 组织层）
 
 - [ ] 支持 recurring 活动模板。
 - [ ] 支持 mixer / shuffle / mixed doubles 等活动类型。
@@ -221,7 +221,7 @@ This is an intentional Phase 1 simplification and may be tightened in a later ph
 ### 必须先做
 - Play Network Core
 - Invite Circle
-- Club Members 搜索与筛选
+- Venue Members 搜索与筛选
 - non-group invite 权限控制
 - Match 直邀能力
 
@@ -232,7 +232,7 @@ This is an intentional Phase 1 simplification and may be tightened in a later ph
 - 自动加入 Invite Circle
 
 ### 第三批做
-- Club 活动模板与 recurring 组织
+- Venue 活动模板与 recurring 组织
 - mixer / shuffle
 - organizer / volunteer 分工
 
@@ -245,7 +245,7 @@ This is an intentional Phase 1 simplification and may be tightened in a later ph
 
 ## 16. 成功判断指标（建议）
 
-- 从 Club Members 到实际成局的转化率。
+- 从 Venue Members 到实际成局的转化率。
 - 每个活跃用户 Invite Circle 中的有效联系人数量。
 - 赛后自动沉淀后，重复共打的比例。
 - 从一次性 Match 到稳定 Group 的转化率。
@@ -260,7 +260,7 @@ This is an intentional Phase 1 simplification and may be tightened in a later ph
 
 - 用 **Play Network** 作为最先跑通的入口层。
 - 用 **Player Journey & Showcase** 和 **Play Memory** 形成平台厚度。
-- 用 **Club Operations** 提升 club 真实运营效率。
+- 用 **Venue Operations** 提升 club 真实运营效率。
 - 用 **Service Ecosystem** 扩展为本地运动角色生态，但按节奏推进。
 
 换句话说，playerhoods.com 不是从“约球工具”横向加功能，而是从“player 的运动生活”纵向长出五大支柱。

@@ -29,6 +29,8 @@ yarn.lock
 # Next.js
 # -----------------------------
 .next/
+.next-dev/
+.next-build/
 out/
 build/
 dist/
@@ -87,6 +89,11 @@ coverage/
 tmp/
 temp/
 *.tmp
+.tmp_*.sql
+.tmp_*.html
+cookies*.txt
+.tools/
+.codex-start-*.cmd
 # AI runtime files
 ai/inbox/task_for_cursor.md
 ai/inbox/task_for_chatgpt.md

@@ -1,4 +1,4 @@
-第六条基础工程线：Club & Venue Network + Go-to-Market
+第六条基础工程线：Venue & Venue Network + Go-to-Market
 
 它不是五大支柱之一，而是五大支柱落地前的底座工程。
 
@@ -40,9 +40,9 @@
 
 所以从信息架构上，未来你完全可以有：
 
-/clubs/ontario-racquet-club
+/venues/ontario-racquet-club
 
-/clubs/...
+/venues/...
 
 /venues/...
 
@@ -54,7 +54,7 @@
 
 在 club 页面下形成聚合
 
-让后续的 Club Members / Activities / Mixers / Coaches / Services 都有锚点
+让后续的 Venue Members / Activities / Mixers / Coaches / Services 都有锚点
 
 三、但页面内容要分“事实层”和“内容层”
 
@@ -92,7 +92,7 @@ map / directions
 
 也就是说：
 
-“Ontario Racquet Club”
+“Ontario Racquet Venue”
 
 地址
 
@@ -220,7 +220,7 @@ Google Place Photo（按规则显示）
 
 第一层：自己可控的主数据
 
-你自己的 clubs / venues / courts 表，存：
+你自己的 venues / venues / courts 表，存：
 
 canonical name
 
@@ -317,7 +317,7 @@ weekday morning doubles
 另外，CASL 官方也提醒，除了 consent，企业还可能同时有 PIPEDA 等个人信息处理义务。
 
 九、前期最有效的触达方式，我建议按这个顺序
-1. Club 内部试点
+1. Venue 内部试点
 
 最强。
 
@@ -355,7 +355,7 @@ stringing / pro shop 附近
 
 这是你后面服务生态线的一个天然增长点。
 
-4. Club-specific 活动页
+4. Venue-specific 活动页
 
 例如：
 
@@ -394,7 +394,7 @@ Phase A：先做一个“俱乐部试点闭环”
 
 1 个 club page
 
-Club Members / Invite Circle / Match / 活动试点
+Venue Members / Invite Circle / Match / 活动试点
 
 目标不是规模，而是：
 
@@ -461,7 +461,7 @@ Canada
 
 2. Venue Graph
 
-建 clubs / venues / courts 的基础数据库和页面模板。
+建 venues / venues / courts 的基础数据库和页面模板。
 
 3. Content Safety
 

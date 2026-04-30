@@ -4,7 +4,7 @@ export type InvitationDisplay = {
   id: string
   inviter_user_id: string
   inviter_display_name: string
-  target_email: string
+  target_email: string | null
   target_name: string | null
   related_type: string
   related_id: string

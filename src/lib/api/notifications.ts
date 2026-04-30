@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { MatchParticipant } from '@/lib/types/database'
 
 export type Notification = {
   id: string
@@ -13,12 +14,19 @@ export type Notification = {
 }
 
 export type NotificationWithActor = Notification & { actor_name?: string }
+export type NotificationParticipantSnapshot = Pick<
+  MatchParticipant,
+  'id' | 'join_method' | 'participant_accepted_at' | 'removed_by' | 'user_id' | 'removal_note'
+>
+export type NotificationWithContext = NotificationWithActor & {
+  participant_snapshot?: NotificationParticipantSnapshot
+}
 
 /** Fetch notifications for the current user, newest first. */
 export async function getNotifications(
   supabase: SupabaseClient,
   limit = 50
-): Promise<NotificationWithActor[]> {
+): Promise<NotificationWithContext[]> {
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
@@ -31,7 +39,9 @@ export async function getNotifications(
   if (rows.length === 0) return []
 
   const actorIds = [...new Set(rows.map(r => r.actor_user_id).filter(Boolean))] as string[]
+  const participantIds = [...new Set(rows.map(r => r.match_participant_id).filter(Boolean))] as string[]
   let actorMap = new Map<string, string>()
+  let participantMap = new Map<string, NotificationParticipantSnapshot>()
   if (actorIds.length > 0) {
     const { data: profiles } = await supabase
       .from('profile_display')
@@ -41,9 +51,22 @@ export async function getNotifications(
     actorMap = new Map(profilesList.map(p => [p.id, p.display_name || p.id.slice(0, 8)]))
   }
 
+  if (participantIds.length > 0) {
+    const { data: participants, error: participantsError } = await supabase
+      .from('match_participants')
+      .select('id, join_method, participant_accepted_at, removed_by, user_id, removal_note')
+      .in('id', participantIds)
+
+    if (participantsError) throw participantsError
+
+    const participantList = (participants || []) as NotificationParticipantSnapshot[]
+    participantMap = new Map(participantList.map((participant) => [participant.id, participant]))
+  }
+
   return rows.map(r => ({
     ...r,
     actor_name: r.actor_user_id ? actorMap.get(r.actor_user_id) : undefined,
+    participant_snapshot: r.match_participant_id ? participantMap.get(r.match_participant_id) : undefined,
   }))
 }
 

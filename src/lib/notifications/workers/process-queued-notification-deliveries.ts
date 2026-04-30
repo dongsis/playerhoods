@@ -1,6 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendEmail } from '@/lib/email/send'
+import { sendSms } from '@/lib/sms/send'
 import { renderInvitationEmail } from '@/lib/notifications/channels/email/render-invitation-email'
+import {
+  renderGameFormedSms,
+  renderGuestDelegateConfirmedSms,
+  renderGuestNominatedSms,
+  renderGuestOrgApprovedSms,
+  renderInvitationSms,
+} from '@/lib/notifications/channels/sms/render-notification-sms'
 import {
   guestNominatedEmail,
   guestOrgApprovedEmail,
@@ -15,6 +23,8 @@ const SITE_URL = raw && raw !== 'undefined' ? raw : 'http://localhost:3000'
 
 export type DeliveryRow = {
   id: string
+  channel: 'email' | 'sms'
+  provider: string | null
   destination: string
   payload: Record<string, unknown>
   attempt_count: number
@@ -25,7 +35,7 @@ function buildMatchInfo(payload: Record<string, unknown>): {
   gameType: string
   matchDate: string | null
   startTime: string | null
-  clubName: string | null
+  venueName: string | null
   siteUrl: string
 } {
   return {
@@ -33,12 +43,12 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     gameType: (payload.game_type as string) ?? 'Match',
     matchDate: (payload.match_date as string) ?? null,
     startTime: null,
-    clubName: (payload.club_name as string) ?? null,
+    venueName: (payload.club_name as string) ?? null,
     siteUrl: SITE_URL,
   }
 }
 
-/** Process queued email deliveries. Call after invitation create or via cron. */
+/** Process queued notification deliveries. Call after invitation create or via cron. */
 export async function processQueuedNotificationDeliveries(
   supabase: SupabaseClient,
   limit = 10
@@ -66,8 +76,9 @@ export async function processQueuedNotificationDeliveries(
       club_name?: string
     }
 
-    let subject: string
-    let html: string
+    let subject = ''
+    let html = ''
+    let smsBody = ''
 
     const templateType = payload.template_type ?? (payload.invitation_id ? 'invitation' : 'guest_nominated')
 
@@ -76,10 +87,17 @@ export async function processQueuedNotificationDeliveries(
       const matchSummary = ms
         ? { game_type: ms.game_type ?? null, match_date: ms.match_date ?? null, club_name: ms.club_name ?? null }
         : null
-      subject = "You're invited to a match"
+      const inviterDisplayName = (payload.inviter_display_name as string) ?? 'Someone'
+      subject = `${inviterDisplayName} invited you to a match`
       html = renderInvitationEmail({
-        inviterDisplayName: (payload.inviter_display_name as string) ?? 'Someone',
+        inviterDisplayName,
         targetEmail: (payload.target_email as string) ?? d.destination,
+        invitationId: (payload.invitation_id as string) ?? '',
+        matchSummary,
+        siteUrl: SITE_URL,
+      })
+      smsBody = renderInvitationSms({
+        inviterDisplayName,
         invitationId: (payload.invitation_id as string) ?? '',
         matchSummary,
         siteUrl: SITE_URL,
@@ -88,23 +106,31 @@ export async function processQueuedNotificationDeliveries(
       const m = buildMatchInfo(payload)
       subject = "You're nominated for a match"
       html = guestNominatedEmail(m, (payload.nominator_display_name as string) ?? 'Someone')
+      smsBody = renderGuestNominatedSms(m, (payload.nominator_display_name as string) ?? 'Someone')
     } else if (templateType === 'guest_org_approved') {
       const m = buildMatchInfo(payload)
-      subject = 'Match approval'
-      html = guestOrgApprovedEmail(m)
+      const inviterDisplayName = (payload.nominator_display_name as string) ?? 'Someone'
+      subject = `${inviterDisplayName} invited you to a match`
+      html = guestOrgApprovedEmail(m, inviterDisplayName)
+      smsBody = renderGuestOrgApprovedSms(m, inviterDisplayName)
     } else if (templateType === 'guest_delegate_confirmed') {
       const m = buildMatchInfo(payload)
       subject = "You're confirmed for a match"
       html = guestDelegateConfirmedEmail(m)
+      smsBody = renderGuestDelegateConfirmedSms(m)
     } else if (templateType === 'match_formed') {
       const m = buildMatchInfo(payload)
       subject = 'Game formed'
       html = gameFormedEmail(m)
+      smsBody = renderGameFormedSms(m)
     } else {
       continue
     }
 
-    const result = await sendEmail(d.destination, subject, html)
+    const result =
+      d.channel === 'sms'
+        ? await sendSms(d.destination, smsBody)
+        : await sendEmail(d.destination, subject, html)
 
     if (result.ok) {
       await supabase.rpc('rpc_update_delivery_result', {
@@ -124,4 +150,28 @@ export async function processQueuedNotificationDeliveries(
   }
 
   return { processed: deliveries.length, sent, failed }
+}
+
+export async function drainQueuedNotificationDeliveries(
+  supabase: SupabaseClient,
+  options?: { batchSize?: number; maxBatches?: number },
+): Promise<{ processed: number; sent: number; failed: number }> {
+  const batchSize = Math.max(1, options?.batchSize ?? 10)
+  const maxBatches = Math.max(1, options?.maxBatches ?? 5)
+  let processed = 0
+  let sent = 0
+  let failed = 0
+
+  for (let index = 0; index < maxBatches; index += 1) {
+    const result = await processQueuedNotificationDeliveries(supabase, batchSize)
+    processed += result.processed
+    sent += result.sent
+    failed += result.failed
+
+    if (result.processed < batchSize) {
+      break
+    }
+  }
+
+  return { processed, sent, failed }
 }

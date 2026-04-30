@@ -11,15 +11,15 @@ interface Props {
 export function MatchInbox({ items, userId }: Props) {
   if (items.length === 0) {
     return (
-      <p style={{ color: '#888', fontSize: '0.9rem', margin: '0.5rem 0' }}>
+      <div className="rounded-[24px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-5 py-6 text-[12px] font-medium text-[#94A3B8]">
         No upcoming matches or pending actions.
-      </p>
+      </div>
     )
   }
 
   return (
-    <div>
-      {items.map(item => (
+    <div className="space-y-3">
+      {items.map((item) => (
         <MatchCard key={item.match.id} item={item} userId={userId} />
       ))}
     </div>

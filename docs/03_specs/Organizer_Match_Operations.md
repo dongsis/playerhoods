@@ -1,229 +1,196 @@
-# Organizer Match 操作逻辑 — 全面梳理
+# Organizer Match Operations
 
-**状态：** 梳理文档  
-**更新：** 2026-03
+**Status:** Current spec summary  
+**Scope:** Organizer-only and organizer-led operations for active matches  
+**Last updated:** 2026-04-01
 
----
-
-## 1. 概览
-
-Organizer（组织者）是 match 的创建者，`matches.organizer_id = user_id`。Organizer 拥有 match 的最高管理权限，可执行以下操作：
-
-| 类别 | 操作 | RPC/API | 页面入口 |
-|------|------|---------|----------|
-| **创建** | 创建 match | `rpc_match_create` | `/matches/new` |
-| **编辑** | 修改时间/日期/时长 | `updateMatchDetails` (RLS) | Match 详情 `MatchEditForm` |
-| **编辑** | 修改 scope groups | `updateMatchDetails` | Match 详情 `MatchScopeGroupsForm` |
-| **编辑** | 设置场地 | `setMatchCourts` (RLS) | Match 详情 `MatchEditForm` |
-| **取消** | 取消 match | `cancelMatch` (RLS) | Dashboard `MatchesPanel` |
-| **参与者** | 邀请用户 | `rpc_match_invite_user` | Match 详情 Organizer Admin |
-| **参与者** | 提名 Contact Player | `rpc_match_nominate_guest` | Match 详情 Organizer Admin |
-| **参与者** | Approve 待审批参与者 | `rpc_match_org_approve_participant` | Match 详情 `ParticipantGroups` |
-| **参与者** | Manual Confirm 用户 | 组合：`delegate_confirm` + `org_approve`；或 `admit_user` + `delegate_confirm` | Match 详情 `ParticipantGroups` |
-| **参与者** | 移除参与者 | `rpc_match_remove_participant` | Match 详情 `ParticipantGroups` |
-| **参与者** | Invite back 已移除参与者 | `rpc_match_invite_user` | Match 详情 `ParticipantGroups` |
-| **邮件** | 发送邮件邀请 | `createMatchEmailInvitationAndSend` | Match 详情 `InviteByEmailForm` |
+This document reflects the current active model. It does not preserve removed RPC names except where needed for explicit deprecation notes.
 
 ---
 
-## 2. 关键文件索引
+## 1. Overview
 
-| 功能 | API 文件 | 页面/组件 |
-|------|----------|-----------|
-| 创建 match | `src/lib/api/matches.ts` → `createMatch` | `matches/new/page.tsx`, `CreateMatchInline` |
-| 编辑/取消/场地 | `src/lib/api/matches.ts` | `matches/[matchId]/page.tsx`, `MatchEditForm`, Dashboard |
-| 邀请/审批/移除 | `src/lib/api/matches.ts` | `ParticipantGroups`, `InviteUserForm`, `InviteGuestForm` |
-| 邮件邀请 | `matches/[matchId]/invite-actions.ts` | `InviteByEmailForm` |
+The organizer is the user where:
 
----
+- `matches.organizer_id = user_id`
 
-## 3. 创建 Match
+The organizer owns three main areas:
 
-### 3.1 RPC
-
-| RPC | 说明 |
-|-----|------|
-| `rpc_match_create(...)` | 创建 match，自动将 organizer 加入为 confirmed 参与者 |
-
-### 3.2 API
-
-```ts
-// src/lib/api/matches.ts
-createMatch(supabase, { required_count, match_date, start_time, duration_minutes, game_type,
-  club_id?, court_ids?, invitation_scope_group_ids?,
-  can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants })
-```
-
-### 3.3 页面
-
-| 页面 | 行为 |
-|------|------|
-| `/matches/new` | 表单创建 match；可同时添加 Contact Players、邀请用户 |
-| Dashboard `CreateMatchInline` | 内联创建 match |
+- match creation and editing
+- participant-side operations that require organizer approval
+- organizer-only removal and admin actions
 
 ---
 
-## 4. 编辑 Match（Organizer 专属）
+## 2. Match Creation and Editing
 
-### 4.1 数据库层
+### Create
 
-- **RLS 策略：** `matches_update_organizer` 允许 `organizer_id = auth.uid()` 时 update
-- **match_courts：** RLS 允许 organizer 对 match_courts 做 insert/delete
+- RPC: `rpc_match_create`
+- Entry points:
+  - `/matches/new`
+  - dashboard inline create flow
 
-### 4.2 API 层
+Current create behavior:
 
-| 函数 | 说明 |
-|------|------|
-| `updateMatchDetails(supabase, matchId, { match_date?, start_time?, duration_minutes?, invitation_scope_group_ids? })` | 更新 match 字段；时间变更会触发 `sendMatchTimeChangeEmails` |
-| `setMatchCourts(supabase, matchId, courtLabels[], userId)` | 替换所有场地 slot |
-| `setMatchSingleCourt(supabase, matchId, courtLabel, userId)` | 单场地快捷设置 |
+- creates the match
+- auto-adds organizer as a confirmed participant
+- uses `can_participants_invite_users = true` as the current default behavior
 
-### 4.3 页面层
+### Edit
 
-| 组件 | 行为 |
-|------|------|
-| `MatchEditForm` | 编辑日期、时间、时长、场地；`onSave` → `handleUpdateMatchDetails` |
-| `MatchScopeGroupsForm` | 编辑 invitation_scope_group_ids；`onSave` → `handleUpdateScopeGroups` |
+Organizer-controlled edit surfaces currently include:
 
-**可见性：** `isOrganizer && match.status === 'active'` 时显示。
+- date
+- start time
+- duration
+- scope groups
+- courts
 
----
+Relevant app-side actions:
 
-## 5. 取消 Match
+- `updateMatchDetails(...)`
+- `setMatchCourts(...)`
 
-### 5.1 API
+Important side effect:
 
-```ts
-cancelMatch(supabase, matchId)  // matches.status → 'cancelled'
-```
-
-RLS：`matches_update_organizer` 允许 organizer 更新。
-
-### 5.2 页面
-
-| 页面 | 行为 |
-|------|------|
-| Dashboard `MatchesPanel` | Organizer 的 match 卡片显示 Cancel 入口；`onCancelMatch` → `handleCancelMatch` |
+- changing date, time, duration, club, or courts triggers `fn_match_detail_change_reconfirm`
+- confirmed non-organizer participants are reset to pending
+- organizer approval is preserved
+- participant-side confirmation is cleared
 
 ---
 
-## 6. 参与者管理（Organizer Admin）
+## 3. Participant Operations
 
-### 6.1 邀请用户（Invite）
+### Invite a user
 
-| RPC | 说明 |
-|-----|------|
-| `rpc_match_invite_user(p_match_id, p_user_id)` | **Organizer only**。Pre-approve 用户；被邀请者只需 Accept 即可 confirmed。Target: InScope OR ShareGroup(organizer)。支持 re-entry。 |
+- RPC: `rpc_match_invite_user`
+- Current role: organizer-only thin wrapper around `rpc_match_admit_user`
 
-**API：** `inviteUserToMatch(supabase, matchId, userId)`
+Result:
 
-**页面：** Organizer Admin → `InviteUserForm`，选择 `scopeUsers` 中的用户。
+- target enters as `join_method = invited`
+- `org_approved_at` is set immediately
+- participant still must self-accept or be confirmed by an explicit Match Proxy
 
-### 6.2 提名 Contact Player
+### Direct-invite a Contact Player
 
-| RPC | 说明 |
-|-----|------|
-| `rpc_match_nominate_guest(p_match_id, p_guest_id)` | Organizer 或 MatchAssociated 可调用。Organizer 调用时：`org_approved_at` 自动设置；guest 需 delegate_confirm 才能 confirmed。 |
+- RPC: `rpc_match_nominate_guest`
 
-**API：** `nominateGuest(supabase, matchId, guestId)`
+Current behavior:
 
-**页面：** Organizer Admin → `InviteGuestForm`（从 roster 选）+ `AddGuestForm`（新建 Contact Player）。
+- organizer may direct-invite a Contact Player from roster, saved trust paths, or group-contact trust paths
+- organizer path auto-writes organizer approval
+- participant-side confirmation still remains pending until the Contact Player self-accepts or an explicit Match Proxy acts
+- if the Contact Player has email, the current flow creates an anchored email invitation
 
-**注意：** Organizer **不使用** Nominate User（`rpc_match_nominate_user`）— 那是 participant-only。Organizer 用 Invite 直接 pre-approve。
+### Approve a participant
 
-### 6.3 Approve 待审批参与者
+- RPC: `rpc_match_org_approve_participant`
 
-| RPC | 说明 |
-|-----|------|
-| `rpc_match_org_approve_participant(p_match_participant_id)` | **Organizer only**。设置 `org_approved_at`。若 `participant_accepted_at` 已存在 → reconcile → confirmed。 |
+Current behavior:
 
-**API：** `orgApproveParticipant(supabase, participantId)`
+- organizer-side approval only
+- works for both user and guest participants
+- if participant-side confirmation already exists, reconcile moves the row to confirmed
 
-**页面：** `ParticipantGroups` → 每个 pending 参与者旁的 Approve 按钮。
+### Manual confirm
 
-### 6.4 Manual Confirm（已降级为组合动作）
+The old organizer convenience model is retired.
 
-| 组合 | 说明 |
-|------|------|
-| `rpc_match_delegate_confirm_participant` + `rpc_match_org_approve_participant` | 对已有 pending user 行，organizer 一键确认。 |
-| `rpc_match_admit_user` + `rpc_match_delegate_confirm_participant` | 对尚未加入的 user，加人并确认。Organizer path in admit_user 已设 org_approved_at，故只需 delegate_confirm 补 participant 侧。 |
+Current rule:
 
-**API：** `manualConfirmParticipant(supabase, participantId)`, `manualConfirmUser(supabase, matchId, userId)` — 内部已改为组合调用。
+- organizers do not get participant-side confirmation power for another person just from organizer status
+- participant-side confirmation for another person now requires an explicit Match Proxy binding
+- legacy app-side manual-confirm helpers should fail loudly and should not be used for new flows
 
-**页面：** `ParticipantGroups` → Manual Confirm 按钮（对 pending user）。
+### Remove participant
 
-**废弃 RPC：** `rpc_match_manual_confirm`、`rpc_match_manual_confirm_user` 已 stub，raise 废弃错误。
+- RPC: `rpc_match_remove_participant`
 
-### 6.5 移除参与者
+Current canonical product interpretation:
 
-| RPC | 说明 |
-|-----|------|
-| `rpc_match_remove_participant(p_match_participant_id)` | **Organizer** 或（已确认参与者 + `can_participants_manage_participants`）。设置 removed_at；reconcile → status=removed。 |
+- organizer can remove any active participant row
+- participant-side remove exceptions may exist in specific UI/server-action guards, but the database RPC is still broader than those UI rules
 
-**API：** `removeParticipant(supabase, participantId)`
+### Invite back removed user
 
-**页面：** `ParticipantGroups` → 每个非 removed 参与者旁的 Remove 按钮。仅 Organizer 可见（v1.5 参与者不能 remove 他人）。
+There is no dedicated re-entry RPC.
 
-### 6.6 Invite back 已移除参与者
+Current organizer re-entry path for removed users:
 
-对 `status === 'removed' && user_id !== null` 的参与者，Organizer 可点击 "Invite back"，调用 `inviteUserToMatch`（即 `rpc_match_invite_user`）实现 re-entry。
+- `rpc_match_invite_user`
 
----
+Current non-organizer re-entry path for removed users:
 
-## 7. 目标列表（Organizer vs Participant）
-
-| RPC | 调用者 | 说明 |
-|-----|--------|------|
-| `rpc_match_admission_targets(p_match_id, p_search)` | Organizer **或** (can_participants_invite + InScope/MatchAssociated) | 统一目标列表：reentry, invite_circle, club_members, groups |
-| `rpc_match_invite_targets` | **Organizer only**（thin wrapper） | 保留 legacy，实际调用 admission_targets |
-| `rpc_match_nominate_targets` | **Non-organizer**（org 调用返回空） | 同上，nominate 用 |
-
-**API：** `getAdmissionTargets(supabase, matchId)` → `admissionTargetsToScopeUsers` / `admissionTargetsToContactPlayers`
+- `rpc_match_nominate_user`
 
 ---
 
-## 8. 邮件邀请
+## 4. Discovery and Target Lists
 
-| 函数 | 说明 |
-|------|------|
-| `createMatchEmailInvitationAndSend({ supabase, matchId, targetEmail, ... })` | 创建 email_invitation 记录并发送邮件。Organizer 在 Match 详情页通过 `InviteByEmailForm` 调用。 |
+The canonical target discovery RPC is:
 
----
+- `rpc_match_admission_targets`
 
-## 9. Organizer 可见性 vs 非 Organizer
+It replaces legacy target RPCs and now serves as the single read model for:
 
-| 内容 | Organizer | 非 Organizer |
-|------|-----------|--------------|
-| 参与者列表 | confirmed + pending + **removed** | confirmed + pending guests + pending invited/nominated users（用于 delegate confirm） |
-| Pending 数量 | 本地 count | 使用 match_formed view 的 pending_count |
-| Match 编辑表单 | 显示 | 不显示 |
-| Scope groups 编辑 | 显示 | 不显示 |
-| Organizer Admin 区块 | 显示 | 不显示 |
-| Remove / Invite back | 显示 | 不显示 |
-| Approve / Manual Confirm | 显示 | 不显示（participant 只有 delegate confirm） |
-| MatchActions（Accept/Withdraw/Request） | 不显示（admin 在 Organizer Admin） | 显示 |
+- organizer invite targets
+- participant nominate targets
+- Contact Player direct-invite targets
+- re-entry candidates
+
+Legacy target RPC names are removed and should not be used:
+
+- `rpc_match_invite_targets`
+- `rpc_match_nominate_targets`
 
 ---
 
-## 10. 总结表
+## 5. Organizer vs Non-Organizer Boundary
 
-| 操作 | RPC/API | 权限 | 页面 |
-|------|---------|------|------|
-| 创建 match | `rpc_match_create` | 任意登录用户 | `/matches/new`, Dashboard |
-| 编辑时间/scope/场地 | `updateMatchDetails`, `setMatchCourts` | Organizer (RLS) | Match 详情 |
-| 取消 match | `cancelMatch` | Organizer (RLS) | Dashboard |
-| 邀请用户 | `rpc_match_invite_user` | Organizer only | Organizer Admin |
-| 提名 Contact Player | `rpc_match_nominate_guest` | Organizer 或 MatchAssociated | Organizer Admin |
-| Approve | `rpc_match_org_approve_participant` | Organizer only | ParticipantGroups |
-| Manual Confirm | 组合：delegate_confirm + org_approve；或 admit_user + delegate_confirm | Organizer only | ParticipantGroups |
-| 移除参与者 | `rpc_match_remove_participant` | Organizer 或 (confirmed + can_manage) | ParticipantGroups |
-| Invite back | `rpc_match_invite_user` | Organizer only | ParticipantGroups |
-| 邮件邀请 | `createMatchEmailInvitationAndSend` | Organizer | InviteByEmailForm |
+Organizer-only match operations:
+
+- `rpc_match_create`
+- `rpc_match_invite_user`
+- `rpc_match_org_approve_participant`
+- organizer-side match editing
+- organizer-side removal
+
+Organizer-led but still participant-aware flows:
+
+- `rpc_match_proxy_confirm_participant`
+  - compatibility name only
+  - current authority comes from explicit Match Proxy binding, not organizer status
+
+Non-organizer match operations remain separate:
+
+- `rpc_match_request_join`
+- `rpc_match_nominate_user`
+- `rpc_match_accept_invite`
+- `rpc_match_user_withdraw`
 
 ---
 
-## 11. 相关文档
+## 6. Explicitly Deprecated or Removed Names
 
-- `Match_Participation_Flows_and_Scope.md` — 参与流程与 scope 定义
-- `Remove_Logic_and_Page_Management.md` — Remove/Withdraw 类操作梳理
-- [FACTS_functions](../02_facts/FACTS_functions.md) — RPC 函数索引
+These names are no longer current organizer operations:
+
+- `rpc_match_manual_confirm`
+- `rpc_match_manual_confirm_user`
+- `rpc_match_add_guest_org`
+- `rpc_match_add_guest_participant`
+- `rpc_match_invite_guest_from_roster`
+- `rpc_match_invite_targets`
+- `rpc_match_nominate_targets`
+
+Use the current admission, confirmation, and approval families instead.
+
+---
+
+## 7. Related Current References
+
+- `docs/01_authority/Match_Participant_Lifecycle_Canonical.md`
+- `docs/03_specs/Match_Participation_Flows_and_Scope.md`
+- `docs/02_facts/FACTS_functions.md`

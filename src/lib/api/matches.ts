@@ -4,28 +4,65 @@ import type {
   Match,
   MatchSummary,
   MatchCourt,
+  MatchCourtOffer,
+  MatchCourtOfferStatus,
+  MatchCourtPlanMode,
+  MatchDoublesFormat,
   MatchParticipant,
   MatchParticipantWithDetails,
   MatchParticipantAction,
+  MatchMessage,
   MatchParticipantActionWithProfile,
   MatchFormed,
+  PersonMatchProxy,
+  MatchGroupInvitation,
   ProfileDisplay,
-  Club,
+  Venue,
   Court,
   Profile,
   Guest,
 } from '@/lib/types/database'
+import { deriveMatchCourtStatus, type MatchCourtState } from '@/lib/utils/match-court'
+import { deriveMatchRosterInsight, normalizeMatchGender, type MatchRosterInsight } from '@/lib/utils/match-roster'
 
 type Client = SupabaseClient<Database>
+
+export type { MatchCourtOffer, MatchCourtOfferStatus }
+
+const MATCH_LIST_BATCH_SIZE = 80
+
+function chunkValues<T>(values: T[], size: number): T[][] {
+  if (values.length === 0) return []
+
+  const chunks: T[][] = []
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size))
+  }
+  return chunks
+}
+
+function logMatchDetailSoftFailure(matchId: string, label: string, error: unknown) {
+  console.warn(`[MatchDetail] ${label} soft-failed for match ${matchId}:`, error)
+}
+
+function logMatchListSoftFailure(label: string, error: unknown) {
+  console.warn(`[MatchList] ${label} soft-failed:`, error)
+}
 
 // ============================================================================
 // v1.4.1 enriched types
 // ============================================================================
 
-/** Participant with display_name and avatar_url resolved via club handle / profile. */
+/** Participant with display_name and avatar_url resolved via venue handle / profile. */
 export type MatchParticipantEnriched = MatchParticipant & {
   display_name: string
   avatar_url?: string | null
+  gender?: Profile['gender'] | null
+  manual_confirmed_by_name?: string | null
+  shares_group_with_viewer?: boolean
+  proxy_manageable_by_viewer?: boolean
+  saved_by_viewer?: boolean
+  contact_player_person_id?: string | null
 }
 
 /** Flattened activity row for ActivityFeed — all names resolved server-side. */
@@ -38,30 +75,61 @@ export type ActivityItem = {
   created_at: string
 }
 
+export type MatchMessageEnriched = MatchMessage & {
+  author_name: string
+  author_avatar_url: string | null
+  is_organizer_author: boolean
+}
+
 export type MatchListItem = {
   match: Match
-  clubTimezone: string | null
-  clubName: string | null
+  venueTimezone: string | null
+  venueName: string | null
+  sportName: string | null
+  courtState: MatchCourtState
   confirmedCount: number
   pendingCount: number
+  waitingCount: number
   isFormed: boolean
   participants: MatchParticipantEnriched[]
   myParticipant: MatchParticipantEnriched | null
+  rosterInsight: MatchRosterInsight
 }
 
 export type MatchDetailData = {
   match: Match
-  clubTimezone: string | null
-  clubName: string | null
+  venueTimezone: string | null
+  venueName: string | null
   participants: MatchParticipantEnriched[]
   myParticipant: MatchParticipantEnriched | null
+  myParticipantNeedsReconfirm: boolean
   isOrganizer: boolean
   confirmedCount: number
   pendingCount: number
+  waitingCount: number
   activities: ActivityItem[]
+  messages: MatchMessageEnriched[]
   organizerName: string
   scopeGroups: { id: string; name: string }[]
+  groupInvitations: MatchGroupInvite[]
+  myGroupInvites: MatchGroupInvite[]
   sportName: string  // v1.6.3
+  rosterInsight: MatchRosterInsight
+}
+
+export type MatchProxyDashboardRow = PersonMatchProxy & {
+  principal_name: string
+  principal_linked_user_id: string | null
+  proxy_name: string
+  relationship_role: 'for_me' | 'i_act_for' | 'related'
+  can_approve: boolean
+  can_decline: boolean
+  can_revoke: boolean
+}
+
+export type MatchGroupInvite = Pick<MatchGroupInvitation, 'group_id' | 'status' | 'created_at'> & {
+  group_name: string
+  member_count?: number
 }
 
 // Read operations (respect RLS)
@@ -84,7 +152,7 @@ function getDisplayName(
 ): string {
   if (guestId) {
     const guest = guestMap.get(guestId)
-    return guest ? `${guest.display_name} (Not registered)` : 'Not registered'
+    return guest?.display_name?.trim() || 'Contact Player'
   }
   if (userId) {
     const p = profileMap.get(userId)
@@ -92,6 +160,30 @@ function getDisplayName(
     return userId.slice(0, 6)
   }
   return 'Unknown'
+}
+
+async function fetchContactPlayerLookup(
+  supabase: Client,
+  guestIds: string[],
+) {
+  if (guestIds.length === 0) {
+    return new Map<string, Guest>()
+  }
+
+  const { data, error } = await supabase.rpc('rpc_contact_player_lookup', {
+    p_guest_ids: guestIds,
+  })
+  if (error) throw error
+
+  const rows = (data ?? []) as {
+    guest_id: string
+    display_name: string
+    person_id: string | null
+  }[]
+
+  return new Map(
+    rows.map((row) => [row.guest_id, { id: row.guest_id, display_name: row.display_name, person_id: row.person_id } as Guest]),
+  )
 }
 
 export async function getMatchesWithSummary(supabase: Client): Promise<MatchSummary[]> {
@@ -137,15 +229,14 @@ export async function getMatchesWithSummary(supabase: Client): Promise<MatchSumm
       ? supabase.from('profile_display').select('*').in('id', userIds)
       : Promise.resolve({ data: [], error: null }),
     guestIds.length > 0
-      ? supabase.from('guests').select('*').in('id', guestIds)
-      : Promise.resolve({ data: [], error: null }),
+      ? fetchContactPlayerLookup(supabase, guestIds)
+      : Promise.resolve(new Map<string, Guest>()),
   ])
 
   if (profilesRes.error) throw profilesRes.error
-  if (guestsRes.error) throw guestsRes.error
 
   profileMap = new Map(((profilesRes.data || []) as ProfileDisplay[]).map(p => [p.id, p]))
-  guestMap = new Map(((guestsRes.data || []) as Guest[]).map(g => [g.id, g]))
+  guestMap = guestsRes
 
   // 4. Group participants by match and compute summaries
   const participantsByMatch = new Map<string, MatchParticipant[]>()
@@ -227,14 +318,7 @@ export async function getMatchParticipants(supabase: Client, matchId: string): P
 
   let guestMap = new Map<string, Guest>()
   if (guestIds.length > 0) {
-    const { data: guestsData, error: guestsError } = await supabase
-      .from('guests')
-      .select('*')
-      .in('id', guestIds)
-
-    if (guestsError) throw guestsError
-    const guests = (guestsData || []) as Guest[]
-    guestMap = new Map(guests.map(g => [g.id, g]))
+    guestMap = await fetchContactPlayerLookup(supabase, guestIds)
   }
 
   const result: MatchParticipantWithDetails[] = participants.map(participant => ({
@@ -267,22 +351,29 @@ export async function getMyParticipation(supabase: Client, matchId: string, user
   return data as MatchParticipant | null
 }
 
-export async function getClubs(supabase: Client) {
+export async function getVenues(supabase: Client) {
   const { data, error } = await supabase
-    .from('clubs')
+    .from('venues')
     .select('*')
     .order('name', { ascending: true })
 
   if (error) throw error
-  return data as Club[]
+  return data as Venue[]
 }
 
-export async function getCourts(supabase: Client, clubId: string) {
-  const { data, error } = await supabase
+export async function getCourts(supabase: Client, venueId: string, sportId?: number) {
+  let query = supabase
     .from('courts')
     .select('*')
-    .eq('club_id', clubId)
+    .eq('venue_id', venueId)
+    .order('sport_id', { ascending: true })
     .order('court_code', { ascending: true })
+
+  if (sportId !== undefined) {
+    query = query.eq('sport_id', sportId)
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
   return data as Court[]
@@ -339,7 +430,7 @@ export async function cancelMatch(supabase: Client, matchId: string): Promise<vo
 /**
  * Update match schedule fields. Organizer only.
  * The `trg_compute_match_start_at_utc` trigger auto-recomputes start_at_utc
- * when match_date or start_time change (requires match to have a club_id).
+ * when match_date or start_time change (requires match to have a venue_id).
  */
 export async function updateMatchDetails(
   supabase: Client,
@@ -348,17 +439,161 @@ export async function updateMatchDetails(
     match_date?: string | null
     start_time?: string | null
     duration_minutes?: number | null
+    required_count?: number | null
     invitation_scope_group_ids?: string[] | null
+    invitation_scope_user_ids?: string[] | null
+    doubles_format?: MatchDoublesFormat | null
+    organizer_note?: string | null
   }
 ): Promise<void> {
   const updateData: Record<string, unknown> = {}
   if (data.match_date !== undefined) updateData.match_date = data.match_date
   if (data.start_time !== undefined) updateData.start_time = data.start_time
   if (data.duration_minutes !== undefined) updateData.duration_minutes = data.duration_minutes
+  if (data.required_count !== undefined) updateData.required_count = data.required_count
   if (data.invitation_scope_group_ids !== undefined) updateData.invitation_scope_group_ids = data.invitation_scope_group_ids
+  if (data.invitation_scope_user_ids !== undefined) updateData.invitation_scope_user_ids = data.invitation_scope_user_ids
+  if (data.doubles_format !== undefined) updateData.doubles_format = data.doubles_format
+  if (data.organizer_note !== undefined) updateData.organizer_note = data.organizer_note
   if (Object.keys(updateData).length === 0) return
   const { error } = await supabase.from('matches').update(updateData).eq('id', matchId)
   if (error) throw error
+}
+
+export async function getMatchCourtOffers(supabase: Client, matchId: string) {
+  const { data, error } = await supabase
+    .from('match_court_offers')
+    .select('*')
+    .eq('match_id', matchId)
+    .neq('status', 'released')
+    .order('updated_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as MatchCourtOffer[]
+}
+
+export async function submitMatchCourtOffer(
+  supabase: Client,
+  matchId: string,
+  courtLabel: string,
+  note?: string | null,
+) {
+  const { data, error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_court_submit_offer',
+      args: { p_match_id: string; p_court_label: string; p_note: string | null }
+    ) => Promise<{ data: MatchCourtOffer | null; error: Error | null }>
+  }).rpc('rpc_match_court_submit_offer', {
+    p_match_id: matchId,
+    p_court_label: courtLabel,
+    p_note: note ?? null,
+  })
+
+  if (error) throw error
+  return data as MatchCourtOffer
+}
+
+export async function updateMatchCourtOffer(
+  supabase: Client,
+  offerId: string,
+  data: {
+    court_label?: string
+    note?: string | null
+    status?: MatchCourtOfferStatus
+  },
+) {
+  const updateData: Record<string, unknown> = {}
+  if (data.court_label !== undefined) updateData.court_label = data.court_label.trim()
+  if (data.note !== undefined) updateData.note = data.note?.trim() || null
+  if (data.status !== undefined) updateData.status = data.status
+
+  const { data: updated, error } = await supabase
+    .from('match_court_offers')
+    .update(updateData)
+    .eq('id', offerId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return updated as MatchCourtOffer
+}
+
+export async function releaseMatchCourtOffer(supabase: Client, offerId: string) {
+  return updateMatchCourtOffer(supabase, offerId, { status: 'released' })
+}
+
+export async function selectMatchCourtOffer(supabase: Client, matchId: string, offerId: string) {
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_court_select_offer',
+      args: { p_match_id: string; p_offer_id: string }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_court_select_offer', {
+    p_match_id: matchId,
+    p_offer_id: offerId,
+  })
+  if (error) throw error
+}
+
+export async function sendMatchMessage(
+  supabase: Client,
+  matchId: string,
+  authorUserId: string,
+  body: string,
+): Promise<MatchMessage> {
+  const trimmedBody = body.trim()
+  if (!trimmedBody) {
+    throw new Error('message_body_required')
+  }
+
+  const { data, error } = await supabase
+    .from('match_messages')
+    .insert({
+      match_id: matchId,
+      author_user_id: authorUserId,
+      body: trimmedBody,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as MatchMessage
+}
+
+export async function updateMatchCourtPlan(
+  supabase: Client,
+  matchId: string,
+  userId: string,
+  data: {
+    court_plan_mode: MatchCourtPlanMode
+    court_note?: string | null
+    final_court_label?: string | null
+    court_labels?: string[] | null
+  },
+): Promise<void> {
+  const normalizedCourtLabels =
+    data.court_plan_mode === 'secured'
+      ? (data.court_labels ?? [])
+          .map((label) => label?.trim())
+          .filter((label): label is string => Boolean(label))
+      : []
+  const finalCourtLabel =
+    data.court_plan_mode === 'secured'
+      ? normalizedCourtLabels[0] ?? (data.final_court_label?.trim() || null)
+      : null
+
+  const updateData: Record<string, unknown> = {
+    court_plan_mode: data.court_plan_mode,
+    court_note: data.court_note?.trim() || null,
+    final_court_label: finalCourtLabel,
+    finalized_by_user_id: finalCourtLabel || data.court_plan_mode === 'secured' ? userId : null,
+    finalized_at: finalCourtLabel || data.court_plan_mode === 'secured' ? new Date().toISOString() : null,
+  }
+
+  const { error } = await supabase.from('matches').update(updateData).eq('id', matchId)
+  if (error) throw error
+
+  await setMatchCourts(supabase, matchId, normalizedCourtLabels.length > 0 ? normalizedCourtLabels : (finalCourtLabel ? [finalCourtLabel] : []), userId)
 }
 
 /**
@@ -407,6 +642,27 @@ export async function setMatchCourts(
 // v1.3 Write operations (via RPC only)
 // ============================================================================
 
+async function rebalanceMatchRoster(supabase: Client, matchId: string): Promise<void> {
+  const { error } = await (supabase as Client & {
+    rpc: (fn: 'rpc_match_rebalance_roster', args: { p_match_id: string }) => Promise<{ error: { message?: string } | null }>
+  }).rpc('rpc_match_rebalance_roster', { p_match_id: matchId })
+  if (error) throw error
+}
+
+export async function rebalanceMatchRosterAfterEdit(supabase: Client, matchId: string): Promise<void> {
+  await rebalanceMatchRoster(supabase, matchId)
+}
+
+async function getParticipantMatchId(supabase: Client, participantId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('match_participants')
+    .select('match_id')
+    .eq('id', participantId)
+    .single()
+  if (error) throw error
+  return (data as { match_id: string }).match_id
+}
+
 /** v1.5: Request to join a match. Requester must be in scope groups. Empty scope → rejected. */
 export async function requestJoinMatch(supabase: Client, matchId: string) {
   const { error } = await supabase.rpc('rpc_match_request_join', { p_match_id: matchId })
@@ -445,6 +701,7 @@ export async function nominateUser(supabase: Client, matchId: string, userId: st
 export async function acceptMatchInvite(supabase: Client, matchId: string) {
   const { error } = await supabase.rpc('rpc_match_accept_invite', { p_match_id: matchId })
   if (error) throw error
+  await rebalanceMatchRoster(supabase, matchId)
 }
 
 /** v1.5: ORG approves a pending participant. Writes org_approved_at. */
@@ -453,46 +710,84 @@ export async function orgApproveParticipant(supabase: Client, participantId: str
     p_match_participant_id: participantId,
   })
   if (error) throw error
+  await rebalanceMatchRoster(supabase, await getParticipantMatchId(supabase, participantId))
 }
 
-/**
- * ORG add+confirm user by id. Composed: admit_user + delegate_confirm.
- * Organizer path in rpc_match_admit_user already sets org_approved_at, so only delegateConfirmParticipant needed after admit.
- * Replaces deprecated rpc_match_manual_confirm_user.
- */
+/** Legacy helper retained only to fail loudly after manual-confirm retirement. */
 export async function manualConfirmUser(supabase: Client, matchId: string, userId: string) {
-  const participant = await admitUserToMatch(supabase, matchId, userId)
-  await delegateConfirmParticipant(supabase, participant.id)
+  void supabase
+  void matchId
+  void userId
+  throw new Error('manual_confirm_retired_use_self_or_match_proxy')
 }
 
-/**
- * ORG manually confirms an existing pending participant. Composed: delegate_confirm + org_approve.
- * Replaces deprecated rpc_match_manual_confirm.
- */
+/** Legacy helper retained only to fail loudly after manual-confirm retirement. */
 export async function manualConfirmParticipant(supabase: Client, participantId: string, _note?: string) {
-  await delegateConfirmParticipant(supabase, participantId)
-  await orgApproveParticipant(supabase, participantId)
+  void supabase
+  void participantId
+  throw new Error('manual_confirm_retired_use_self_or_match_proxy')
 }
 
 /** v1.5: User withdraws (decline invite or leave). Sets removed_at. */
-export async function userWithdraw(supabase: Client, matchId: string) {
-  const { error } = await supabase.rpc('rpc_match_user_withdraw', { p_match_id: matchId })
+export async function userWithdraw(supabase: Client, matchId: string, note?: string | null) {
+  const trimmedNote = note?.trim() ? note.trim() : null
+  const { error } = trimmedNote
+    ? await (supabase as Client & {
+        rpc: (
+          fn: 'rpc_match_user_withdraw',
+          args: { p_match_id: string; p_note?: string | null }
+        ) => Promise<{ error: Error | null }>
+      }).rpc('rpc_match_user_withdraw', {
+        p_match_id: matchId,
+        p_note: trimmedNote,
+      })
+    : await supabase.rpc('rpc_match_user_withdraw', {
+        p_match_id: matchId,
+      })
+
+  if (error && trimmedNote && isMissingNoteRpcError(error)) {
+    const { error: fallbackError } = await supabase.rpc('rpc_match_user_withdraw', {
+      p_match_id: matchId,
+    })
+    if (fallbackError) throw fallbackError
+    return
+  }
+
   if (error) throw error
 }
 
 /** v1.5: ORG/manager removes participant. Sets removed_at. */
-export async function removeParticipant(supabase: Client, participantId: string) {
-  const { error } = await supabase.rpc('rpc_match_remove_participant', {
+export async function removeParticipant(
+  supabase: Client,
+  participantId: string,
+  note?: string | null,
+) {
+  const trimmedNote = note?.trim() ? note.trim() : null
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_remove_participant',
+      args: { p_match_participant_id: string; p_note?: string | null }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_remove_participant', {
     p_match_participant_id: participantId,
+    p_note: trimmedNote,
   })
+
+  if (error && isMissingRemoveNoteRpcError(error)) {
+    const { error: fallbackError } = await supabase.rpc('rpc_match_remove_participant', {
+      p_match_participant_id: participantId,
+    })
+    if (fallbackError) throw fallbackError
+    return
+  }
+
   if (error) throw error
 }
 
-/** v1.5: ORG adds guest (join_method=manual, confirmed immediately). */
 // Deprecated addGuestOrg/addGuestParticipant paths have been replaced by the
-// unified nominate-guest model. Use rpc_match_nominate_guest + rpc_match_delegate_confirm_participant.
+// direct-invite Contact Player model.
 
-/** Nominate an existing Contact Player (guest) into a match. */
+/** Direct-invite an existing Contact Player into a match. */
 export async function nominateGuest(
   supabase: Client,
   matchId: string,
@@ -505,15 +800,196 @@ export async function nominateGuest(
   if (error) throw error
 }
 
-/** v1.7: Delegate-confirm an existing pending participant (user or guest). Sets participant_accepted_at. */
-export async function delegateConfirmParticipant(
+/** Canonical Match Proxy confirm. Current authority source must be an explicit Match Proxy binding. */
+export async function proxyConfirmParticipant(
   supabase: Client,
   matchParticipantId: string,
 ) {
-  const { error } = await supabase.rpc('rpc_match_delegate_confirm_participant', {
+  const { error } = await supabase.rpc('rpc_match_proxy_confirm_participant', {
     p_match_participant_id: matchParticipantId,
   })
   if (error) throw error
+  await rebalanceMatchRoster(supabase, await getParticipantMatchId(supabase, matchParticipantId))
+}
+
+export async function proxyDeclineParticipant(
+  supabase: Client,
+  matchParticipantId: string,
+  note?: string | null,
+) {
+  const trimmedNote = note?.trim() ? note.trim() : null
+  const { error } = trimmedNote
+    ? await (supabase as Client & {
+        rpc: (
+          fn: 'rpc_match_proxy_decline_participant',
+          args: { p_match_participant_id: string; p_note?: string | null }
+        ) => Promise<{ error: Error | null }>
+      }).rpc('rpc_match_proxy_decline_participant', {
+        p_match_participant_id: matchParticipantId,
+        p_note: trimmedNote,
+      })
+    : await supabase.rpc('rpc_match_proxy_decline_participant', {
+        p_match_participant_id: matchParticipantId,
+      })
+
+  if (error && trimmedNote && isMissingNoteRpcError(error)) {
+    const { error: fallbackError } = await supabase.rpc('rpc_match_proxy_decline_participant', {
+      p_match_participant_id: matchParticipantId,
+    })
+    if (fallbackError) throw fallbackError
+    return
+  }
+
+  if (error) throw error
+}
+
+export async function proxyWithdrawParticipant(
+  supabase: Client,
+  matchParticipantId: string,
+  note?: string | null,
+) {
+  const trimmedNote = note?.trim() ? note.trim() : null
+  const { error } = trimmedNote
+    ? await (supabase as Client & {
+        rpc: (
+          fn: 'rpc_match_proxy_withdraw_participant',
+          args: { p_match_participant_id: string; p_note?: string | null }
+        ) => Promise<{ error: Error | null }>
+      }).rpc('rpc_match_proxy_withdraw_participant', {
+        p_match_participant_id: matchParticipantId,
+        p_note: trimmedNote,
+      })
+    : await supabase.rpc('rpc_match_proxy_withdraw_participant', {
+        p_match_participant_id: matchParticipantId,
+      })
+
+  if (error && trimmedNote && isMissingNoteRpcError(error)) {
+    const { error: fallbackError } = await supabase.rpc('rpc_match_proxy_withdraw_participant', {
+      p_match_participant_id: matchParticipantId,
+    })
+    if (fallbackError) throw fallbackError
+    return
+  }
+
+  if (error) throw error
+}
+
+function isMissingNoteRpcError(error: Error) {
+  return error.message.includes('Could not find the function public.rpc_match_user_withdraw(p_match_id, p_note)')
+    || error.message.includes('Could not find the function public.rpc_match_proxy_decline_participant(p_match_participant_id, p_note)')
+    || error.message.includes('Could not find the function public.rpc_match_proxy_withdraw_participant(p_match_participant_id, p_note)')
+}
+
+function isMissingRemoveNoteRpcError(error: Error) {
+  return error.message.includes('Could not find the function public.rpc_match_remove_participant(p_match_participant_id, p_note)')
+    || error.message.includes('Could not choose the best candidate function between: public.rpc_match_remove_participant(p_match_participant_id => uuid), public.rpc_match_remove_participant(p_match_participant_id => uuid, p_note => text)')
+}
+
+export async function requestMatchProxyBindingSelf(
+  supabase: Client,
+  proxyUserId: string,
+) {
+  const { data, error } = await supabase.rpc('rpc_match_proxy_request_self', {
+    p_proxy_user_id: proxyUserId,
+  })
+  if (error) throw error
+  return data as PersonMatchProxy
+}
+
+export async function revokeMatchProxyBindingSelf(
+  supabase: Client,
+  bindingId: string,
+) {
+  const { data, error } = await supabase.rpc('rpc_match_proxy_revoke_self', {
+    p_binding_id: bindingId,
+  })
+  if (error) throw error
+  return data as PersonMatchProxy
+}
+
+export async function getMatchProxyDashboard(supabase: Client): Promise<MatchProxyDashboardRow[]> {
+  const { data, error } = await supabase.rpc('rpc_match_proxy_dashboard')
+  if (error) throw error
+  return (data ?? []) as MatchProxyDashboardRow[]
+}
+
+export async function approveMatchProxyBinding(supabase: Client, bindingId: string) {
+  const { data, error } = await supabase.rpc('rpc_match_proxy_approve_binding', {
+    p_binding_id: bindingId,
+  })
+  if (error) throw error
+  return data as PersonMatchProxy
+}
+
+export async function declineMatchProxyBinding(supabase: Client, bindingId: string) {
+  const { data, error } = await supabase.rpc('rpc_match_proxy_decline_binding', {
+    p_binding_id: bindingId,
+  })
+  if (error) throw error
+  return data as PersonMatchProxy
+}
+
+export async function requestMatchProxyBindingForContactPlayer(
+  supabase: Client,
+  guestId: string,
+) {
+  const { data, error } = await supabase.rpc('rpc_match_proxy_request_contact_player', {
+    p_guest_id: guestId,
+  })
+  if (error) throw error
+  return data as PersonMatchProxy
+}
+
+export async function inviteGroupToMatch(supabase: Client, matchId: string, groupId: string): Promise<MatchGroupInvite | null> {
+  const { data, error } = await supabase.rpc('rpc_match_invite_group', {
+    p_match_id: matchId,
+    p_group_id: groupId,
+  })
+  if (error) throw error
+  return ((data ?? [])[0] ?? null) as MatchGroupInvite | null
+}
+
+export async function revokeGroupInvite(supabase: Client, matchId: string, groupId: string): Promise<MatchGroupInvite | null> {
+  const { data, error } = await supabase.rpc('rpc_match_revoke_group_invite', {
+    p_match_id: matchId,
+    p_group_id: groupId,
+  })
+  if (error) throw error
+  return ((data ?? [])[0] ?? null) as MatchGroupInvite | null
+}
+
+export async function getMatchGroupInvitations(supabase: Client, matchId: string): Promise<MatchGroupInvite[]> {
+  const { data, error } = await supabase.rpc('rpc_match_group_invitations', {
+    p_match_id: matchId,
+  })
+  if (error) throw error
+  return (data ?? []) as MatchGroupInvite[]
+}
+
+export async function getMyMatchGroupInvites(supabase: Client, matchId: string): Promise<MatchGroupInvite[]> {
+  const { data, error } = await supabase.rpc('rpc_match_my_group_invites', {
+    p_match_id: matchId,
+  })
+  if (error) throw error
+  return (data ?? []) as MatchGroupInvite[]
+}
+
+export async function acceptGroupMatchInvite(supabase: Client, matchId: string) {
+  const { error } = await supabase.rpc('rpc_match_accept_group_invite', {
+    p_match_id: matchId,
+  })
+  if (error) throw error
+}
+
+export async function getProxyManageableParticipantIds(
+  supabase: Client,
+  matchId: string,
+) {
+  const { data, error } = await supabase.rpc('rpc_match_proxy_manageable_participants', {
+    p_match_id: matchId,
+  })
+  if (error) throw error
+  return new Set(((data ?? []) as { match_participant_id: string }[]).map((row) => row.match_participant_id))
 }
 
 /** Fetch all action logs for a match, grouped by participant. */
@@ -564,13 +1040,22 @@ export async function createMatch(
     start_time?: string
     duration_minutes?: number
     game_type?: string
-    club_id?: string
+    venue_id?: string
     court_slots?: { court_label: string }[]
     invitation_scope_group_ids?: string[]
+    invitation_scope_user_ids?: string[]
     can_participants_invite_users?: boolean
-    can_participants_add_guests?: boolean
     can_participants_manage_participants?: boolean
     sport_id?: number  // v1.6.3: rpc_match_create doesn't accept p_sport_id; we update after create
+    court_plan_mode?: MatchCourtPlanMode
+    court_note?: string | null
+    required_court_count?: number
+    final_court_label?: string | null
+    court_labels?: string[] | null
+    doubles_format?: MatchDoublesFormat | null
+    organizer_note?: string | null
+    recurring_series_id?: string | null
+    recurring_instance_index?: number | null
   }
 ) {
   // Only pass explicitly-set values; omitted args use RPC/DB defaults as single source of truth
@@ -580,10 +1065,14 @@ export async function createMatch(
   if (data.match_date) args.p_match_date = data.match_date
   if (data.start_time) args.p_start_time = data.start_time
   if (data.duration_minutes != null) args.p_duration_minutes = data.duration_minutes
-  if (data.club_id) args.p_club_id = data.club_id
+  if (data.venue_id) args.p_venue_id = data.venue_id
   if (data.invitation_scope_group_ids?.length) args.p_invitation_scope_group_ids = data.invitation_scope_group_ids
+  // Always pass the direct-user scope when this caller knows about it so PostgREST
+  // resolves the newer rpc_match_create signature instead of the legacy overload.
+  if (Object.prototype.hasOwnProperty.call(data, 'invitation_scope_user_ids')) {
+    args.p_invitation_scope_user_ids = data.invitation_scope_user_ids ?? []
+  }
   if (data.can_participants_invite_users != null) args.p_can_participants_invite_users = data.can_participants_invite_users
-  if (data.can_participants_add_guests != null) args.p_can_participants_add_guests = data.can_participants_add_guests
   if (data.can_participants_manage_participants != null) args.p_can_participants_manage_participants = data.can_participants_manage_participants
 
   const { data: match, error } = await supabase.rpc('rpc_match_create', args)
@@ -591,9 +1080,31 @@ export async function createMatch(
   if (error) throw error
   const created = match as Match
 
+  // The latest request-scope overload of rpc_match_create currently inserts the
+  // organizer participant without reconciling status. Reconcile it here so the
+  // organizer lands as confirmed immediately after creation.
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    const { data: organizerParticipant, error: organizerParticipantError } = await supabase
+      .from('match_participants')
+      .select('id')
+      .eq('match_id', created.id)
+      .eq('user_id', user.id)
+      .is('removed_at', null)
+      .maybeSingle()
+    if (organizerParticipantError) throw organizerParticipantError
+    if (organizerParticipant?.id) {
+      const { error: reconcileError } = await (supabase as Client & {
+        rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: Error | null }>
+      }).rpc('match_participant_reconcile_status', {
+        p_mp_id: organizerParticipant.id,
+      })
+      if (reconcileError) throw reconcileError
+    }
+  }
+
   // Insert court slots into match_courts table
   if (data.court_slots?.length) {
-    const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       const rows = data.court_slots.map((slot, i) => ({
         match_id: created.id,
@@ -618,6 +1129,66 @@ export async function createMatch(
     created.sport_id = data.sport_id
   }
 
+  if (data.doubles_format !== undefined) {
+    const { error: doublesFormatError } = await supabase
+      .from('matches')
+      .update({ doubles_format: data.doubles_format })
+      .eq('id', created.id)
+    if (doublesFormatError) throw doublesFormatError
+    created.doubles_format = data.doubles_format
+  }
+
+  if (data.organizer_note !== undefined) {
+    const organizerNote = data.organizer_note?.trim() || null
+    const { error: organizerNoteError } = await supabase
+      .from('matches')
+      .update({ organizer_note: organizerNote })
+      .eq('id', created.id)
+    if (organizerNoteError) throw organizerNoteError
+    created.organizer_note = organizerNote
+  }
+
+  if (data.required_court_count !== undefined) {
+    const requiredCourtCount = Math.min(6, Math.max(1, data.required_court_count))
+    const { error: requiredCourtCountError } = await supabase
+      .from('matches')
+      .update({ required_court_count: requiredCourtCount })
+      .eq('id', created.id)
+    if (requiredCourtCountError) throw requiredCourtCountError
+    created.required_court_count = requiredCourtCount
+  }
+
+  if (data.recurring_series_id !== undefined || data.recurring_instance_index !== undefined) {
+    const { error: recurringError } = await supabase
+      .from('matches')
+      .update({
+        recurring_series_id: data.recurring_series_id ?? null,
+        recurring_instance_index: data.recurring_instance_index ?? null,
+      })
+      .eq('id', created.id)
+    if (recurringError) throw recurringError
+    created.recurring_series_id = data.recurring_series_id ?? null
+    created.recurring_instance_index = data.recurring_instance_index ?? null
+  }
+
+  if (data.court_plan_mode) {
+    if (user) {
+      await updateMatchCourtPlan(supabase, created.id, user.id, {
+        court_plan_mode: data.court_plan_mode,
+        court_note: data.court_note ?? null,
+        final_court_label: data.final_court_label ?? null,
+        court_labels: data.court_labels ?? data.court_slots?.map((slot) => slot.court_label) ?? null,
+      })
+      created.court_plan_mode = data.court_plan_mode
+      created.court_note = data.court_note ?? null
+      created.final_court_label = data.court_plan_mode === 'secured'
+        ? ((data.court_labels ?? data.court_slots?.map((slot) => slot.court_label) ?? []).find((label) => label?.trim())?.trim() || (data.final_court_label?.trim() || null))
+        : null
+      created.finalized_by_user_id = data.court_plan_mode === 'secured' ? user.id : null
+      created.finalized_at = data.court_plan_mode === 'secured' ? new Date().toISOString() : null
+    }
+  }
+
   return created
 }
 
@@ -625,45 +1196,63 @@ export async function createMatch(
 // v1.4.1 enriched data loaders
 // ============================================================================
 
-/** Builds identity map: `${clubId}:${userId}` → club_handle */
-async function fetchIdentityMap(
+async function fetchSharedGroupMap(
   supabase: Client,
-  clubIds: string[],
-  userIds: string[],
-): Promise<Map<string, string>> {
-  if (clubIds.length === 0 || userIds.length === 0) return new Map()
-  const { data } = await supabase
-    .from('club_identities')
-    .select('club_id, user_id, club_handle')
-    .in('club_id', clubIds)
-    .in('user_id', userIds)
-  return new Map(
-    ((data ?? []) as { club_id: string; user_id: string; club_handle: string }[])
-      .map(i => [`${i.club_id}:${i.user_id}`, i.club_handle])
+  viewerUserId: string | null,
+  targetUserIds: string[],
+): Promise<Map<string, boolean>> {
+  const result = new Map<string, boolean>()
+  const uniqueTargetUserIds = Array.from(new Set(targetUserIds.filter(Boolean)))
+
+  if (!viewerUserId || uniqueTargetUserIds.length === 0) {
+    return result
+  }
+
+  for (const userId of uniqueTargetUserIds) {
+    if (userId === viewerUserId) {
+      result.set(userId, true)
+    }
+  }
+
+  const queryUserIds = Array.from(new Set([viewerUserId, ...uniqueTargetUserIds]))
+  const { data, error } = await supabase
+    .from('group_members')
+    .select('group_id, user_id')
+    .in('user_id', queryUserIds)
+    .eq('status', 'active')
+
+  if (error) throw error
+
+  const viewerGroupIds = new Set(
+    ((data ?? []) as { group_id: string; user_id: string }[])
+      .filter((row) => row.user_id === viewerUserId)
+      .map((row) => row.group_id),
   )
+
+  for (const row of (data ?? []) as { group_id: string; user_id: string }[]) {
+    if (row.user_id !== viewerUserId && viewerGroupIds.has(row.group_id)) {
+      result.set(row.user_id, true)
+    }
+  }
+
+  return result
 }
 
 function resolveNameFromMaps(
   userId: string | null,
   guestId: string | null,
-  clubId: string | null,
-  identityMap: Map<string, string>,
   profileMap: Map<string, string>,
   guestMap: Map<string, string>,
 ): string {
-  if (guestId) return `${guestMap.get(guestId) ?? 'Not registered'} (Not registered)`
+  if (guestId) return guestMap.get(guestId)?.trim() || 'Contact Player'
   if (!userId) return 'Unknown'
-  if (clubId) {
-    const handle = identityMap.get(`${clubId}:${userId}`)
-    if (handle) return handle
-  }
   return profileMap.get(userId) ?? 'Unknown'
 }
 
 /**
  * Fetch all visible matches for the list page, enriched with:
- * - club timezone (for time formatting)
- * - per-participant display names (club handle preferred, profile fallback)
+ * - venue timezone (for time formatting)
+ * - per-participant display names (venue handle preferred, profile fallback)
  * - confirmed/pending counts
  * - caller's own participant row
  */
@@ -671,46 +1260,90 @@ export async function getMatchListData(
   supabase: Client,
   userId: string | null,
 ): Promise<MatchListItem[]> {
-  const matchesRes = await supabase
-    .from('matches')
-    .select('*')
-    .neq('status', 'cancelled')
-    .order('start_at_utc', { ascending: true })
+  const matchesRes = userId
+    ? await (supabase as Client & {
+        rpc: (
+          fn: 'rpc_my_match_list_v2',
+          args?: Record<string, never>
+        ) => Promise<{ data: Match[] | null; error: Error | null }>
+      }).rpc('rpc_my_match_list_v2')
+    : await supabase
+        .from('matches')
+        .select('*')
+        .order('start_at_utc', { ascending: true })
   if (matchesRes.error) throw matchesRes.error
 
   const matches = matchesRes.data as Match[]
   if (matches.length === 0) return []
 
   const matchIds = matches.map(m => m.id)
-  const clubIds = [...new Set(matches.filter(m => m.club_id).map(m => m.club_id as string))]
+  const matchIdChunks = chunkValues(matchIds, MATCH_LIST_BATCH_SIZE)
+  const venueIds = [...new Set(matches.filter(m => m.venue_id).map(m => m.venue_id as string))]
+  const sportIds = [...new Set(matches.map(m => m.sport_id).filter((id): id is number => id != null))]
 
-  const [participantsRes, clubsRes] = await Promise.all([
-    supabase.from('match_participants').select('*').in('match_id', matchIds),
-    clubIds.length > 0
-      ? supabase.from('clubs').select('id, name, timezone').in('id', clubIds)
+  const [participantChunkResults, venuesRes, sportsRes, formedChunkResults] = await Promise.all([
+    Promise.all(
+      matchIdChunks.map((chunk) =>
+        supabase.from('match_participants').select('*').in('match_id', chunk),
+      ),
+    ),
+    venueIds.length > 0
+      ? supabase.from('venues').select('id, name, timezone').in('id', venueIds)
       : Promise.resolve({ data: [], error: null }),
+    sportIds.length > 0
+      ? supabase.from('sports').select('id, display_name').in('id', sportIds)
+      : Promise.resolve({ data: [], error: null }),
+    Promise.all(
+      matchIdChunks.map((chunk) =>
+        supabase.from('match_formed').select('*').in('match_id', chunk),
+      ),
+    ),
   ])
-  if (participantsRes.error) throw participantsRes.error
-  if (clubsRes.error) throw clubsRes.error
+  const participantsError = participantChunkResults.find((result) => result.error)?.error ?? null
+  if (participantsError) throw participantsError
+  if (venuesRes.error) throw venuesRes.error
+  if (sportsRes.error) throw sportsRes.error
+  const formedError = formedChunkResults.find((result) => result.error)?.error ?? null
+  if (formedError) {
+    logMatchListSoftFailure('match_formed', formedError)
+  }
 
-  const allParticipants = (participantsRes.data ?? []) as MatchParticipant[]
-  const clubMap = new Map(
-    ((clubsRes.data ?? []) as { id: string; name: string; timezone: string }[])
-      .map(c => [c.id, c])
+  const allParticipants = participantChunkResults.flatMap(
+    (result) => ((result.data ?? []) as MatchParticipant[]),
+  )
+  const formedMap = new Map(
+    formedChunkResults.flatMap((result) => ((result.data ?? []) as MatchFormed[])).map((row) => [row.match_id, row]),
+  )
+  const venueMap = new Map(
+    ((venuesRes.data ?? []) as { id: string; name: string; timezone: string }[])
+      .map(venue => [venue.id, venue])
+  )
+  const sportMap = new Map(
+    ((sportsRes.data ?? []) as { id: number; display_name: string }[])
+      .map(sport => [sport.id, sport.display_name])
   )
 
-  const userIds = [...new Set(allParticipants.filter(p => p.user_id).map(p => p.user_id as string))]
+  const userIds = [...new Set([
+    ...allParticipants.filter(p => p.user_id).map(p => p.user_id as string),
+    ...allParticipants.filter(p => p.manual_confirmed_by).map(p => p.manual_confirmed_by as string),
+  ])]
   const guestIds = [...new Set(allParticipants.filter(p => p.guest_id).map(p => p.guest_id as string))]
   const guestParticipantIds = allParticipants.filter(p => p.guest_id).map(p => p.id)
 
-  const [profilesRes, identityMap, guestsRes, identityLinksRes] = await Promise.all([
+  const [profilesRes, guestsRes, identityLinksRes] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('profile_display').select('*').in('id', userIds)
-      : Promise.resolve({ data: [] }),
-    fetchIdentityMap(supabase, clubIds, userIds),
+      ? supabase.from('profiles').select('id, display_name, avatar_url, gender').in('id', userIds)
+      : Promise.resolve({ data: [], error: null }),
     guestIds.length > 0
-      ? supabase.from('guests').select('id, display_name').in('id', guestIds)
-      : Promise.resolve({ data: [] }),
+      ? (async () => {
+          try {
+            return await fetchContactPlayerLookup(supabase, guestIds)
+          } catch (error) {
+            logMatchListSoftFailure('contact_player_lookup', error)
+            return new Map<string, Guest>()
+          }
+        })()
+      : Promise.resolve(new Map<string, Guest>()),
     userId && guestParticipantIds.length > 0
       ? (async () => {
           const r = await supabase.from('identity_links').select('linked_id, user_id').eq('user_id', userId).eq('linked_type', 'guest_participant').in('linked_id', guestParticipantIds)
@@ -718,16 +1351,17 @@ export async function getMatchListData(
         })()
       : Promise.resolve({ data: [] }),
   ])
+  if (profilesRes.error) {
+    logMatchListSoftFailure('profiles', profilesRes.error)
+  }
 
   const profileDisplayMap = new Map(
-    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p])
+    (((profilesRes.error ? [] : (profilesRes.data ?? []))) as Array<Pick<Profile, 'id' | 'display_name' | 'avatar_url' | 'gender'>>).map(p => [p.id, p]),
   )
   const profileMap = new Map(
-    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name])
+    (((profilesRes.error ? [] : (profilesRes.data ?? []))) as Array<Pick<Profile, 'id' | 'display_name' | 'avatar_url' | 'gender'>>).map(p => [p.id, p.display_name]),
   )
-  const guestMap = new Map(
-    ((guestsRes.data ?? []) as { id: string; display_name: string }[]).map(g => [g.id, g.display_name])
-  )
+  const guestMap = new Map(Array.from(guestsRes.entries()).map(([guestId, guest]) => [guestId, guest.display_name]))
   const participantLinkedToUser = new Map(
     ((identityLinksRes.data ?? []) as { linked_id: string; user_id: string }[]).map((r) => [r.linked_id, r.user_id])
   )
@@ -740,43 +1374,51 @@ export async function getMatchListData(
   }
 
   return matches.map(match => {
-    const club = match.club_id ? (clubMap.get(match.club_id) ?? null) : null
+    const venue = match.venue_id ? (venueMap.get(match.venue_id) ?? null) : null
     const mps = byMatch.get(match.id) ?? []
 
     const enriched: MatchParticipantEnriched[] = mps.map(p => {
       const linkedUserId = p.guest_id ? participantLinkedToUser.get(p.id) : null
       const effectiveUserId = p.user_id ?? linkedUserId
       const displayName = effectiveUserId
-        ? (profileMap.get(effectiveUserId) ?? resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap))
-        : resolveNameFromMaps(p.user_id, p.guest_id, match.club_id, identityMap, profileMap, guestMap)
+        ? (profileMap.get(effectiveUserId) ?? resolveNameFromMaps(p.user_id, p.guest_id, profileMap, guestMap))
+        : resolveNameFromMaps(p.user_id, p.guest_id, profileMap, guestMap)
       const profileDisplay = effectiveUserId ? profileDisplayMap.get(effectiveUserId) : null
       return {
         ...p,
         display_name: displayName,
         avatar_url: profileDisplay?.avatar_url ?? null,
+        gender: normalizeMatchGender(profileDisplay?.gender ?? null),
+        manual_confirmed_by_name: p.manual_confirmed_by ? (profileMap.get(p.manual_confirmed_by) ?? null) : null,
       }
     })
 
-    const confirmed = enriched.filter(p =>
-      p.status === 'confirmed' ||
-      (p.user_id === match.organizer_id && p.status !== 'removed')
-    )
-    const pending = enriched.filter(p => p.status === 'pending')
+    const confirmed = enriched.filter((participant) => participant.status === 'confirmed')
+    const pending = enriched.filter((participant) => participant.status === 'pending')
+    const waiting = enriched.filter((participant) => participant.status === 'waiting_list')
     const myParticipant = userId
       ? (enriched.find(p => p.user_id === userId || participantLinkedToUser.get(p.id) === userId) ?? null)
       : null
+    const formed = formedError ? null : (formedMap.get(match.id) ?? null)
+    const rosterInsight = deriveMatchRosterInsight(match, enriched)
 
     return {
       match,
-      clubTimezone: club?.timezone ?? null,
-      clubName: club?.name ?? null,
-      // Use status-based local counts — more reliable than confirmed_at-based view
-      // (old participants may have status='confirmed' but confirmed_at=NULL; view undercounts them).
-      confirmedCount: confirmed.length,
-      pendingCount: pending.length,
-      isFormed: confirmed.length >= match.required_count,
+      venueTimezone: venue?.timezone ?? null,
+      venueName: venue?.name ?? null,
+      sportName: sportMap.get(match.sport_id) ?? null,
+      courtState: deriveMatchCourtStatus({
+        matchStatus: match.status,
+        courtPlanMode: match.court_plan_mode,
+        finalCourtLabel: match.final_court_label,
+      }),
+      confirmedCount: formed?.confirmed_count ?? confirmed.length,
+      pendingCount: formed?.pending_count ?? pending.length,
+      waitingCount: formed?.waiting_count ?? waiting.length,
+      isFormed: (formed?.confirmed_count ?? confirmed.length) >= match.required_count,
       participants: enriched,
       myParticipant,
+      rosterInsight,
     }
   })
 }
@@ -791,28 +1433,41 @@ export async function getMatchDetailData(
   matchId: string,
   userId: string | null,
 ): Promise<MatchDetailData> {
-  const [matchRes, participantsRes, actionsRes, formedRes] = await Promise.all([
+  const [matchRes, participantsRes, actionsRes, formedRes, proxyManageableRes] = await Promise.all([
     supabase.from('matches').select('*').eq('id', matchId).single(),
     supabase.from('match_participants').select('*').eq('match_id', matchId).order('created_at', { ascending: true }),
     supabase.from('match_participant_actions').select('*').eq('match_id', matchId).order('created_at', { ascending: false }),
     supabase.from('match_formed').select('*').eq('match_id', matchId).maybeSingle(),
+    userId
+      ? supabase.rpc('rpc_match_proxy_manageable_participants', { p_match_id: matchId })
+      : Promise.resolve({ data: [] }),
   ])
   if (matchRes.error) throw matchRes.error
+  if (participantsRes.error) throw participantsRes.error
+  if (actionsRes.error) {
+    logMatchDetailSoftFailure(matchId, 'match_participant_actions', actionsRes.error)
+  }
+  if (formedRes.error) {
+    logMatchDetailSoftFailure(matchId, 'match_formed', formedRes.error)
+  }
+  if ('error' in proxyManageableRes && proxyManageableRes.error) {
+    logMatchDetailSoftFailure(matchId, 'proxy_manageable_participants', proxyManageableRes.error)
+  }
 
   const match = matchRes.data as Match
   const participants = (participantsRes.data ?? []) as MatchParticipant[]
-  const actions = (actionsRes.data ?? []) as MatchParticipantAction[]
+  const actions = actionsRes.error ? [] : ((actionsRes.data ?? []) as MatchParticipantAction[])
 
-  // Fetch club
-  type ClubRow = { id: string; name: string; timezone: string }
-  let club: ClubRow | null = null
-  if (match.club_id) {
+  // Fetch venue
+  type VenueRow = { id: string; name: string; timezone: string }
+  let venue: VenueRow | null = null
+  if (match.venue_id) {
     const { data } = await supabase
-      .from('clubs')
+      .from('venues')
       .select('id, name, timezone')
-      .eq('id', match.club_id)
+      .eq('id', match.venue_id)
       .single()
-    club = data as unknown as ClubRow | null
+    venue = data as unknown as VenueRow | null
   }
 
   // Collect IDs needed for name resolution (include organizer, participants, linked users for identity display)
@@ -824,16 +1479,20 @@ export async function getMatchDetailData(
   ])]
   const guestIds = [...new Set(participants.filter(p => p.guest_id).map(p => p.guest_id as string))]
   const guestParticipantIds = participants.filter(p => p.guest_id).map(p => p.id)
-  const clubIds = match.club_id ? [match.club_id] : []
-
-  const [profilesRes, identityMap, guestsRes, identityLinksRes] = await Promise.all([
+  const [profilesRes, guestsRes, identityLinksRes] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('profile_display').select('*').in('id', userIds)
+      ? supabase.from('profiles').select('id, display_name, avatar_url, gender').in('id', userIds)
       : Promise.resolve({ data: [] }),
-    fetchIdentityMap(supabase, clubIds, userIds),
     guestIds.length > 0
-      ? supabase.from('guests').select('id, display_name').in('id', guestIds)
-      : Promise.resolve({ data: [] }),
+      ? (async () => {
+          try {
+            return await fetchContactPlayerLookup(supabase, guestIds)
+          } catch (error) {
+            logMatchDetailSoftFailure(matchId, 'contact_player_lookup', error)
+            return new Map<string, Guest>()
+          }
+        })()
+      : Promise.resolve(new Map<string, Guest>()),
     userId && guestParticipantIds.length > 0
       ? (async () => {
           const r = await supabase.from('identity_links').select('linked_id, user_id').eq('user_id', userId).eq('linked_type', 'guest_participant').in('linked_id', guestParticipantIds)
@@ -843,29 +1502,80 @@ export async function getMatchDetailData(
   ])
 
   const profileDisplayMap = new Map(
-    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p])
+    ((profilesRes.data ?? []) as Array<Pick<Profile, 'id' | 'display_name' | 'avatar_url' | 'gender'>>).map(p => [p.id, p]),
   )
   const profileMap = new Map(
-    ((profilesRes.data ?? []) as ProfileDisplay[]).map(p => [p.id, p.display_name])
+    ((profilesRes.data ?? []) as Array<Pick<Profile, 'id' | 'display_name' | 'avatar_url' | 'gender'>>).map(p => [p.id, p.display_name]),
   )
-  const guestMap = new Map(
-    ((guestsRes.data ?? []) as { id: string; display_name: string }[]).map(g => [g.id, g.display_name])
+  const guestMap = new Map(Array.from(guestsRes.entries()).map(([guestId, guest]) => [guestId, guest.display_name]))
+  const guestPersonIds = Array.from(
+    new Set(
+      Array.from(guestsRes.values())
+        .map((guest) => guest.person_id ?? null)
+        .filter((personId): personId is string => Boolean(personId)),
+    ),
   )
 
   const participantLinkedToUser = new Map(
     ((identityLinksRes.data ?? []) as { linked_id: string; user_id: string }[]).map((r) => [r.linked_id, r.user_id])
   )
+  const proxyManageableParticipantIds = new Set(
+    ((('error' in proxyManageableRes && proxyManageableRes.error) ? [] : (proxyManageableRes.data ?? [])) as { match_participant_id: string }[])
+      .map((row) => row.match_participant_id)
+  )
+  const savedContactRelationshipsRes = userId && guestPersonIds.length > 0
+    ? await supabase
+        .from('person_relationships')
+        .select('person_id')
+        .eq('relationship_type', 'saved')
+        .in('person_id', guestPersonIds)
+    : { data: [] }
+  if ('error' in savedContactRelationshipsRes && savedContactRelationshipsRes.error) {
+    logMatchDetailSoftFailure(matchId, 'saved_contact_relationships', savedContactRelationshipsRes.error)
+  }
+  const savedContactPersonIdSet = new Set(
+    (((('error' in savedContactRelationshipsRes && savedContactRelationshipsRes.error) ? [] : (savedContactRelationshipsRes.data ?? []))) as { person_id: string }[])
+      .map((relationship) => relationship.person_id),
+  )
 
   const scopeGroupIds = match.invitation_scope_group_ids ?? []
-  const [scopeGroupsRes, sportRes] = await Promise.all([
+  const [scopeGroupsRes, sportRes, groupInvitations, myGroupInvites] = await Promise.all([
     scopeGroupIds.length > 0
       ? supabase.from('groups').select('id, name').in('id', scopeGroupIds)
       : Promise.resolve({ data: [] }),
     supabase.from('sports').select('display_name').eq('id', match.sport_id).single(),
+    getMatchGroupInvitations(supabase, matchId).catch((error) => {
+      logMatchDetailSoftFailure(matchId, 'match_group_invitations', error)
+      return [] as MatchGroupInvite[]
+    }),
+    userId
+      ? getMyMatchGroupInvites(supabase, matchId).catch((error) => {
+          logMatchDetailSoftFailure(matchId, 'my_match_group_invites', error)
+          return [] as MatchGroupInvite[]
+        })
+      : Promise.resolve([] as MatchGroupInvite[]),
   ])
+  const sharedGroupMap = await (async () => {
+    try {
+      return await fetchSharedGroupMap(
+        supabase,
+        userId,
+        participants
+          .filter((participant) => participant.user_id)
+          .map((participant) => participant.user_id as string),
+      )
+    } catch (error) {
+      logMatchDetailSoftFailure(matchId, 'shared_group_map', error)
+      return new Map<string, boolean>()
+    }
+  })()
 
   const resolve = (uid: string | null, gid: string | null) =>
-    resolveNameFromMaps(uid, gid, match.club_id, identityMap, profileMap, guestMap)
+    resolveNameFromMaps(uid, gid, profileMap, guestMap)
+  const organizerName =
+    profileDisplayMap.get(match.organizer_id)?.display_name
+    ?? profileMap.get(match.organizer_id)
+    ?? resolve(match.organizer_id, null)
 
   const enriched: MatchParticipantEnriched[] = participants.map(p => {
     const linkedUserId = p.guest_id ? participantLinkedToUser.get(p.id) : null
@@ -874,14 +1584,31 @@ export async function getMatchDetailData(
     const displayName = effectiveUserId
       ? (profileDisplay?.display_name ?? profileMap.get(effectiveUserId) ?? 'Unknown')
       : resolve(p.user_id, p.guest_id)
+    const guestPersonId = p.guest_id ? (guestsRes.get(p.guest_id)?.person_id ?? null) : null
     return {
       ...p,
       display_name: displayName,
       avatar_url: profileDisplay?.avatar_url ?? null,
+      gender: normalizeMatchGender(profileDisplay?.gender ?? null),
+      shares_group_with_viewer: effectiveUserId ? sharedGroupMap.get(effectiveUserId) ?? false : false,
+      proxy_manageable_by_viewer: proxyManageableParticipantIds.has(p.id),
+      saved_by_viewer: guestPersonId ? savedContactPersonIdSet.has(guestPersonId) : false,
+      contact_player_person_id: guestPersonId,
     }
   })
 
   const participantById = new Map(participants.map(p => [p.id, p]))
+  const participantIdsWithPriorAcceptance = new Set(
+    actions
+      .filter(action =>
+        action.action_type === 'accept'
+        || action.action_type === 'accepted'
+        || action.action_type === 'delegate_manual_confirm'
+        || action.action_type === 'proxy_confirm'
+        || action.action_type === 'manual_confirm'
+      )
+      .map(action => action.match_participant_id)
+  )
 
   // v1.7: For actions whose subject we don't have (RLS may hide), fetch display names via RPC
   const missingParticipantIds = actions
@@ -889,12 +1616,20 @@ export async function getMatchDetailData(
     .filter((id): id is string => !!id && !participantById.has(id))
   const participantDisplayNames = new Map<string, string>()
   if (missingParticipantIds.length > 0) {
-    const { data: namesData } = await supabase.rpc('rpc_match_participant_display_names', {
-      p_match_id: matchId,
-      p_participant_ids: missingParticipantIds,
-    })
-    for (const row of (namesData ?? []) as { participant_id: string; display_name: string }[]) {
-      participantDisplayNames.set(row.participant_id, row.display_name)
+    try {
+      const { data: namesData, error } = await supabase.rpc('rpc_match_participant_display_names', {
+        p_match_id: matchId,
+        p_participant_ids: missingParticipantIds,
+      })
+      if (error) {
+        logMatchDetailSoftFailure(matchId, 'participant_display_names', error)
+      } else {
+        for (const row of (namesData ?? []) as { participant_id: string; display_name: string }[]) {
+          participantDisplayNames.set(row.participant_id, row.display_name)
+        }
+      }
+    } catch (error) {
+      logMatchDetailSoftFailure(matchId, 'participant_display_names', error)
     }
   }
 
@@ -914,33 +1649,98 @@ export async function getMatchDetailData(
   })
 
   const confirmed = enriched.filter(p =>
-    p.status === 'confirmed' ||
-    (p.user_id === match.organizer_id && p.status !== 'removed')
+    p.status === 'confirmed'
   )
   const pending = enriched.filter(p => p.status === 'pending' && p.removed_at === null)
+  const waiting = enriched.filter((participant) => participant.status === 'waiting_list' && participant.removed_at === null)
   const isOrganizer = userId === match.organizer_id
   const myParticipant = userId
     ? (enriched.find(p => p.user_id === userId || participantLinkedToUser.get(p.id) === userId) ?? null)
     : null
+  const isFormed = Boolean(match.formed_at) || (((formedRes.error ? null : formedRes.data?.confirmed_count) ?? confirmed.length) >= match.required_count)
+  const hasActiveParticipantAccess = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    ['pending', 'confirmed', 'waiting_list'].includes(myParticipant.status)
+  )
+  const hasConfirmedParticipantAccess = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    myParticipant.status === 'confirmed'
+  )
+  const inScopePreviewAccess = Boolean(
+    userId &&
+    !myParticipant &&
+    (
+      myGroupInvites.length > 0
+      || (await isCallerInMatchScope(supabase, matchId).catch((error) => {
+        logMatchDetailSoftFailure(matchId, 'is_caller_in_match_scope', error)
+        return false
+      }))
+    )
+  )
+  const canAccessCommunication = Boolean(
+    userId &&
+    (
+      isOrganizer ||
+      (isFormed ? hasConfirmedParticipantAccess : (hasActiveParticipantAccess || inScopePreviewAccess))
+    ),
+  )
+  let messages: MatchMessageEnriched[] = []
+
+  if (canAccessCommunication) {
+    const { data: messagesData, error: messagesError } = await supabase
+      .from('match_messages')
+      .select('*')
+      .eq('match_id', matchId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+
+    if (messagesError) {
+      logMatchDetailSoftFailure(matchId, 'match_messages', messagesError)
+    } else {
+      const rawMessages = (messagesData ?? []) as MatchMessage[]
+      messages = rawMessages.map((message) => {
+        const authorProfile = profileDisplayMap.get(message.author_user_id)
+        return {
+          ...message,
+          author_name: resolve(message.author_user_id, null),
+          author_avatar_url: authorProfile?.avatar_url ?? null,
+          is_organizer_author: message.author_user_id === match.organizer_id,
+        }
+      })
+    }
+  }
+
+  const myParticipantNeedsReconfirm = Boolean(
+    myParticipant
+    && myParticipant.status === 'pending'
+    && myParticipant.participant_accepted_at == null
+    && myParticipant.org_approved_at != null
+    && participantIdsWithPriorAcceptance.has(myParticipant.id)
+  )
   const scopeGroups = ((scopeGroupsRes.data ?? []) as { id: string; name: string }[])
+  const rosterInsight = deriveMatchRosterInsight(match, enriched)
 
   return {
     match,
-    clubTimezone: club?.timezone ?? null,
-    clubName: club?.name ?? null,
+    venueTimezone: venue?.timezone ?? null,
+    venueName: venue?.name ?? null,
     participants: enriched,
     myParticipant,
+    myParticipantNeedsReconfirm,
     isOrganizer,
-    // Use status-based local count for confirmedCount — more reliable than confirmed_at-based view
-    // (old participants may have status='confirmed' but confirmed_at=NULL; view undercounts them).
-    confirmedCount: confirmed.length,
-    // For organizer (sees all participants): use local count.
-    // For non-organizer (RLS hides other pending): use view aggregate to show total pending count.
-    pendingCount: isOrganizer ? pending.length : (formedRes.data?.pending_count ?? 0),
-    activities,
-    organizerName: resolve(match.organizer_id, null),
-    scopeGroups,
+    confirmedCount: (formedRes.error ? null : formedRes.data?.confirmed_count) ?? confirmed.length,
+      pendingCount: isOrganizer ? pending.length : ((formedRes.error ? null : formedRes.data?.pending_count) ?? pending.length),
+      waitingCount: isOrganizer ? waiting.length : ((formedRes.error ? null : formedRes.data?.waiting_count) ?? waiting.length),
+      activities,
+      messages,
+      organizerName,
+      scopeGroups,
+      groupInvitations,
+      myGroupInvites,
     sportName: (sportRes.data as { display_name: string } | null)?.display_name ?? 'Unknown',
+    rosterInsight,
   }
 }
 
@@ -948,7 +1748,33 @@ export async function getMatchDetailData(
 // v1.6.1 Role-specific roster RPCs (replace rpc_match_scope_users)
 // ============================================================================
 
-export type ScopeUser = { id: string; display_name: string }
+export type ScopeUser = {
+  id: string
+  display_name: string
+  source: string
+  sourceLabel: string
+}
+
+function getAdmissionTargetSourceLabel(source: string): string {
+  switch (source) {
+    case 'invite_circle':
+      return 'Saved'
+    case 'roster_contacts':
+      return 'Contacts'
+    case 'saved_contact':
+      return 'Saved contacts'
+    case 'group_contact':
+      return 'Shared Group contacts'
+    case 'groups':
+      return 'Shared Groups'
+    case 'club_members':
+      return 'Venue members'
+    case 'reentry':
+      return 'Previously in this match'
+    default:
+      return source.replace(/_/g, ' ')
+  }
+}
 
 /** Phase 3: Mixed admission target (user or Contact Player). */
 export type AdmissionTarget = {
@@ -956,8 +1782,8 @@ export type AdmissionTarget = {
   target_id: string
   display_name: string | null
   avatar_url: string | null
-  club_handle: string | null
   source: string
+  sourceLabel?: string
   action_kind: 'admit_user' | 'nominate_contact_player'
   can_admit: boolean
   eligible_via: string | null
@@ -980,16 +1806,31 @@ export async function getAdmissionTargets(
 }
 
 /** Phase 3: User targets only (for InviteUserForm / NominateUserForm). Maps to ScopeUser for backward compat. */
-export function admissionTargetsToScopeUsers(targets: AdmissionTarget[]): ScopeUser[] {
+export function admissionTargetsToScopeUsers(
+  targets: AdmissionTarget[],
+  options?: { requireCanAdmit?: boolean }
+): ScopeUser[] {
   return targets
     .filter(t => t.action_kind === 'admit_user')
-    .map(t => ({ id: t.target_id, display_name: t.display_name ?? '' }))
+    .filter(t => !options?.requireCanAdmit || t.can_admit)
+    .map(t => ({
+      id: t.target_id,
+      display_name: t.display_name ?? '',
+      source: t.source,
+      sourceLabel: getAdmissionTargetSourceLabel(t.source),
+    }))
 }
 
 /** Phase 3: Contact Player targets only (for InviteGuestForm). */
-export function admissionTargetsToContactPlayers(targets: AdmissionTarget[]): { guest_id: string; display_name: string; email: string | null }[] {
+export function admissionTargetsToContactPlayers(targets: AdmissionTarget[]): { guest_id: string; display_name: string; email: string | null; source: string; sourceLabel: string }[] {
   return targets
     .filter(t => t.action_kind === 'nominate_contact_player')
-    .map(t => ({ guest_id: t.target_id, display_name: t.display_name ?? '', email: t.contact_email ?? null }))
+    .map(t => ({
+      guest_id: t.target_id,
+      display_name: t.display_name ?? '',
+      email: t.contact_email ?? null,
+      source: t.source,
+      sourceLabel: getAdmissionTargetSourceLabel(t.source),
+    }))
 }
 

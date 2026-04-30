@@ -8,6 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "verify:build": "node scripts/verify-build.mjs",
+    "verify:sql": "node scripts/run-sql-regressions.mjs",
+    "verify": "npm run verify:build && npm run verify:sql",
     "test:v1.3": "node scripts/test_v1_3_admission.mjs",
     "test:phasec": "playwright test",
     "test:phasec:ui": "playwright test --ui"

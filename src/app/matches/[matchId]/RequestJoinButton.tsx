@@ -13,6 +13,16 @@ export function RequestJoinButton({ matchId }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const buttonStyle = {
+    background: '#6f95c8',
+    color: 'white',
+    border: 'none',
+    borderRadius: '12px',
+    padding: '0.65rem 1.1rem',
+    fontSize: '0.98rem',
+    fontWeight: 700,
+    boxShadow: '0 8px 20px rgba(111, 149, 200, 0.18)',
+  } as const
 
   const handleClick = async () => {
     setError(null)
@@ -36,7 +46,7 @@ export function RequestJoinButton({ matchId }: Props) {
         data-testid="request-join"
         onClick={handleClick}
         disabled={loading}
-        style={{ padding: '0.5rem 1rem' }}
+        style={buttonStyle}
       >
         {loading ? 'Requesting...' : 'Request to Join'}
       </button>

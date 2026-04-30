@@ -1,29 +1,33 @@
 'use client'
 
-import { useState, useMemo, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { PlayersData, PendingGroupInvite } from '@/lib/api/players'
 import { acceptGroupInvite, rejectGroupInvite, inviteUserToGroup, createGroup, leaveGroup, updateGroup } from '@/lib/api/groups'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Group } from '@/lib/types/database'
+import type { InviteCircleRow } from '@/lib/api/play-network'
+import { getVenueDisplayName } from '@/lib/venues/display'
+import { SavedPlayerButton } from '@/app/components/SavedPlayerButton'
+import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { InviteCirclePanel } from './InviteCirclePanel'
 
 type InvitableUser = { id: string; display_name: string }
 
 interface Props {
   data: PlayersData
+  inviteCircle: InviteCircleRow[]
   userId?: string
 }
 
-/** Compute invitable users for a group from already-loaded PlayersData.
- *  Uses club_identities data (open RLS) — no extra server call needed. */
+/** Compute invitable users for a group from already-loaded PlayersData. */
 function getInvitableForGroup(data: PlayersData, groupId: string): InvitableUser[] {
   const existingIds = new Set(
     (data.groups.find(g => g.group.id === groupId)?.members ?? []).map(m => m.userId)
   )
   const seen = new Set<string>()
   const result: InvitableUser[] = []
-  for (const { members } of data.clubs) {
+  for (const { members } of data.venues) {
     for (const m of members) {
       if (!seen.has(m.userId) && !existingIds.has(m.userId)) {
         seen.add(m.userId)
@@ -31,7 +35,7 @@ function getInvitableForGroup(data: PlayersData, groupId: string): InvitableUser
       }
     }
   }
-  for (const p of data.noClub) {
+  for (const p of data.noVenue) {
     if (!seen.has(p.id) && !existingIds.has(p.id)) {
       seen.add(p.id)
       result.push({ id: p.id, display_name: p.display_name })
@@ -44,7 +48,7 @@ function getInvitableForGroup(data: PlayersData, groupId: string): InvitableUser
 function getAllCandidates(data: PlayersData, excludeUserId?: string): InvitableUser[] {
   const seen = new Set<string>()
   const result: InvitableUser[] = []
-  for (const { members } of data.clubs) {
+  for (const { members } of data.venues) {
     for (const m of members) {
       if (!seen.has(m.userId) && m.userId !== excludeUserId) {
         seen.add(m.userId)
@@ -52,7 +56,7 @@ function getAllCandidates(data: PlayersData, excludeUserId?: string): InvitableU
       }
     }
   }
-  for (const p of data.noClub) {
+  for (const p of data.noVenue) {
     if (!seen.has(p.id) && p.id !== excludeUserId) {
       seen.add(p.id)
       result.push({ id: p.id, display_name: p.display_name ?? '' })
@@ -61,7 +65,7 @@ function getAllCandidates(data: PlayersData, excludeUserId?: string): InvitableU
   return result.sort((a, b) => a.display_name.localeCompare(b.display_name))
 }
 
-type View = 'club' | 'group' | 'all'
+type View = 'venue' | 'group' | 'all'
 
 // ─── Create group panel ───────────────────────────────────────────────────────
 
@@ -492,7 +496,7 @@ function GroupInviteBanner({
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export function PlayersPanel({ data, userId }: Props) {
+export function PlayersPanel({ data, inviteCircle, userId }: Props) {
   const [view, setView] = useState<View>('all')
   const [search, setSearch] = useState('')
   const [openInviteGroupId, setOpenInviteGroupId] = useState<string | null>(null)
@@ -500,6 +504,24 @@ export function PlayersPanel({ data, userId }: Props) {
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [leftGroupIds, setLeftGroupIds] = useState<Set<string>>(new Set())
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
+  const [savedPlayerIds, setSavedPlayerIds] = useState<Set<string>>(
+    () => new Set(inviteCircle.map((row) => row.target_user_id))
+  )
+  const [inviteCircleRefreshToken, setInviteCircleRefreshToken] = useState(0)
+
+  useEffect(() => {
+    setSavedPlayerIds(new Set(inviteCircle.map((row) => row.target_user_id)))
+  }, [inviteCircle])
+
+  const handleSavedPlayerChange = (targetUserId: string, saved: boolean) => {
+    setSavedPlayerIds((prev) => {
+      const next = new Set(prev)
+      if (saved) next.add(targetUserId)
+      else next.delete(targetUserId)
+      return next
+    })
+    setInviteCircleRefreshToken((prev) => prev + 1)
+  }
 
   const pendingInvites = data.pendingGroupInvites.filter(
     inv => !dismissedInvites.has(inv.groupId)
@@ -507,9 +529,9 @@ export function PlayersPanel({ data, userId }: Props) {
 
   const query = search.trim().toLowerCase()
 
-  const filteredClubs = useMemo(
+  const filteredVenues = useMemo(
     () =>
-      data.clubs
+      data.venues
         .map(c => ({
           ...c,
           members: query
@@ -517,7 +539,7 @@ export function PlayersPanel({ data, userId }: Props) {
             : c.members,
         }))
         .filter(c => c.members.length > 0),
-    [data.clubs, query]
+    [data.venues, query]
   )
 
   const filteredGroups = useMemo(
@@ -545,7 +567,7 @@ export function PlayersPanel({ data, userId }: Props) {
     }
 
     const rows: { label: string; userId: string; groups: string[] }[] = []
-    for (const c of data.clubs) {
+    for (const c of data.venues) {
       for (const m of c.members) {
         rows.push({
           label: m.handle,
@@ -554,7 +576,7 @@ export function PlayersPanel({ data, userId }: Props) {
         })
       }
     }
-    for (const p of data.noClub) {
+    for (const p of data.noVenue) {
       rows.push({
         label: p.display_name ?? '',
         userId: p.id,
@@ -571,7 +593,7 @@ export function PlayersPanel({ data, userId }: Props) {
   )
 
   const totalCount =
-    data.clubs.reduce((s, c) => s + c.members.length, 0) + data.noClub.length
+    data.venues.reduce((s, c) => s + c.members.length, 0) + data.noVenue.length
 
   const btnClass = (v: View) =>
     `px-3 py-2 text-xs font-medium transition-colors ${
@@ -581,7 +603,11 @@ export function PlayersPanel({ data, userId }: Props) {
   return (
     <div className="space-y-4">
       {/* Phase 1: Invite Circle — private list for match invite candidates */}
-      <InviteCirclePanel />
+      <InviteCirclePanel
+        initialItems={inviteCircle}
+        refreshToken={inviteCircleRefreshToken}
+        onChange={handleSavedPlayerChange}
+      />
 
       {/* Pending group invite banners — always visible regardless of view */}
       {pendingInvites.length > 0 && (
@@ -613,46 +639,65 @@ export function PlayersPanel({ data, userId }: Props) {
           <button onClick={() => setView('group')} className={btnClass('group')}>
             By Group
           </button>
-          <button onClick={() => setView('club')} className={btnClass('club')}>
-            By Club
+          <button onClick={() => setView('venue')} className={btnClass('venue')}>
+            By Venue
           </button>
         </div>
       </div>
 
-      {/* By Club */}
-      {view === 'club' && (
+      {/* By Venue */}
+      {view === 'venue' && (
         <div className="space-y-5">
-          {filteredClubs.length === 0 && (
+          {filteredVenues.length === 0 && (
             <p className="text-sm text-gray-400 italic">No players found.</p>
           )}
-          {filteredClubs.map(({ club, members }) => (
-            <section key={club.id}>
+          {filteredVenues.map(({ venue, members }) => (
+            <section key={venue.id}>
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                {club.name}
+                {getVenueDisplayName(venue)}
                 <span className="ml-2 text-gray-300 normal-case font-normal">{members.length}</span>
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {members.map(m => (
                   <div
                     key={m.userId}
-                    className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm text-gray-700"
+                    className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm text-gray-700 flex items-center gap-3"
                   >
-                    {m.handle}
+                    <div className="flex-1 min-w-0">
+                      <span className="block truncate">{m.handle}</span>
+                      {m.userId !== userId && (
+                        <PlayerProfileTrigger
+                          targetUserId={m.userId}
+                          className="mt-1"
+                        />
+                      )}
+                    </div>
+                    {m.userId !== userId && (
+                      <SavedPlayerButton
+                        targetUserId={m.userId}
+                        source="venue_member"
+                        initialSaved={savedPlayerIds.has(m.userId)}
+                        onChange={handleSavedPlayerChange}
+                        compact
+                        savedLabel="Saved"
+                        removeLabel="Remove"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
             </section>
           ))}
-          {data.noClub.length > 0 && !query && (
+          {data.noVenue.length > 0 && !query && (
             <section>
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                No Club
+                No Venue
                 <span className="ml-2 text-gray-300 normal-case font-normal">
-                  {data.noClub.length}
+                  {data.noVenue.length}
                 </span>
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {data.noClub.map(p => (
+                {data.noVenue.map(p => (
                   <div
                     key={p.id}
                     className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm text-gray-500 italic"
@@ -769,11 +814,30 @@ export function PlayersPanel({ data, userId }: Props) {
                   {/* Member grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {members.map(m => (
-                      <div
-                        key={m.userId}
-                        className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm text-gray-700"
+                    <div
+                      key={m.userId}
+                        className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm text-gray-700 flex items-center gap-3"
                       >
-                        {m.displayName || '(unnamed)'}
+                        <div className="flex-1 min-w-0">
+                          <span className="block truncate">{m.displayName || '(unnamed)'}</span>
+                          {m.userId !== userId && (
+                            <PlayerProfileTrigger
+                              targetUserId={m.userId}
+                              className="mt-1"
+                            />
+                          )}
+                        </div>
+                        {m.userId !== userId && (
+                          <SavedPlayerButton
+                            targetUserId={m.userId}
+                            source="group_member"
+                            initialSaved={savedPlayerIds.has(m.userId)}
+                            onChange={handleSavedPlayerChange}
+                            compact
+                            savedLabel="Saved"
+                            removeLabel="Remove"
+                          />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -791,12 +855,19 @@ export function PlayersPanel({ data, userId }: Props) {
           )}
           {filteredAll.map((r, i) => (
             <div
-              key={i}
-              className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm"
+              key={`${r.userId}-${i}`}
+              className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm flex items-start gap-3"
             >
-              <div className="text-gray-700">{r.label || '(unnamed)'}</div>
-              {r.groups.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
+              <div className="flex-1 min-w-0">
+                <div className="text-gray-700">{r.label || '(unnamed)'}</div>
+                {r.userId !== userId && (
+                  <PlayerProfileTrigger
+                    targetUserId={r.userId}
+                    className="mt-1"
+                  />
+                )}
+                {r.groups.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
                   {r.groups.map(g => (
                     <span
                       key={g}
@@ -805,7 +876,19 @@ export function PlayersPanel({ data, userId }: Props) {
                       {g}
                     </span>
                   ))}
-                </div>
+                  </div>
+                )}
+              </div>
+              {r.userId !== userId && (
+                <SavedPlayerButton
+                  targetUserId={r.userId}
+                  source="manual"
+                  initialSaved={savedPlayerIds.has(r.userId)}
+                  onChange={handleSavedPlayerChange}
+                  compact
+                  savedLabel="Saved"
+                  removeLabel="Remove"
+                />
               )}
             </div>
           ))}

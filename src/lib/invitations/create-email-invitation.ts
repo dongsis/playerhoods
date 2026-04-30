@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type CreateEmailInvitationParams = {
-  targetEmail: string
+  targetEmail?: string | null
+  targetPhone?: string | null
   targetName?: string | null
   relatedType: 'match'
   relatedId: string
@@ -11,7 +12,8 @@ export type CreateEmailInvitationParams = {
 export type EmailInvitation = {
   id: string
   inviter_user_id: string
-  target_email: string
+  target_email: string | null
+  target_phone: string | null
   target_name: string | null
   related_type: string
   related_id: string
@@ -26,8 +28,15 @@ export async function createEmailInvitation(
   supabase: SupabaseClient,
   params: CreateEmailInvitationParams
 ): Promise<EmailInvitation> {
+  const targetEmail = params.targetEmail?.trim().toLowerCase() || null
+  const targetPhone = params.targetPhone?.trim() || null
+  if (!targetEmail && !targetPhone) {
+    throw new Error('email_or_phone_required')
+  }
+
   const { data, error } = await supabase.rpc('rpc_email_invitation_create', {
-    p_target_email: params.targetEmail.trim().toLowerCase(),
+    p_target_email: targetEmail,
+    p_target_phone: targetPhone,
     p_target_name: params.targetName?.trim() || null,
     p_related_type: params.relatedType,
     p_related_id: params.relatedId,

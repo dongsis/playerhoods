@@ -143,7 +143,7 @@ playerhoods.com 正在从“约成一场球的工具”往“带社交层、俱�
 - Home / Dashboard
 - Match
 - Group / Circle
-- Club
+- Venue
 - Profile / Showcase
 - Notifications / Inbox
 
@@ -309,8 +309,8 @@ showcase 很容易越做越散，所以必须先做信息分层，例如：
 ### P1：2.0 推进时同步设计的页面
 这些与 2.0 直接相关，应边定义边做 wireframe。
 
-1. Club 主页 / 详情页
-2. Club 范围找人页
+1. Venue 主页 / 详情页
+2. Venue 范围找人页
 3. Invite circle 列表与详情
 4. Showcase 基础页
 5. Notifications / Inbox
@@ -333,14 +333,14 @@ showcase 很容易越做越散，所以必须先做信息分层，例如：
 ### 9.1 一级导航建议
 - Home
 - Matches
-- Clubs
+- Venues
 - Circles
 - Inbox
 - Profile
 
 ### 9.2 对象层关系建议
 - Match：事件与参与编排中心
-- Club：更大范围的组织 / 发现层
+- Venue：更大范围的组织 / 发现层
 - Circle：私域信任层 / 轻社交组织层
 - Showcase：个人展示层
 - Inbox：通知与动作回流层

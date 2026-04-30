@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import type { MatchListItem } from '@/lib/api/matches'
-import { clubDateKey, formatDateHeading } from '@/lib/format-time'
+import { venueDateKey, formatDateHeading } from '@/lib/format-time'
 import { MatchCard } from './MatchCard'
 
 interface Props {
@@ -11,14 +11,13 @@ interface Props {
 }
 
 export function MatchHistory({ items, userId }: Props) {
-  // Group by club-local date, newest first
   const groups = useMemo(() => {
     const map = new Map<string, MatchListItem[]>()
     for (const item of items) {
-      const key = clubDateKey(
+      const key = venueDateKey(
         item.match.start_at_utc,
         item.match.match_date,
-        item.clubTimezone,
+        item.venueTimezone,
       )
       const arr = map.get(key) ?? []
       arr.push(item)
@@ -29,34 +28,28 @@ export function MatchHistory({ items, userId }: Props) {
 
   if (groups.length === 0) {
     return (
-      <p style={{ color: '#888', fontSize: '0.9rem', margin: '0.5rem 0' }}>
+      <div className="rounded-[24px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-5 py-6 text-[12px] font-medium text-[#94A3B8]">
         No match history yet.
-      </p>
+      </div>
     )
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       {groups.map(([dateKey, groupItems]) => (
-        <div key={dateKey} style={{ marginBottom: '1.5rem' }}>
-          <div
-            style={{
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              color: '#aaa',
-              textTransform: 'uppercase',
-              letterSpacing: '0.07em',
-              marginBottom: '0.4rem',
-              paddingBottom: '0.25rem',
-              borderBottom: '1px solid #f0f0f0',
-            }}
-          >
-            {formatDateHeading(dateKey)}
+        <section key={dateKey}>
+          <div className="mb-3 flex items-center gap-3">
+            <span className="text-[9px] font-black uppercase tracking-[0.16em] text-[#94A3B8]">
+              {formatDateHeading(dateKey)}
+            </span>
+            <span className="h-px flex-1 bg-[#E2E8F0]" />
           </div>
-          {groupItems.map(item => (
-            <MatchCard key={item.match.id} item={item} userId={userId} />
-          ))}
-        </div>
+          <div className="space-y-3">
+            {groupItems.map((item) => (
+              <MatchCard key={item.match.id} item={item} userId={userId} />
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   )

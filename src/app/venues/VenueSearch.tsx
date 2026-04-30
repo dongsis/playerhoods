@@ -2,32 +2,36 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { Club } from '@/lib/types/database'
+import type { Venue } from '@/lib/types/database'
+import { getVenueDisplayName } from '@/lib/venues/display'
 
-type Filter = 'all' | 'my-clubs' | 'saved'
+type Filter = 'all' | 'my-venues' | 'saved'
 
 interface Props {
-  venues: Club[]
-  myClubIds: string[]   // venues where user has a handle
-  mySavedIds: string[]  // venues in secondary_club_ids
+  venues: Venue[]
+  myVenueIds: string[]   // venues where user is a member
+  mySavedIds: string[]  // venues starred/saved by the user
 }
 
-export function VenueSearch({ venues, myClubIds, mySavedIds }: Props) {
+export function VenueSearch({ venues, myVenueIds, mySavedIds }: Props) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
 
-  const hasMyClubs = myClubIds.length > 0
+  const hasMyVenues = myVenueIds.length > 0
   const hasSaved   = mySavedIds.length > 0
 
   const filtered = venues.filter(v => {
     // text search
     if (query) {
       const q = query.toLowerCase()
-      const match = v.name.toLowerCase().includes(q) || v.location_text?.toLowerCase().includes(q)
+      const match =
+        v.name.toLowerCase().includes(q)
+        || v.abbreviation?.toLowerCase().includes(q)
+        || v.location_text?.toLowerCase().includes(q)
       if (!match) return false
     }
     // filter tab
-    if (filter === 'my-clubs') return myClubIds.includes(v.id)
+    if (filter === 'my-venues') return myVenueIds.includes(v.id)
     if (filter === 'saved')    return mySavedIds.includes(v.id)
     return true
   })
@@ -62,10 +66,10 @@ export function VenueSearch({ venues, myClubIds, mySavedIds }: Props) {
       />
 
       {/* Filter chips — only show when user has data to filter on */}
-      {(hasMyClubs || hasSaved) && (
+      {(hasMyVenues || hasSaved) && (
         <div className="flex gap-2 flex-wrap">
           {filterBtn('all', 'All', true)}
-          {filterBtn('my-clubs', 'My Clubs', hasMyClubs)}
+          {filterBtn('my-venues', 'My Venues', hasMyVenues)}
           {filterBtn('saved', 'Saved', hasSaved)}
         </div>
       )}
@@ -76,7 +80,7 @@ export function VenueSearch({ venues, myClubIds, mySavedIds }: Props) {
       ) : (
         <div className="space-y-2">
           {filtered.map(v => {
-            const isMember = myClubIds.includes(v.id)
+            const isMember = myVenueIds.includes(v.id)
             const isSaved  = mySavedIds.includes(v.id) && !isMember
             return (
               <Link
@@ -86,7 +90,7 @@ export function VenueSearch({ venues, myClubIds, mySavedIds }: Props) {
               >
                 <div>
                   <span className="text-sm font-medium text-gray-800 group-hover:text-gray-900">
-                    {v.name}
+                    {getVenueDisplayName(v)}
                   </span>
                   {isMember && (
                     <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">member</span>

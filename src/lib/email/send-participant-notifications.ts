@@ -1,34 +1,51 @@
-/**
- * Send participant notifications by email.
- * Fetches recipients via rpc_match_participant_emails_for_notification.
- * For contact_channel=sms: skip email (SMS to be implemented later).
- */
-
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendEmail } from './send'
-import { gameFormedEmail, matchTimeChangePendingEmail, type MatchInfo } from './templates'
+import { sendSms } from '@/lib/sms/send'
+import { renderGameFormedSms, renderMatchRemovedSms, renderMatchTimeChangeSms } from '@/lib/notifications/channels/sms/render-notification-sms'
+import { gameFormedEmail, matchRemovedEmail, matchTimeChangePendingEmail, type MatchInfo } from './templates'
 
-export type ParticipantEmailRow = {
-  user_id: string
-  email: string | null
-  contact_channel: string | null
+export type ParticipantNotificationTarget = {
+  participant_id: string | null
+  channel: 'email' | 'sms'
+  destination: string
 }
 
-/** Fetch participant emails for a match (confirmed users, excl. organizer). */
-export async function getParticipantEmails(
+async function getParticipantNotificationTargets(
   supabase: SupabaseClient,
-  matchId: string
-): Promise<ParticipantEmailRow[]> {
-  const { data, error } = await supabase.rpc('rpc_match_participant_emails_for_notification', {
+  matchId: string,
+): Promise<ParticipantNotificationTarget[]> {
+  const { data, error } = await supabase.rpc('rpc_match_participant_notification_targets', {
     p_match_id: matchId,
   })
   if (error) throw error
-  return (data ?? []) as ParticipantEmailRow[]
+  return (data ?? []) as ParticipantNotificationTarget[]
+}
+
+async function getConfirmedParticipantNotificationTargets(
+  supabase: SupabaseClient,
+  matchId: string,
+): Promise<ParticipantNotificationTarget[]> {
+  const { data, error } = await supabase.rpc('rpc_match_confirmed_participant_notification_targets', {
+    p_match_id: matchId,
+  })
+  if (error) throw error
+  return (data ?? []) as ParticipantNotificationTarget[]
+}
+
+async function getRemovedParticipantNotificationTargets(
+  supabase: SupabaseClient,
+  participantId: string,
+): Promise<ParticipantNotificationTarget[]> {
+  const { data, error } = await supabase.rpc('rpc_match_removed_participant_notification_targets', {
+    p_match_participant_id: participantId,
+  })
+  if (error) throw error
+  return (data ?? []) as ParticipantNotificationTarget[]
 }
 
 function buildMatchInfo(
   match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
-  clubName: string | null
+  venueName: string | null,
 ): MatchInfo {
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
@@ -38,85 +55,89 @@ function buildMatchInfo(
     gameType: match.game_type ?? 'Match',
     matchDate: match.match_date,
     startTime: match.start_time,
-    clubName,
+    venueName,
     siteUrl,
   }
 }
 
-/** Send "match time change pending" emails to all confirmed participants (excl. organizer). */
-export async function sendMatchTimeChangeEmails(
-  supabase: SupabaseClient,
-  match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
-  clubName: string | null
+async function sendMatchNotificationByChannel(
+  targets: ParticipantNotificationTarget[],
+  payload: { emailSubject: string; emailHtml: string; smsBody: string },
 ): Promise<{ sent: number; skipped: number; errors: string[] }> {
-  let rows: ParticipantEmailRow[]
-  try {
-    rows = await getParticipantEmails(supabase, match.id)
-  } catch (err) {
-    console.error('[email] getParticipantEmails failed:', err)
-    throw err
-  }
-
-  console.log('[email] match time change: recipients=', rows.length, rows.map(r => ({ channel: r.contact_channel, hasEmail: !!r.email })))
-
-  const m = buildMatchInfo(match, clubName)
-  const html = matchTimeChangePendingEmail(m)
-  const subject = 'Match time changed — please confirm'
-
   let sent = 0
   let skipped = 0
   const errors: string[] = []
 
-  for (const r of rows) {
-    if (r.contact_channel === 'sms') {
+  for (const target of targets) {
+    const destination = target.destination?.trim()
+    if (!destination) {
       skipped++
       continue
     }
-    const email = r.email?.trim()
-    if (!email) {
-      skipped++
-      continue
+
+    const result =
+      target.channel === 'sms'
+        ? await sendSms(destination, payload.smsBody)
+        : await sendEmail(destination, payload.emailSubject, payload.emailHtml)
+
+    if (result.ok) {
+      sent++
+    } else {
+      errors.push(`${target.channel}:${destination}: ${result.error}`)
     }
-    const result = await sendEmail(email, subject, html)
-    if (result.ok) sent++
-    else errors.push(`${email}: ${result.error}`)
   }
 
-  console.log('[email] match time change: sent=', sent, 'skipped=', skipped, 'errors=', errors.length)
-  if (errors.length > 0) console.error('[email] send errors:', errors)
+  if (errors.length > 0) console.error('[notifications] send errors:', errors)
 
   return { sent, skipped, errors }
 }
 
-/** Send "game formed" emails to all confirmed participants (excl. organizer). */
+export async function sendMatchTimeChangeEmails(
+  supabase: SupabaseClient,
+  match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
+  venueName: string | null,
+): Promise<{ sent: number; skipped: number; errors: string[] }> {
+  let targets: ParticipantNotificationTarget[]
+  try {
+    targets = await getParticipantNotificationTargets(supabase, match.id)
+  } catch (error) {
+    console.error('[notifications] getParticipantNotificationTargets failed:', error)
+    throw error
+  }
+
+  const matchInfo = buildMatchInfo(match, venueName)
+  return sendMatchNotificationByChannel(targets, {
+    emailSubject: 'Match time changed - please confirm',
+    emailHtml: matchTimeChangePendingEmail(matchInfo),
+    smsBody: renderMatchTimeChangeSms(matchInfo),
+  })
+}
+
 export async function sendGameFormedEmails(
   supabase: SupabaseClient,
   match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
-  clubName: string | null
+  venueName: string | null,
 ): Promise<{ sent: number; skipped: number; errors: string[] }> {
-  const rows = await getParticipantEmails(supabase, match.id)
-  const m = buildMatchInfo(match, clubName)
-  const html = gameFormedEmail(m)
-  const subject = 'Game formed'
+  const targets = await getConfirmedParticipantNotificationTargets(supabase, match.id)
+  const matchInfo = buildMatchInfo(match, venueName)
+  return sendMatchNotificationByChannel(targets, {
+    emailSubject: 'Game formed',
+    emailHtml: gameFormedEmail(matchInfo),
+    smsBody: renderGameFormedSms(matchInfo),
+  })
+}
 
-  let sent = 0
-  let skipped = 0
-  const errors: string[] = []
-
-  for (const r of rows) {
-    if (r.contact_channel === 'sms') {
-      skipped++
-      continue
-    }
-    const email = r.email?.trim()
-    if (!email) {
-      skipped++
-      continue
-    }
-    const result = await sendEmail(email, subject, html)
-    if (result.ok) sent++
-    else errors.push(`${email}: ${result.error}`)
-  }
-
-  return { sent, skipped, errors }
+export async function sendParticipantRemovedNotification(
+  supabase: SupabaseClient,
+  participantId: string,
+  match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
+  venueName: string | null,
+): Promise<{ sent: number; skipped: number; errors: string[] }> {
+  const targets = await getRemovedParticipantNotificationTargets(supabase, participantId)
+  const matchInfo = buildMatchInfo(match, venueName)
+  return sendMatchNotificationByChannel(targets, {
+    emailSubject: 'Removed from match',
+    emailHtml: matchRemovedEmail(matchInfo),
+    smsBody: renderMatchRemovedSms(matchInfo),
+  })
 }

@@ -67,8 +67,8 @@ DECLARE
     'rpc_match_org_approve_participant', 'rpc_match_request_join',
     'rpc_match_user_withdraw', 'rpc_match_create', 'rpc_match_nominate_user',
     'rpc_match_nominate_guest',     'rpc_match_delegate_confirm_participant',
-    'rpc_roster_guest_create', 'rpc_club_handle_set', 'rpc_group_set_display_name',
-    'rpc_club_admin_grant', 'rpc_club_admin_revoke'
+    'rpc_roster_guest_create', 'rpc_venue_handle_set', 'rpc_group_set_display_name',
+    'rpc_venue_admin_grant', 'rpc_venue_admin_revoke'
   ];
   v_fn text;
   v_has_anon boolean;

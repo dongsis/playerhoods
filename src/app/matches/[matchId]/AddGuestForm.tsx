@@ -12,8 +12,8 @@ interface Props {
 }
 
 /**
- * Add a Contact Player to a match.
- * v1.7: Uses rpc_match_nominate_guest (create roster guest + nominate).
+ * Create a Contact Player and immediately direct-invite them to a match.
+ * Uses roster creation + rpc_match_nominate_guest.
  */
 export function AddGuestForm({ matchId }: Props) {
   const [displayName, setDisplayName] = useState('')
@@ -34,7 +34,7 @@ export function AddGuestForm({ matchId }: Props) {
     const emailVal = email.trim() || null
     const phoneVal = phone.trim() || null
     if (!emailVal && !phoneVal) {
-      setError('Please enter either email or phone number.')
+      setError('Email or phone required.')
       setLoading(false)
       return
     }
@@ -48,7 +48,7 @@ export function AddGuestForm({ matchId }: Props) {
         phone: phoneVal,
         notes: guestNotes || null,
       })
-      // 2) Nominate that Contact Player into this match
+      // 2) Direct-invite that Contact Player into this match
       await nominateGuest(supabase, matchId, guest.id)
       await processDeliveriesAction()
       setSuccess(true)
@@ -58,7 +58,7 @@ export function AddGuestForm({ matchId }: Props) {
       setGuestNotes('')
       router.refresh()
     } catch (err) {
-      setError((err as { message?: string })?.message ?? 'Failed to add player')
+      setError((err as { message?: string })?.message ?? 'Failed to create contact player')
     } finally {
       setLoading(false)
     }
@@ -67,9 +67,12 @@ export function AddGuestForm({ matchId }: Props) {
   return (
     <form onSubmit={handleSubmit}>
       <div style={{ marginBottom: '0.5rem' }}>
+        <label style={{ display: 'block', fontSize: '0.8rem', color: '#4b5563', marginBottom: '0.25rem' }}>
+          Name
+        </label>
         <input
           type="text"
-          placeholder="Player name *"
+          placeholder="Name"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           required
@@ -77,38 +80,51 @@ export function AddGuestForm({ matchId }: Props) {
         />
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{ flex: 1, padding: '0.5rem', boxSizing: 'border-box' }}
-        />
-        <input
-          type="tel"
-          placeholder="Phone"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          style={{ flex: 1, padding: '0.5rem', boxSizing: 'border-box' }}
-        />
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: '#4b5563', marginBottom: '0.25rem' }}>
+            Email
+          </label>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: '#4b5563', marginBottom: '0.25rem' }}>
+            Phone
+          </label>
+          <input
+            type="tel"
+            placeholder="Phone"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
+          />
+        </div>
       </div>
       <p style={{ fontSize: '0.75rem', color: '#666', margin: '-0.25rem 0 0.5rem' }}>
-        Email or phone required. <strong>Email needed for match notifications.</strong>
+        Email or phone required.
       </p>
       <div style={{ marginBottom: '0.5rem' }}>
+        <label style={{ display: 'block', fontSize: '0.8rem', color: '#4b5563', marginBottom: '0.25rem' }}>
+          Notes
+        </label>
         <input
           type="text"
-          placeholder="Notes (optional)"
+          placeholder="Notes"
           value={guestNotes}
           onChange={(e) => setGuestNotes(e.target.value)}
           style={{ padding: '0.5rem', width: '100%', boxSizing: 'border-box' }}
         />
       </div>
       <button type="submit" disabled={loading || (!email.trim() && !phone.trim())}>
-        {loading ? 'Creating...' : 'Create & Nominate'}
+        {loading ? 'Creating...' : 'Create & add'}
       </button>
       {error && <p style={{ color: 'red', marginTop: '0.5rem' }}>{error}</p>}
-      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Contact Player added!</p>}
+      {success && <p style={{ color: 'green', marginTop: '0.5rem' }}>Contact added.</p>}
     </form>
   )
 }

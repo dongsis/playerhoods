@@ -9,7 +9,8 @@ import { processDeliveriesAction } from './process-deliveries-action'
 interface ContactTarget {
   guest_id: string
   display_name: string
-  email: string | null
+  source: string
+  sourceLabel: string
 }
 
 interface Props {
@@ -39,7 +40,7 @@ export function InviteGuestForm({ matchId, contactTargets }: Props) {
       setGuestId('')
       router.refresh()
     } catch (err) {
-      setError((err as { message?: string })?.message ?? 'Failed to invite contact player')
+      setError((err as { message?: string })?.message ?? 'Failed to invite contact')
     } finally {
       setLoading(false)
     }
@@ -48,7 +49,7 @@ export function InviteGuestForm({ matchId, contactTargets }: Props) {
   if (contactTargets.length === 0) {
     return (
       <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>
-        No contact players in your favorites. Add some from the Contacts tab.
+        No contact people available.
       </p>
     )
   }
@@ -62,20 +63,19 @@ export function InviteGuestForm({ matchId, contactTargets }: Props) {
           required
           style={{ padding: '0.4rem 0.5rem', flex: 1, minWidth: '160px', fontSize: '0.9rem' }}
         >
-          <option value="">-- Select a Contact Player --</option>
-          {contactTargets.map(r => (
-            <option key={r.guest_id} value={r.guest_id}>
-              {r.display_name}
-              {(!r.email || !r.email.trim()) ? ' (no email — won\'t get notifications)' : ''}
-            </option>
+          <option value="">Select a contact person</option>
+          {contactTargets.map((target) => (
+          <option key={target.guest_id} value={target.guest_id}>
+              {`${target.display_name}${target.sourceLabel ? ` - ${target.sourceLabel}` : ''}`}
+          </option>
           ))}
         </select>
         <button type="submit" disabled={loading || !guestId} style={{ padding: '0.4rem 0.8rem', background: '#0e7490', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          {loading ? 'Nominating...' : 'Nominate'}
+          {loading ? 'Inviting...' : 'Invite'}
         </button>
       </div>
       {error   && <p style={{ color: 'red',   fontSize: '0.8rem', margin: '0.3rem 0 0' }}>{error}</p>}
-      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Contact Player nominated!</p>}
+      {success && <p style={{ color: 'green', fontSize: '0.8rem', margin: '0.3rem 0 0' }}>Contact invited.</p>}
     </form>
   )
 }
