@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { ContactPlayerResolved } from '@/lib/api/roster'
@@ -98,6 +98,72 @@ function sanitizePathPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, '-')
 }
 
+function UploadIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 16V5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8.5 8.5L12 5L15.5 8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 18.5H19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ImageIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4.5 7.5H8L9.5 5.5H14.5L16 7.5H19.5C20.3 7.5 21 8.2 21 9V18.5C21 19.3 20.3 20 19.5 20H4.5C3.7 20 3 19.3 3 18.5V9C3 8.2 3.7 7.5 4.5 7.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <circle cx="12" cy="13" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  )
+}
+
+function CheckIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function AlertIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 8V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="12" cy="16" r="1" fill="currentColor" />
+      <path d="M10.3 4.8L3.7 16.3C3 17.5 3.9 19 5.4 19H18.6C20.1 19 21 17.5 20.3 16.3L13.7 4.8C13 3.6 11 3.6 10.3 4.8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function EditIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 20H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M16.5 3.5C17.3 2.7 18.7 2.7 19.5 3.5C20.3 4.3 20.3 5.7 19.5 6.5L8 18L4 19L5 15L16.5 3.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 7H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M9 7V5.5C9 4.7 9.7 4 10.5 4H13.5C14.3 4 15 4.7 15 5.5V7" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M18 7L17.3 18.1C17.2 19.2 16.3 20 15.2 20H8.8C7.7 20 6.8 19.2 6.7 18.1L6 7" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function InfoIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 10V16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="7.5" r="1" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function ContactScreenshotImportSection({
   userId,
   existingContacts,
@@ -105,12 +171,15 @@ export function ContactScreenshotImportSection({
   onImportScreenshotContacts,
   onImported,
 }: Props) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [files, setFiles] = useState<File[]>([])
   const [drafts, setDrafts] = useState<EditableDraft[]>([])
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
 
   const selectedCount = useMemo(
     () => drafts.filter((draft) => draft.selected).length,
@@ -121,6 +190,9 @@ export function ContactScreenshotImportSection({
     () => drafts.filter((draft) => draft.missing_fields.length === 0).map((draft) => draft.id),
     [drafts],
   )
+
+  const step = drafts.length > 0 ? 'review' : 'upload'
+  const allSelectableSelected = selectableDraftIds.length > 0 && drafts.every((draft) => draft.missing_fields.length > 0 || draft.selected)
 
   const updateDraft = (id: string, updater: (draft: EditableDraft) => EditableDraft) => {
     setDrafts((previous) =>
@@ -133,10 +205,7 @@ export function ContactScreenshotImportSection({
           ...nextDraft,
           missing_fields: missingFields,
           possible_duplicate: possibleDuplicate,
-          selected:
-            missingFields.length === 0
-              ? nextDraft.selected
-              : false,
+          selected: missingFields.length === 0 ? nextDraft.selected : false,
         }
       }),
     )
@@ -145,6 +214,16 @@ export function ContactScreenshotImportSection({
   const resetFlow = () => {
     setFiles([])
     setDrafts([])
+    setEditingDraftId(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleFileSelection = (nextFiles: File[]) => {
+    setFiles(nextFiles)
+    setDrafts([])
+    setEditingDraftId(null)
+    setError(null)
+    setNotice(null)
   }
 
   const handleParse = async () => {
@@ -181,6 +260,7 @@ export function ContactScreenshotImportSection({
         selected: draft.selected_by_default,
       }))
       setDrafts(nextDrafts)
+      setEditingDraftId(nextDrafts.find((draft) => draft.missing_fields.length > 0)?.id ?? null)
       setNotice(
         nextDrafts.length > 0
           ? `Parsed ${nextDrafts.length} contact candidate${nextDrafts.length === 1 ? '' : 's'}. Review and confirm before importing.`
@@ -233,196 +313,328 @@ export function ContactScreenshotImportSection({
   }
 
   return (
-    <div style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '1.5rem', background: '#fafafa' }}>
-      <div style={{ display: 'grid', gap: '0.35rem', marginBottom: '0.85rem' }}>
-        <strong style={{ fontSize: '0.95rem' }}>Import from Screenshot</strong>
-        <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>
-          Use a clear list with names and phone or email.
-        </p>
-      </div>
-
-      <div style={{ marginBottom: drafts.length > 0 ? '1rem' : '0.75rem' }}>
-        <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.25rem', color: '#555' }}>
-          Upload screenshot(s)
-        </label>
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          multiple
-          onChange={(event) => {
-            setFiles(Array.from(event.target.files ?? []))
-            setDrafts([])
-            setError(null)
-            setNotice(null)
-          }}
-        />
-        {files.length > 0 && (
-          <div style={{ marginTop: '0.45rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-            {files.map((file) => (
-              <span
-                key={`${file.name}-${file.size}`}
-                style={{
-                  padding: '0.15rem 0.45rem',
-                  fontSize: '0.74rem',
-                  borderRadius: '999px',
-                  background: '#eef2ff',
-                  color: '#4338ca',
-                }}
-              >
-                {file.name}
-              </span>
-            ))}
-          </div>
-        )}
-        <div style={{ marginTop: '0.65rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button type="button" onClick={handleParse} disabled={parsing || files.length === 0} style={{ padding: '0.45rem 0.9rem' }}>
-            {parsing ? 'Parsing...' : 'Parse screenshot'}
-          </button>
-          {(files.length > 0 || drafts.length > 0) && (
-            <button
-              type="button"
-              onClick={() => {
-                resetFlow()
-                setError(null)
-                setNotice(null)
-              }}
-              disabled={parsing || importing}
-              style={{ padding: '0.45rem 0.9rem' }}
-            >
-              Clear
-            </button>
-          )}
+    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_40px_-36px_rgba(15,23,42,0.28)]">
+      <div className="sticky top-0 z-10 border-b border-slate-100 bg-white px-6 py-4">
+        <div>
+          <h4 className="text-[1.1rem] font-semibold text-slate-800">Import from Screenshot</h4>
+          <p className="mt-0.5 text-[12px] text-slate-500">Upload screenshots containing names, phones, or emails.</p>
         </div>
       </div>
 
-      {notice && <p style={{ color: '#166534', fontSize: '0.82rem', margin: '0 0 0.75rem' }}>{notice}</p>}
-      {error && <p style={{ color: '#dc2626', fontSize: '0.82rem', margin: '0 0 0.75rem' }}>{error}</p>}
+      <div className="p-6">
+        {step === 'upload' ? (
+          <div className="space-y-6">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              onChange={(event) => handleFileSelection(Array.from(event.target.files ?? []))}
+              className="hidden"
+            />
 
-      {drafts.length > 0 && (
-        <div style={{ display: 'grid', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <strong style={{ fontSize: '0.9rem' }}>Review extracted contacts</strong>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onDragOver={(event) => {
+                event.preventDefault()
+                setIsDragging(true)
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault()
+                setIsDragging(false)
+                handleFileSelection(Array.from(event.dataTransfer.files ?? []).filter((file) => file.type.startsWith('image/')))
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={[
+                'flex w-full flex-col items-center justify-center rounded-[22px] border-2 border-dashed px-6 py-12 text-center transition',
+                isDragging
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                <UploadIcon />
+              </span>
+              <div className="text-lg font-medium text-slate-800">Click or drag screenshot here</div>
+              <p className="mt-2 max-w-xs text-sm leading-6 text-slate-500">
+                Upload screenshots containing names, phones, or emails. We&apos;ll automatically extract them.
+              </p>
+              <span className="mt-6 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                Choose Files
+              </span>
+            </button>
+
+            {files.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {files.map((file) => (
+                  <span
+                    key={`${file.name}-${file.size}`}
+                    className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[12px] font-semibold text-blue-700"
+                  >
+                    {file.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-amber-100 bg-amber-50 p-4">
+              <div className="flex gap-3 text-amber-800">
+                <span className="mt-0.5 shrink-0 text-amber-500">
+                  <InfoIcon />
+                </span>
+                <p className="text-xs leading-6">
+                  Tip: For best results, ensure screenshots are clear and text is unobstructed. Multiple languages are supported.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => setDrafts((previous) => previous.map((draft) => ({
-                  ...draft,
-                  selected: draft.missing_fields.length === 0,
-                })))}
-                style={{ fontSize: '0.78rem' }}
+                onClick={handleParse}
+                disabled={parsing || files.length === 0}
+                className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                Select all
+                {parsing ? 'Parsing...' : 'Parse Screenshot'}
               </button>
-              <button
-                type="button"
-                onClick={() => setDrafts((previous) => previous.map((draft) => ({ ...draft, selected: false })))}
-                style={{ fontSize: '0.78rem' }}
-              >
-                Deselect all
-              </button>
-              <span style={{ fontSize: '0.78rem', color: '#666' }}>{selectedCount} selected</span>
             </div>
           </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
+                  Success
+                </span>
+                <span className="text-sm text-slate-500">
+                  {drafts.length} contact candidate{drafts.length === 1 ? '' : 's'} found
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  resetFlow()
+                  setError(null)
+                  setNotice(null)
+                }}
+                className="text-sm font-medium text-blue-600 hover:underline"
+              >
+                Upload again
+              </button>
+            </div>
 
-          <div style={{ display: 'grid', gap: '0.65rem' }}>
-            {drafts.map((draft) => (
-              <div key={draft.id} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', background: '#fff', padding: '0.85rem' }}>
-                <div style={{ display: 'flex', alignItems: 'start', gap: '0.75rem' }}>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-4 px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={draft.selected}
-                    disabled={draft.missing_fields.length > 0}
-                    onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, selected: event.target.checked }))}
-                    style={{ marginTop: '0.25rem' }}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    checked={allSelectableSelected}
+                    onChange={() => {
+                      const nextSelected = !allSelectableSelected
+                      setDrafts((previous) =>
+                        previous.map((draft) => ({
+                          ...draft,
+                          selected: draft.missing_fields.length === 0 ? nextSelected : false,
+                        })),
+                      )
+                    }}
                   />
-                  <div style={{ flex: 1, display: 'grid', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                        <span style={{ fontSize: '0.74rem', color: '#4338ca', background: '#eef2ff', padding: '0.12rem 0.45rem', borderRadius: '999px' }}>
+                  <span>Select all</span>
+                </label>
+                <span>Actions</span>
+              </div>
+
+              {drafts.map((draft) => {
+                const isEditing = editingDraftId === draft.id
+
+                return (
+                  <div
+                    key={draft.id}
+                    className={[
+                      'group rounded-[20px] border p-4 transition-all',
+                      draft.selected
+                        ? 'border-blue-200 bg-blue-50/30'
+                        : 'border-slate-100 bg-white opacity-85 hover:opacity-100',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-start gap-4">
+                      <input
+                        type="checkbox"
+                        checked={draft.selected}
+                        disabled={draft.missing_fields.length > 0}
+                        onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, selected: event.target.checked }))}
+                        className="mt-1 h-5 w-5 rounded-md border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+
+                      <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-3 md:items-start">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate font-bold text-slate-800">{draft.display_name || 'Untitled contact'}</p>
+                            {draft.confidence === 'high' ? (
+                              <span className="text-green-500" title="High confidence">
+                                <CheckIcon />
+                              </span>
+                            ) : (
+                              <span className="text-amber-500" title="Medium confidence">
+                                <AlertIcon />
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 text-xs text-slate-400">Name</p>
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className={`text-sm ${draft.phone ? 'text-slate-700' : 'italic text-slate-300'}`}>
+                            {draft.phone || 'No phone detected'}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-400">Phone</p>
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className={`truncate text-sm ${draft.email ? 'text-slate-700' : 'italic text-slate-300'}`}>
+                            {draft.email || 'No email detected'}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-400">Email</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => setEditingDraftId((current) => current === draft.id ? null : draft.id)}
+                          className="rounded-lg border border-transparent p-2 text-slate-400 transition-all hover:border-blue-100 hover:bg-white hover:text-blue-600"
+                          aria-label="Edit extracted contact"
+                        >
+                          <EditIcon />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDrafts((previous) => previous.filter((item) => item.id !== draft.id))
+                            if (editingDraftId === draft.id) setEditingDraftId(null)
+                          }}
+                          className="rounded-lg border border-transparent p-2 text-slate-400 transition-all hover:border-red-100 hover:bg-white hover:text-red-600"
+                          aria-label="Remove extracted contact"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {draft.source_file_name ? (
+                        <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-700">
                           {draft.source_file_name}
                         </span>
-                        <span style={{ fontSize: '0.74rem', color: '#0f766e', background: '#ecfeff', padding: '0.12rem 0.45rem', borderRadius: '999px' }}>
-                          {draft.confidence} confidence
+                      ) : null}
+                      <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-semibold capitalize text-emerald-700">
+                        {draft.confidence} confidence
+                      </span>
+                      {draft.source_excerpt ? (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">
+                          Parsed from: &ldquo;{draft.source_excerpt}&rdquo;
                         </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setDrafts((previous) => previous.filter((item) => item.id !== draft.id))}
-                        style={{ fontSize: '0.78rem', color: '#b91c1c' }}
-                      >
-                        Skip
-                      </button>
+                      ) : null}
                     </div>
 
-                    <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.74rem', marginBottom: '0.15rem', color: '#666' }}>Name</label>
-                        <input
-                          type="text"
-                          value={draft.display_name}
-                          onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, display_name: event.target.value }))}
-                          style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                        <div style={{ flex: 1, minWidth: '220px' }}>
-                          <label style={{ display: 'block', fontSize: '0.74rem', marginBottom: '0.15rem', color: '#666' }}>Phone</label>
-                          <input
-                            type="tel"
-                            value={draft.phone}
-                            onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, phone: event.target.value }))}
-                            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
-                          />
-                        </div>
-                        <div style={{ flex: 1, minWidth: '220px' }}>
-                          <label style={{ display: 'block', fontSize: '0.74rem', marginBottom: '0.15rem', color: '#666' }}>Email</label>
-                          <input
-                            type="email"
-                            value={draft.email}
-                            onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, email: event.target.value }))}
-                            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {draft.missing_fields.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    {draft.missing_fields.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
                         {draft.missing_fields.map((field) => (
-                          <span key={field} style={{ fontSize: '0.74rem', color: '#b45309', background: '#fff7ed', padding: '0.12rem 0.45rem', borderRadius: '999px' }}>
+                          <span key={field} className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700">
                             {field}
                           </span>
                         ))}
                       </div>
-                    )}
+                    ) : null}
 
-                    {draft.possible_duplicate && (
-                      <div style={{ fontSize: '0.78rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.45rem 0.55rem' }}>
-                        <strong>Possible duplicate found.</strong> {draft.possible_duplicate.reason}: {draft.possible_duplicate.display_name}. You can keep this selected to import anyway, or skip it.
+                    {draft.possible_duplicate ? (
+                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
+                        <strong>Possible duplicate found.</strong> {draft.possible_duplicate.reason}: {draft.possible_duplicate.display_name}.
                       </div>
-                    )}
+                    ) : null}
 
-                    {draft.source_excerpt && (
-                      <div style={{ fontSize: '0.75rem', color: '#888' }}>
-                        Parsed from: &ldquo;{draft.source_excerpt}&rdquo;
+                    {isEditing ? (
+                      <div className="mt-4 grid gap-3 rounded-[18px] border border-slate-200 bg-white p-4 md:grid-cols-3">
+                        <label className="text-sm text-slate-600 md:col-span-3">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Name</span>
+                          <input
+                            type="text"
+                            value={draft.display_name}
+                            onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, display_name: event.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-blue-300"
+                          />
+                        </label>
+                        <label className="text-sm text-slate-600">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Phone</span>
+                          <input
+                            type="tel"
+                            value={draft.phone}
+                            onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, phone: event.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-blue-300"
+                          />
+                        </label>
+                        <label className="text-sm text-slate-600 md:col-span-2">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Email</span>
+                          <input
+                            type="email"
+                            value={draft.email}
+                            onChange={(event) => updateDraft(draft.id, (current) => ({ ...current, email: event.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-blue-300"
+                          />
+                        </label>
                       </div>
-                    )}
+                    ) : null}
                   </div>
-                </div>
-              </div>
-            ))}
+                )
+              })}
+            </div>
           </div>
+        )}
+      </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#666' }}>
-              Only selected rows will be imported.
-            </p>
-            <button type="button" onClick={handleImport} disabled={importing || selectedCount === 0 || selectableDraftIds.length === 0} style={{ padding: '0.5rem 1rem' }}>
-              {importing ? 'Importing...' : 'Import selected contacts'}
-            </button>
-          </div>
+      <div className="flex items-center justify-between gap-4 border-t border-slate-100 bg-slate-50 px-6 py-4">
+        <div className="text-sm italic text-slate-500">
+          {step === 'review' ? `${selectedCount} contacts selected for import` : 'Supports batch processing of screenshots'}
         </div>
-      )}
+        <div className="flex gap-3">
+          <button
+            type="button"
+            className="rounded-lg px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
+            onClick={() => {
+              resetFlow()
+              setError(null)
+              setNotice(null)
+            }}
+            disabled={parsing || importing}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={step !== 'review' || importing || selectedCount === 0 || selectableDraftIds.length === 0}
+            onClick={handleImport}
+            className={[
+              'inline-flex items-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold shadow-sm transition-all',
+              step === 'review' && selectedCount > 0 && selectableDraftIds.length > 0 && !importing
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'cursor-not-allowed bg-slate-200 text-slate-400',
+            ].join(' ')}
+          >
+            <span>{step === 'review' ? (importing ? 'Importing...' : `Import Selected (${selectedCount})`) : 'Upload First'}</span>
+            <span aria-hidden="true">›</span>
+          </button>
+        </div>
+      </div>
+
+      {notice ? (
+        <div className="border-t border-emerald-100 bg-emerald-50 px-6 py-3 text-sm text-emerald-700">
+          {notice}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="border-t border-rose-100 bg-rose-50 px-6 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : null}
     </div>
   )
 }

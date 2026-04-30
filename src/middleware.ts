@@ -22,6 +22,11 @@ export async function middleware(request: NextRequest) {
   })
 
   const pathname = request.nextUrl.pathname
+  const isSupabaseProxy = pathname.startsWith('/supabase/')
+  if (isSupabaseProxy) {
+    response.headers.set('x-ph-middleware', 'supabase-proxy')
+    return response
+  }
   const isLoginRoute = pathname.startsWith('/login')
   const isAuthCallback = pathname.startsWith('/auth/callback')
   const isResetPasswordRoute = pathname.startsWith('/reset-password')
@@ -110,6 +115,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|supabase/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

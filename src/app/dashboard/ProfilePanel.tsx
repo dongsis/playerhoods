@@ -1,9 +1,9 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Profile, VenueIdentity, Venue, Sport, UserSportProfile } from '@/lib/types/database'
+import type { Profile, VenueIdentity, Venue, VenueKind, Sport, UserSportProfile } from '@/lib/types/database'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   approveMatchProxyBinding,
@@ -146,6 +146,84 @@ function FieldLabel({ children }: { children: ReactNode }) {
     <label className="text-label mb-1.5 block">
       {children}
     </label>
+  )
+}
+
+const VENUE_KIND_FILTER_OPTIONS: Array<{ value: 'all' | VenueKind; label: string }> = [
+  { value: 'all', label: 'All types' },
+  { value: 'club', label: 'Club' },
+  { value: 'park', label: 'Park' },
+  { value: 'community_centre', label: 'Community Centre' },
+  { value: 'condo', label: 'Condo' },
+  { value: 'school', label: 'School' },
+  { value: 'private_facility', label: 'Private Facility' },
+]
+
+function getVenueKindLabel(kind: Venue['venue_kind'] | null | undefined): string {
+  switch (kind) {
+    case 'club':
+      return 'Club'
+    case 'park':
+      return 'Park'
+    case 'community_centre':
+      return 'Community Centre'
+    case 'condo':
+      return 'Condo'
+    case 'school':
+      return 'School'
+    case 'private_facility':
+      return 'Private Facility'
+    default:
+      return 'Venue'
+  }
+}
+
+function getVenueAccessLabel(accessType: Venue['access_type'] | null | undefined): string {
+  switch (accessType) {
+    case 'public':
+      return 'Public access'
+    case 'members':
+      return 'Members access'
+    case 'private':
+      return 'Private access'
+    case 'restricted':
+      return 'Restricted access'
+    default:
+      return 'Access not set'
+  }
+}
+
+function getVenueMetaLine(venue: Venue): string {
+  const parts = [
+    venue.location_text?.trim() || null,
+    getVenueAccessLabel(venue.access_type),
+  ].filter((value): value is string => Boolean(value))
+
+  return parts.join(' • ')
+}
+
+function VenueBadge({
+  children,
+  tone = 'default',
+}: {
+  children: ReactNode
+  tone?: 'default' | 'type' | 'member' | 'starred' | 'primary'
+}) {
+  const toneClass =
+    tone === 'type'
+      ? 'bg-slate-900 text-white'
+      : tone === 'member'
+        ? 'border border-emerald-100 bg-emerald-50 text-emerald-700'
+        : tone === 'starred'
+          ? 'border border-amber-100 bg-amber-50 text-amber-700'
+          : tone === 'primary'
+            ? 'bg-slate-900 text-white'
+            : 'bg-slate-100 text-slate-500'
+
+  return (
+    <span className={`text-label inline-flex items-center rounded-md px-2 py-0.5 uppercase tracking-[0.12em] ${toneClass}`}>
+      {children}
+    </span>
   )
 }
 
@@ -685,6 +763,10 @@ export function ProfilePanel({
   const [selectedJoinVenueId, setSelectedJoinVenueId] = useState('')
   const [joinError, setJoinError] = useState<string | null>(null)
   const [isJoiningVenue, startJoiningVenue] = useTransition()
+  const [joiningVenueId, setJoiningVenueId] = useState<string | null>(null)
+  const [venueCitySearch, setVenueCitySearch] = useState('')
+  const [venueNameSearch, setVenueNameSearch] = useState('')
+  const [venueTypeFilter, setVenueTypeFilter] = useState<'all' | VenueKind>('all')
   const [openVenueMenuId, setOpenVenueMenuId] = useState<string | null>(null)
   const [venueActionError, setVenueActionError] = useState<string | null>(null)
   const [pendingVenueAction, setPendingVenueAction] = useState<{ id: string; kind: 'primary' | 'delete' | 'remove_saved' } | null>(null)
@@ -719,6 +801,32 @@ export function ProfilePanel({
     profile.primary_venue_id && joinableVenues.some(venue => venue.id === profile.primary_venue_id)
       ? profile.primary_venue_id
       : ''
+  const sortedJoinedIdentities = useMemo(
+    () => [...myIdentities].sort((a, b) => {
+      const aPrimary = a.venue_id === profile.primary_venue_id ? 1 : 0
+      const bPrimary = b.venue_id === profile.primary_venue_id ? 1 : 0
+      if (aPrimary !== bPrimary) return bPrimary - aPrimary
+      return getVenueDisplayName(a.venue).localeCompare(getVenueDisplayName(b.venue))
+    }),
+    [myIdentities, profile.primary_venue_id],
+  )
+  const sortedPublicVenuePrefs = useMemo(
+    () => [...publicVenuePrefs].sort((a, b) => getVenueDisplayName(a).localeCompare(getVenueDisplayName(b))),
+    [publicVenuePrefs],
+  )
+  const filteredJoinableVenues = useMemo(() => {
+    const cityQuery = venueCitySearch.trim().toLowerCase()
+    const nameQuery = venueNameSearch.trim().toLowerCase()
+
+    return joinableVenues.filter((venue) => {
+      const matchesType = venueTypeFilter === 'all' || venue.venue_kind === venueTypeFilter
+      const venueName = `${venue.name} ${venue.abbreviation ?? ''}`.toLowerCase()
+      const venueLocation = (venue.location_text ?? '').toLowerCase()
+      const matchesName = !nameQuery || venueName.includes(nameQuery)
+      const matchesCity = !cityQuery || venueLocation.includes(cityQuery)
+      return matchesType && matchesName && matchesCity
+    })
+  }, [joinableVenues, venueCitySearch, venueNameSearch, venueTypeFilter])
 
   useEffect(() => {
     setSelectedJoinVenueId(defaultJoinVenueId)
@@ -1176,188 +1284,244 @@ export function ProfilePanel({
       isOpen={activeSection === 'venues'}
       onToggle={() => toggleSection('venues')}
     >
-      <div className="space-y-5">
-        <SubCard title="Current venues">
-          <div className="space-y-6">
-            <div>
-              <p className="text-body-main font-medium text-slate-500">The venues you joined</p>
-              {myIdentities.length === 0 ? (
-                <div className="text-body-main mt-3 rounded-[18px] border border-dashed border-slate-300 bg-white px-4 py-5 text-slate-500">
-                  No venues yet.
-                </div>
-              ) : (
-                <div className="mt-3 rounded-[18px] border border-slate-200 bg-white px-2 py-1.5">
-                  {myIdentities.map(identity => {
-                    const menuKey = `joined:${identity.id}`
-                    return (
-                      <div
-                        key={identity.id}
-                        className="flex items-center justify-between gap-4 rounded-[16px] px-2 py-2"
-                      >
-                        <div className="min-w-0 flex items-center gap-2.5">
-                          <span className="text-title-main truncate text-slate-900">{getVenueDisplayName(identity.venue)}</span>
-                          {profile.primary_venue_id === identity.venue_id && (
-                            <span className="text-label rounded-full bg-slate-900 px-2.5 py-1 text-white">
-                              primary
-                            </span>
-                          )}
-                        </div>
-
-                        <div
-                          className="relative shrink-0"
-                          data-venue-menu-root={menuKey}
-                        >
-                          <button
-                            type="button"
-                            aria-haspopup="menu"
-                            aria-expanded={openVenueMenuId === menuKey}
-                            onClick={() => {
-                              setVenueActionError(null)
-                              setOpenVenueMenuId(prev => (prev === menuKey ? null : menuKey))
-                            }}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
-                          >
-                            <span className="flex items-center gap-1" aria-hidden="true">
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                            </span>
-                          </button>
-                          {openVenueMenuId === menuKey && (
-                            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
-                              {profile.primary_venue_id === identity.venue_id && (
-                                <div className="text-label px-3 py-2 text-slate-400">
-                                  Primary venue
-                                </div>
-                              )}
-                              {profile.primary_venue_id !== identity.venue_id && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleSetPrimaryVenue(identity.venue_id)}
-                                  disabled={isVenueActionPending}
-                                  className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {pendingVenueAction?.id === identity.venue_id && pendingVenueAction.kind === 'primary'
-                                    ? 'Setting primary...'
-                                    : 'Set primary'}
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteVenue(identity.venue_id, identity.venue.name)}
-                                disabled={isVenueActionPending}
-                                className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {pendingVenueAction?.id === identity.venue_id && pendingVenueAction.kind === 'delete'
-                                  ? 'Deleting...'
-                                  : 'Delete'}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {publicVenuePrefs.length > 0 && (
-              <div>
-              <p className="text-body-main font-medium text-slate-500">The public courts you play</p>
-                <div className="mt-3 rounded-[18px] border border-slate-200 bg-white px-2 py-1.5">
-                  {publicVenuePrefs.map(venue => {
-                    const menuKey = `public:${venue.id}`
-                    return (
-                      <div
-                        key={venue.id}
-                        className="flex items-center justify-between gap-4 rounded-[16px] px-2 py-2"
-                      >
-                        <span className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</span>
-
-                        <div
-                          className="relative shrink-0"
-                          data-venue-menu-root={menuKey}
-                        >
-                          <button
-                            type="button"
-                            aria-haspopup="menu"
-                            aria-expanded={openVenueMenuId === menuKey}
-                            onClick={() => {
-                              setVenueActionError(null)
-                              setOpenVenueMenuId(prev => (prev === menuKey ? null : menuKey))
-                            }}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
-                          >
-                            <span className="flex items-center gap-1" aria-hidden="true">
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                            </span>
-                          </button>
-                          {openVenueMenuId === menuKey && (
-                            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSavedVenue(venue.id, venue.name)}
-                                disabled={isVenueActionPending}
-                                className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {pendingVenueAction?.id === venue.id && pendingVenueAction.kind === 'remove_saved'
-                                  ? 'Deleting...'
-                                  : 'Delete'}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+      <div className="space-y-6">
+        <div>
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <h3 className="text-h2 text-slate-900">Your venues</h3>
+            <span className="text-label text-slate-400">
+              {sortedJoinedIdentities.length + sortedPublicVenuePrefs.length} saved
+            </span>
           </div>
 
-          {venueActionError && <p className="text-body-main mt-4 text-rose-600">{venueActionError}</p>}
-        </SubCard>
+          <div className="space-y-3">
+            {sortedJoinedIdentities.length === 0 && sortedPublicVenuePrefs.length === 0 ? (
+              <div className="text-body-main rounded-[24px] border-2 border-dashed border-slate-200 bg-white px-5 py-10 text-center text-slate-400">
+                No venues saved yet.
+              </div>
+            ) : (
+              <>
+                {sortedJoinedIdentities.map((identity) => {
+                  const menuKey = `joined:${identity.id}`
+                  const venueName = getVenueDisplayName(identity.venue)
+                  return (
+                    <div
+                      key={identity.id}
+                      className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 overflow-hidden">
+                          <h4 className="text-title-main truncate text-slate-900">{venueName}</h4>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <VenueBadge tone="type">{getVenueKindLabel(identity.venue.venue_kind)}</VenueBadge>
+                            <VenueBadge tone="member">member</VenueBadge>
+                            {profile.primary_venue_id === identity.venue_id ? (
+                              <VenueBadge tone="primary">primary</VenueBadge>
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="text-body-sub mt-1 truncate text-slate-400">
+                          {getVenueMetaLine(identity.venue)}
+                        </p>
+                      </div>
 
-        <SubCard title="Add a venue" description="Choose a venue. Your display name is used automatically.">
-          {!normalizedDisplayName && joinableVenues.length > 0 && (
-            <div className="text-body-main mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+                      <div className="relative shrink-0" data-venue-menu-root={menuKey}>
+                        <button
+                          type="button"
+                          aria-haspopup="menu"
+                          aria-expanded={openVenueMenuId === menuKey}
+                          onClick={() => {
+                            setVenueActionError(null)
+                            setOpenVenueMenuId(prev => (prev === menuKey ? null : menuKey))
+                          }}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
+                        >
+                          <span className="flex items-center gap-1" aria-hidden="true">
+                            <span className="h-1 w-1 rounded-full bg-current" />
+                            <span className="h-1 w-1 rounded-full bg-current" />
+                            <span className="h-1 w-1 rounded-full bg-current" />
+                          </span>
+                        </button>
+                        {openVenueMenuId === menuKey ? (
+                          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+                            {profile.primary_venue_id === identity.venue_id ? (
+                              <div className="text-label px-3 py-2 text-slate-400">
+                                Primary venue
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleSetPrimaryVenue(identity.venue_id)}
+                                disabled={isVenueActionPending}
+                                className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {pendingVenueAction?.id === identity.venue_id && pendingVenueAction.kind === 'primary'
+                                  ? 'Setting primary...'
+                                  : 'Set primary'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteVenue(identity.venue_id, identity.venue.name)}
+                              disabled={isVenueActionPending}
+                              className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {pendingVenueAction?.id === identity.venue_id && pendingVenueAction.kind === 'delete'
+                                ? 'Deleting...'
+                                : 'Delete'}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {sortedPublicVenuePrefs.map((venue) => {
+                  const menuKey = `public:${venue.id}`
+                  return (
+                    <div
+                      key={venue.id}
+                      className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 overflow-hidden">
+                          <h4 className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</h4>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
+                            <VenueBadge tone="starred">starred</VenueBadge>
+                          </div>
+                        </div>
+                        <p className="text-body-sub mt-1 truncate text-slate-400">
+                          {getVenueMetaLine(venue)}
+                        </p>
+                      </div>
+
+                      <div className="relative shrink-0" data-venue-menu-root={menuKey}>
+                        <button
+                          type="button"
+                          aria-haspopup="menu"
+                          aria-expanded={openVenueMenuId === menuKey}
+                          onClick={() => {
+                            setVenueActionError(null)
+                            setOpenVenueMenuId(prev => (prev === menuKey ? null : menuKey))
+                          }}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
+                        >
+                          <span className="flex items-center gap-1" aria-hidden="true">
+                            <span className="h-1 w-1 rounded-full bg-current" />
+                            <span className="h-1 w-1 rounded-full bg-current" />
+                            <span className="h-1 w-1 rounded-full bg-current" />
+                          </span>
+                        </button>
+                        {openVenueMenuId === menuKey ? (
+                          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSavedVenue(venue.id, venue.name)}
+                              disabled={isVenueActionPending}
+                              className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {pendingVenueAction?.id === venue.id && pendingVenueAction.kind === 'remove_saved'
+                                ? 'Deleting...'
+                                : 'Delete'}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  )
+                })}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-[28px] border border-slate-200/70 bg-white p-6 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.16)]">
+          <div className="mb-6">
+            <h3 className="text-h2 text-slate-900">Find a venue</h3>
+            <p className="text-body-sub mt-1 text-slate-500">Search by city, venue name, or type.</p>
+          </div>
+
+          {!normalizedDisplayName && joinableVenues.length > 0 ? (
+            <div className="text-body-main mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
               Set your display name above before joining a venue.
             </div>
-          )}
-          {joinableVenues.length === 0 ? (
-            <p className="text-body-main leading-6 text-slate-500">You have already joined all available venues.</p>
-          ) : (
-            <form onSubmit={handleJoinVenue} className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="min-w-0 flex-1">
-                <FieldLabel>Venue</FieldLabel>
-                <select
-                  value={selectedJoinVenueId}
-                  onChange={e => {
-                    setSelectedJoinVenueId(e.target.value)
-                    setJoinError(null)
-                  }}
-                  className={inputClass}
-                >
-                  <option value="">Select a venue...</option>
-                  {joinableVenues.map(venue => (
-                    <option key={venue.id} value={venue.id}>{venue.name}</option>
-                  ))}
-                </select>
-              </div>
-              <button
-                type="submit"
-                disabled={isJoiningVenue || !selectedJoinVenueId || !normalizedDisplayName}
-                className="text-body-main inline-flex h-12 items-center justify-center rounded-full bg-slate-900 px-5 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          ) : null}
+
+          <div className="grid gap-3 md:grid-cols-12">
+            <div className="md:col-span-4">
+              <input
+                type="text"
+                value={venueCitySearch}
+                onChange={(event) => setVenueCitySearch(event.target.value)}
+                placeholder="City or area"
+                className={`${inputClass} bg-slate-50`}
+              />
+            </div>
+            <div className="md:col-span-5">
+              <input
+                type="text"
+                value={venueNameSearch}
+                onChange={(event) => setVenueNameSearch(event.target.value)}
+                placeholder="Club, park, or court name"
+                className={`${inputClass} bg-slate-50`}
+              />
+            </div>
+            <div className="md:col-span-3">
+              <select
+                value={venueTypeFilter}
+                onChange={(event) => setVenueTypeFilter(event.target.value as 'all' | VenueKind)}
+                className={`${inputClass} bg-slate-50`}
               >
-                {isJoiningVenue ? 'Joining...' : 'Join venue'}
-              </button>
-            </form>
-          )}
-          {joinError && <p className="text-body-main mt-3 text-rose-600">{joinError}</p>}
-        </SubCard>
+                {VENUE_KIND_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-2">
+            {filteredJoinableVenues.map((venue) => (
+              <div
+                key={venue.id}
+                className="flex items-center justify-between gap-4 rounded-[22px] border border-slate-100 bg-slate-50/60 p-4 transition hover:border-slate-200 hover:bg-white"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
+                    <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
+                  </div>
+                  <p className="text-label mt-1 truncate text-slate-400">
+                    {getVenueMetaLine(venue)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleQuickJoinVenue(venue.id)}
+                  disabled={isJoiningVenue || !normalizedDisplayName}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={`Add ${getVenueDisplayName(venue)}`}
+                  title={`Add ${getVenueDisplayName(venue)}`}
+                >
+                  {isJoiningVenue && joiningVenueId === venue.id ? '...' : '+'}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {joinableVenues.length === 0 ? (
+            <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
+              You have already joined all available venues.
+            </div>
+          ) : filteredJoinableVenues.length === 0 ? (
+            <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
+              No venues found for the current filters.
+            </div>
+          ) : null}
+        </div>
+
+        {venueActionError ? <p className="text-body-main text-rose-600">{venueActionError}</p> : null}
+        {joinError ? <p className="text-body-main text-rose-600">{joinError}</p> : null}
       </div>
     </AccordionSection>
   )
@@ -1422,10 +1586,12 @@ export function ProfilePanel({
       return
     }
 
+    const joinVenueId = selectedJoinVenueId
     setJoinError(null)
+    setJoiningVenueId(joinVenueId)
     startJoiningVenue(async () => {
       try {
-        const result = await onJoinVenue(selectedJoinVenueId)
+        const result = await onJoinVenue(joinVenueId)
         if (!result.ok) {
           setJoinError(result.error)
           return
@@ -1434,6 +1600,34 @@ export function ProfilePanel({
         router.refresh()
       } catch (err: unknown) {
         setJoinError(normalizeActionError(err, 'Failed to join venue'))
+      } finally {
+        setJoiningVenueId(null)
+      }
+    })
+  }
+
+  const handleQuickJoinVenue = (venueId: string) => {
+    if (!normalizedDisplayName) {
+      setJoinError('Set your display name first, then you can join venues.')
+      return
+    }
+
+    setJoinError(null)
+    setSelectedJoinVenueId(venueId)
+    setJoiningVenueId(venueId)
+    startJoiningVenue(async () => {
+      try {
+        const result = await onJoinVenue(venueId)
+        if (!result.ok) {
+          setJoinError(result.error)
+          return
+        }
+        setSelectedJoinVenueId('')
+        router.refresh()
+      } catch (err: unknown) {
+        setJoinError(normalizeActionError(err, 'Failed to join venue'))
+      } finally {
+        setJoiningVenueId(null)
       }
     })
   }
@@ -1767,191 +1961,243 @@ export function ProfilePanel({
       </section>
       <div className="space-y-6">
         <SectionCard title="Venues & Membership">
-          <div className="space-y-6">
+          <div className="space-y-10">
             <div>
-              <p className="text-body-main font-medium text-slate-500">The venues you joined</p>
-              {myIdentities.length === 0 ? (
-                <div className="text-body-main mt-3 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-slate-500">
-                  No venues yet.
-                </div>
-              ) : (
-                <div className="mt-3 rounded-[18px] border border-slate-200 bg-white px-2 py-1.5">
-                  {myIdentities.map(identity => {
-                    const menuKey = `joined:${identity.id}`
-                    return (
-                      <div
-                        key={identity.id}
-                        className="flex items-center justify-between gap-4 rounded-[16px] px-2 py-2"
-                      >
-                        <div className="min-w-0 flex items-center gap-2.5">
-                          <span className="text-title-main truncate text-slate-900">{getVenueDisplayName(identity.venue)}</span>
-                          {profile.primary_venue_id === identity.venue_id && (
-                            <span className="text-label rounded-full bg-slate-900 px-2.5 py-1 text-white">
-                              primary
-                            </span>
-                          )}
-                        </div>
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <h3 className="text-h2 text-slate-900">Your venues</h3>
+                <span className="text-label text-slate-400">{sortedJoinedIdentities.length + sortedPublicVenuePrefs.length} saved</span>
+              </div>
 
+              <div className="space-y-3">
+                {sortedJoinedIdentities.length === 0 && sortedPublicVenuePrefs.length === 0 ? (
+                  <div className="text-body-main rounded-[24px] border-2 border-dashed border-slate-200 bg-white px-5 py-10 text-center text-slate-400">
+                    No venues saved yet.
+                  </div>
+                ) : (
+                  <>
+                    {sortedJoinedIdentities.map((identity) => {
+                      const menuKey = `joined:${identity.id}`
+                      const venueName = getVenueDisplayName(identity.venue)
+                      return (
                         <div
-                          className="relative shrink-0"
-                          data-venue-menu-root={menuKey}
+                          key={identity.id}
+                          className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
                         >
-                          <button
-                            type="button"
-                            aria-haspopup="menu"
-                            aria-expanded={openVenueMenuId === menuKey}
-                            onClick={() => {
-                              setVenueActionError(null)
-                              setOpenVenueMenuId(prev => (prev === menuKey ? null : menuKey))
-                            }}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
-                          >
-                            <span className="flex items-center gap-1" aria-hidden="true">
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                            </span>
-                          </button>
-                          {openVenueMenuId === menuKey && (
-                            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
-                              {profile.primary_venue_id === identity.venue_id && (
-                                <div className="text-label px-3 py-2 text-slate-400">
-                                  Primary venue
-                                </div>
-                              )}
-                              {profile.primary_venue_id !== identity.venue_id && (
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2 overflow-hidden">
+                              <h4 className="text-title-main truncate text-slate-900">{venueName}</h4>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <VenueBadge tone="type">{getVenueKindLabel(identity.venue.venue_kind)}</VenueBadge>
+                                <VenueBadge tone="member">member</VenueBadge>
+                                {profile.primary_venue_id === identity.venue_id ? (
+                                  <VenueBadge tone="primary">primary</VenueBadge>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-body-sub text-slate-400">
+                              <span>{getVenueMetaLine(identity.venue)}</span>
+                            </div>
+                          </div>
+
+                          <div className="relative shrink-0" data-venue-menu-root={menuKey}>
+                            <button
+                              type="button"
+                              aria-haspopup="menu"
+                              aria-expanded={openVenueMenuId === menuKey}
+                              onClick={() => {
+                                setVenueActionError(null)
+                                setOpenVenueMenuId(prev => (prev === menuKey ? null : menuKey))
+                              }}
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
+                            >
+                              <span className="flex items-center gap-1" aria-hidden="true">
+                                <span className="h-1 w-1 rounded-full bg-current" />
+                                <span className="h-1 w-1 rounded-full bg-current" />
+                                <span className="h-1 w-1 rounded-full bg-current" />
+                              </span>
+                            </button>
+                            {openVenueMenuId === menuKey && (
+                              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+                                {profile.primary_venue_id === identity.venue_id ? (
+                                  <div className="text-label px-3 py-2 text-slate-400">
+                                    Primary venue
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetPrimaryVenue(identity.venue_id)}
+                                    disabled={isVenueActionPending}
+                                    className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {pendingVenueAction?.id === identity.venue_id && pendingVenueAction.kind === 'primary'
+                                      ? 'Setting primary...'
+                                      : 'Set primary'}
+                                  </button>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() => handleSetPrimaryVenue(identity.venue_id)}
+                                  onClick={() => handleDeleteVenue(identity.venue_id, identity.venue.name)}
                                   disabled={isVenueActionPending}
-                                  className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  {pendingVenueAction?.id === identity.venue_id && pendingVenueAction.kind === 'primary'
-                                    ? 'Setting primary...'
-                                    : 'Set primary'}
+                                  {pendingVenueAction?.id === identity.venue_id && pendingVenueAction.kind === 'delete'
+                                    ? 'Deleting...'
+                                    : 'Delete'}
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteVenue(identity.venue_id, identity.venue.name)}
-                                disabled={isVenueActionPending}
-                                className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {pendingVenueAction?.id === identity.venue_id && pendingVenueAction.kind === 'delete'
-                                  ? 'Deleting...'
-                                  : 'Delete'}
-                              </button>
-                            </div>
-                          )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+                      )
+                    })}
 
-            {publicVenuePrefs.length > 0 && (
-              <div>
-                <p className="text-body-main font-medium text-slate-500">The public courts you play</p>
-                <div className="mt-3 rounded-[18px] border border-slate-200 bg-white px-2 py-1.5">
-                  {publicVenuePrefs.map(venue => {
-                    const menuKey = `public:${venue.id}`
-                    return (
-                      <div
-                        key={venue.id}
-                        className="flex items-center justify-between gap-4 rounded-[16px] px-2 py-2"
-                      >
-                        <span className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</span>
-
+                    {sortedPublicVenuePrefs.map((venue) => {
+                      const menuKey = `public:${venue.id}`
+                      return (
                         <div
-                          className="relative shrink-0"
-                          data-venue-menu-root={menuKey}
+                          key={venue.id}
+                          className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
                         >
-                          <button
-                            type="button"
-                            aria-haspopup="menu"
-                            aria-expanded={openVenueMenuId === menuKey}
-                            onClick={() => {
-                              setVenueActionError(null)
-                              setOpenVenueMenuId(prev => (prev === menuKey ? null : menuKey))
-                            }}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
-                          >
-                            <span className="flex items-center gap-1" aria-hidden="true">
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                              <span className="h-1 w-1 rounded-full bg-current" />
-                            </span>
-                          </button>
-                          {openVenueMenuId === menuKey && (
-                            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSavedVenue(venue.id, venue.name)}
-                                disabled={isVenueActionPending}
-                                className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {pendingVenueAction?.id === venue.id && pendingVenueAction.kind === 'remove_saved'
-                                  ? 'Deleting...'
-                                  : 'Delete'}
-                              </button>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2 overflow-hidden">
+                              <h4 className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</h4>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
+                                <VenueBadge tone="starred">starred</VenueBadge>
+                              </div>
                             </div>
-                          )}
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-body-sub text-slate-400">
+                              <span>{getVenueMetaLine(venue)}</span>
+                            </div>
+                          </div>
+
+                          <div className="relative shrink-0" data-venue-menu-root={menuKey}>
+                            <button
+                              type="button"
+                              aria-haspopup="menu"
+                              aria-expanded={openVenueMenuId === menuKey}
+                              onClick={() => {
+                                setVenueActionError(null)
+                                setOpenVenueMenuId(prev => (prev === menuKey ? null : menuKey))
+                              }}
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
+                            >
+                              <span className="flex items-center gap-1" aria-hidden="true">
+                                <span className="h-1 w-1 rounded-full bg-current" />
+                                <span className="h-1 w-1 rounded-full bg-current" />
+                                <span className="h-1 w-1 rounded-full bg-current" />
+                              </span>
+                            </button>
+                            {openVenueMenuId === menuKey && (
+                              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[180px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveSavedVenue(venue.id, venue.name)}
+                                  disabled={isVenueActionPending}
+                                  className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {pendingVenueAction?.id === venue.id && pendingVenueAction.kind === 'remove_saved'
+                                    ? 'Deleting...'
+                                    : 'Delete'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </>
+                )}
               </div>
-            )}
-          </div>
-
-          {venueActionError && <p className="text-body-main mt-3 text-rose-600">{venueActionError}</p>}
-
-          <div className="mt-5 border-t border-slate-200 pt-5">
-            <div className="mb-4">
-              <h3 className="text-title-main text-slate-900">Add a venue</h3>
-              <p className="text-body-sub mt-1 text-slate-500">
-                Choose a venue. Your display name is used automatically.
-              </p>
             </div>
-            {!normalizedDisplayName && joinableVenues.length > 0 && (
-              <div className="text-body-main mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
-                Set your display name above before joining a venue.
+
+            <div className="rounded-[28px] border border-slate-200/70 bg-white p-6 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.16)]">
+              <div className="mb-6">
+                <h3 className="text-h2 text-slate-900">Find a venue</h3>
+                <p className="text-body-sub mt-1 text-slate-500">Search by city, venue name, or type.</p>
               </div>
-            )}
-            {joinableVenues.length === 0 ? (
-              <p className="text-body-main leading-6 text-slate-500">You have already joined all available venues.</p>
-            ) : (
-              <form onSubmit={handleJoinVenue} className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                <div className="min-w-0 flex-1">
-                  <FieldLabel>Venue</FieldLabel>
+
+              {!normalizedDisplayName && joinableVenues.length > 0 ? (
+                <div className="text-body-main mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+                  Set your display name above before joining a venue.
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 md:grid-cols-12">
+                <div className="md:col-span-4">
+                  <input
+                    type="text"
+                    value={venueCitySearch}
+                    onChange={(event) => setVenueCitySearch(event.target.value)}
+                    placeholder="City or area"
+                    className={`${inputClass} bg-slate-50`}
+                  />
+                </div>
+                <div className="md:col-span-5">
+                  <input
+                    type="text"
+                    value={venueNameSearch}
+                    onChange={(event) => setVenueNameSearch(event.target.value)}
+                    placeholder="Club, park, or court name"
+                    className={`${inputClass} bg-slate-50`}
+                  />
+                </div>
+                <div className="md:col-span-3">
                   <select
-                    value={selectedJoinVenueId}
-                    onChange={e => {
-                      setSelectedJoinVenueId(e.target.value)
-                      setJoinError(null)
-                    }}
-                    className={inputClass}
+                    value={venueTypeFilter}
+                    onChange={(event) => setVenueTypeFilter(event.target.value as 'all' | VenueKind)}
+                    className={`${inputClass} bg-slate-50`}
                   >
-                    <option value="">Select a venue...</option>
-                    {joinableVenues.map(venue => (
-                      <option key={venue.id} value={venue.id}>{venue.name}</option>
+                    {VENUE_KIND_FILTER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </div>
-                <button
-                  type="submit"
-                  disabled={isJoiningVenue || !selectedJoinVenueId || !normalizedDisplayName}
-                  className="text-body-main inline-flex h-12 items-center justify-center rounded-full bg-slate-900 px-5 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isJoiningVenue ? 'Joining...' : 'Join venue'}
-                </button>
-              </form>
-            )}
-          {joinError && <p className="text-body-main mt-3 text-rose-600">{joinError}</p>}
+              </div>
+
+              <div className="mt-6 grid gap-3 md:grid-cols-2">
+                {filteredJoinableVenues.map((venue) => (
+                  <div
+                    key={venue.id}
+                    className="flex items-center justify-between gap-4 rounded-[22px] border border-slate-100 bg-slate-50/60 p-4 transition hover:border-slate-200 hover:bg-white"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
+                        <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
+                      </div>
+                      <p className="text-label mt-1 truncate text-slate-400">
+                        {getVenueMetaLine(venue)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickJoinVenue(venue.id)}
+                      disabled={isJoiningVenue || !normalizedDisplayName}
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Add ${getVenueDisplayName(venue)}`}
+                      title={`Add ${getVenueDisplayName(venue)}`}
+                    >
+                      {isJoiningVenue && joiningVenueId === venue.id ? '…' : '+'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {joinableVenues.length === 0 ? (
+                <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
+                  You have already joined all available venues.
+                </div>
+              ) : filteredJoinableVenues.length === 0 ? (
+                <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
+                  No venues found for the current filters.
+                </div>
+              ) : null}
+            </div>
           </div>
+
+          {venueActionError ? <p className="text-body-main mt-4 text-rose-600">{venueActionError}</p> : null}
+          {joinError ? <p className="text-body-main mt-3 text-rose-600">{joinError}</p> : null}
         </SectionCard>
 
         <SectionCard

@@ -58,12 +58,21 @@ export default function LoginPage() {
   }, [searchParams])
 
   useEffect(() => {
-    if (!oauthCode && !oauthAccessToken) return
-
     let cancelled = false
     const supabase = createSupabaseBrowserClient()
 
     async function settleOAuthSession() {
+      if (oauthCode) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(oauthCode)
+        if (cancelled) return
+        if (exchangeError) {
+          console.error('[auth:oauth:settle]', exchangeError)
+          setError('Unable to finish Google sign in. Please try again.')
+          setLoading(false)
+          return
+        }
+      }
+
       const { data } = await supabase.auth.getSession()
       if (!cancelled && data.session) {
         window.location.replace(nextPath)
@@ -152,7 +161,7 @@ export default function LoginPage() {
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/login?next=${encodeURIComponent(nextPath)}`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
         },
       })
 

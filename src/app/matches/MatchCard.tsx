@@ -1,9 +1,12 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
+import { HostPlayerMark } from '@/app/components/HostPlayerMark'
+import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
 import {
   acceptMatchInvite,
   userWithdraw,
@@ -56,11 +59,9 @@ export function MatchCard({ item, userId }: Props) {
     venueName,
     courtState,
     confirmedCount,
-    pendingCount,
     isFormed,
     participants,
     myParticipant,
-    rosterInsight,
     sportName,
   } = item
 
@@ -74,10 +75,10 @@ export function MatchCard({ item, userId }: Props) {
   const supabase = createSupabaseBrowserClient()
 
   const pendingApprovals = participants.filter(
-    (p) =>
-      p.status === 'pending'
-      && p.participant_accepted_at !== null
-      && p.org_approved_at === null,
+    (participant) =>
+      participant.status === 'pending'
+      && participant.participant_accepted_at !== null
+      && participant.org_approved_at === null,
   )
 
   const cta = computeCardCTA({
@@ -91,7 +92,7 @@ export function MatchCard({ item, userId }: Props) {
   })
 
   const confirmedList = participants
-    .filter((p) => p.status === 'confirmed')
+    .filter((participant) => participant.status === 'confirmed')
     .sort((a, b) => {
       const aIsHost = a.user_id === match.organizer_id
       const bIsHost = b.user_id === match.organizer_id
@@ -126,13 +127,6 @@ export function MatchCard({ item, userId }: Props) {
 
   const visiblePlayers = confirmedList.slice(0, 4)
   const extraPlayers = confirmedCount > visiblePlayers.length ? confirmedCount - visiblePlayers.length : 0
-
-  const summaryMeta = useMemo(() => {
-    const parts: string[] = []
-    if (pendingCount > 0) parts.push(`${pendingCount} pending`)
-    if (rosterInsight.summaryLabel) parts.push(rosterInsight.summaryLabel.replace(/Â·/g, '·'))
-    return parts
-  }, [pendingCount, rosterInsight.summaryLabel])
 
   const primaryBadge = isCancelled
     ? <StatusBadge label="Match cancelled" tone="red" />
@@ -184,45 +178,48 @@ export function MatchCard({ item, userId }: Props) {
               <div className="text-title-main flex flex-wrap items-center gap-x-2 gap-y-1 text-[#1E293B]">
               {visiblePlayers.map((participant) => (
                 <span key={participant.id} className="inline-flex min-w-0 items-center gap-1">
-                  <span
-                    className={
-                      participant.user_id === match.organizer_id
-                        ? 'truncate font-semibold text-[#0F172A]'
-                        : 'truncate'
-                    }
+                  <ParticipantDetailTrigger
+                    participant={participant}
+                    items={[item]}
+                    className="min-w-0 max-w-full text-left transition hover:text-[#C25E46]"
+                    label={`View details for ${participant.display_name}`}
                   >
-                    {participant.display_name}
-                  </span>
-                  {participant.user_id === match.organizer_id ? (
-                    <span className="text-label rounded-full bg-[#FFF1EB] px-1.5 py-0.5 text-[#C25E46]">
-                      Host
+                    <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                      <span className="relative inline-flex min-w-0 max-w-full pr-3">
+                        {!participant.user_id ? (
+                          <span className="pointer-events-none absolute -right-0.5 -top-1.5 z-0">
+                            <ContactPlayerMark className="h-[1.2rem] w-[1.2rem]" variant="badge" />
+                          </span>
+                        ) : null}
+                        <span className="relative z-10 inline-flex min-w-0 items-center gap-1">
+                        <span
+                          className={
+                            participant.user_id === match.organizer_id
+                              ? 'truncate font-semibold text-[#0F172A]'
+                              : 'truncate'
+                          }
+                        >
+                          {participant.display_name}
+                        </span>
+                        {participant.user_id === match.organizer_id ? (
+                          <HostPlayerMark className="h-6 w-6 shrink-0 text-[11px]" />
+                        ) : null}
+                        </span>
+                      </span>
                     </span>
-                  ) : null}
-                  {!participant.user_id ? (
-                    <span className="rounded-full bg-[#F8FAFC] px-1 py-[2px] text-[7px] font-semibold uppercase tracking-[0.14em] text-[#94A3B8]">
-                      Contact
-                    </span>
-                  ) : null}
+                  </ParticipantDetailTrigger>
                 </span>
               ))}
-              {extraPlayers > 0 ? (
-                <span className="text-body-sub text-slate-500">
-                  +{extraPlayers}
-                </span>
-              ) : null}
+                {extraPlayers > 0 ? (
+                  <span className="text-body-sub text-slate-500">
+                    +{extraPlayers}
+                  </span>
+                ) : null}
               </div>
             </div>
           ) : (
             <p className="text-body-main mt-4 text-[#94A3B8]">No confirmed players yet.</p>
           )}
-
-          {summaryMeta.length > 0 ? (
-            <div className="text-body-sub mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[#64748B]">
-              {summaryMeta.map((part) => (
-                <span key={part}>{part}</span>
-              ))}
-            </div>
-          ) : null}
         </div>
 
         <div className="flex shrink-0 items-start gap-2">
@@ -259,7 +256,7 @@ export function MatchCard({ item, userId }: Props) {
                 onClick={() => setMenuOpen((open) => !open)}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#94A3B8] transition hover:border-[#CBD5E1] hover:text-[#1E293B]"
               >
-                <span className="text-base leading-none">···</span>
+                <span className="text-base leading-none">...</span>
               </button>
 
               {menuOpen ? (

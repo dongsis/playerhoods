@@ -763,21 +763,17 @@ export async function removeParticipant(
   note?: string | null,
 ) {
   const trimmedNote = note?.trim() ? note.trim() : null
-  const { error } = trimmedNote
-    ? await (supabase as Client & {
-        rpc: (
-          fn: 'rpc_match_remove_participant',
-          args: { p_match_participant_id: string; p_note?: string | null }
-        ) => Promise<{ error: Error | null }>
-      }).rpc('rpc_match_remove_participant', {
-        p_match_participant_id: participantId,
-        p_note: trimmedNote,
-      })
-    : await supabase.rpc('rpc_match_remove_participant', {
-        p_match_participant_id: participantId,
-      })
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_remove_participant',
+      args: { p_match_participant_id: string; p_note?: string | null }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_remove_participant', {
+    p_match_participant_id: participantId,
+    p_note: trimmedNote,
+  })
 
-  if (error && trimmedNote && isMissingRemoveNoteRpcError(error)) {
+  if (error && isMissingRemoveNoteRpcError(error)) {
     const { error: fallbackError } = await supabase.rpc('rpc_match_remove_participant', {
       p_match_participant_id: participantId,
     })
@@ -886,6 +882,7 @@ function isMissingNoteRpcError(error: Error) {
 
 function isMissingRemoveNoteRpcError(error: Error) {
   return error.message.includes('Could not find the function public.rpc_match_remove_participant(p_match_participant_id, p_note)')
+    || error.message.includes('Could not choose the best candidate function between: public.rpc_match_remove_participant(p_match_participant_id => uuid), public.rpc_match_remove_participant(p_match_participant_id => uuid, p_note => text)')
 }
 
 export async function requestMatchProxyBindingSelf(

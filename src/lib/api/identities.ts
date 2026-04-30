@@ -12,15 +12,6 @@ import type {
 
 type Client = SupabaseClient<Database>
 
-function shouldFallbackToLegacyVenueStorage(error: { message?: string; code?: string } | null | undefined): boolean {
-  const message = error?.message?.toLowerCase() ?? ''
-  return error?.code === '42P01'
-    || message.includes('does not exist')
-    || message.includes('could not find the table')
-    || message.includes('could not find the function')
-    || message.includes('schema cache')
-}
-
 // ============================================================================
 // Profile identity RPCs
 // ============================================================================
@@ -108,7 +99,6 @@ export async function setAvatarUrl(supabase: Client, avatarUrl: string | null): 
 
 /**
  * v1.5 Identity: directly set the user's global display_name.
- * Does not sync venue_identities (venue handle is legacy in v1.5).
  * RPC: rpc_profile_set_display_name
  */
 export async function setDisplayName(
@@ -159,7 +149,7 @@ export async function setPrimaryVenue(supabase: Client, venueId: string): Promis
 // Queries
 // ============================================================================
 
-/** v1 venue relationships. Falls back to legacy member rows until all environments are migrated. */
+/** v1 venue relationships. venue_user_relationships is the canonical source. */
 export async function getMyVenueRelationships(
   supabase: Client,
   userId: string,
@@ -170,44 +160,25 @@ export async function getMyVenueRelationships(
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
-  if (!next.error) {
-    const rows = (next.data ?? []) as VenueUserRelationship[]
-    if (rows.length === 0) return []
+  if (next.error) throw next.error
 
-    const venueIds = [...new Set(rows.map((row) => row.venue_id))]
-    const { data: venuesData, error: venuesError } = await supabase
-      .from('venues')
-      .select('*')
-      .in('id', venueIds)
-    if (venuesError) throw venuesError
+  const rows = (next.data ?? []) as VenueUserRelationship[]
+  if (rows.length === 0) return []
 
-    const venueMap = new Map(((venuesData ?? []) as Venue[]).map((venue) => [venue.id, venue]))
-    return rows
-      .filter((row) => venueMap.has(row.venue_id))
-      .map((row) => ({
-        ...row,
-        venue: venueMap.get(row.venue_id)!,
-      }))
-  }
+  const venueIds = [...new Set(rows.map((row) => row.venue_id))]
+  const { data: venuesData, error: venuesError } = await supabase
+    .from('venues')
+    .select('*')
+    .in('id', venueIds)
+  if (venuesError) throw venuesError
 
-  if (!shouldFallbackToLegacyVenueStorage(next.error)) throw next.error
-
-  const legacy = await supabase
-    .from('venue_identities')
-    .select('*, venue:venues(*)')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-  if (legacy.error) throw legacy.error
-
-  return ((legacy.data ?? []) as unknown as (VenueIdentity & { venue: Venue })[]).map((row) => ({
-    id: row.id,
-    venue_id: row.venue_id,
-    user_id: row.user_id,
-    relationship_type: 'member',
-    created_at: row.created_at,
-    updated_at: row.created_at,
-    venue: row.venue,
-  }))
+  const venueMap = new Map(((venuesData ?? []) as Venue[]).map((venue) => [venue.id, venue]))
+  return rows
+    .filter((row) => venueMap.has(row.venue_id))
+    .map((row) => ({
+      ...row,
+      venue: venueMap.get(row.venue_id)!,
+    }))
 }
 
 /** Get all venue memberships for the current user. */
@@ -217,55 +188,13 @@ export async function getMyVenueIdentities(
 ): Promise<(VenueIdentity & { venue: Venue })[]> {
   const next = await getMyVenueRelationships(supabase, userId)
   const memberRows = next.filter((row) => row.relationship_type === 'member')
-
-  if (memberRows.length > 0) {
-    const venueIds = memberRows.map((row) => row.venue_id)
-    const legacy = await supabase
-      .from('venue_identities')
-      .select('id, venue_id, user_id, created_at, visible_in_venue_member_discovery, accept_non_group_invites_in_venue')
-      .eq('user_id', userId)
-      .in('venue_id', venueIds)
-
-    if (legacy.error && !shouldFallbackToLegacyVenueStorage(legacy.error)) throw legacy.error
-
-    const legacyMap = new Map(
-      (((legacy.data ?? []) as {
-        id: string
-        venue_id: string
-        user_id: string
-        created_at: string
-        visible_in_venue_member_discovery?: boolean | null
-        accept_non_group_invites_in_venue?: boolean | null
-      }[])).map((row) => [row.venue_id, row]),
-    )
-
-    return memberRows.map((row) => {
-      const legacyRow = legacyMap.get(row.venue_id)
-      return {
-        id: legacyRow?.id ?? row.id,
-        venue_id: row.venue_id,
-        user_id: row.user_id,
-        created_at: legacyRow?.created_at ?? row.created_at,
-        visible_in_venue_member_discovery: legacyRow?.visible_in_venue_member_discovery ?? null,
-        accept_non_group_invites_in_venue: legacyRow?.accept_non_group_invites_in_venue ?? null,
-        venue: row.venue,
-      }
-    })
-  }
-
-  const { data, error } = await supabase
-    .from('venue_identities')
-    .select('*, venue:venues(*)')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-  if (error) throw error
-  return ((data ?? []) as unknown as (VenueIdentity & { venue: Venue })[]).map((row) => ({
+  return memberRows.map((row) => ({
     id: row.id,
     venue_id: row.venue_id,
     user_id: row.user_id,
     created_at: row.created_at,
-    visible_in_venue_member_discovery: row.visible_in_venue_member_discovery ?? null,
-    accept_non_group_invites_in_venue: row.accept_non_group_invites_in_venue ?? null,
+    visible_in_venue_member_discovery: null,
+    accept_non_group_invites_in_venue: null,
     venue: row.venue,
   }))
 }
@@ -280,21 +209,9 @@ export async function getJoinableVenues(
     .select('venue_id')
     .eq('user_id', userId)
     .eq('relationship_type', 'member')
+  if (relationshipRows.error) throw relationshipRows.error
 
-  let joinedIds: string[] = []
-  if (!relationshipRows.error) {
-    joinedIds = ((relationshipRows.data ?? []) as { venue_id: string }[]).map((row) => row.venue_id)
-  } else {
-    if (!shouldFallbackToLegacyVenueStorage(relationshipRows.error)) throw relationshipRows.error
-
-    const { data: myIds, error: err1 } = await supabase
-      .from('venue_identities')
-      .select('venue_id')
-      .eq('user_id', userId)
-    if (err1) throw err1
-
-    joinedIds = (myIds ?? []).map(r => r.venue_id)
-  }
+  const joinedIds = ((relationshipRows.data ?? []) as { venue_id: string }[]).map((row) => row.venue_id)
 
   const query = supabase
     .from('venues')
@@ -313,10 +230,10 @@ export async function getJoinableVenues(
 }
 
 // ============================================================================
-// Venue preferences (secondary_venue_ids — lightweight "save" without a handle)
+// Venue preferences (starred relationship)
 // ============================================================================
 
-/** Return the venues starred by the user. Falls back to legacy secondary_venue_ids until all environments are migrated. */
+/** Return the venues starred by the user. */
 export async function getMyVenuePreferences(
   supabase: Client,
   userId: string,
@@ -328,29 +245,9 @@ export async function getMyVenuePreferences(
     .eq('relationship_type', 'starred')
     .order('created_at', { ascending: true })
 
-  if (!relationshipRows.error) {
-    const ids = [...new Set(((relationshipRows.data ?? []) as { venue_id: string }[]).map((row) => row.venue_id))]
-    if (ids.length === 0) return []
+  if (relationshipRows.error) throw relationshipRows.error
 
-    const { data: venues, error: venuesError } = await supabase
-      .from('venues')
-      .select('*')
-      .in('id', ids)
-      .order('name', { ascending: true })
-    if (venuesError) throw venuesError
-    return (venues ?? []) as Venue[]
-  }
-
-  if (!shouldFallbackToLegacyVenueStorage(relationshipRows.error)) throw relationshipRows.error
-
-  const { data: profile, error: profErr } = await supabase
-    .from('profiles')
-    .select('secondary_venue_ids')
-    .eq('id', userId)
-    .single()
-  if (profErr) throw profErr
-
-  const ids: string[] = profile?.secondary_venue_ids ?? []
+  const ids = [...new Set(((relationshipRows.data ?? []) as { venue_id: string }[]).map((row) => row.venue_id))]
   if (ids.length === 0) return []
 
   const { data, error } = await supabase
@@ -362,34 +259,17 @@ export async function getMyVenuePreferences(
   return (data ?? []) as Venue[]
 }
 
-/** Add a starred relationship for the current user. Falls back to legacy secondary_venue_ids. */
+/** Add a starred relationship for the current user. */
 export async function addVenuePreference(
   supabase: Client,
-  userId: string,
+  _userId: string,
   venueId: string,
 ): Promise<void> {
   const next = await supabase.rpc('rpc_venue_relationship_set', {
     p_venue_id: venueId,
     p_relationship_type: 'starred',
   })
-  if (!next.error) return
-  if (!shouldFallbackToLegacyVenueStorage(next.error)) throw next.error
-
-  const { data, error: fetchErr } = await supabase
-    .from('profiles')
-    .select('secondary_venue_ids')
-    .eq('id', userId)
-    .single()
-  if (fetchErr) throw fetchErr
-
-  const current: string[] = data?.secondary_venue_ids ?? []
-  if (current.includes(venueId)) return
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({ secondary_venue_ids: [...current, venueId] })
-    .eq('id', userId)
-  if (error) throw error
+  if (next.error) throw next.error
 }
 
 // ============================================================================
@@ -432,32 +312,15 @@ export async function setGroupDisplayName(
   if (error) throw error
 }
 
-/** Remove a starred relationship for the current user. Falls back to legacy secondary_venue_ids. */
+/** Remove a starred relationship for the current user. */
 export async function removeVenuePreference(
   supabase: Client,
-  userId: string,
+  _userId: string,
   venueId: string,
 ): Promise<void> {
   const next = await supabase.rpc('rpc_venue_relationship_remove', {
     p_venue_id: venueId,
     p_relationship_type: 'starred',
   })
-  if (!next.error) return
-  if (!shouldFallbackToLegacyVenueStorage(next.error)) throw next.error
-
-  const { data, error: fetchErr } = await supabase
-    .from('profiles')
-    .select('secondary_venue_ids')
-    .eq('id', userId)
-    .single()
-  if (fetchErr) throw fetchErr
-
-  const current: string[] = data?.secondary_venue_ids ?? []
-  const updated = current.filter(id => id !== venueId)
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({ secondary_venue_ids: updated })
-    .eq('id', userId)
-  if (error) throw error
+  if (next.error) throw next.error
 }

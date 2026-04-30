@@ -156,18 +156,18 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
   }
 
   return (
-    <nav className="flex h-full flex-col gap-1 bg-[#EEF1F7] p-4">
-      <div className="mb-4 px-2 py-2">
+    <nav className="flex h-full flex-col gap-1 bg-[#F1F1F3] p-4">
+      <div className="mb-4 py-2">
         <button
           type="button"
           onClick={() => onTab('matches')}
-          className="group flex w-full items-center justify-start rounded-3xl px-2 py-1 transition-colors hover:bg-[#E9EDF5]"
+          className="group flex w-full items-center justify-start rounded-3xl px-0 py-1 transition-colors hover:bg-transparent"
           aria-label="Playerhoods home"
         >
           <img
-            src="/playerhoods-logo-transparent.png"
+            src="/playerhoods-logo-main-ui-cropped.png"
             alt="Playerhoods"
-            className="h-auto w-full max-w-[176px] transition-transform duration-200 group-hover:scale-[1.01]"
+            className="-ml-4 h-auto w-full max-w-[245px] origin-left transition-transform duration-200 group-hover:scale-[1.01]"
           />
         </button>
       </div>

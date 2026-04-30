@@ -2,7 +2,44 @@ import type { Metadata } from 'next'
 import { maskEmail } from '@/lib/auth-ui'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import type { Profile } from '@/lib/types/database'
+import { ChunkRecovery } from '@/app/components/ChunkRecovery'
 import './globals.css'
+
+const chunkRecoveryScript = `
+(() => {
+  const FLAG = 'ph_chunk_recovery_once';
+  const pattern = /ChunkLoadError|Loading chunk [\\w-]+ failed|Failed to fetch dynamically imported module/i;
+
+  const shouldRecover = (value) => {
+    const message =
+      typeof value === 'string'
+        ? value
+        : value && typeof value === 'object' && 'message' in value
+          ? String(value.message ?? '')
+          : '';
+    return pattern.test(message);
+  };
+
+  const recover = () => {
+    try {
+      if (window.sessionStorage.getItem(FLAG) === '1') return;
+      window.sessionStorage.setItem(FLAG, '1');
+    } catch {}
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('__chunk_reload', String(Date.now()));
+    window.location.replace(nextUrl.toString());
+  };
+
+  window.addEventListener('error', (event) => {
+    if (shouldRecover(event.error) || shouldRecover(event.message)) recover();
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    if (shouldRecover(event.reason)) recover();
+  });
+})();
+`
 
 export const metadata: Metadata = {
   title: 'Playerhoods',
@@ -30,6 +67,8 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans bg-[#F0F7FF] text-[#1E293B]">
+        <script dangerouslySetInnerHTML={{ __html: chunkRecoveryScript }} />
+        <ChunkRecovery />
         {user && (
           <div
             style={{

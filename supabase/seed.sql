@@ -241,23 +241,21 @@ BEGIN
   INSERT INTO public.venue_identities (
     venue_id,
     user_id,
-    venue_handle,
     visible_in_venue_member_discovery,
     accept_non_group_invites_in_venue
   )
   SELECT
     v_ontario_id,
     seeded.user_id,
-    seeded.venue_handle,
     seeded.visible_in_discovery,
     seeded.accept_non_group_invites
   FROM (
     VALUES
-      (ORG_UID,   'oldchai'::text, true, true),
-      (CINDY_UID, 'cindy'::text,   true, true),
-      (LEO_UID,   'leo'::text,     true, true),
-      (LINDA_UID, 'linda'::text,   true, true)
-  ) AS seeded(user_id, venue_handle, visible_in_discovery, accept_non_group_invites)
+      (ORG_UID,   true, true),
+      (CINDY_UID, true, true),
+      (LEO_UID,   true, true),
+      (LINDA_UID, true, true)
+  ) AS seeded(user_id, visible_in_discovery, accept_non_group_invites)
   WHERE NOT EXISTS (
     SELECT 1
     FROM public.venue_identities vi
@@ -400,17 +398,20 @@ WITH ins AS (
   RETURNING id
 ),
 club AS (
-  SELECT id FROM ins
+  SELECT id, 'Wallace Park Tennis Club'::text AS venue_name, now() AS created_at FROM ins
   UNION ALL
-  SELECT id
+  SELECT id, name AS venue_name, created_at
   FROM public.venues
   WHERE name IN ('Wallace Park Tennis Club', 'Wallace Park Tennis Venue')
-  ORDER BY CASE WHEN name = 'Wallace Park Tennis Club' THEN 0 ELSE 1 END, created_at
-  LIMIT 1
 )
 INSERT INTO public.courts (venue_id, sport_id, court_code, surface, notes)
 SELECT club.id, 1, v.court_code, NULL, NULL
-FROM club
+FROM (
+  SELECT id
+  FROM club
+  ORDER BY CASE WHEN venue_name = 'Wallace Park Tennis Club' THEN 0 ELSE 1 END, created_at
+  LIMIT 1
+) AS club
 CROSS JOIN (VALUES ('Court 1'), ('Court 2'), ('Court 3')) AS v(court_code)
 WHERE NOT EXISTS (
   SELECT 1

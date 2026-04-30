@@ -109,9 +109,10 @@ export async function processQueuedNotificationDeliveries(
       smsBody = renderGuestNominatedSms(m, (payload.nominator_display_name as string) ?? 'Someone')
     } else if (templateType === 'guest_org_approved') {
       const m = buildMatchInfo(payload)
-      subject = 'Match approval'
-      html = guestOrgApprovedEmail(m)
-      smsBody = renderGuestOrgApprovedSms(m)
+      const inviterDisplayName = (payload.nominator_display_name as string) ?? 'Someone'
+      subject = `${inviterDisplayName} invited you to a match`
+      html = guestOrgApprovedEmail(m, inviterDisplayName)
+      smsBody = renderGuestOrgApprovedSms(m, inviterDisplayName)
     } else if (templateType === 'guest_delegate_confirmed') {
       const m = buildMatchInfo(payload)
       subject = "You're confirmed for a match"

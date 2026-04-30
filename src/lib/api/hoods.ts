@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, GuestSport } from '@/lib/types/database'
+import type { Database, GuestSport, UserSport } from '@/lib/types/database'
 import {
   getGroupContacts,
   type GroupContactWithDisplay,
@@ -104,6 +104,35 @@ export async function fetchGuestSportsMap(
     const current = result.get(row.guest_id) ?? []
     current.push(row.sport_id)
     result.set(row.guest_id, current)
+  }
+
+  return result
+}
+
+export async function fetchUserSportsMap(
+  supabase: Client,
+  userIds: string[],
+): Promise<Map<string, number[]>> {
+  const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)))
+  if (uniqueUserIds.length === 0) {
+    return new Map()
+  }
+
+  const { data, error } = await supabase
+    .from('user_sports')
+    .select('*')
+    .in('user_id', uniqueUserIds)
+
+  if (error) {
+    console.error('[hoods] failed to load user sports:', error)
+    return new Map()
+  }
+
+  const result = new Map<string, number[]>()
+  for (const row of (data ?? []) as UserSport[]) {
+    const current = result.get(row.user_id) ?? []
+    current.push(row.sport_id)
+    result.set(row.user_id, current)
   }
 
   return result

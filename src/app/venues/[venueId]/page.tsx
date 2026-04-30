@@ -2,12 +2,12 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getVenue, getVenueCourts } from '@/lib/api/venues'
+import { getVenue, getVenueCourts, isSuperAdmin, isVenueAdmin } from '@/lib/api/venues'
 import { listSports } from '@/lib/api/sports'
 import {
-  getMyVenueRelationships,
-  getMyVenuePreferences,
   addVenuePreference,
+  getMyVenuePreferences,
+  getMyVenueRelationships,
   removeVenuePreference,
 } from '@/lib/api/identities'
 import { getInviteCircleList } from '@/lib/api/play-network'
@@ -44,68 +44,98 @@ export default async function VenueDetailPage({ params }: Props) {
     .filter((entry) => entry.courts.length > 0)
 
   let isMember = false
-  let isSaved  = false
+  let isSaved = false
   let savedPlayerIds: string[] = []
+  let canManageVenue = false
 
   if (user) {
-    const [relationships, prefs, inviteCircle] = await Promise.all([
+    const [relationships, prefs, inviteCircle, superAdmin, venueAdmin] = await Promise.all([
       getMyVenueRelationships(supabase, user.id).catch(() => []),
       getMyVenuePreferences(supabase, user.id).catch(() => []),
       getInviteCircleList(supabase).catch(() => []),
+      isSuperAdmin(supabase).catch(() => false),
+      isVenueAdmin(supabase, venueId).catch(() => false),
     ])
     const relationship = relationships.find(
       (item) => item.venue_id === venueId && item.relationship_type === 'member',
     )
     isMember = !!relationship
-    isSaved  = prefs.some(v => v.id === venueId)
+    isSaved = prefs.some((v) => v.id === venueId)
     savedPlayerIds = inviteCircle.map((row) => row.target_user_id)
+    canManageVenue = superAdmin || venueAdmin
   }
 
   async function handleTogglePreference() {
     'use server'
     const srv = await createSupabaseServerClient()
-    const u = await getUser()
-    if (!u) return
+    const currentUser = await getUser()
+    if (!currentUser) return
     if (isSaved) {
-      await removeVenuePreference(srv, u.id, venueId)
+      await removeVenuePreference(srv, currentUser.id, venueId)
     } else {
-      await addVenuePreference(srv, u.id, venueId)
+      await addVenuePreference(srv, currentUser.id, venueId)
     }
     revalidatePath(`/venues/${venueId}`)
     revalidatePath('/profile')
     revalidatePath('/dashboard')
   }
 
+  const venueMetaParts = [
+    venue.location_text,
+    venue.city,
+    venue.postal_code,
+    venue.country,
+    venue.timezone,
+  ].filter(Boolean)
+
   return (
-    <div className="max-w-2xl mx-auto px-6 py-8">
-      {/* Breadcrumb */}
+    <div className="mx-auto max-w-2xl px-6 py-8">
       <nav className="mb-6 text-sm text-gray-400">
-        <Link href="/venues" className="hover:text-gray-600">← Venues</Link>
+        <Link href="/venues" className="hover:text-gray-600">
+          &larr; Venues
+        </Link>
       </nav>
 
-      {/* Header */}
       <header className="mb-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{getVenueDisplayName(venue)}</h1>
-            <div className="flex flex-wrap gap-3 mt-1 text-sm text-gray-500">
-              {venue.location_text && <span>📍 {venue.location_text}</span>}
-              {venue.timezone && <span>🕐 {venue.timezone}</span>}
-            </div>
+            {venueMetaParts.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-2 text-sm text-gray-500">
+                <span>{venueMetaParts.join(' · ')}</span>
+              </div>
+            ) : null}
+            {venue.website_url ? (
+              <a
+                href={venue.website_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block text-sm font-medium text-blue-600 hover:underline"
+              >
+                Visit website
+              </a>
+            ) : null}
           </div>
 
-          {/* Member badge or Save button */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex shrink-0 items-center gap-2">
+            {canManageVenue ? (
+              <Link
+                href={`/admin/venues/${venueId}`}
+                className="rounded-xl bg-[#1E293B] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#0F172A]"
+              >
+                Manage Venue
+              </Link>
+            ) : null}
             {isMember ? (
-              <span className="px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-xl border border-blue-100">
-                ✓ Member
+              <span className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700">
+                Member
               </span>
             ) : user ? (
               <VenuePreferenceButton isSaved={isSaved} onToggle={handleTogglePreference} />
             ) : (
               <Link
                 href="/login"
-                className="px-3 py-1.5 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50"
+                className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
               >
                 Log in to save
               </Link>
@@ -114,98 +144,96 @@ export default async function VenueDetailPage({ params }: Props) {
         </div>
       </header>
 
-      {/* Venue Members discovery — for members only */}
-      {isMember && user && (
+      {isMember && user ? (
         <VenueMembersSection venueId={venueId} initialSavedPlayerIds={savedPlayerIds} />
-      )}
+      ) : null}
 
-      {/* Notes / description */}
-      {venue.notes && (
-        <section className="mb-6 px-4 py-3 bg-gray-50 rounded-2xl text-sm text-gray-600 leading-relaxed">
+      {venue.notes ? (
+        <section className="mb-6 rounded-2xl bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-600">
           {venue.notes}
         </section>
-      )}
+      ) : null}
 
-      {/* Courts */}
       <section className="mb-6">
-        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
           Courts ({courts.length})
         </h2>
         {courts.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">No courts listed.</p>
+          <p className="text-sm italic text-gray-400">No courts listed.</p>
         ) : (
           <div className="space-y-4">
             {courtsBySport.map(({ sport, courts: sportCourts }) => (
               <div key={sport.id}>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
                   {sport.display_name}
                 </p>
                 <div className="space-y-2">
                   {sportCourts.map((court) => (
                     <div
                       key={court.id}
-                      className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl border border-gray-100"
+                      className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3"
                     >
                       <span className="text-sm font-medium text-gray-800">{court.court_code}</span>
-                      {court.surface && (
-                        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                      {court.surface ? (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-400">
                           {court.surface}
                         </span>
-                      )}
-                      {court.notes && (
-                        <span className="text-xs text-gray-400 ml-auto truncate max-w-[200px]">
+                      ) : null}
+                      {court.notes ? (
+                        <span className="ml-auto max-w-[200px] truncate text-xs text-gray-400">
                           {court.notes}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   ))}
                 </div>
               </div>
             ))}
-            {courtsBySport.length === 0 && (
+            {courtsBySport.length === 0 ? (
               <div className="space-y-2">
                 {courts.map((court) => (
                   <div
                     key={court.id}
-                    className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl border border-gray-100"
+                    className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3"
                   >
                     <span className="text-sm font-medium text-gray-800">{court.court_code}</span>
-                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-400">
                       {sportMap.get(court.sport_id) ?? `Sport ${court.sport_id}`}
                     </span>
-                    {court.surface && (
-                      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                    {court.surface ? (
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-400">
                         {court.surface}
                       </span>
-                    )}
-                    {court.notes && (
-                      <span className="text-xs text-gray-400 ml-auto truncate max-w-[200px]">
+                    ) : null}
+                    {court.notes ? (
+                      <span className="ml-auto max-w-[200px] truncate text-xs text-gray-400">
                         {court.notes}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </section>
 
-      {/* Join CTA — for logged-in non-members */}
-      {user && !isMember && (
-        <section className="mt-2 px-4 py-4 bg-white rounded-2xl border border-gray-100 flex items-center justify-between gap-4">
+      {user && !isMember ? (
+        <section className="mt-2 flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-white px-4 py-4">
           <div>
             <p className="text-sm font-medium text-gray-700">Not a member yet</p>
-            <p className="text-xs text-gray-400 mt-0.5">Join this venue to appear in match scope groups.</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Join this venue to appear in match scope groups.
+            </p>
           </div>
           <Link
             href="/profile"
-            className="shrink-0 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-800 transition-colors"
+            className="shrink-0 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
           >
-            Join via Profile →
+            Join via Profile &rarr;
           </Link>
         </section>
-      )}
+      ) : null}
     </div>
   )
 }

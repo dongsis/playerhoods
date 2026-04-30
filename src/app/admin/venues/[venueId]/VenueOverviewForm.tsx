@@ -106,11 +106,107 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
           <label
             style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
           >
-            Location
+            Address
           </label>
           <input
             name="location_text"
             defaultValue={venue.location_text ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            City
+          </label>
+          <input
+            name="city"
+            defaultValue={venue.city ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Postal code
+          </label>
+          <input
+            name="postal_code"
+            defaultValue={venue.postal_code ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Country
+          </label>
+          <input
+            name="country"
+            defaultValue={venue.country ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Contact person
+          </label>
+          <input
+            name="contact_name"
+            defaultValue={venue.contact_name ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Contact phone
+          </label>
+          <input
+            name="contact_phone"
+            defaultValue={venue.contact_phone ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Contact email
+          </label>
+          <input
+            name="contact_email"
+            defaultValue={venue.contact_email ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Venue phone
+          </label>
+          <input
+            name="venue_phone"
+            defaultValue={venue.venue_phone ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Venue email
+          </label>
+          <input
+            name="venue_email"
+            defaultValue={venue.venue_email ?? ''}
             style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
           />
         </div>
@@ -172,12 +268,26 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
           <label
             style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
           >
-            Notes
+            Website
           </label>
           <input
+            name="website_url"
+            defaultValue={venue.website_url ?? ''}
+            placeholder="https://"
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Description
+          </label>
+          <textarea
             name="notes"
             defaultValue={venue.notes ?? ''}
-            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+            rows={3}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box', resize: 'vertical' }}
           />
         </div>
       </div>

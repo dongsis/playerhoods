@@ -14,7 +14,8 @@ export function createSupabaseBrowserClient(): SupabaseClient<Database> {
   }
   return createBrowserClient<Database>(
     url as string,
-    key as string
+    key as string,
+    {}
   ) as unknown as SupabaseClient<Database>
 }
 

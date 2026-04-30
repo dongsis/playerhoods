@@ -89,8 +89,8 @@ export function guestNominatedEmail(m: MatchInfo, nominatorName: string): string
 `
 }
 
-/** Guest org approved: 组织者已批准 */
-export function guestOrgApprovedEmail(m: MatchInfo): string {
+/** Guest org approved: wording aligned with invite copy */
+export function guestOrgApprovedEmail(m: MatchInfo, inviterName: string): string {
   const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
   const location = m.venueName || 'TBD'
   return `
@@ -99,8 +99,8 @@ export function guestOrgApprovedEmail(m: MatchInfo): string {
 <head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
 <body>
   <div class="card">
-    <h2>Match approval</h2>
-    <p>The organizer approved your participation in <strong>${m.gameType}</strong>.</p>
+    <h2>You're invited</h2>
+    <p><strong>${inviterName}</strong> invited you to a match: <strong>${m.gameType}</strong>.</p>
     <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
     <p><a href="${matchLink(m)}" class="btn">View match</a></p>
     <p class="meta">PlayerHoods</p>

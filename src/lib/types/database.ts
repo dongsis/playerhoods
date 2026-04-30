@@ -88,6 +88,15 @@ export type Venue = {
   name: string
   abbreviation: string | null
   location_text: string | null
+  city: string | null
+  postal_code: string | null
+  country: string | null
+  website_url: string | null
+  contact_name: string | null
+  contact_phone: string | null
+  contact_email: string | null
+  venue_phone: string | null
+  venue_email: string | null
   notes: string | null
   timezone: string
   venue_kind: VenueKind
@@ -1061,7 +1070,17 @@ export interface Database {
       rpc_venue_create: {
         Args: {
           p_name: string
+          p_abbreviation?: string | null
           p_location_text?: string | null
+          p_city?: string | null
+          p_postal_code?: string | null
+          p_country?: string | null
+          p_website_url?: string | null
+          p_contact_name?: string | null
+          p_contact_phone?: string | null
+          p_contact_email?: string | null
+          p_venue_phone?: string | null
+          p_venue_email?: string | null
           p_timezone?: string
           p_notes?: string | null
           p_venue_kind?: VenueKind
@@ -1073,7 +1092,17 @@ export interface Database {
         Args: {
           p_venue_id: string
           p_name?: string | null
+          p_abbreviation?: string | null
           p_location_text?: string | null
+          p_city?: string | null
+          p_postal_code?: string | null
+          p_country?: string | null
+          p_website_url?: string | null
+          p_contact_name?: string | null
+          p_contact_phone?: string | null
+          p_contact_email?: string | null
+          p_venue_phone?: string | null
+          p_venue_email?: string | null
           p_timezone?: string | null
           p_notes?: string | null
           p_venue_kind?: VenueKind | null

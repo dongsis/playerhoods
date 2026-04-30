@@ -65,13 +65,14 @@ export function MatchToolsSection({
   const RoundRobinPanel = MatchRoundRobinPanel as ComponentType<MatchRoundRobinPanelProps>
   const sectionRef = useRef<HTMLElement | null>(null)
   const tabs = useMemo(() => {
-    const nextTabs: Array<{ key: 'invite' | 'round_robin'; label: string }> = []
+    const nextTabs: Array<{ key: 'invite' | 'remove' | 'round_robin'; label: string }> = []
     if (showInviteTools) nextTabs.push({ key: 'invite', label: 'Invite Players' })
+    if (showInviteTools && isOrganizer) nextTabs.push({ key: 'remove', label: 'Remove Players' })
     if (showRoundRobinTools) nextTabs.push({ key: 'round_robin', label: 'Lineup' })
     return nextTabs
-  }, [showInviteTools, showRoundRobinTools])
+  }, [isOrganizer, showInviteTools, showRoundRobinTools])
 
-  const [activeTab, setActiveTab] = useState<'invite' | 'round_robin' | null>(null)
+  const [activeTab, setActiveTab] = useState<'invite' | 'remove' | 'round_robin' | null>(null)
 
   if (tabs.length === 0) {
     return null
@@ -106,11 +107,15 @@ export function MatchToolsSection({
                 className={[
                   'text-label inline-flex items-center gap-2 rounded-full border px-4 py-2 transition',
                   isActive
-                    ? 'border-slate-900 bg-slate-900 text-white'
+                    ? tab.key === 'remove'
+                      ? 'border-orange-200 bg-orange-50 text-orange-700'
+                      : 'border-slate-900 bg-slate-900 text-white'
                     : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50',
                 ].join(' ')}
               >
-                <span className="text-body-main">{tab.key === 'invite' ? '+' : '[]'}</span>
+                <span className="text-body-main">
+                  {tab.key === 'invite' ? '+' : tab.key === 'remove' ? '-' : '[]'}
+                </span>
                 <span>{tab.label}</span>
               </button>
             )
@@ -118,13 +123,18 @@ export function MatchToolsSection({
         </div>
 
         <span className="text-title-main text-teal-600">
-          {activeTab === 'invite' ? inviteMeta : savedLineup ? `${savedLineup.playersCount} players` : `${confirmedParticipants.length} players`}
+          {activeTab === 'invite' || activeTab === 'remove'
+            ? inviteMeta
+            : savedLineup
+              ? `${savedLineup.playersCount} players`
+              : `${confirmedParticipants.length} players`}
         </span>
       </div>
 
-      {activeTab === 'invite' && showInviteTools ? (
+      {(activeTab === 'invite' || activeTab === 'remove') && showInviteTools ? (
         <MatchManagePanel
           embedded
+          panelMode={activeTab === 'remove' ? 'remove' : 'invite'}
           matchId={matchId}
           isOrganizer={isOrganizer}
           organizerUserId={organizerUserId}

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { CreateVenueDialog } from '@/app/admin/venues/CreateVenueDialog'
 import type { VenueAdmin, Venue } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
 
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function VenueManagementPanel({ myAdminVenues, isSuperAdmin }: Props) {
+  const canCreateVenue = isSuperAdmin || myAdminVenues.length > 0
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -19,14 +22,17 @@ export function VenueManagementPanel({ myAdminVenues, isSuperAdmin }: Props) {
             {isSuperAdmin ? 'Super admin' : 'Venue admin'} access
           </p>
         </div>
-        {isSuperAdmin && (
-          <Link
-            href="/admin/venues"
-            className="rounded-xl bg-gray-900 px-3 py-1.5 text-xs text-white transition-colors hover:bg-gray-800"
-          >
-            All Venues →
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {canCreateVenue ? <CreateVenueDialog /> : null}
+          {isSuperAdmin ? (
+            <Link
+              href="/admin/venues"
+              className="rounded-xl bg-gray-900 px-3 py-1.5 text-xs text-white transition-colors hover:bg-gray-800"
+            >
+              All Venues →
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       {myAdminVenues.length === 0 ? (

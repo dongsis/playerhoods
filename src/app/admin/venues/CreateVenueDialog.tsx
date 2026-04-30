@@ -55,6 +55,15 @@ export function CreateVenueDialog() {
           name: (formData.get('name') as string).trim(),
           abbreviation: (formData.get('abbreviation') as string)?.trim() || undefined,
           location_text: (formData.get('location_text') as string)?.trim() || undefined,
+          city: (formData.get('city') as string)?.trim() || undefined,
+          postal_code: (formData.get('postal_code') as string)?.trim() || undefined,
+          country: (formData.get('country') as string)?.trim() || undefined,
+          website_url: (formData.get('website_url') as string)?.trim() || undefined,
+          contact_name: (formData.get('contact_name') as string)?.trim() || undefined,
+          contact_phone: (formData.get('contact_phone') as string)?.trim() || undefined,
+          contact_email: (formData.get('contact_email') as string)?.trim() || undefined,
+          venue_phone: (formData.get('venue_phone') as string)?.trim() || undefined,
+          venue_email: (formData.get('venue_email') as string)?.trim() || undefined,
           timezone: (formData.get('timezone') as string) || 'America/Toronto',
           notes: (formData.get('notes') as string)?.trim() || undefined,
           venue_kind: ((formData.get('venue_kind') as string) || 'club') as VenueKind,
@@ -151,6 +160,95 @@ export function CreateVenueDialog() {
                 </label>
                 <input
                   name="location_text"
+                  placeholder="Street address"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  City
+                </label>
+                <input
+                  name="city"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Postal code
+                </label>
+                <input
+                  name="postal_code"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Country
+                </label>
+                <input
+                  name="country"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Contact person
+                </label>
+                <input
+                  name="contact_name"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Contact phone
+                </label>
+                <input
+                  name="contact_phone"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Contact email
+                </label>
+                <input
+                  name="contact_email"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Venue phone
+                </label>
+                <input
+                  name="venue_phone"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Venue email
+                </label>
+                <input
+                  name="venue_email"
                   style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
                 />
               </div>
@@ -212,11 +310,22 @@ export function CreateVenueDialog() {
                 <label
                   style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
                 >
-                  Notes
+                  Website
                 </label>
                 <input
+                  name="website_url"
+                  placeholder="https://"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box', marginBottom: '0.75rem' }}
+                />
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Description
+                </label>
+                <textarea
                   name="notes"
-                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                  rows={3}
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box', resize: 'vertical' }}
                 />
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>

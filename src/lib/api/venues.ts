@@ -149,6 +149,15 @@ export async function createVenue(
     name: string
     abbreviation?: string
     location_text?: string
+    city?: string
+    postal_code?: string
+    country?: string
+    website_url?: string
+    contact_name?: string
+    contact_phone?: string
+    contact_email?: string
+    venue_phone?: string
+    venue_email?: string
     timezone?: string
     notes?: string
     venue_kind?: VenueKind
@@ -159,6 +168,15 @@ export async function createVenue(
     p_name: data.name,
     p_abbreviation: data.abbreviation ?? null,
     p_location_text: data.location_text ?? null,
+    p_city: data.city ?? null,
+    p_postal_code: data.postal_code ?? null,
+    p_country: data.country ?? null,
+    p_website_url: data.website_url ?? null,
+    p_contact_name: data.contact_name ?? null,
+    p_contact_phone: data.contact_phone ?? null,
+    p_contact_email: data.contact_email ?? null,
+    p_venue_phone: data.venue_phone ?? null,
+    p_venue_email: data.venue_email ?? null,
     p_timezone: data.timezone ?? 'America/Toronto',
     p_notes: data.notes ?? null,
     p_venue_kind: data.venue_kind ?? 'club',
@@ -179,6 +197,15 @@ export async function updateVenue(
     name?: string
     abbreviation?: string | null
     location_text?: string
+    city?: string
+    postal_code?: string
+    country?: string
+    website_url?: string
+    contact_name?: string
+    contact_phone?: string
+    contact_email?: string
+    venue_phone?: string
+    venue_email?: string
     timezone?: string
     notes?: string
     venue_kind?: VenueKind
@@ -190,6 +217,15 @@ export async function updateVenue(
     p_name: data.name ?? null,
     p_abbreviation: data.abbreviation === undefined ? null : data.abbreviation,
     p_location_text: data.location_text ?? null,
+    p_city: data.city ?? null,
+    p_postal_code: data.postal_code ?? null,
+    p_country: data.country ?? null,
+    p_website_url: data.website_url ?? null,
+    p_contact_name: data.contact_name ?? null,
+    p_contact_phone: data.contact_phone ?? null,
+    p_contact_email: data.contact_email ?? null,
+    p_venue_phone: data.venue_phone ?? null,
+    p_venue_email: data.venue_email ?? null,
     p_timezone: data.timezone ?? null,
     p_notes: data.notes ?? null,
     p_venue_kind: data.venue_kind ?? null,

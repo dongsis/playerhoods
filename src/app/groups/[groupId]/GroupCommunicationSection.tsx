@@ -285,7 +285,7 @@ export function GroupCommunicationSection({
     startSharePhoto(async () => {
       const supabase = createSupabaseBrowserClient()
       const safeName = sanitizeFilename(file.name || 'photo')
-      const storagePath = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
+      const storagePath = `${groupId}/discussion/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`
       let resourceCreated = false
 
       try {

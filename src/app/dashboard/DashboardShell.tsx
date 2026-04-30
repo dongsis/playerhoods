@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
@@ -123,6 +123,11 @@ function getDismissedMatchStorageKey(userId: string) {
   return `dashboard:dismissed-match-alerts:${userId}`
 }
 
+type DashboardLiveResponse = {
+  items: MatchListItem[]
+  inboxUnreadCount: number
+}
+
 export function DashboardShell({
   userId,
   items,
@@ -185,6 +190,40 @@ export function DashboardShell({
   const [dismissedMatchIds, setDismissedMatchIds] = useState<Set<string>>(new Set())
   const [dismissedMatchIdsReady, setDismissedMatchIdsReady] = useState(false)
   const [inboxBadge, setInboxBadge] = useState(inboxUnreadCount ?? 0)
+  const [liveItems, setLiveItems] = useState(items)
+
+  const refreshDashboardLive = useCallback(async () => {
+    try {
+      const response = await fetch('/api/dashboard/live', {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status !== 401) {
+          console.error('[DashboardShell] live refresh failed:', response.status)
+        }
+        return
+      }
+
+      const payload = await response.json() as DashboardLiveResponse
+      setLiveItems(payload.items ?? [])
+      setInboxBadge(payload.inboxUnreadCount ?? 0)
+    } catch (error) {
+      console.error('[DashboardShell] live refresh request failed:', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    setLiveItems(items)
+  }, [items])
+
+  useEffect(() => {
+    setInboxBadge(inboxUnreadCount ?? 0)
+  }, [inboxUnreadCount])
 
   useEffect(() => {
     try {
@@ -237,11 +276,39 @@ export function DashboardShell({
     router.replace(nextQuery ? `/dashboard?${nextQuery}` : '/dashboard', { scroll: false })
   }, [activeTab, isAdmin, router, searchParams])
 
+  useEffect(() => {
+    const shouldLiveRefresh = activeTab === 'matches' || activeTab === 'inbox'
+    if (!shouldLiveRefresh) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void refreshDashboardLive()
+    }, 5000)
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshDashboardLive()
+      }
+    }
+
+    if (document.visibilityState === 'visible') {
+      void refreshDashboardLive()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [activeTab, refreshDashboardLive])
+
   // Compute nav badge counts
   const badges = useMemo(() => {
     const nowIso = new Date().toISOString()
     let matchesBadge = 0
-    for (const item of items) {
+    for (const item of liveItems) {
       if (suppressedMatchIds.has(item.match.id)) continue
       const mp = item.myParticipant
       if (!mp) continue
@@ -286,7 +353,7 @@ export function DashboardShell({
       matches: matchesBadge || undefined,
       groups: groupsBadge,
     }
-  }, [items, playersData.pendingGroupInvites.length, suppressedMatchIds, inboxBadge])
+  }, [liveItems, playersData.pendingGroupInvites.length, suppressedMatchIds, inboxBadge])
 
   const mainWidthClass = activeTab === 'profile' || activeTab === 'gear' || activeTab === 'hoods' || activeTab === 'groups'
     ? 'max-w-6xl'
@@ -296,7 +363,7 @@ export function DashboardShell({
   return (
     <div className="flex min-h-screen bg-[#F0F7FF]">
       {/* Left nav — sticky sidebar */}
-      <aside className="sticky top-0 h-screen w-60 shrink-0 border-r border-[#E2E8F0] bg-[#EEF1F7]">
+      <aside className="sticky top-0 h-screen w-60 shrink-0 border-r border-[#E2E8F0] bg-[#F1F1F3]">
         <LeftNav
           active={activeTab}
           onTab={setActiveTab}
@@ -312,7 +379,7 @@ export function DashboardShell({
         )}
         {activeTab === 'matches' && (
         <MatchesPanel
-          items={items}
+          items={liveItems}
           userId={userId}
           defaultVenueId={profile.primary_venue_id ?? ''}
           onCancelMatch={onCancelMatch}
@@ -328,12 +395,13 @@ export function DashboardShell({
         {activeTab === 'hoods' && (
           <HoodsPanel
             userId={userId}
-            items={items}
+            items={liveItems}
             inviteCircle={inviteCircle}
             groups={playersData.groups}
             myIdentities={myIdentities}
             sports={sports}
             enabledSportIds={mySports.map((sport) => sport.sport_id)}
+            onRefreshDashboardLive={refreshDashboardLive}
             onParseScreenshots={onParseContactScreenshots}
             onImportScreenshotContacts={onImportScreenshotContacts}
             onOpenProfile={() => setActiveTab('profile')}
@@ -397,6 +465,7 @@ export function DashboardShell({
             myIdentities={myIdentities}
             myVenuePrefs={myVenuePrefs}
             isAdmin={isAdmin}
+            myAdminVenues={myAdminVenues}
           />
         )}
         {activeTab === 'admin' && isAdmin && (

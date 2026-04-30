@@ -12,7 +12,8 @@ import { processDeliveriesAction } from './process-deliveries-action'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
 import { SavedPlayerButton } from '@/app/components/SavedPlayerButton'
 import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
-import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
+import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
+import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import type { MatchStatus } from '@/lib/types/database'
 import { MatchExitNoteComposer } from './MatchExitNoteComposer'
 
@@ -122,12 +123,20 @@ function ParticipantAvatar({
   displayName,
   avatarUrl,
   registered,
+  isContact,
 }: {
   displayName: string
   avatarUrl: string | null
   registered: boolean
+  isContact: boolean
 }) {
   const initial = displayName.charAt(0).toUpperCase() || '?'
+
+  if (isContact) {
+    return (
+      <ContactPlayerMark className="h-[2.2rem] w-[2.2rem]" />
+    )
+  }
 
   return (
     <div
@@ -140,8 +149,8 @@ function ParticipantAvatar({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: registered ? '#5ca0a0' : '#f1f5f9',
-        color: registered ? '#fff' : '#64748b',
+        background: registered ? '#5ca0a0' : '#1E3A5F',
+        color: '#fff',
         border: registered ? '2px solid #ffffff' : '2px dashed #e2e8f0',
         boxShadow: registered ? '0 8px 16px rgba(15, 118, 110, 0.08)' : 'none',
         fontSize: '0.7rem',
@@ -273,7 +282,7 @@ function ParticipantRow({
   const isHostRow = organizerUserId !== null && p.user_id === organizerUserId
   const canSavePlayer = !isGuest && p.user_id !== null && p.user_id !== myUserId
   const canSaveContactPlayer = Boolean(isGuest && p.guest_id !== null)
-  const canViewProfile = !isGuest && p.user_id !== null && p.user_id !== myUserId
+  const canOpenDetails = Boolean(p.user_id || p.guest_id)
   const isPendingParticipant = p.status === 'pending'
   const isWaitingListParticipant = p.status === 'waiting_list'
   const pendingState = isPendingParticipant ? getPendingState(p) : null
@@ -296,9 +305,7 @@ function ParticipantRow({
     isActive &&
     p.user_id === myUserId &&
     (p.status === 'pending' || p.status === 'confirmed' || p.status === 'waiting_list')
-  const relationshipBadges = [
-    isGuest ? 'Contact' : null,
-  ].filter((badge): badge is string => badge !== null)
+  const relationshipBadges: string[] = []
 
   const canRemoveParticipant = canOrganizerRemoveParticipant || canRemovePendingParticipant
   const isPendingRequest = p.status === 'pending' && p.join_method === 'requested' && p.org_approved_at === null
@@ -448,117 +455,121 @@ function ParticipantRow({
       || (p.status === 'pending' && (pendingState?.participantConfirmed ?? false))
       ? 'withdraw'
       : 'decline'
+  const participantInfo = (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.7rem', minWidth: 0, flex: 1 }}>
+      <ParticipantAvatar
+        avatarUrl={p.avatar_url ?? null}
+        displayName={p.display_name}
+        registered={!isGuest}
+        isContact={isGuest}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem' }}>
+            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: isGuest ? '#64748b' : '#0f172a', letterSpacing: '-0.01em' }}>
+              {p.display_name}
+            </span>
 
-  return (
-      <div style={{ padding: '0.52rem 0', borderBottom: '1px solid #f8fafc' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.6rem' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.7rem', minWidth: 0, flex: 1 }}>
-        {canViewProfile ? (
-          <PlayerProfileTrigger targetUserId={p.user_id!} className="rounded-full">
-            <ParticipantAvatar
-              avatarUrl={p.avatar_url ?? null}
-              displayName={p.display_name}
-              registered={!isGuest}
-            />
-          </PlayerProfileTrigger>
-        ) : (
-          <ParticipantAvatar
-            avatarUrl={p.avatar_url ?? null}
-            displayName={p.display_name}
-            registered={!isGuest}
-          />
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.08rem' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem' }}>
-              <span style={{ fontWeight: 600, fontSize: '0.8rem', color: isGuest ? '#64748b' : '#0f172a', letterSpacing: '-0.01em' }}>
-                {p.display_name}
-              </span>
-
-              {isMe ? (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    padding: '0.1rem 0.34rem',
-                    borderRadius: '6px',
-                    background: '#f1f5f9',
-                    color: '#94a3b8',
-                    fontSize: '0.5rem',
-                    fontWeight: 800,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  You
-                </span>
-              ) : null}
-
-              {relationshipBadges.map((badge) => (
-                <span
-                  key={badge}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    padding: '0.04rem 0.22rem',
-                    borderRadius: '999px',
-                    background: badge === 'Proxy for' ? '#eef2ff' : '#f8fafc',
-                    color: badge === 'Proxy for' ? '#4338ca' : '#94a3b8',
-                    fontSize: '0.32rem',
-                    fontWeight: 700,
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {badge}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {!isHostRow && (pendingState || p.status === 'confirmed') && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginTop: '0.18rem' }}>
-              <ConfirmationBadge
-                label="Host"
-                confirmed={pendingState ? pendingState.hostConfirmed : true}
-                title={pendingState
-                  ? (pendingState.hostConfirmed ? 'Host confirmed' : 'Host not yet confirmed')
-                  : 'Host confirmed'}
-              />
-              <ConfirmationBadge
-                label="Player"
-                confirmed={pendingState ? pendingState.participantConfirmed : true}
-                title={pendingState
-                  ? (pendingState.participantConfirmed ? 'Player confirmed attendance' : 'Player not yet confirmed attendance')
-                  : 'Player confirmed attendance'}
-              />
-            </div>
-          )}
-
-          {isWaitingListParticipant && (
-            <div style={{ marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center' }}>
+            {isMe ? (
               <span
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  padding: '0.1rem 0.42rem',
-                  borderRadius: '999px',
-                  background: '#fff7ed',
-                  color: '#b45309',
-                  fontSize: '0.58rem',
-                  fontWeight: 600,
+                  padding: '0.1rem 0.34rem',
+                  borderRadius: '6px',
+                  background: '#f1f5f9',
+                  color: '#94a3b8',
+                  fontSize: '0.5rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
                 }}
               >
-                Waiting list
+                You
               </span>
-              <span style={{ fontSize: '0.64rem', color: '#94a3b8' }}>
-                Fully confirmed, waiting for an open spot.
-                {p.waiting_list_at ? ` Since ${formatEventTimestamp(p.waiting_list_at)}` : ''}
+            ) : null}
+
+            {relationshipBadges.map((badge) => (
+              <span
+                key={badge}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0.08rem 0.32rem',
+                  borderRadius: '999px',
+                  background: '#F8FBFF',
+                  color: '#7F98BC',
+                  border: '1px solid #D6E0EF',
+                  fontSize: '0.42rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                }}
+                title={badge === 'CP' ? 'Contact player' : badge}
+              >
+                {badge}
               </span>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
-        </div>
+
+        {!isHostRow && (pendingState || p.status === 'confirmed') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginTop: '0.18rem' }}>
+            <ConfirmationBadge
+              label="Host"
+              confirmed={pendingState ? pendingState.hostConfirmed : true}
+              title={pendingState
+                ? (pendingState.hostConfirmed ? 'Host confirmed' : 'Host not yet confirmed')
+                : 'Host confirmed'}
+            />
+            <ConfirmationBadge
+              label="Player"
+              confirmed={pendingState ? pendingState.participantConfirmed : true}
+              title={pendingState
+                ? (pendingState.participantConfirmed ? 'Player confirmed attendance' : 'Player not yet confirmed attendance')
+                : 'Player confirmed attendance'}
+            />
+          </div>
+        )}
+
+        {isWaitingListParticipant && (
+          <div style={{ marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '0.1rem 0.42rem',
+                borderRadius: '999px',
+                background: '#fff7ed',
+                color: '#b45309',
+                fontSize: '0.58rem',
+                fontWeight: 600,
+              }}
+            >
+              Waiting list
+            </span>
+            <span style={{ fontSize: '0.64rem', color: '#94a3b8' }}>
+              Fully confirmed, waiting for an open spot.
+              {p.waiting_list_at ? ` Since ${formatEventTimestamp(p.waiting_list_at)}` : ''}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+      <div style={{ padding: '0.52rem 0', borderBottom: '1px solid #f8fafc' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.6rem' }}>
+        {canOpenDetails ? (
+          <ParticipantDetailTrigger
+            participant={p}
+            className="flex min-w-0 flex-1 items-start gap-[0.7rem] rounded-[14px] px-1 py-1 text-left transition hover:bg-slate-50"
+            label={`View details for ${p.display_name}`}
+          >
+            {participantInfo}
+          </ParticipantDetailTrigger>
+        ) : participantInfo}
 
         {/* Organizer / participant action controls */}
         {(canSavePlayer || canSaveContactPlayer || showParticipantMenu) && (
@@ -886,8 +897,8 @@ const dangerButtonStyle: React.CSSProperties = {
 
 const participantGridStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-  columnGap: '1.5rem',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  columnGap: '0',
   rowGap: '0',
 }
 

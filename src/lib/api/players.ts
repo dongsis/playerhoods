@@ -4,14 +4,6 @@ import { listMyPendingGroupInvites, type MyPendingGroupInvite } from '@/lib/api/
 
 type Client = SupabaseClient<Database>
 
-function shouldFallbackToLegacyVenueStorage(error: { message?: string; code?: string } | null | undefined): boolean {
-  const message = error?.message?.toLowerCase() ?? ''
-  return error?.code === '42P01'
-    || message.includes('does not exist')
-    || message.includes('could not find the table')
-    || message.includes('schema cache')
-}
-
 export type VenueMember = { userId: string; handle: string }
 
 export type VenueWithMembers = {
@@ -39,8 +31,8 @@ export type PlayersData = {
 
 /**
  * Returns all platform players grouped by venue and by group.
- * Venue grouping prefers venue_user_relationships(member) and falls back to legacy venue_identities.
- * The member label is always the player's display name; legacy venue handles are only a last-resort fallback.
+ * Venue grouping uses venue_user_relationships(member) as the canonical source.
+ * The member label is always the player's display name.
  */
 export async function getAllPlayersGroupedByVenue(
   supabase: Client,
@@ -90,32 +82,13 @@ export async function getAllPlayersGroupedByVenue(
   const myPersonId = (peopleRes.data as { person_id: string } | null)?.person_id ?? null
   const profileMap = new Map(profiles.map((profile) => [profile.id, profile.display_name]))
 
-  let venueMemberships: { user_id: string; venue_id: string; label: string }[] = []
+  if (memberRelationshipsRes.error) throw memberRelationshipsRes.error
 
-  if (!memberRelationshipsRes.error) {
-    venueMemberships = ((memberRelationshipsRes.data ?? []) as { user_id: string; venue_id: string }[]).map((row) => ({
-      user_id: row.user_id,
-      venue_id: row.venue_id,
-      label: profileMap.get(row.user_id) ?? '',
-    }))
-  } else {
-    if (!shouldFallbackToLegacyVenueStorage(memberRelationshipsRes.error)) throw memberRelationshipsRes.error
-
-    const identitiesRes = await supabase
-      .from('venue_identities')
-      .select('user_id, venue_id')
-      .order('created_at', { ascending: true })
-    if (identitiesRes.error) throw identitiesRes.error
-
-    venueMemberships = ((identitiesRes.data ?? []) as {
-      user_id: string
-      venue_id: string
-    }[]).map((row) => ({
-      user_id: row.user_id,
-      venue_id: row.venue_id,
-      label: profileMap.get(row.user_id) ?? 'Player',
-    }))
-  }
+  const venueMemberships = ((memberRelationshipsRes.data ?? []) as { user_id: string; venue_id: string }[]).map((row) => ({
+    user_id: row.user_id,
+    venue_id: row.venue_id,
+    label: profileMap.get(row.user_id) ?? 'Player',
+  }))
 
   const membersByVenue = new Map<string, VenueMember[]>()
   const usersWithVenue = new Set<string>()

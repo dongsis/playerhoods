@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { isSuperAdmin, getAllVenues, getMyAdminVenues } from '@/lib/api/venues'
+import { getAllVenues, getMyAdminVenues, isSuperAdmin } from '@/lib/api/venues'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { CreateVenueDialog } from '../venues/CreateVenueDialog'
 
@@ -11,6 +11,7 @@ export default async function AdminVenuesPage() {
 
   const supabase = await createSupabaseServerClient()
   const superAdmin = await isSuperAdmin(supabase)
+  let canCreateVenue = superAdmin
 
   let venues
   if (superAdmin) {
@@ -19,6 +20,7 @@ export default async function AdminVenuesPage() {
     const myAdminVenues = await getMyAdminVenues(supabase)
     if (myAdminVenues.length === 0) redirect('/dashboard')
     venues = myAdminVenues.map((row) => row.venue)
+    canCreateVenue = myAdminVenues.length > 0
   }
 
   return (
@@ -27,7 +29,7 @@ export default async function AdminVenuesPage() {
         <Link href="/dashboard" className="ph-link">
           Dashboard
         </Link>
-        <span>›</span>
+        <span>&rsaquo;</span>
         <span>Venue Admin</span>
       </nav>
 
@@ -40,27 +42,34 @@ export default async function AdminVenuesPage() {
               {venues.length} venue{venues.length !== 1 ? 's' : ''}
             </p>
           </div>
-          {superAdmin ? <CreateVenueDialog /> : null}
+          {canCreateVenue ? <CreateVenueDialog /> : null}
         </div>
 
         {venues.length === 0 ? (
           <div className="ph-empty">No venues yet.</div>
         ) : (
           <div className="flex flex-col gap-3">
-            {venues.map((venue) => (
-              <Link
-                key={venue.id}
-                href={`/admin/venues/${venue.id}`}
-                className="block rounded-[20px] border border-[#E2E8F0] bg-white px-5 py-4 text-inherit no-underline shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]"
-              >
-                <div className="text-sm font-bold text-[#1E293B]">{getVenueDisplayName(venue)}</div>
-                {(venue.location_text || venue.timezone) ? (
-                  <div className="mt-1 text-[12px] text-[#64748B]">
-                    {[venue.location_text, venue.timezone].filter(Boolean).join(' · ')}
-                  </div>
-                ) : null}
-              </Link>
-            ))}
+            {venues.map((venue) => {
+              const metaParts = [
+                venue.location_text,
+                venue.city,
+                venue.country,
+                venue.timezone,
+              ].filter(Boolean)
+
+              return (
+                <Link
+                  key={venue.id}
+                  href={`/admin/venues/${venue.id}`}
+                  className="block rounded-[20px] border border-[#E2E8F0] bg-white px-5 py-4 text-inherit no-underline shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]"
+                >
+                  <div className="text-sm font-bold text-[#1E293B]">{getVenueDisplayName(venue)}</div>
+                  {metaParts.length > 0 ? (
+                    <div className="mt-1 text-[12px] text-[#64748B]">{metaParts.join(' · ')}</div>
+                  ) : null}
+                </Link>
+              )
+            })}
           </div>
         )}
       </section>

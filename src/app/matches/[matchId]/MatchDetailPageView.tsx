@@ -9,6 +9,7 @@ import { MatchCourtInfoButton } from './MatchCourtInfoButton'
 import type { MatchDetailPageViewModel } from './match-detail.view-model'
 import type { MatchCourtPlanUpdateInput, MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
+import { AutoRefresh } from '@/app/components/AutoRefresh'
 
 function IconCalendar({ size = 12, color = '#C25E46' }: { size?: number; color?: string }) {
   return (
@@ -459,6 +460,7 @@ export function MatchDetailPageView({
 
   return (
     <div style={{ maxWidth: pageMaxWidth, margin: '0 auto', padding: '0.75rem 1rem 1.5rem', background: '#F0F7FF' }}>
+      <AutoRefresh />
       <MatchHeaderSection
         viewModel={viewModel}
         onUpdateMatchDetails={onUpdateMatchDetails}

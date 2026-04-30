@@ -14,6 +14,7 @@ import {
 import { listSports } from '@/lib/api/sports'
 import { AcceptInviteButton } from './AcceptInviteButton'
 import { LeaveGroupButton } from './LeaveGroupButton'
+import { Avatar } from '@/app/components/Avatar'
 import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
 import { getContactPlayerResolution } from '@/lib/api/roster'
 import { getMyVenueIdentities } from '@/lib/api/identities'
@@ -105,8 +106,8 @@ function MemberListItem({
               width: '1.8rem',
               height: '1.8rem',
               borderRadius: '999px',
-              background: '#eef2f7',
-              color: '#64748b',
+              background: '#1E3A5F',
+              color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -193,44 +194,17 @@ function ContactListItem({
               border: '2px solid #fff',
             }}
           />
-          <div
-            aria-hidden="true"
-            style={{
-              width: '1.8rem',
-              height: '1.8rem',
-              borderRadius: '999px',
-              background: '#eef2f7',
-              color: '#64748b',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              letterSpacing: '0.02em',
-            }}
-          >
-            {getAvatarLabel(contact.display_name)}
-          </div>
+          <Avatar
+            src={null}
+            displayName={contact.display_name}
+            size="md"
+            fallback="contact"
+            className="h-[1.8rem] w-[1.8rem]"
+          />
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
             <span style={{ color: '#0f172a', fontSize: '0.98rem', fontWeight: 600 }}>{contact.display_name}</span>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                borderRadius: '999px',
-                background: '#f1f5f9',
-                color: '#64748b',
-                padding: '0.04rem 0.24rem',
-                fontSize: '0.34rem',
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-              }}
-            >
-              Contact
-            </span>
           </div>
         </div>
       </div>
@@ -481,7 +455,7 @@ export default async function GroupDetailPage({ params }: Props) {
             viewerUserId={user?.id ?? null}
             canAccess={canAccessDiscussion}
             canPost={canPostDiscussion}
-            canSharePhotos={isBoundaryKeeper}
+            canSharePhotos={canPostDiscussion}
             groupId={groupId}
             onPostMessage={postGroupMessageAction.bind(null, groupId)}
             onCreateDiscussionPhotoResource={createGroupDiscussionPhotoResourceAction.bind(null, groupId)}

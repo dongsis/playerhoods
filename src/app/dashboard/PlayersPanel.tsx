@@ -20,8 +20,7 @@ interface Props {
   userId?: string
 }
 
-/** Compute invitable users for a group from already-loaded PlayersData.
- *  Uses venue_identities data (open RLS) — no extra server call needed. */
+/** Compute invitable users for a group from already-loaded PlayersData. */
 function getInvitableForGroup(data: PlayersData, groupId: string): InvitableUser[] {
   const existingIds = new Set(
     (data.groups.find(g => g.group.id === groupId)?.members ?? []).map(m => m.userId)

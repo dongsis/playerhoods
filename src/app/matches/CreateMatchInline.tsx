@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
+import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
+import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
 import type { CreateRecurringMatchSeriesInput, RecurringDirectInviteInput } from '@/lib/api/recurring-matches'
@@ -122,6 +124,15 @@ const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'self_book_later', label: 'Host will book it later' },
   { value: 'needs_help_booking', label: 'Players can help secure a court' },
 ]
+
+function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | null | undefined): MatchCourtPlanMode | null {
+  if (!venueKind) return null
+  if (venueKind === 'club') return 'secured'
+  if (venueKind === 'park' || venueKind === 'community_centre' || venueKind === 'school' || venueKind === 'condo') {
+    return 'walk_in'
+  }
+  return null
+}
 
 const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open doubles' },
@@ -1166,6 +1177,13 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     () => venues.find((venue) => venue.id === venueId),
     [venueId, venues],
   )
+
+  useEffect(() => {
+    const nextDefaultCourtPlanMode = getDefaultCourtPlanModeForVenueKind(selectedVenue?.venue_kind)
+    if (!nextDefaultCourtPlanMode) return
+    setCourtPlanMode((currentMode) => (currentMode === nextDefaultCourtPlanMode ? currentMode : nextDefaultCourtPlanMode))
+  }, [selectedVenue?.id, selectedVenue?.venue_kind])
+
   const recurringWeeksAheadCount = 4
   const recurringSeriesName = useMemo(
     () =>
@@ -1954,12 +1972,26 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`
         }
         className={[
-          'inline-flex items-center gap-1.5 rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600',
+          'relative inline-flex items-center gap-1.5 rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600',
           compact ? 'px-3 py-2 text-[11px]' : 'px-3 py-2 text-[11px]',
           stateClasses,
         ].join(' ')}
       >
-        <span className="truncate">{candidate.name}</span>
+        {candidate.kind === 'contact' ? (
+          <span className="pointer-events-none absolute -right-1 -top-1">
+            <ContactPlayerMark className="h-[0.95rem] w-[0.95rem]" variant="badge" />
+          </span>
+        ) : null}
+        <ParticipantQuickPreviewTrigger
+          target={{
+            userId: candidate.userId ?? null,
+            guestId: candidate.guestId ?? null,
+            displayName: candidate.name,
+            gender: candidate.gender,
+          }}
+        >
+          <span className="truncate">{candidate.name}</span>
+        </ParticipantQuickPreviewTrigger>
         <span
           className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
           aria-label={availabilityLabel ?? 'Available'}
@@ -2065,7 +2097,16 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
           isSelected ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200',
         ].join(' ')}
       >
-        <span className="truncate">{candidate.name}</span>
+        <ParticipantQuickPreviewTrigger
+          target={{
+            userId: candidate.userId ?? null,
+            guestId: candidate.guestId ?? null,
+            displayName: candidate.name,
+            gender: candidate.gender,
+          }}
+        >
+          <span className="truncate">{candidate.name}</span>
+        </ParticipantQuickPreviewTrigger>
         <span
           className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
           aria-label={availabilityLabel ?? 'Available'}
@@ -2279,7 +2320,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
           </div>
 
           <div>
-            <label className={DS_LABEL}>Status</label>
+            <label className={DS_LABEL}>Court Plan</label>
             <select
               value={courtPlanMode}
               onChange={(e) => setCourtPlanMode(e.target.value as MatchCourtPlanMode)}
@@ -2446,7 +2487,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
               ].join(' ')}
             >
               <span className="text-base">+</span>
-              <span className="text-body-main font-medium">Direct Invite</span>
+              <span className="text-body-main font-medium">Invite</span>
             </button>
             <button
               type="button"
@@ -2553,7 +2594,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                     <div>
                       <div className="mb-2 flex items-center gap-2">
                         <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                        <span className="text-label">Direct Invited</span>
+                        <span className="text-label">Invited</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedInvitePlayers.map((member) => (
@@ -2567,7 +2608,16 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                             })}
                             className="text-body-sub flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 font-semibold text-orange-700"
                           >
-                            <span>{member.name}</span>
+                            <ParticipantQuickPreviewTrigger
+                              target={{
+                                userId: member.userId ?? null,
+                                guestId: member.guestId ?? null,
+                                displayName: member.name,
+                                gender: member.gender,
+                              }}
+                            >
+                              <span>{member.name}</span>
+                            </ParticipantQuickPreviewTrigger>
                             <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
                           </button>
                         ))}
@@ -2629,7 +2679,16 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                             onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
                             className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
                           >
-                            <span>{candidate.name}</span>
+                            <ParticipantQuickPreviewTrigger
+                              target={{
+                                userId: candidate.userId ?? null,
+                                guestId: candidate.guestId ?? null,
+                                displayName: candidate.name,
+                                gender: candidate.gender,
+                              }}
+                            >
+                              <span>{candidate.name}</span>
+                            </ParticipantQuickPreviewTrigger>
                             <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
                           </button>
                         ))}

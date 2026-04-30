@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { unstable_noStore as noStore } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getMatchListData, type MatchListItem } from '@/lib/api/matches'
 import { getUnreadNotificationCount } from '@/lib/api/notifications'
@@ -54,6 +55,8 @@ export type DashboardLoaderData = {
 }
 
 export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
+  noStore()
+
   const user = await getUser()
   if (!user) {
     redirect('/login')

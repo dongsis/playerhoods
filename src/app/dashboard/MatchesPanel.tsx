@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { MatchListItem } from '@/lib/api/matches'
 import { acceptMatchInvite } from '@/lib/api/matches'
+import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
+import { HostPlayerMark } from '@/app/components/HostPlayerMark'
+import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
 import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
@@ -52,8 +55,18 @@ function shouldLiveInMyMatches(item: MatchListItem): boolean {
   return true
 }
 
+function isLookingForPlayersMatch(item: MatchListItem, nowIso: string): boolean {
+  return (
+    item.match.status === 'active'
+    && !isPast(item, nowIso)
+    && item.confirmedCount < item.match.required_count
+  )
+}
+
 type MatchRowProps = {
   item: MatchListItem
+  userId?: string | null
+  detailItems?: MatchListItem[]
   onViewed?: (matchId: string) => void
   onDismissAlert?: (matchId: string) => void
   showAcknowledge?: boolean
@@ -76,11 +89,21 @@ function SportBadgeIcon({ sportName }: { sportName: string | null | undefined })
 
   if (sportKey.includes('tennis')) {
     return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#0F766E]" aria-hidden="true">
-        <circle cx="10" cy="8" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M7.2 5.2l5.6 5.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-        <path d="M12.8 10.8l5.3 5.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <path d="M17.1 15.1l1.7 1.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <svg viewBox="0 0 24 24" className="h-4.5 w-4.5 text-[#26415E]" aria-hidden="true">
+        <ellipse cx="11" cy="7.5" rx="4.6" ry="5.6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8.5 13.1 13.5 13.1" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        <path d="M7.6 10.4 14.4 10.4" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        <path d="M7.1 7.6 14.9 7.6" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        <path d="M7.4 4.9 14.6 4.9" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        <path d="M8.5 2.7 8.5 12.3" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+        <path d="M11 2.1 11 13" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+        <path d="M13.5 2.7 13.5 12.3" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+        <path d="M11 13.1 11 16.1" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M10.1 16.1 11.9 16.1" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M10.1 17.4 11.9 17.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M10.2 18.7 11.8 18.7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M9.8 13.4 9.8 20.2" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
+        <path d="M12.2 13.4 12.2 20.2" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
       </svg>
     )
   }
@@ -107,16 +130,60 @@ function SportBadgeIcon({ sportName }: { sportName: string | null | undefined })
   return null
 }
 
+function InlineSportBadge({ sportName }: { sportName: string | null | undefined }) {
+  const sportKey = (sportName ?? '').trim().toLowerCase()
+
+  if (sportKey.includes('tennis')) {
+    return (
+      <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center overflow-hidden">
+        <img
+          src="/match-tennis-racket-icon.png"
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full object-contain"
+        />
+      </span>
+    )
+  }
+
+  if (sportKey.includes('pickleball')) {
+    return (
+      <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center overflow-hidden">
+        <img
+          src="/match-pickleball-paddle-icon.png"
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full object-contain"
+        />
+      </span>
+    )
+  }
+
+  const icon = <SportBadgeIcon sportName={sportName} />
+
+  if (!icon) return null
+
+  return (
+    <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border border-[#D7E1EE] bg-[#F3F7FC] text-[#5B718F] shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <span className="scale-[1.05]">{icon}</span>
+    </span>
+  )
+}
+
 function ParticipantRosterSummary({
   participants,
   rosterMeta,
   confirmedCount,
   organizerId,
+  detailItems,
+  showMeta,
 }: {
   participants: MatchListItem['participants']
   rosterMeta: string[]
   confirmedCount: number
   organizerId: string
+  detailItems?: MatchListItem[]
+  showMeta: boolean
 }) {
   const confirmed = participants
     .filter((participant) => participant.status === 'confirmed')
@@ -128,6 +195,7 @@ function ParticipantRosterSummary({
     })
   const visibleParticipants = confirmed.slice(0, 4)
   const overflow = confirmedCount > visibleParticipants.length ? `+${confirmedCount - visibleParticipants.length}` : ''
+  const shouldShowMeta = false
   const metaLine = rosterMeta.join(' · ')
 
   return (
@@ -137,19 +205,30 @@ function ParticipantRosterSummary({
             <>
               {visibleParticipants.map((participant) => (
                 <span key={participant.id} className="inline-flex min-w-0 items-center gap-1">
-                  <span className={participant.user_id === organizerId ? 'truncate font-semibold text-[#0F172A]' : 'truncate'}>
-                    {participant.display_name}
-                  </span>
-                  {participant.user_id === organizerId ? (
-                    <span className="text-label rounded-full bg-[#FFF1EB] px-1.5 py-0.5 text-[#C25E46]">
-                      Host
+                  <ParticipantDetailTrigger
+                    participant={participant}
+                    items={detailItems}
+                    className="min-w-0 max-w-full text-left transition hover:text-[#C25E46]"
+                    label={`View details for ${participant.display_name}`}
+                  >
+                    <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                      <span className="relative inline-flex min-w-0 max-w-full pr-3">
+                        {!participant.user_id ? (
+                          <span className="pointer-events-none absolute -right-0.5 -top-1.5 z-0">
+                            <ContactPlayerMark className="h-[1.2rem] w-[1.2rem]" variant="badge" />
+                          </span>
+                        ) : null}
+                        <span className="relative z-10 inline-flex min-w-0 items-center gap-1">
+                        <span className={participant.user_id === organizerId ? 'truncate font-semibold text-[#0F172A]' : 'truncate'}>
+                          {participant.display_name}
+                        </span>
+                        {participant.user_id === organizerId ? (
+                          <HostPlayerMark className="h-6 w-6 shrink-0 text-[11px]" />
+                        ) : null}
+                        </span>
+                      </span>
                     </span>
-                  ) : null}
-                  {!participant.user_id ? (
-                    <span className="rounded-full bg-[#F8FAFC] px-1 py-[2px] text-[7px] font-semibold uppercase tracking-[0.14em] text-[#94A3B8]">
-                      Contact
-                    </span>
-                  ) : null}
+                  </ParticipantDetailTrigger>
                 </span>
               ))}
               {overflow ? <span className="text-body-sub text-[#94A3B8]">{overflow}</span> : null}
@@ -158,7 +237,7 @@ function ParticipantRosterSummary({
             <span className="text-[#94A3B8]">No confirmed players yet</span>
           )}
       </div>
-      {metaLine ? (
+      {shouldShowMeta && metaLine ? (
         <div className="text-body-sub mt-1 truncate text-[#64748B]">{metaLine}</div>
       ) : null}
     </div>
@@ -192,6 +271,8 @@ function StatusBadge({
 
 function MatchRow({
   item,
+  userId = null,
+  detailItems,
   onViewed,
   onDismissAlert,
   showAcknowledge = false,
@@ -218,6 +299,13 @@ function MatchRow({
   const compactRosterMeta = getCompactRosterMeta(item.rosterInsight.summaryLabel)
   const isHistoryRow = variant === 'history'
   const isPastMatch = isPast(item, new Date().toISOString())
+  const isOrganizer = userId === match.organizer_id
+  const pendingRequestApprovals = participants.filter(
+    (participant) =>
+      participant.status === 'pending'
+      && participant.participant_accepted_at !== null
+      && participant.org_approved_at === null,
+  )
 
   const hasUserAccepted = myParticipant?.participant_accepted_at != null
   const isInvited = myParticipant?.status === 'pending' && myParticipant.join_method === 'invited'
@@ -225,6 +313,11 @@ function MatchRow({
   const isRequested = myParticipant?.status === 'pending' && myParticipant.join_method === 'requested'
   const needsReconfirmRequested = isRequested && myParticipant?.org_approved_at !== null && !hasUserAccepted
   const isCancelled = match.status === 'cancelled'
+  const visibleRosterMeta = isOrganizer ? compactRosterMeta : []
+  const hostRequestPrompt =
+    isOrganizer && !isHistoryRow && !isCancelled && pendingRequestApprovals.length > 0
+      ? `${pendingRequestApprovals.length} request${pendingRequestApprovals.length === 1 ? '' : 's'} to review`
+      : null
   const isRemoved = myParticipant?.status === 'removed'
   const wasConfirmedByOther =
     myParticipant?.status === 'confirmed'
@@ -289,11 +382,7 @@ function MatchRow({
       ].join(' ')}
     >
       <div className={[variant !== 'default' ? 'w-40 text-body-main' : 'w-36 text-body-sub', 'shrink-0 leading-snug text-[#64748B]'].join(' ')}>
-        {showSportIcon ? (
-          <div className="mb-1 flex items-center text-[#94A3B8]">
-            <SportBadgeIcon sportName={sportName} />
-          </div>
-        ) : sportName ? (
+        {!showSportIcon && sportName ? (
           <div className="text-label mb-1 text-[#94A3B8]">
             {sportName}
           </div>
@@ -305,31 +394,37 @@ function MatchRow({
       {variant !== 'default' ? (
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
+            {showSportIcon ? <InlineSportBadge sportName={sportName} /> : null}
             {statusBadge}
             {courtBadge}
           </div>
           <ParticipantRosterSummary
             participants={participants}
-            rosterMeta={compactRosterMeta}
+            rosterMeta={visibleRosterMeta}
             confirmedCount={confirmedCount}
             organizerId={match.organizer_id}
+            detailItems={detailItems}
+            showMeta={isOrganizer}
           />
         </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-2">
+          {showSportIcon ? <InlineSportBadge sportName={sportName} /> : null}
           {statusBadge}
           {courtBadge}
           <div className="min-w-0 flex-1">
             {showRosterNames ? (
               <ParticipantRosterSummary
                 participants={participants}
-                rosterMeta={compactRosterMeta}
+                rosterMeta={visibleRosterMeta}
                 confirmedCount={confirmedCount}
                 organizerId={match.organizer_id}
+                detailItems={detailItems}
+                showMeta={isOrganizer}
               />
-            ) : compactRosterMeta.length > 0 ? (
+            ) : visibleRosterMeta.length > 0 ? (
               <span className="text-body-sub truncate text-[#64748B]">
-                {compactRosterMeta.map((label, index) => (
+                {visibleRosterMeta.map((label, index) => (
                   <span key={label}>
                     {index > 0 ? <span className="px-1 text-[#CBD5E1]">&middot;</span> : null}
                     <span>{label}</span>
@@ -367,7 +462,7 @@ function MatchRow({
 
       {!isHistoryRow && !isCancelled && isRequested && !needsReconfirmRequested ? (
         <span className="text-label shrink-0 rounded-full bg-[#FFF7ED] px-2.5 py-1 text-[#F97316] ring-1 ring-[#FFEDD5] whitespace-nowrap">
-          Awaiting approval
+          Request pending
         </span>
       ) : null}
 
@@ -386,6 +481,12 @@ function MatchRow({
       {!isHistoryRow && !isCancelled && wasConfirmedByOther ? (
         <span className="text-label shrink-0 rounded-full bg-[#ECFDF5] px-2.5 py-1 text-[#22C55E] ring-1 ring-[#DCFCE7] whitespace-nowrap">
           You&apos;ve been confirmed by {confirmerName}
+        </span>
+      ) : null}
+
+      {hostRequestPrompt ? (
+        <span className="text-label shrink-0 rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#2563EB] ring-1 ring-[#BFDBFE] whitespace-nowrap">
+          {hostRequestPrompt}
         </span>
       ) : null}
 
@@ -908,7 +1009,7 @@ export function MatchesPanel({
         if (isInboxItem(item, now)) incoming.push(item)
         else history.push(item)
       } else if (status === 'pending') {
-        if (item.match.status === 'active' && !isPast(item, now)) lookingFor.push(item)
+        if (isLookingForPlayersMatch(item, now)) lookingFor.push(item)
         else history.push(item)
       } else if (status === 'removed') {
         if (item.match.status === 'active' && !isPast(item, now) && !dismissed) removed.push(item)
@@ -916,9 +1017,9 @@ export function MatchesPanel({
       } else if (status == null) {
         if (item.match.status === 'active' && !isPast(item, now)) {
           if (isOrganizer) incoming.push(item)
-          else lookingFor.push(item)
+          else if (isLookingForPlayersMatch(item, now)) lookingFor.push(item)
         }
-      } else if (item.match.status === 'active' && !isPast(item, now)) {
+      } else if (isLookingForPlayersMatch(item, now)) {
         lookingFor.push(item)
       } else {
         history.push(item)
@@ -986,6 +1087,8 @@ export function MatchesPanel({
                       <MatchRow
                         key={item.match.id}
                         item={item}
+                        userId={userId}
+                        detailItems={items}
                         onViewed={onViewedMatch}
                         variant="incoming"
                       />
@@ -994,6 +1097,8 @@ export function MatchesPanel({
                       <MatchRow
                         key={item.match.id}
                         item={item}
+                        userId={userId}
+                        detailItems={items}
                         onViewed={onViewedMatch}
                         onDismissAlert={onDismissAlert}
                         showAcknowledge={isDismissibleAlert(item, now)}
@@ -1004,6 +1109,8 @@ export function MatchesPanel({
                       <MatchRow
                         key={item.match.id}
                         item={item}
+                        userId={userId}
+                        detailItems={items}
                         onViewed={onViewedMatch}
                         onDismissAlert={onDismissAlert}
                         showAcknowledge={isDismissibleAlert(item, now)}
@@ -1036,7 +1143,7 @@ export function MatchesPanel({
 
                       return (
                         <div key={item.match.id}>
-                          <MatchRow item={item} onViewed={onViewedMatch} variant="incoming" />
+                          <MatchRow item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="incoming" />
                           {expiring && onCancelMatch ? (
                             <ExpiryBanner item={item} hoursLeft={hoursLeft} onCancel={onCancelMatch} />
                           ) : null}
@@ -1056,7 +1163,7 @@ export function MatchesPanel({
                 ) : (
                   <div className="space-y-2">
                     {lookingFor.map((item) => (
-                      <MatchRow key={item.match.id} item={item} variant="incoming" />
+                      <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} variant="incoming" />
                     ))}
                   </div>
                 )}
@@ -1075,7 +1182,7 @@ export function MatchesPanel({
                 <>
                   <div className="space-y-2">
                     {history.slice(0, historyShown).map((item) => (
-                      <MatchRow key={item.match.id} item={item} onViewed={onViewedMatch} variant="history" />
+                      <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="history" />
                     ))}
                   </div>
                   {historyShown < history.length ? (

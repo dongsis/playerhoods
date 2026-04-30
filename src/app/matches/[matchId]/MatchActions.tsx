@@ -63,6 +63,16 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     padding: '0.5rem 1rem',
     marginRight: '0.5rem',
   } as const
+  const requestJoinButtonStyle = {
+    background: '#6f95c8',
+    color: 'white',
+    border: 'none',
+    borderRadius: '12px',
+    padding: '0.65rem 1.1rem',
+    fontSize: '0.98rem',
+    fontWeight: 700,
+    boxShadow: '0 8px 20px rgba(111, 149, 200, 0.18)',
+  } as const
   const secondaryButtonStyle = {
     background: 'white',
     color: '#475569',
@@ -107,12 +117,10 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
                 data-testid="request-join"
                 onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
                 disabled={loading}
+                style={requestJoinButtonStyle}
               >
                 {loading ? 'Requesting...' : 'Request to Join'}
               </button>
-              <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.4rem' }}>
-                Host confirmation required.
-              </p>
             </>
           ) : (
             <p style={{ fontSize: '0.9rem', color: '#666' }}>
@@ -151,13 +159,11 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
             data-testid="request-join"
             onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
             disabled={loading}
+            style={requestJoinButtonStyle}
           >
             {loading ? 'Requesting...' : 'Request to Join'}
           </button>
           {error && <p style={{ color: 'red' }}>{error}</p>}
-          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
-            Host confirmation required.
-          </p>
         </div>
       )
     }

@@ -36,7 +36,7 @@ export type VenueInvitableMemberRow = {
   display_name: string | null
 }
 
-/** Phase 1: Venue Members discovery. Caller must be club member. */
+/** Phase 1: Venue Members discovery. Caller must hold the discovery relationship for the venue kind. */
 export async function getVenueMembersDiscovery(
   supabase: Client,
   venueId: string,
@@ -61,12 +61,7 @@ export async function getVenueMembersDiscovery(
     }))
   }
 
-  const fallback = await supabase.rpc('rpc_venue_members_discovery', {
-    p_venue_id: venueId,
-    p_search: search ?? null,
-  })
-  if (fallback.error) throw fallback.error
-  return (fallback.data ?? []) as VenueMemberDiscoveryRow[]
+  throw next.error
 }
 
 /** Venue people who allow direct non-group invites in this venue. */

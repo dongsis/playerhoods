@@ -54,8 +54,40 @@ export function VenueEditForm({ venue, onSubmit }: Props) {
         <input name="name" defaultValue={venue.name} style={{ padding: '0.4rem', width: '180px' }} />
       </div>
       <div>
-        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Location</label>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Address</label>
         <input name="location_text" defaultValue={venue.location_text ?? ''} style={{ padding: '0.4rem', width: '180px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>City</label>
+        <input name="city" defaultValue={venue.city ?? ''} style={{ padding: '0.4rem', width: '140px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Postal code</label>
+        <input name="postal_code" defaultValue={venue.postal_code ?? ''} style={{ padding: '0.4rem', width: '140px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Country</label>
+        <input name="country" defaultValue={venue.country ?? ''} style={{ padding: '0.4rem', width: '140px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Contact person</label>
+        <input name="contact_name" defaultValue={venue.contact_name ?? ''} style={{ padding: '0.4rem', width: '180px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Contact phone</label>
+        <input name="contact_phone" defaultValue={venue.contact_phone ?? ''} style={{ padding: '0.4rem', width: '180px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Contact email</label>
+        <input name="contact_email" defaultValue={venue.contact_email ?? ''} style={{ padding: '0.4rem', width: '220px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Venue phone</label>
+        <input name="venue_phone" defaultValue={venue.venue_phone ?? ''} style={{ padding: '0.4rem', width: '180px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Venue email</label>
+        <input name="venue_email" defaultValue={venue.venue_email ?? ''} style={{ padding: '0.4rem', width: '220px' }} />
       </div>
       <div>
         <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Timezone</label>
@@ -64,7 +96,11 @@ export function VenueEditForm({ venue, onSubmit }: Props) {
         </select>
       </div>
       <div>
-        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Notes</label>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Website</label>
+        <input name="website_url" defaultValue={venue.website_url ?? ''} style={{ padding: '0.4rem', width: '220px' }} />
+      </div>
+      <div>
+        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Description</label>
         <input name="notes" defaultValue={venue.notes ?? ''} style={{ padding: '0.4rem', width: '220px' }} />
       </div>
       <button
