@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const explicitDistDir = process.env.NEXT_DIST_DIR?.trim()
-const defaultDistDir = process.env.NODE_ENV === 'development' ? '.next-dev' : '.next-build'
+const isVercel = process.env.VERCEL === '1' || process.env.NOW_REGION
+const defaultDistDir = isVercel
+  ? '.next'
+  : process.env.NODE_ENV === 'development'
+    ? '.next-dev'
+    : '.next-build'
 const distDir = explicitDistDir || defaultDistDir
 
 const nextConfig = {
