@@ -65,7 +65,7 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
         Venue Members
       </h2>
       <p className="mb-3 text-sm text-gray-500">
-        Discover registered people at this venue and save them into your hood for future match invites.
+        Discover registered people at this venue and save them into your Hood before using them as Direct Invite Users or Request Scope Users.
       </p>
       <input
         type="text"

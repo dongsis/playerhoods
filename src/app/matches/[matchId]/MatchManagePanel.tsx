@@ -1410,7 +1410,13 @@ export function MatchManagePanel({
                     type="text"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder={panelMode === 'remove' ? 'Search players, invites, or groups...' : 'Search players or groups...'}
+                    placeholder={
+                      panelMode === 'remove'
+                        ? 'Search players, invites, or groups...'
+                        : inviteMode === 'request'
+                          ? 'Search saved registered players or groups...'
+                          : 'Search saved registered players, contacts, or groups...'
+                    }
                     className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
                   />
                 </div>
@@ -1419,7 +1425,9 @@ export function MatchManagePanel({
                   <div className="flex flex-wrap gap-2">
                     {inviteCandidates.length === 0 ? (
                       <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
-                        No candidates found.
+                        {inviteMode === 'request'
+                          ? 'No saved registered players or groups are available for Request Scope.'
+                          : 'No saved registered players, contacts, or groups are available for direct invites.'}
                       </div>
                     ) : (
                       inviteCandidates.map((candidate) => (

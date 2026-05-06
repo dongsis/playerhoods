@@ -6,7 +6,6 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   orgApproveParticipant,
   removeParticipant,
-  inviteUserToMatch,
 } from '@/lib/api/matches'
 import type { MatchParticipantWithDetails, MatchParticipantActionWithProfile, MatchStatus } from '@/lib/types/database'
 
@@ -162,33 +161,6 @@ export function ParticipantsList({
                       >
                         {loading === p.id ? '...' : 'Remove'}
                       </button>
-                    )}
-                    {/* Re-invite removed user (with note) */}
-                    {isOrganizer && p.status === 'removed' && p.user_id && (
-                      <>
-                        <input
-                          type="text"
-                          placeholder="Note"
-                          value={noteInputs[p.id] || ''}
-                          onChange={(e) => setNoteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                          style={{ padding: '0.2rem 0.4rem', fontSize: '0.8rem', width: '120px' }}
-                        />
-                        <button
-                          onClick={() =>
-                            handleAction(p.id, () => inviteUserToMatch(supabase, matchId, p.user_id!))
-                          }
-                          disabled={loading === p.id}
-                          style={{
-                            background: '#4a90d9',
-                            color: 'white',
-                            border: 'none',
-                            padding: '0.25rem 0.5rem',
-                            fontSize: '0.8rem',
-                          }}
-                        >
-                          {loading === p.id ? '...' : 'Invite'}
-                        </button>
-                      </>
                     )}
                   </div>
                 )}

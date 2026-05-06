@@ -161,6 +161,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     .filter((participant) => participant.status === 'confirmed')
     .map((participant) => participant.id)
   const canViewLineup = isOrganizer || isCurrentLineupSnapshot(savedLineup, confirmedPlayerIds)
+  const savedAdmissionTargets = admissionTargets.filter((target) => target.source === 'invite_circle')
 
   return {
     matchId,
@@ -201,8 +202,8 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     ),
     spotsNeeded: Math.max(match.required_count - confirmedCount, 0),
     savedPlayerIds: loaderData.inviteCircle.map((row) => row.target_user_id),
-    scopeUsersForInvite: admissionTargetsToScopeUsers(admissionTargets, { requireCanAdmit: true }),
-    scopeUsersForNominate: admissionTargetsToScopeUsers(admissionTargets, { requireCanAdmit: true }),
+    scopeUsersForInvite: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
+    scopeUsersForNominate: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
     contactTargets: admissionTargetsToContactPlayers(admissionTargets),
     showSelfActionsSection: match.status === 'active' && !isOrganizer && selfNeedsTopAction,
     showNominateSection: match.status === 'active' && canNominate,

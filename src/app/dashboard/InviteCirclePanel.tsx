@@ -61,19 +61,19 @@ export function InviteCirclePanel({
   }
 
   if (loading && items.length === 0) {
-    return <p className="text-sm text-gray-400">Loading saved people...</p>
+    return <p className="text-sm text-gray-400">Loading saved registered players...</p>
   }
 
   return (
     <div className="mb-6">
-      <h3 className="mb-2 text-sm font-semibold text-gray-700">Saved In My Hood</h3>
+      <h3 className="mb-2 text-sm font-semibold text-gray-700">Saved Registered Players</h3>
       <p className="mb-3 text-xs text-gray-500">
-        Registered people you have saved into your hood. Saving is silent, does not create a Shared Group, and keeps contact people on their separate contact path.
+        Registered players you have saved into your Hood. These saved players can later be used as Direct Invite Users or Request Scope Users. Contact players stay on their separate contact path.
       </p>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       {items.length === 0 ? (
         <p className="text-sm italic text-gray-400">
-          No saved people yet. Save people from venues, Shared Groups, or shared matches to build your future invite pool.
+          No saved registered players yet. Discover players first, save them to your Hood, and then use them as Direct Invite Users or Request Scope Users.
         </p>
       ) : (
         <div className="space-y-2">
@@ -108,7 +108,7 @@ export function InviteCirclePanel({
                 disabled={!!removingId}
                 className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
               >
-                {removingId === item.target_user_id ? 'Removing...' : 'Remove'}
+                {removingId === item.target_user_id ? 'Unsaving...' : 'Unsave'}
               </button>
             </div>
           ))}

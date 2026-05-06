@@ -202,7 +202,7 @@ export function ParticipantDetailPanel({
               ) : null}
             </div>
             <div className="min-w-0">
-              <h2 className="text-[2rem] font-black tracking-tight text-slate-900">
+              <h2 className="text-[1.7rem] font-black tracking-tight text-slate-900">
                 {displayName}
               </h2>
               {headerBadges ? (

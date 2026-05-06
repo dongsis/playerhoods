@@ -116,7 +116,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-h2 text-gray-900">Inbox</h2>
+        <h2 className="text-[2rem] font-semibold tracking-tight text-gray-900 sm:text-[2.15rem]">Inbox</h2>
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllRead}

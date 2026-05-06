@@ -13,6 +13,30 @@ import { formatTimeWindow } from '@/lib/format-time'
 import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
 
+const FALLBACK_COURT_STATE = {
+  status: 'open',
+  badgeLabel: 'Court TBD',
+  detailLabel: 'Court TBD',
+} as const
+
+const FALLBACK_ROSTER_INSIGHT = {
+  confirmedCount: 0,
+  pendingCount: 0,
+  waitingCount: 0,
+  removedCount: 0,
+  openSpots: 0,
+  formatLabel: null,
+  compositionLabel: null,
+  neededLabel: null,
+  summaryLabel: '',
+  needsCompositionReview: false,
+  genderCounts: {
+    male: 0,
+    female: 0,
+    unspecified: 0,
+  },
+} as const
+
 function isPast(item: MatchListItem, nowIso: string): boolean {
   const { match } = item
   if (match.start_at_utc) return match.start_at_utc < nowIso
@@ -82,6 +106,10 @@ function getCompactRosterMeta(summaryLabel: string | null | undefined): string[]
     .map((part) => part.trim())
     .filter(Boolean)
     .filter((part) => !/composition needs review/i.test(part))
+}
+
+function getSafeParticipants(item: Pick<MatchListItem, 'participants'>): MatchListItem['participants'] {
+  return Array.isArray(item.participants) ? item.participants : []
 }
 
 function SportBadgeIcon({ sportName }: { sportName: string | null | undefined }) {
@@ -247,9 +275,11 @@ function ParticipantRosterSummary({
 function StatusBadge({
   label,
   tone,
+  className,
 }: {
   label: string
   tone: 'green' | 'amber' | 'blue' | 'red' | 'slate'
+  className?: string
 }) {
   const toneClass =
     tone === 'green'
@@ -263,7 +293,7 @@ function StatusBadge({
             : 'bg-[#FFF7ED] text-[#F97316] ring-[#FFEDD5]'
 
   return (
-    <span className={`text-label inline-flex items-center rounded-full px-2.5 py-1 ring-1 ${toneClass}`}>
+    <span className={`text-label inline-flex items-center rounded-full px-2.5 py-1 ring-1 ${toneClass} ${className ?? ''}`}>
       {label}
     </span>
   )
@@ -284,19 +314,23 @@ function MatchRow({
     confirmedCount,
     pendingCount,
     isFormed,
-    participants,
     myParticipant,
     venueTimezone,
     venueName,
     sportName,
-    courtState,
   } = item
+  const participants = getSafeParticipants(item)
+  const courtState = item.courtState ?? FALLBACK_COURT_STATE
+  const rosterInsight = item.rosterInsight ?? FALLBACK_ROSTER_INSIGHT
+  if (!item.rosterInsight) {
+    ;(item as MatchListItem).rosterInsight = rosterInsight
+  }
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const normalizedSportName = (sportName ?? '').trim().toLowerCase()
   const showSportIcon = normalizedSportName.includes('tennis') || normalizedSportName.includes('pickleball')
-  const compactRosterMeta = getCompactRosterMeta(item.rosterInsight.summaryLabel)
+  const compactRosterMeta = getCompactRosterMeta(rosterInsight.summaryLabel)
   const isHistoryRow = variant === 'history'
   const isPastMatch = isPast(item, new Date().toISOString())
   const isOrganizer = userId === match.organizer_id
@@ -369,6 +403,7 @@ function MatchRow({
             ? 'blue'
             : 'amber'
       }
+      className={courtState.status === 'secured' ? 'bg-[#F3FCF5] text-[#56B473] ring-[#DDF3E4]' : undefined}
     />
   ) : null
 
@@ -573,8 +608,10 @@ function ExpiryBanner({
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
     <div className="mb-3 flex items-center gap-2">
-      <h3 className="text-label text-[#94A3B8]">{label}</h3>
-      <span className="text-body-sub text-[#CBD5E1]">{count}</span>
+      <h3 className="text-[12px] font-semibold uppercase tracking-[0.17em] text-[#94A3B8] sm:text-[13px]">
+        {label}
+      </h3>
+      <span className="text-[12px] font-medium text-[#CBD5E1] sm:text-[13px]">{count}</span>
       <span className="h-px flex-1 bg-[#E2E8F0]" />
     </div>
   )
@@ -583,12 +620,11 @@ function SectionHeading({ label, count }: { label: string; count: number }) {
 type CalendarEntry = {
   id: string
   dateKey: string
-  startLabel: string
+  timeLabel: string
   sortStamp: string
   sportLabel: string
   sportKey: string
   organizerName: string
-  organizerAvatarUrl: string | null
   startMinutes: number
   endMinutes: number
   tone: 'green' | 'amber' | 'blue' | 'slate'
@@ -677,30 +713,7 @@ function SportGlyph({ sportKey }: { sportKey: string }) {
   return <span className="inline-block h-2 w-2 rounded-full bg-[#94A3B8]" aria-hidden="true" />
 }
 
-function CalendarHostAvatar({
-  name,
-  avatarUrl,
-}: {
-  name: string
-  avatarUrl: string | null
-}) {
-  const initial = name.charAt(0).toUpperCase() || '?'
-
-  return (
-    <span
-      className="inline-flex h-4 w-4 items-center justify-center overflow-hidden rounded-full border border-white bg-[#5ca0a0] text-[8px] font-bold text-white shadow-sm"
-      title={name}
-    >
-      {avatarUrl ? (
-        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-      ) : (
-        <span>{initial}</span>
-      )}
-    </span>
-  )
-}
-
-function formatEventStartLabel(totalMinutes: number): string {
+function formatEventTimeLabel(totalMinutes: number): string {
   const hours24 = Math.floor(totalMinutes / 60) % 24
   const minutes = totalMinutes % 60
   const suffix = hours24 >= 12 ? 'PM' : 'AM'
@@ -709,7 +722,20 @@ function formatEventStartLabel(totalMinutes: number): string {
   return `${hours12}:${String(minutes).padStart(2, '0')} ${suffix}`
 }
 
-function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinutes: number; startLabel: string } {
+function formatCalendarRangeLabel(startMinutes: number, endMinutes: number): string {
+  const startFull = formatEventTimeLabel(startMinutes)
+  const endFull = formatEventTimeLabel(endMinutes)
+  const startSuffix = startFull.endsWith('PM') ? 'PM' : 'AM'
+  const endSuffix = endFull.endsWith('PM') ? 'PM' : 'AM'
+
+  if (startSuffix === endSuffix) {
+    return `${startFull.replace(/ (AM|PM)$/, '')}-${endFull}`
+  }
+
+  return `${startFull}-${endFull}`
+}
+
+function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinutes: number; timeLabel: string } {
   const durationMinutes = Math.max(item.match.duration_minutes ?? 60, 30)
 
   if (item.match.start_time) {
@@ -719,7 +745,7 @@ function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinu
     return {
       startMinutes,
       endMinutes,
-      startLabel: formatEventStartLabel(startMinutes),
+      timeLabel: formatCalendarRangeLabel(startMinutes, endMinutes),
     }
   }
 
@@ -730,14 +756,14 @@ function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinu
     return {
       startMinutes,
       endMinutes,
-      startLabel: formatEventStartLabel(startMinutes),
+      timeLabel: formatCalendarRangeLabel(startMinutes, endMinutes),
     }
   }
 
   return {
     startMinutes: 0,
     endMinutes: durationMinutes,
-    startLabel: 'TBD',
+    timeLabel: 'Time TBD',
   }
 }
 
@@ -777,9 +803,10 @@ function WeeklyCalendar({
         if (!matchDate) return null
 
         const timing = getCalendarTiming(item)
+        const participants = getSafeParticipants(item)
         const organizerParticipant =
-          item.participants.find((participant) => participant.user_id === item.match.organizer_id)
-          ?? item.participants[0]
+          participants.find((participant) => participant.user_id === item.match.organizer_id)
+          ?? participants[0]
         const tone: CalendarEntry['tone'] = isPast(item, nowIso)
           ? 'slate'
           : item.myParticipant?.status === 'pending'
@@ -791,12 +818,11 @@ function WeeklyCalendar({
         return {
           id: item.match.id,
           dateKey: item.match.match_date ?? toDateKey(matchDate),
-          startLabel: timing.startLabel,
+          timeLabel: timing.timeLabel,
           sortStamp: item.match.start_at_utc ?? `${item.match.match_date ?? toDateKey(matchDate)}T${item.match.start_time ?? '23:59:59'}`,
           sportLabel: item.sportName ?? 'Match',
           sportKey: getCalendarSportKey(item.sportName),
           organizerName: organizerParticipant?.display_name ?? 'Host',
-          organizerAvatarUrl: organizerParticipant?.avatar_url ?? null,
           startMinutes: timing.startMinutes,
           endMinutes: timing.endMinutes,
           tone,
@@ -894,7 +920,7 @@ function WeeklyCalendar({
                   className="text-label absolute inset-x-0 flex -translate-y-1/2 justify-end pr-2 text-[#94A3B8]"
                   style={{ top: index * hourHeight }}
                 >
-                  {formatEventStartLabel(minutes)}
+                  {formatEventTimeLabel(minutes)}
                 </div>
               ))}
             </div>
@@ -942,10 +968,12 @@ function WeeklyCalendar({
                       >
                         <div className="flex items-center gap-1">
                           <SportGlyph sportKey={entry.sportKey} />
-                          <CalendarHostAvatar name={entry.organizerName} avatarUrl={entry.organizerAvatarUrl} />
+                          <p className="text-[10px] font-semibold leading-tight text-[#1E293B]">
+                            {entry.organizerName}
+                          </p>
                         </div>
-                        <p className="text-body-sub mt-0.5 text-[#475569]">
-                          {entry.startLabel}
+                        <p className="mt-0.5 text-[10px] leading-tight text-[#475569]">
+                          {entry.timeLabel}
                         </p>
                       </Link>
                     )
@@ -1059,8 +1087,7 @@ export function MatchesPanel({
       <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
         <div className="flex items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
           <div>
-            <p className="text-label text-[#94A3B8]">Match Board</p>
-            <h2 className="text-h2 mt-2 tracking-tight text-[#1E293B]">Upcoming, calendar and history</h2>
+            <h2 className="text-h2 font-semibold tracking-tight text-[#0F172A]">Match Board</h2>
           </div>
           <div className="inline-flex rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
             {subTabBtn('upcoming', 'Upcoming', incoming.length)}

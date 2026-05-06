@@ -4,25 +4,28 @@ import type { GearImageInput, GearItemInput, GearShowcaseEntryInput, GearStringJ
 import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob } from '@/lib/types/database'
 import type { GearLinkImportDraft } from '@/lib/gear-link-import'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import type { DashboardPreferenceSaveResult } from './dashboard.actions'
 
 type DashboardPageViewProps = {
   viewModel: DashboardPageViewModel
   onUpdateProfile: (formData: FormData) => Promise<void>
+  onAcceptIdentityLink: (guestId: string) => Promise<void>
+  onKeepSeparateIdentityLink: (guestId: string) => Promise<void>
   onSetDisplayName: (newName: string) => Promise<void>
   onAvatarSaved: () => Promise<void>
   onSetPrimaryVenue: (venueId: string) => Promise<void>
   onLeaveVenue: (venueId: string) => Promise<void>
+  onSaveVenuePreference: (venueId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   onRemoveVenuePreference: (venueId: string) => Promise<void>
   onJoinVenue: (venueId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   onSaveGlobalPreferences: (params: {
-    show_in_venue_member_discovery?: boolean
+    visible_in_city_discovery?: boolean
+    searchable_by_email_or_phone?: boolean
+    play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
     shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
-  }) => Promise<void>
-  onSetVenuePreferences: (venueId: string, params: {
-    visible_in_venue_member_discovery?: 'true' | 'false' | 'inherit'
-    accept_non_group_invites_in_venue?: 'true' | 'false' | 'inherit'
-  }) => Promise<void>
+  }) => Promise<DashboardPreferenceSaveResult>
+  onSetVenueMemberDiscovery: (venueId: string, visibleInVenueMemberDiscovery: boolean) => Promise<DashboardPreferenceSaveResult>
   onSetSports: (codes: string[]) => Promise<void>
   onSaveSportProfile: (input: {
     sport_id: number
@@ -65,14 +68,17 @@ type DashboardPageViewProps = {
 export function DashboardPageView({
   viewModel,
   onUpdateProfile,
+  onAcceptIdentityLink,
+  onKeepSeparateIdentityLink,
   onSetDisplayName,
   onAvatarSaved,
   onSetPrimaryVenue,
   onLeaveVenue,
+  onSaveVenuePreference,
   onRemoveVenuePreference,
   onJoinVenue,
   onSaveGlobalPreferences,
-  onSetVenuePreferences,
+  onSetVenueMemberDiscovery,
   onSetSports,
   onSaveSportProfile,
   onCreateGearItem,
@@ -100,6 +106,8 @@ export function DashboardPageView({
       inboxUnreadCount={viewModel.inboxUnreadCount}
       playersData={viewModel.playersData}
       inviteCircle={viewModel.inviteCircle}
+      verifiedEmails={viewModel.verifiedEmails}
+      identityLinkCandidates={viewModel.identityLinkCandidates}
       profile={viewModel.profile}
       myIdentities={viewModel.myIdentities}
       myVenuePrefs={viewModel.myVenuePrefs}
@@ -107,6 +115,7 @@ export function DashboardPageView({
       sports={viewModel.sports}
       mySports={viewModel.mySports}
       mySportProfiles={viewModel.mySportProfiles}
+      myPlayCities={viewModel.myPlayCities}
       gearItems={viewModel.gearItems}
       gearImages={viewModel.gearImages}
       gearStringJobs={viewModel.gearStringJobs}
@@ -114,14 +123,17 @@ export function DashboardPageView({
       myAdminVenues={viewModel.myAdminVenues}
       isSuperAdmin={viewModel.isSuperAdmin}
       onUpdateProfile={onUpdateProfile}
+      onAcceptIdentityLink={onAcceptIdentityLink}
+      onKeepSeparateIdentityLink={onKeepSeparateIdentityLink}
       onSetDisplayName={onSetDisplayName}
       onAvatarSaved={onAvatarSaved}
       onSetPrimaryVenue={onSetPrimaryVenue}
       onLeaveVenue={onLeaveVenue}
+      onSaveVenuePreference={onSaveVenuePreference}
       onRemoveVenuePreference={onRemoveVenuePreference}
       onJoinVenue={onJoinVenue}
       onSaveGlobalPreferences={onSaveGlobalPreferences}
-      onSetVenuePreferences={onSetVenuePreferences}
+      onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
       onSetSports={onSetSports}
       onSaveSportProfile={onSaveSportProfile}
       onCreateGearItem={onCreateGearItem}

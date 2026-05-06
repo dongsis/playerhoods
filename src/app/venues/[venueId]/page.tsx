@@ -2,21 +2,25 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { getVenue, getVenueCourts, isSuperAdmin, isVenueAdmin } from '@/lib/api/venues'
+import { getVenue, getVenueCourts, getVenueSports, isSuperAdmin, isVenueAdmin } from '@/lib/api/venues'
 import { listSports } from '@/lib/api/sports'
 import {
   addVenuePreference,
   getMyVenuePreferences,
   getMyVenueRelationships,
+  joinVenue,
   removeVenuePreference,
 } from '@/lib/api/identities'
 import { getInviteCircleList } from '@/lib/api/play-network'
 import { getVenueDisplayName } from '@/lib/venues/display'
-import { VenuePreferenceButton } from './VenuePreferenceButton'
 import { VenueMembersSection } from './VenueMembersSection'
 
 interface Props {
   params: Promise<{ venueId: string }>
+}
+
+function venueSupportsMembership(kind: string | null | undefined) {
+  return kind === 'club' || kind === 'private_facility' || kind === 'condo' || kind === 'school'
 }
 
 export default async function VenueDetailPage({ params }: Props) {
@@ -25,11 +29,13 @@ export default async function VenueDetailPage({ params }: Props) {
   const supabase = await createSupabaseServerClient()
 
   let venue, courts, sports
+  let venueSports
   try {
-    ;[venue, courts, sports] = await Promise.all([
+    ;[venue, courts, sports, venueSports] = await Promise.all([
       getVenue(supabase, venueId),
       getVenueCourts(supabase, venueId),
       listSports(supabase),
+      getVenueSports(supabase, venueId),
     ])
   } catch {
     notFound()
@@ -42,11 +48,18 @@ export default async function VenueDetailPage({ params }: Props) {
       courts: courts.filter((court) => court.sport_id === sport.id),
     }))
     .filter((entry) => entry.courts.length > 0)
+  const venueSportsSummary = venueSports
+    .map((entry) => ({
+      ...entry,
+      sportName: sportMap.get(entry.sport_id) ?? `Sport ${entry.sport_id}`,
+    }))
+    .sort((left, right) => left.sportName.localeCompare(right.sportName))
 
   let isMember = false
   let isSaved = false
   let savedPlayerIds: string[] = []
   let canManageVenue = false
+  const canJoinAsMember = venueSupportsMembership(venue.venue_kind)
 
   if (user) {
     const [relationships, prefs, inviteCircle, superAdmin, venueAdmin] = await Promise.all([
@@ -80,12 +93,40 @@ export default async function VenueDetailPage({ params }: Props) {
     revalidatePath('/dashboard')
   }
 
+  async function handleJoinAsMember() {
+    'use server'
+    const srv = await createSupabaseServerClient()
+    const currentUser = await getUser()
+    if (!currentUser) return
+    await joinVenue(srv, venueId)
+    revalidatePath(`/venues/${venueId}`)
+    revalidatePath('/profile')
+    revalidatePath('/dashboard')
+  }
+
   const venueMetaParts = [
     venue.location_text,
     venue.city,
+    venue.province,
     venue.postal_code,
     venue.country,
     venue.timezone,
+  ].filter(Boolean)
+  const attributeBadges = [
+    venue.indoor_outdoor === 'indoor'
+      ? 'Indoor'
+      : venue.indoor_outdoor === 'outdoor'
+        ? 'Outdoor'
+        : venue.indoor_outdoor === 'indoor_outdoor'
+          ? 'Indoor/Outdoor'
+          : null,
+    venue.facility_type === 'full_facility'
+      ? 'Full Facility'
+      : venue.facility_type === 'court_only'
+        ? 'Court Only'
+        : null,
+    venue.booking_required === true ? 'Booking required' : venue.booking_required === false ? 'No booking required' : null,
+    venue.cost_type === 'paid' ? 'Paid' : venue.cost_type === 'free' ? 'Free' : null,
   ].filter(Boolean)
 
   return (
@@ -115,6 +156,18 @@ export default async function VenueDetailPage({ params }: Props) {
                 Visit website
               </a>
             ) : null}
+            {attributeBadges.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {attributeBadges.map((badge) => (
+                  <span
+                    key={badge}
+                    className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600"
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -130,16 +183,7 @@ export default async function VenueDetailPage({ params }: Props) {
               <span className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700">
                 Member
               </span>
-            ) : user ? (
-              <VenuePreferenceButton isSaved={isSaved} onToggle={handleTogglePreference} />
-            ) : (
-              <Link
-                href="/login"
-                className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
-              >
-                Log in to save
-              </Link>
-            )}
+            ) : null}
           </div>
         </div>
       </header>
@@ -151,6 +195,25 @@ export default async function VenueDetailPage({ params }: Props) {
       {venue.notes ? (
         <section className="mb-6 rounded-2xl bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-600">
           {venue.notes}
+        </section>
+      ) : null}
+
+      {venueSportsSummary.length > 0 ? (
+        <section className="mb-6">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Supported Sports
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {venueSportsSummary.map((entry) => (
+              <span
+                key={`${entry.venue_id}-${entry.sport_id}`}
+                className="rounded-2xl border border-gray-100 bg-white px-4 py-2 text-sm text-gray-700"
+              >
+                <span className="font-semibold text-gray-900">{entry.sportName}</span>
+                <span className="ml-2 text-gray-500">{entry.court_count} courts</span>
+              </span>
+            ))}
+          </div>
         </section>
       ) : null}
 
@@ -219,18 +282,51 @@ export default async function VenueDetailPage({ params }: Props) {
       </section>
 
       {user && !isMember ? (
-        <section className="mt-2 flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-white px-4 py-4">
+        <section className="mt-2 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-white px-4 py-4">
           <div>
-            <p className="text-sm font-medium text-gray-700">Not a member yet</p>
+            <p className="text-sm font-medium text-gray-700">
+              {canJoinAsMember ? 'Not a member yet' : isSaved ? 'Saved venue' : 'Save this venue'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {canJoinAsMember ? (
+              <form action={handleJoinAsMember}>
+                <button
+                  type="submit"
+                  className="shrink-0 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+                >
+                  I&apos;m a member of this club.
+                </button>
+              </form>
+            ) : null}
+            <form action={handleTogglePreference}>
+              <button
+                type="submit"
+                className={[
+                  'shrink-0 rounded-xl px-4 py-2 text-sm font-medium transition-colors',
+                  isSaved
+                    ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                    : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50',
+                ].join(' ')}
+              >
+                {isSaved ? 'Unsave this venue' : 'Save this venue'}
+              </button>
+            </form>
+          </div>
+        </section>
+      ) : !user ? (
+        <section className="mt-2 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-white px-4 py-4">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Save or join this venue</p>
             <p className="mt-0.5 text-xs text-gray-400">
-              Join this venue to appear in match scope groups.
+              Log in to save this venue or mark yourself as a member.
             </p>
           </div>
           <Link
-            href="/profile"
-            className="shrink-0 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+            href="/login"
+            className="shrink-0 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
           >
-            Join via Profile &rarr;
+            Log in
           </Link>
         </section>
       ) : null}

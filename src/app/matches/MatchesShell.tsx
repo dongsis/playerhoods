@@ -14,10 +14,11 @@ interface Props {
 type CalendarEntry = {
   id: string
   dateKey: string
-  startLabel: string
+  timeLabel: string
   sortStamp: string
   sportLabel: string
   sportKey: string
+  organizerName: string
   startMinutes: number
   endMinutes: number
   tone: 'green' | 'amber' | 'blue' | 'slate'
@@ -122,7 +123,7 @@ function SportGlyph({ sportKey }: { sportKey: string }) {
   return <span className="inline-block h-2 w-2 rounded-full bg-[#94A3B8]" aria-hidden="true" />
 }
 
-function formatEventStartLabel(totalMinutes: number): string {
+function formatEventTimeLabel(totalMinutes: number): string {
   const hours24 = Math.floor(totalMinutes / 60) % 24
   const minutes = totalMinutes % 60
   const suffix = hours24 >= 12 ? 'PM' : 'AM'
@@ -131,7 +132,20 @@ function formatEventStartLabel(totalMinutes: number): string {
   return `${hours12}:${String(minutes).padStart(2, '0')} ${suffix}`
 }
 
-function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinutes: number; startLabel: string } {
+function formatCalendarRangeLabel(startMinutes: number, endMinutes: number): string {
+  const startFull = formatEventTimeLabel(startMinutes)
+  const endFull = formatEventTimeLabel(endMinutes)
+  const startSuffix = startFull.endsWith('PM') ? 'PM' : 'AM'
+  const endSuffix = endFull.endsWith('PM') ? 'PM' : 'AM'
+
+  if (startSuffix === endSuffix) {
+    return `${startFull.replace(/ (AM|PM)$/, '')}-${endFull}`
+  }
+
+  return `${startFull}-${endFull}`
+}
+
+function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinutes: number; timeLabel: string } {
   const durationMinutes = Math.max(item.match.duration_minutes ?? 60, 30)
 
   if (item.match.start_time) {
@@ -141,7 +155,7 @@ function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinu
     return {
       startMinutes,
       endMinutes,
-      startLabel: formatEventStartLabel(startMinutes),
+      timeLabel: formatCalendarRangeLabel(startMinutes, endMinutes),
     }
   }
 
@@ -152,14 +166,14 @@ function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinu
     return {
       startMinutes,
       endMinutes,
-      startLabel: formatEventStartLabel(startMinutes),
+      timeLabel: formatCalendarRangeLabel(startMinutes, endMinutes),
     }
   }
 
   return {
     startMinutes: 0,
     endMinutes: durationMinutes,
-    startLabel: 'TBD',
+    timeLabel: 'Time TBD',
   }
 }
 
@@ -193,6 +207,9 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
         if (!matchDate) return null
 
         const timing = getCalendarTiming(item)
+        const organizerParticipant =
+          item.participants.find((participant) => participant.user_id === item.match.organizer_id)
+          ?? item.participants[0]
         const tone: CalendarEntry['tone'] = isPast(item, nowIso)
           ? 'slate'
           : item.myParticipant?.status === 'pending'
@@ -204,10 +221,11 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
         return {
           id: item.match.id,
           dateKey: item.match.match_date ?? toDateKey(matchDate),
-          startLabel: timing.startLabel,
+          timeLabel: timing.timeLabel,
           sortStamp: item.match.start_at_utc ?? `${item.match.match_date ?? toDateKey(matchDate)}T${item.match.start_time ?? '23:59:59'}`,
           sportLabel: item.sportName ?? 'Match',
           sportKey: getCalendarSportKey(item.sportName),
+          organizerName: organizerParticipant?.display_name ?? 'Host',
           startMinutes: timing.startMinutes,
           endMinutes: timing.endMinutes,
           tone,
@@ -305,7 +323,7 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
                   className="text-body-sub absolute inset-x-0 flex -translate-y-1/2 justify-end pr-2 text-[#94A3B8]"
                   style={{ top: index * hourHeight }}
                 >
-                  {formatEventStartLabel(minutes)}
+                  {formatEventTimeLabel(minutes)}
                 </div>
               ))}
             </div>
@@ -353,12 +371,12 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
                       >
                         <div className="flex items-center gap-1">
                           <SportGlyph sportKey={entry.sportKey} />
-                          <p className="text-label truncate text-[#1E293B]">
-                            {entry.sportLabel}
+                          <p className="truncate text-[10px] font-semibold leading-tight text-[#1E293B]">
+                            {entry.organizerName}
                           </p>
                         </div>
-                        <p className="text-body-sub mt-0.5 text-[#475569]">
-                          {entry.startLabel}
+                        <p className="mt-0.5 text-[10px] leading-tight text-[#475569]">
+                          {entry.timeLabel}
                         </p>
                       </Link>
                     )

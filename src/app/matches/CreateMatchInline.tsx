@@ -24,7 +24,7 @@ import {
 } from '@/lib/api/matches'
 import { getGroups, getGroupMembers } from '@/lib/api/groups'
 import { listSports } from '@/lib/api/sports'
-import { getInviteCircleList, getVenueInvitableMembers } from '@/lib/api/play-network'
+import { getInviteCircleList, getInviteCircleSourceLabel } from '@/lib/api/play-network'
 import { getContactPlayerResolution } from '@/lib/api/roster'
 import { getAvailabilityStatusLabel } from '@/lib/profile-options'
 import { getVenueDisplayName } from '@/lib/venues/display'
@@ -37,7 +37,7 @@ type GroupMemberPreview = {
   members: { id: string; name: string }[]
 }
 
-type InviteCandidateSource = 'frequent_players' | 'contact_players' | 'saved_players' | 'club_members'
+type InviteCandidateSource = 'contact_players' | 'saved_players'
 
 type InviteCandidate = {
   key: string
@@ -82,10 +82,8 @@ const INVITE_SOURCE_CONFIG: Array<{
   source: InviteCandidateSource
   label: string
 }> = [
-  { source: 'frequent_players', label: 'Played With' },
-  { source: 'contact_players', label: 'Contacts' },
   { source: 'saved_players', label: 'Saved' },
-  { source: 'club_members', label: 'Club Members' },
+  { source: 'contact_players', label: 'Contacts' },
 ]
 
 const INVITE_SOURCE_PRIORITY = new Map<InviteCandidateSource, number>(
@@ -751,7 +749,7 @@ function CandidatePreviewModal({
             </>
           ) : (
             <p style={{ margin: 0, fontSize: '0.88rem', color: '#4b5563', lineHeight: 1.5 }}>
-              This registered player can be added to direct invites here. Open the full profile for more details.
+              Saved registered players can be added to Direct Invite Users here. Open the full profile for more details.
             </p>
           )}
         </div>
@@ -974,9 +972,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   const [courts, setCourts] = useState<Court[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [calendarIndicators, setCalendarIndicators] = useState<Record<string, Array<'confirmed' | 'waiting'>>>({})
-  const [frequentPlayers, setFrequentPlayers] = useState<UserInviteCandidateSeed[]>([])
   const [savedPlayers, setSavedPlayers] = useState<UserInviteCandidateSeed[]>([])
-  const [clubMembers, setClubMembers] = useState<UserInviteCandidateSeed[]>([])
   const [contactPlayers, setContactPlayers] = useState<InviteCandidate[]>([])
   const [createdMatchId, setCreatedMatchId] = useState<string | null>(null)
   const [inviteTargets, setInviteTargets] = useState<ScopeUser[]>([])
@@ -1028,7 +1024,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       existing.sourceLabels = mergedLabels
     }
 
-    const userCandidates = [...frequentPlayers, ...savedPlayers, ...clubMembers].map((member) => ({
+    const userCandidates = savedPlayers.map((member) => ({
       key: `user:${member.userId}`,
       kind: 'user' as const,
       name: member.name,
@@ -1057,7 +1053,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       if (leftPriority !== rightPriority) return leftPriority - rightPriority
       return left.name.localeCompare(right.name)
     })
-  }, [clubMembers, contactPlayers, currentUserId, frequentPlayers, savedPlayers])
+  }, [contactPlayers, currentUserId, savedPlayers])
 
   const requestScopeUserCandidates = useMemo(
     () =>
@@ -1243,15 +1239,6 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     && selectedScopeUsers.length === 0
     && selectedScopeGroups.length === 0
 
-  const inviteSourceSummary = useMemo(() => {
-    return {
-      frequentPlayers: frequentPlayers.filter((member) => member.userId !== currentUserId).length,
-      contactPlayers: contactPlayers.length,
-      savedPlayers: savedPlayers.filter((member) => member.userId !== currentUserId).length,
-      clubMembers: clubMembers.filter((member) => member.userId !== currentUserId).length,
-    }
-  }, [clubMembers, contactPlayers, currentUserId, frequentPlayers, savedPlayers])
-
   const organizerNoteSentences = useMemo(
     () => new Set(parseOrganizerNoteSentences(organizerNote)),
     [organizerNote],
@@ -1362,30 +1349,25 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
             })
         }
 
-        const frequent: UserInviteCandidateSeed[] = []
         const saved: UserInviteCandidateSeed[] = []
 
         rows.forEach((row) => {
           const profile = profileMap.get(row.target_user_id)
+          const provenanceLabel = getInviteCircleSourceLabel(row.source)
           const entry: UserInviteCandidateSeed = {
             userId: row.target_user_id,
             name: profile?.display_name?.trim() || row.target_display_name?.trim() || 'Unknown',
-            source: row.source === 'played_with_auto' ? 'frequent_players' : 'saved_players',
-            sourceLabel: row.source === 'played_with_auto' ? 'Played With' : 'Saved',
+            source: 'saved_players',
+            sourceLabel: provenanceLabel,
             gender: profile?.gender ?? null,
             availabilityStatus: profile?.availability_status ?? 'available',
             availabilityNote: profile?.availability_note ?? null,
             availabilityUntil: profile?.availability_until ?? null,
           }
 
-          if (row.source === 'played_with_auto') {
-            frequent.push(entry)
-          } else {
-            saved.push(entry)
-          }
+          saved.push(entry)
         })
 
-        setFrequentPlayers(frequent)
         setSavedPlayers(saved)
       })
       .catch(console.error)
@@ -1446,71 +1428,6 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
     const supabase = createSupabaseBrowserClient()
     getCourts(supabase, venueId, sportId).then(setCourts).catch(console.error)
   }, [venueId, sportId])
-
-  useEffect(() => {
-    if (!venueId) {
-      setClubMembers([])
-      return
-    }
-
-    const supabase = createSupabaseBrowserClient()
-    getVenueInvitableMembers(supabase, venueId, currentUserId)
-      .then(async (rows) => {
-        const userIds = Array.from(new Set(rows.map((row) => row.user_id)))
-        const profileMap = new Map<string, {
-          display_name: string | null
-          gender: 'male' | 'female' | 'unspecified' | null
-          availability_status: AvailabilityStatus | null
-          availability_note: string | null
-          availability_until: string | null
-        }>()
-
-        if (userIds.length > 0) {
-          const { data: profiles, error: profilesError } = await supabase
-            .from('profiles')
-            .select('id, display_name, gender, availability_status, availability_note, availability_until')
-            .in('id', userIds)
-          if (profilesError) throw profilesError
-          ;((profiles ?? []) as Array<{
-            id: string
-            display_name: string | null
-            gender: 'male' | 'female' | 'unspecified' | null
-            availability_status: AvailabilityStatus | null
-            availability_note: string | null
-            availability_until: string | null
-          }>)
-            .forEach((profile) => {
-              profileMap.set(profile.id, {
-                display_name: profile.display_name,
-                gender: profile.gender,
-                availability_status: profile.availability_status,
-                availability_note: profile.availability_note,
-                availability_until: profile.availability_until,
-              })
-            })
-        }
-
-        setClubMembers(
-          rows.map((row) => {
-            const profile = profileMap.get(row.user_id)
-            return {
-              userId: row.user_id,
-              name: profile?.display_name?.trim() || row.display_name?.trim() || 'Unknown',
-              source: 'club_members',
-              sourceLabel: 'Club Members',
-              gender: profile?.gender ?? null,
-              availabilityStatus: profile?.availability_status ?? 'available',
-              availabilityNote: profile?.availability_note ?? null,
-              availabilityUntil: profile?.availability_until ?? null,
-            }
-          }),
-        )
-      })
-      .catch((inviteSourceError) => {
-        console.error('[CreateMatchInline] venue invitable members:', inviteSourceError)
-        setClubMembers([])
-      })
-  }, [currentUserId, venueId])
 
   useEffect(() => {
     if (!currentUserId) {
@@ -1743,7 +1660,12 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       if (mode === 'invite') {
         const targets = await getAdmissionTargets(supabase, match.id)
         setCreatedMatchId(match.id)
-        setInviteTargets(admissionTargetsToScopeUsers(targets, { requireCanAdmit: true }))
+        setInviteTargets(
+          admissionTargetsToScopeUsers(
+            targets.filter((target) => target.source === 'invite_circle'),
+            { requireCanAdmit: true },
+          ),
+        )
         setSelectedDirectInviteKeys(new Set())
         setSelectedPostCreateInviteIds(new Set())
         return
@@ -2122,13 +2044,13 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         <div>
           <h4 className="text-h2 m-0 text-gray-900">Invite Player</h4>
           <p className="text-body-main mt-1 text-gray-500">
-            Match created. Pick players to invite, then open the match once they are recorded as pending.
+            Match created. Pick Direct Invite Users from your saved registered players, then open the match once they are recorded as pending.
           </p>
         </div>
 
         {inviteTargets.length === 0 ? (
           <div className="text-body-main rounded-2xl border border-gray-200 bg-white px-4 py-4 text-gray-500">
-            No eligible players are available to invite right now.
+            No saved registered players are available for Direct Invite Users right now.
           </div>
         ) : (
           <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4">
@@ -2558,10 +2480,14 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                     )}
 
                     {selectionMode === 'invite' && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 && (
-                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">No candidates found.</div>
+                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
+                        Save registered players to your Hood first, or invite a group instead.
+                      </div>
                     )}
                     {selectionMode === 'request' && filteredRequestUsers.length === 0 && filteredRequestGroups.length === 0 && (
-                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">No candidates found.</div>
+                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
+                        Save registered players to your Hood first, or add a group to Request Scope.
+                      </div>
                     )}
                   </div>
 

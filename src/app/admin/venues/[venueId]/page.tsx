@@ -8,6 +8,7 @@ import {
   getVenue,
   getVenueAdmins,
   getVenueCourts,
+  getVenueSports,
   grantVenueAdmin,
   isSuperAdmin,
   isVenueAdmin,
@@ -44,8 +45,9 @@ export default async function VenueAdminDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [courts, admins, sports] = await Promise.all([
+  const [courts, venueSports, admins, sports] = await Promise.all([
     getVenueCourts(supabase, venueId),
+    getVenueSports(supabase, venueId),
     superAdmin ? getVenueAdmins(supabase, venueId) : Promise.resolve([]),
     listSports(supabase),
   ])
@@ -58,6 +60,7 @@ export default async function VenueAdminDetailPage({ params }: Props) {
       abbreviation: (formData.get('abbreviation') as string | null) ?? undefined,
       location_text: (formData.get('location_text') as string)?.trim() || undefined,
       city: (formData.get('city') as string)?.trim() || undefined,
+      province: (formData.get('province') as string)?.trim() || undefined,
       postal_code: (formData.get('postal_code') as string)?.trim() || undefined,
       country: (formData.get('country') as string)?.trim() || undefined,
       website_url: (formData.get('website_url') as string)?.trim() || undefined,
@@ -66,6 +69,12 @@ export default async function VenueAdminDetailPage({ params }: Props) {
       contact_email: (formData.get('contact_email') as string)?.trim() || undefined,
       venue_phone: (formData.get('venue_phone') as string)?.trim() || undefined,
       venue_email: (formData.get('venue_email') as string)?.trim() || undefined,
+      latitude: formData.get('latitude') ? Number(formData.get('latitude')) : null,
+      longitude: formData.get('longitude') ? Number(formData.get('longitude')) : null,
+      indoor_outdoor: ((formData.get('indoor_outdoor') as string | null)?.trim() || null) as never,
+      facility_type: ((formData.get('facility_type') as string | null)?.trim() || null) as never,
+      booking_required: formData.get('booking_required') === '' ? null : formData.get('booking_required') === 'true',
+      cost_type: ((formData.get('cost_type') as string | null)?.trim() || null) as never,
       timezone: (formData.get('timezone') as string)?.trim() || undefined,
       notes: (formData.get('notes') as string)?.trim() || undefined,
       venue_kind: (formData.get('venue_kind') as string | null)?.trim() as never,
@@ -133,9 +142,33 @@ export default async function VenueAdminDetailPage({ params }: Props) {
   const venueMetaParts = [
     venue.location_text,
     venue.city,
+    venue.province,
     venue.postal_code,
     venue.country,
     venue.timezone,
+  ].filter(Boolean)
+  const sportMap = new Map(sports.map((sport) => [sport.id, sport.display_name]))
+  const venueSportsSummary = venueSports
+    .map((entry) => ({
+      ...entry,
+      sportName: sportMap.get(entry.sport_id) ?? `Sport ${entry.sport_id}`,
+    }))
+    .sort((left, right) => left.sportName.localeCompare(right.sportName))
+  const attributeBadges = [
+    venue.indoor_outdoor === 'indoor'
+      ? 'Indoor'
+      : venue.indoor_outdoor === 'outdoor'
+        ? 'Outdoor'
+        : venue.indoor_outdoor === 'indoor_outdoor'
+          ? 'Indoor/Outdoor'
+          : null,
+    venue.facility_type === 'full_facility'
+      ? 'Full Facility'
+      : venue.facility_type === 'court_only'
+        ? 'Court Only'
+        : null,
+    venue.booking_required === true ? 'Booking required' : venue.booking_required === false ? 'No booking required' : null,
+    venue.cost_type === 'paid' ? 'Paid' : venue.cost_type === 'free' ? 'Free' : null,
   ].filter(Boolean)
 
   return (
@@ -171,6 +204,31 @@ export default async function VenueAdminDetailPage({ params }: Props) {
           >
             Visit website
           </a>
+        ) : null}
+        {attributeBadges.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {attributeBadges.map((badge) => (
+              <span
+                key={badge}
+                className="rounded-full border border-[#E2E8F0] bg-white px-3 py-1 text-xs font-semibold text-[#475569]"
+              >
+                {badge}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {venueSportsSummary.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2 text-sm text-[#475569]">
+            {venueSportsSummary.map((entry) => (
+              <span
+                key={`${entry.venue_id}-${entry.sport_id}`}
+                className="rounded-full border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-1"
+              >
+                <span className="font-semibold text-[#1E293B]">{entry.sportName}</span>
+                <span className="ml-2">{entry.court_count} courts</span>
+              </span>
+            ))}
+          </div>
         ) : null}
         {[venue.contact_name, venue.contact_phone, venue.contact_email, venue.venue_phone, venue.venue_email].some(Boolean) ? (
           <div className="mt-4 grid gap-2 text-sm text-[#475569] sm:grid-cols-2">

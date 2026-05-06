@@ -27,6 +27,9 @@ export type MatchCourtPlanMode = 'secured' | 'walk_in' | 'self_book_later' | 'ne
 export type MatchCourtStatus = 'open' | 'secured' | 'walk_in' | 'cancelled'
 export type VenueKind = 'club' | 'park' | 'community_centre' | 'condo' | 'school' | 'private_facility'
 export type VenueAccessType = 'public' | 'members' | 'private' | 'restricted'
+export type VenueIndoorOutdoor = 'indoor' | 'outdoor' | 'indoor_outdoor'
+export type VenueFacilityType = 'court_only' | 'full_facility'
+export type VenueCostType = 'free' | 'paid'
 export type VenueRelationshipType = 'member' | 'guest' | 'starred'
 export type GearCollectionType = 'owned' | 'wishlist'
 export type GearCategory = 'rackets' | 'shoes' | 'apparel' | 'strings' | 'accessories' | 'other'
@@ -65,10 +68,24 @@ export type Profile = {
   is_super_admin: boolean
   created_at: string
   updated_at: string
+  onboarding_profile_completed: boolean
+  onboarding_completed: boolean
+  age_confirmed_at: string | null
+  age_confirmation_version: string | null
+  terms_accepted_at: string | null
+  terms_version: string | null
+  privacy_accepted_at: string | null
+  privacy_version: string | null
+  responsible_use_accepted_at: string | null
+  responsible_use_version: string | null
   /** v1.7: Preferred contact channel */
   contact_channel?: 'email' | 'sms'
   /** v1.7: Override email. NULL = use auth.users.email */
   contact_email?: string | null
+  /** Canonical normalized form of the profile contact email. */
+  profile_contact_email_normalized?: string | null
+  /** Verified timestamp for the profile contact email. */
+  profile_contact_email_verified_at?: string | null
   /** v1.7: Phone for SMS */
   contact_phone?: string | null
   /** Phase 1: Global master switch — show in Venue Members discovery */
@@ -81,6 +98,19 @@ export type Profile = {
   looking_to_play?: string | null
   /** Shared profile layer: lightweight recurring time windows */
   preferred_play_times?: string[] | null
+  /** Discovery: whether the user appears in city-based discovery */
+  visible_in_city_discovery?: boolean
+  /** Discovery: whether exact email/phone search may find this user */
+  searchable_by_contact_info?: boolean
+}
+
+export type UserPlayCity = {
+  id: string
+  user_id: string
+  city_name: string
+  region: string | null
+  country: string
+  created_at: string
 }
 
 export type Venue = {
@@ -89,6 +119,7 @@ export type Venue = {
   abbreviation: string | null
   location_text: string | null
   city: string | null
+  province: string | null
   postal_code: string | null
   country: string | null
   website_url: string | null
@@ -97,11 +128,23 @@ export type Venue = {
   contact_email: string | null
   venue_phone: string | null
   venue_email: string | null
+  latitude: number | null
+  longitude: number | null
+  indoor_outdoor: VenueIndoorOutdoor | null
+  facility_type: VenueFacilityType | null
+  booking_required: boolean | null
+  cost_type: VenueCostType | null
   notes: string | null
   timezone: string
   venue_kind: VenueKind
   access_type: VenueAccessType
   created_at: string
+}
+
+export type VenueSport = {
+  venue_id: string
+  sport_id: number
+  court_count: number
 }
 
 export type VenueAdmin = {
@@ -506,6 +549,26 @@ export type ProfileDisplay = {
   avatar_url?: string | null
 }
 
+export type UserVerifiedEmail = {
+  user_id: string
+  email_normalized: string
+  email_type: 'auth' | 'profile_contact'
+  verified_at: string
+}
+
+export type IdentityLinkCandidate = {
+  guest_id: string
+  person_id: string | null
+  display_name: string
+  guest_email: string | null
+  matched_email_normalized: string
+  matched_email_type: 'auth' | 'profile_contact'
+  match_participant_count: number
+  contact_owner_count: number
+  group_contact_count: number
+  last_match_at: string | null
+}
+
 export type MatchFormed = {
   match_id: string
   required_count: number
@@ -626,6 +689,7 @@ export type VenueUserRelationship = {
   venue_id: string
   user_id: string
   relationship_type: VenueRelationshipType
+  visible_in_venue_member_discovery?: boolean | null
   created_at: string
   updated_at: string
 }
@@ -647,10 +711,22 @@ export interface Database {
         Update: Partial<Profile>
         Relationships: []
       }
+      user_play_cities: {
+        Row: UserPlayCity
+        Insert: Partial<UserPlayCity> & { user_id: string; city_name: string; country: string }
+        Update: Partial<UserPlayCity>
+        Relationships: []
+      }
       venues: {
         Row: Venue
         Insert: Partial<Venue>
         Update: Partial<Venue>
+        Relationships: []
+      }
+      venue_sports: {
+        Row: VenueSport
+        Insert: Partial<VenueSport> & { venue_id: string; sport_id: number }
+        Update: Partial<VenueSport>
         Relationships: []
       }
       venue_admins: {
@@ -882,6 +958,10 @@ export interface Database {
         Row: ProfileDisplay
         Relationships: []
       }
+      v_user_verified_emails: {
+        Row: UserVerifiedEmail
+        Relationships: []
+      }
       contact_player_public: {
         Row: {
           guest_id: string
@@ -931,8 +1011,45 @@ export interface Database {
           p_availability_status?: AvailabilityStatus | null
           p_availability_note?: string | null
           p_availability_until?: string | null
+          p_visible_in_city_discovery?: boolean | null
+          p_searchable_by_contact_info?: boolean | null
         }
         Returns: void
+      }
+      rpc_user_play_cities_replace: {
+        Args: { p_cities?: Json | null }
+        Returns: void
+      }
+      rpc_complete_first_onboarding: {
+        Args: {
+          p_display_name: string
+          p_sport_ids: number[]
+          p_play_cities?: Json | null
+          p_venue_ids?: string[] | null
+          p_visible_in_city_discovery?: boolean | null
+          p_visible_in_club_member_discovery?: boolean | null
+        }
+        Returns: Json
+      }
+      rpc_city_players_discovery: {
+        Args: { p_city: string; p_search?: string | null }
+        Returns: {
+          user_id: string
+          display_name: string | null
+          avatar_url: string | null
+          shared_city_names: string[] | null
+          is_saved: boolean
+        }[]
+      }
+      rpc_player_search_by_contact_info: {
+        Args: { p_query: string }
+        Returns: {
+          user_id: string
+          display_name: string | null
+          avatar_url: string | null
+          match_type: string
+          is_saved: boolean
+        }[]
       }
       rpc_group_add_member: {
         Args: { p_group_id: string; p_target_user_id: string; p_note?: string | null }
@@ -1012,6 +1129,13 @@ export interface Database {
         }
         Returns: void
       }
+      rpc_venue_relationship_set_member_discovery: {
+        Args: {
+          p_venue_id: string
+          p_visible_in_venue_member_discovery: boolean
+        }
+        Returns: void
+      }
       // v1.5 Identity: direct display_name setter (venue handle deprecated as sync path)
       rpc_profile_set_display_name: {
         Args: { p_display_name: string }
@@ -1073,6 +1197,7 @@ export interface Database {
           p_abbreviation?: string | null
           p_location_text?: string | null
           p_city?: string | null
+          p_province?: string | null
           p_postal_code?: string | null
           p_country?: string | null
           p_website_url?: string | null
@@ -1081,6 +1206,12 @@ export interface Database {
           p_contact_email?: string | null
           p_venue_phone?: string | null
           p_venue_email?: string | null
+          p_latitude?: number | null
+          p_longitude?: number | null
+          p_indoor_outdoor?: VenueIndoorOutdoor | null
+          p_facility_type?: VenueFacilityType | null
+          p_booking_required?: boolean | null
+          p_cost_type?: VenueCostType | null
           p_timezone?: string
           p_notes?: string | null
           p_venue_kind?: VenueKind
@@ -1095,6 +1226,7 @@ export interface Database {
           p_abbreviation?: string | null
           p_location_text?: string | null
           p_city?: string | null
+          p_province?: string | null
           p_postal_code?: string | null
           p_country?: string | null
           p_website_url?: string | null
@@ -1103,6 +1235,12 @@ export interface Database {
           p_contact_email?: string | null
           p_venue_phone?: string | null
           p_venue_email?: string | null
+          p_latitude?: number | null
+          p_longitude?: number | null
+          p_indoor_outdoor?: VenueIndoorOutdoor | null
+          p_facility_type?: VenueFacilityType | null
+          p_booking_required?: boolean | null
+          p_cost_type?: VenueCostType | null
           p_timezone?: string | null
           p_notes?: string | null
           p_venue_kind?: VenueKind | null
@@ -1432,6 +1570,18 @@ export interface Database {
       rpc_reconcile_identity_guest_participants: {
         Args: Record<string, never>
         Returns: unknown
+      }
+      rpc_identity_link_candidates: {
+        Args: Record<string, never>
+        Returns: IdentityLinkCandidate[]
+      }
+      rpc_identity_link_accept: {
+        Args: { p_guest_id: string }
+        Returns: Json
+      }
+      rpc_identity_link_keep_separate: {
+        Args: { p_guest_id: string }
+        Returns: void
       }
     }
     Enums: Record<string, never>

@@ -63,7 +63,7 @@ export function DisplayNameEditForm({ displayName, onSave }: Props) {
         <button
           type="submit"
           disabled={isPending || !isDirty || !trimmedValue}
-          className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-12 items-center justify-center rounded-2xl bg-slate-500 px-4 text-sm font-medium text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white"
         >
           {isPending ? 'Saving...' : 'Save'}
         </button>

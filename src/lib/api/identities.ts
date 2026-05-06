@@ -39,7 +39,8 @@ export async function updateProfile(
     contact_channel?: 'email' | 'sms'
     contact_email?: string | null
     contact_phone?: string | null
-    show_in_venue_member_discovery?: boolean
+    visible_in_city_discovery?: boolean
+    searchable_by_email_or_phone?: boolean
     allow_non_group_invites?: boolean
     shared_group_join_preference?: SharedGroupJoinPreference
     looking_to_play?: string | null
@@ -56,7 +57,10 @@ export async function updateProfile(
   }
   if (params.contact_email !== undefined) rpcParams.p_contact_email = params.contact_email
   if (params.contact_phone !== undefined) rpcParams.p_contact_phone = params.contact_phone
-  if (params.show_in_venue_member_discovery !== undefined) rpcParams.p_show_in_venue_member_discovery = params.show_in_venue_member_discovery
+  if (params.visible_in_city_discovery !== undefined) rpcParams.p_visible_in_city_discovery = params.visible_in_city_discovery
+  // Legacy RPC parameter name is still p_searchable_by_contact_info.
+  // App-level code should use "email / phone" wording to avoid Contact Player ambiguity.
+  if (params.searchable_by_email_or_phone !== undefined) rpcParams.p_searchable_by_contact_info = params.searchable_by_email_or_phone
   if (params.allow_non_group_invites !== undefined) rpcParams.p_allow_non_group_invites = params.allow_non_group_invites
   if (params.shared_group_join_preference !== undefined) rpcParams.p_shared_group_join_preference = params.shared_group_join_preference
   if (params.looking_to_play !== undefined) rpcParams.p_looking_to_play = params.looking_to_play
@@ -69,7 +73,13 @@ export async function updateProfile(
   if (error) throw error
 }
 
-/** Set venue-scoped preference overrides. 'inherit' = use global (NULL). Omit = don't change. */
+/**
+ * @deprecated Do not use this helper in new code.
+ * Use relation-specific venue discovery helpers on venue_user_relationships instead.
+ * See docs/db_canonical_paths.md.
+ *
+ * Set venue-scoped preference overrides. 'inherit' = use global (NULL). Omit = don't change.
+ */
 export async function setVenueIdentityPreferences(
   supabase: Client,
   venueId: string,
@@ -86,6 +96,19 @@ export async function setVenueIdentityPreferences(
   if (params.visible_in_venue_member_discovery !== undefined) rpcParams.p_visible_in_venue_member_discovery = params.visible_in_venue_member_discovery
   if (params.accept_non_group_invites_in_venue !== undefined) rpcParams.p_accept_non_group_invites_in_venue = params.accept_non_group_invites_in_venue
   const { error } = await supabase.rpc('rpc_venue_identity_set_preferences', rpcParams)
+  if (error) throw error
+}
+
+/** Set venue member discovery on the canonical venue relationship row. */
+export async function setVenueRelationshipMemberDiscovery(
+  supabase: Client,
+  venueId: string,
+  visibleInVenueMemberDiscovery: boolean,
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_venue_relationship_set_member_discovery', {
+    p_venue_id: venueId,
+    p_visible_in_venue_member_discovery: visibleInVenueMemberDiscovery,
+  })
   if (error) throw error
 }
 
@@ -193,7 +216,7 @@ export async function getMyVenueIdentities(
     venue_id: row.venue_id,
     user_id: row.user_id,
     created_at: row.created_at,
-    visible_in_venue_member_discovery: null,
+    visible_in_venue_member_discovery: row.visible_in_venue_member_discovery ?? null,
     accept_non_group_invites_in_venue: null,
     venue: row.venue,
   }))

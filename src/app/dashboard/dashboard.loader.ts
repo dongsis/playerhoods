@@ -4,13 +4,15 @@ import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getMatchListData, type MatchListItem } from '@/lib/api/matches'
 import { getUnreadNotificationCount } from '@/lib/api/notifications'
 import { getAllPlayersGroupedByVenue, type PlayersData } from '@/lib/api/players'
+import { getMyPlayCities } from '@/lib/api/discovery'
+import { getIdentityLinkCandidates } from '@/lib/api/identity-links'
 import { getMyVenueIdentities, getJoinableVenues, getMyVenuePreferences } from '@/lib/api/identities'
 import { isSuperAdmin, getMyAdminVenues } from '@/lib/api/venues'
 import { listSports, getMySports } from '@/lib/api/sports'
 import { getInviteCircleList, type InviteCircleRow } from '@/lib/api/play-network'
 import { getMySportProfiles } from '@/lib/api/player-profiles'
 import { listMyGearImages, listMyGearItems, listMyGearShowcaseEntries, listMyGearStringJobs } from '@/lib/api/gear'
-import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, Profile, VenueIdentity, Venue, VenueAdmin, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
 
 type DashboardUser = NonNullable<Awaited<ReturnType<typeof getUser>>>
 
@@ -20,11 +22,14 @@ export type DashboardLoaderData = {
   inboxUnreadCount: number
   playersData: PlayersData
   inviteCircle: InviteCircleRow[]
+  verifiedEmails: UserVerifiedEmail[]
+  identityLinkCandidates: IdentityLinkCandidate[]
   myIdentities: (VenueIdentity & { venue: Venue })[]
   joinableVenues: Venue[]
   sports: Sport[]
   mySports: UserSport[]
   mySportProfiles: UserSportProfile[]
+  myPlayCities: UserPlayCity[]
   gearItems: GearItem[]
   gearImages: GearImage[]
   gearStringJobs: GearStringJob[]
@@ -41,14 +46,17 @@ export type DashboardLoaderData = {
     | 'availability_note'
     | 'availability_until'
     | 'primary_venue_id'
-    | 'contact_channel'
-    | 'contact_email'
+      | 'contact_channel'
+      | 'contact_email'
+      | 'profile_contact_email_normalized'
+      | 'profile_contact_email_verified_at'
       | 'contact_phone'
-      | 'avatar_url'
-      | 'show_in_venue_member_discovery'
-      | 'allow_non_group_invites'
-      | 'shared_group_join_preference'
-      | 'looking_to_play'
+    | 'avatar_url'
+    | 'visible_in_city_discovery'
+    | 'searchable_by_contact_info'
+    | 'allow_non_group_invites'
+    | 'shared_group_join_preference'
+    | 'looking_to_play'
       | 'preferred_play_times'
   > | null
   myVenuePrefs: Venue[]
@@ -64,21 +72,19 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
 
   const supabase = await createSupabaseServerClient()
 
-  const { error: reconcileErr } = await supabase.rpc('rpc_reconcile_identity_guest_participants')
-  if (reconcileErr) {
-    console.error('[Dashboard] reconcile identity:', reconcileErr)
-  }
-
   const [
     items,
     inboxUnreadCount,
     playersData,
     inviteCircle,
+    verifiedEmails,
+    identityLinkCandidates,
     myIdentities,
     joinableVenues,
     sports,
     mySports,
     mySportProfiles,
+    myPlayCities,
     gearItems,
     gearImages,
     gearStringJobs,
@@ -101,11 +107,14 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
       proxyPendingCount: 0,
     }) as PlayersData),
     getInviteCircleList(supabase).catch(() => [] as InviteCircleRow[]),
+    supabase.from('v_user_verified_emails').select('*').eq('user_id', user.id),
+    getIdentityLinkCandidates(supabase).catch(() => [] as IdentityLinkCandidate[]),
     getMyVenueIdentities(supabase, user.id).catch(() => [] as (VenueIdentity & { venue: Venue })[]),
     getJoinableVenues(supabase, user.id).catch(() => [] as Venue[]),
     listSports(supabase).catch(() => [] as Sport[]),
     getMySports(supabase).catch(() => [] as UserSport[]),
     getMySportProfiles(supabase, user.id).catch(() => [] as UserSportProfile[]),
+    getMyPlayCities(supabase, user.id).catch(() => [] as UserPlayCity[]),
     listMyGearItems(supabase, user.id).catch(() => [] as GearItem[]),
     listMyGearImages(supabase, user.id).catch(() => [] as GearImage[]),
     listMyGearStringJobs(supabase, user.id).catch(() => [] as GearStringJob[]),
@@ -122,11 +131,14 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     inboxUnreadCount,
     playersData,
     inviteCircle,
+    verifiedEmails: verifiedEmails.error ? [] : (verifiedEmails.data ?? []),
+    identityLinkCandidates,
     myIdentities,
     joinableVenues,
     sports,
     mySports,
     mySportProfiles,
+    myPlayCities,
     gearItems,
     gearImages,
     gearStringJobs,
@@ -147,9 +159,12 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
           | 'primary_venue_id'
           | 'contact_channel'
           | 'contact_email'
+          | 'profile_contact_email_normalized'
+          | 'profile_contact_email_verified_at'
           | 'contact_phone'
           | 'avatar_url'
-          | 'show_in_venue_member_discovery'
+          | 'visible_in_city_discovery'
+          | 'searchable_by_contact_info'
           | 'allow_non_group_invites'
           | 'shared_group_join_preference'
           | 'looking_to_play'

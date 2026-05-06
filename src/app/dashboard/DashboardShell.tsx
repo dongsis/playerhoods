@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { InviteCircleRow } from '@/lib/api/play-network'
-import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, Profile, VenueIdentity, Venue, VenueAdmin, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
 import { LeftNav, type DashTab } from './LeftNav'
 import { InboxPanel } from './InboxPanel'
 import { MatchesPanel } from './MatchesPanel'
@@ -18,6 +18,7 @@ import { GearPanel } from './GearPanel'
 import type { GearImageInput, GearItemInput, GearShowcaseEntryInput, GearStringJobInput } from '@/lib/api/gear'
 import type { GearLinkImportDraft } from '@/lib/gear-link-import'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import type { DashboardPreferenceSaveResult } from './dashboard.actions'
 
 interface Props {
   userId: string
@@ -25,6 +26,8 @@ interface Props {
   userEmail?: string | null
   playersData: PlayersData
   inviteCircle: InviteCircleRow[]
+  verifiedEmails: UserVerifiedEmail[]
+  identityLinkCandidates: IdentityLinkCandidate[]
   profile: Pick<
     Profile,
     | 'display_name'
@@ -37,9 +40,12 @@ interface Props {
     | 'primary_venue_id'
     | 'contact_channel'
     | 'contact_email'
+    | 'profile_contact_email_normalized'
+    | 'profile_contact_email_verified_at'
     | 'contact_phone'
     | 'avatar_url'
-    | 'show_in_venue_member_discovery'
+    | 'visible_in_city_discovery'
+    | 'searchable_by_contact_info'
     | 'allow_non_group_invites'
     | 'shared_group_join_preference'
     | 'looking_to_play'
@@ -51,6 +57,7 @@ interface Props {
   sports: Sport[]
   mySports: UserSport[]
   mySportProfiles: UserSportProfile[]
+  myPlayCities: UserPlayCity[]
   gearItems: GearItem[]
   gearImages: GearImage[]
   gearStringJobs: GearStringJob[]
@@ -62,17 +69,17 @@ interface Props {
   onAvatarSaved: () => Promise<void>
   onSetPrimaryVenue: (venueId: string) => Promise<void>
   onLeaveVenue: (venueId: string) => Promise<void>
+  onSaveVenuePreference: (venueId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   onRemoveVenuePreference: (venueId: string) => Promise<void>
   onJoinVenue: (venueId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   onSaveGlobalPreferences: (params: {
-    show_in_venue_member_discovery?: boolean
+    visible_in_city_discovery?: boolean
+    searchable_by_email_or_phone?: boolean
+    play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
     shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
-  }) => Promise<void>
-  onSetVenuePreferences: (venueId: string, params: {
-    visible_in_venue_member_discovery?: 'true' | 'false' | 'inherit'
-    accept_non_group_invites_in_venue?: 'true' | 'false' | 'inherit'
-  }) => Promise<void>
+  }) => Promise<DashboardPreferenceSaveResult>
+  onSetVenueMemberDiscovery: (venueId: string, visibleInVenueMemberDiscovery: boolean) => Promise<DashboardPreferenceSaveResult>
   onSetSports: (codes: string[]) => Promise<void>
   onSaveSportProfile: (input: {
     sport_id: number
@@ -135,6 +142,8 @@ export function DashboardShell({
   inboxUnreadCount,
   playersData,
   inviteCircle,
+  verifiedEmails,
+  identityLinkCandidates,
   profile,
   myIdentities,
   myVenuePrefs,
@@ -142,6 +151,7 @@ export function DashboardShell({
   sports,
   mySports,
   mySportProfiles,
+  myPlayCities,
   gearItems,
   gearImages,
   gearStringJobs,
@@ -153,10 +163,11 @@ export function DashboardShell({
   onAvatarSaved,
   onSetPrimaryVenue,
   onLeaveVenue,
+  onSaveVenuePreference,
   onRemoveVenuePreference,
   onJoinVenue,
   onSaveGlobalPreferences,
-  onSetVenuePreferences,
+  onSetVenueMemberDiscovery,
   onSetSports,
   onSaveSportProfile,
   onCreateGearItem,
@@ -401,6 +412,7 @@ export function DashboardShell({
             myIdentities={myIdentities}
             sports={sports}
             enabledSportIds={mySports.map((sport) => sport.sport_id)}
+            myPlayCities={myPlayCities}
             onRefreshDashboardLive={refreshDashboardLive}
             onParseScreenshots={onParseContactScreenshots}
             onImportScreenshotContacts={onImportScreenshotContacts}
@@ -419,21 +431,25 @@ export function DashboardShell({
             userId={userId}
             profile={profile}
             userEmail={userEmail}
+            verifiedEmails={verifiedEmails}
+            identityLinkCandidates={identityLinkCandidates}
             myIdentities={myIdentities}
             myVenuePrefs={myVenuePrefs}
             joinableVenues={joinableVenues}
             sports={sports}
             mySportIds={mySports.map(s => s.sport_id)}
             mySportProfiles={mySportProfiles}
+            myPlayCities={myPlayCities}
             onUpdateProfile={onUpdateProfile}
             onSetDisplayName={onSetDisplayName}
             onAvatarSaved={onAvatarSaved}
             onSetPrimaryVenue={onSetPrimaryVenue}
             onLeaveVenue={onLeaveVenue}
+            onSaveVenuePreference={onSaveVenuePreference}
             onRemoveVenuePreference={onRemoveVenuePreference}
             onJoinVenue={onJoinVenue}
             onSaveGlobalPreferences={onSaveGlobalPreferences}
-            onSetVenuePreferences={onSetVenuePreferences}
+            onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
             onSetSports={onSetSports}
             onSaveSportProfile={onSaveSportProfile}
           />

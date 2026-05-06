@@ -1,7 +1,14 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import type { Venue, VenueAccessType, VenueKind } from '@/lib/types/database'
+import type {
+  Venue,
+  VenueAccessType,
+  VenueCostType,
+  VenueFacilityType,
+  VenueIndoorOutdoor,
+  VenueKind,
+} from '@/lib/types/database'
 
 const TIMEZONES = [
   'America/Toronto',
@@ -32,6 +39,22 @@ const ACCESS_TYPE_OPTIONS: { value: VenueAccessType; label: string }[] = [
   { value: 'members', label: 'Members' },
   { value: 'private', label: 'Private' },
   { value: 'restricted', label: 'Restricted' },
+]
+
+const INDOOR_OUTDOOR_OPTIONS: { value: VenueIndoorOutdoor; label: string }[] = [
+  { value: 'indoor', label: 'Indoor' },
+  { value: 'outdoor', label: 'Outdoor' },
+  { value: 'indoor_outdoor', label: 'Indoor/Outdoor' },
+]
+
+const FACILITY_TYPE_OPTIONS: { value: VenueFacilityType; label: string }[] = [
+  { value: 'court_only', label: 'Court Only' },
+  { value: 'full_facility', label: 'Full Facility' },
+]
+
+const COST_TYPE_OPTIONS: { value: VenueCostType; label: string }[] = [
+  { value: 'free', label: 'Free' },
+  { value: 'paid', label: 'Paid' },
 ]
 
 interface Props {
@@ -130,6 +153,18 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
           <label
             style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
           >
+            Province / State
+          </label>
+          <input
+            name="province"
+            defaultValue={venue.province ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
             Postal code
           </label>
           <input
@@ -214,6 +249,34 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
           <label
             style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
           >
+            Latitude
+          </label>
+          <input
+            name="latitude"
+            type="number"
+            step="any"
+            defaultValue={venue.latitude ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Longitude
+          </label>
+          <input
+            name="longitude"
+            type="number"
+            step="any"
+            defaultValue={venue.longitude ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
             Timezone
           </label>
           <select
@@ -228,6 +291,25 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
             ))}
             </select>
           </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Indoor / Outdoor
+          </label>
+          <select
+            name="indoor_outdoor"
+            defaultValue={venue.indoor_outdoor ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          >
+            <option value="">Unknown</option>
+            {INDOOR_OUTDOOR_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label
             style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
@@ -268,6 +350,25 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
           <label
             style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
           >
+            Facility type
+          </label>
+          <select
+            name="facility_type"
+            defaultValue={venue.facility_type ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          >
+            <option value="">Unknown</option>
+            {FACILITY_TYPE_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
             Website
           </label>
           <input
@@ -276,6 +377,41 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
             placeholder="https://"
             style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
           />
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Booking required
+          </label>
+          <select
+            name="booking_required"
+            defaultValue={venue.booking_required == null ? '' : String(venue.booking_required)}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          >
+            <option value="">Unknown</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+        <div>
+          <label
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
+          >
+            Cost
+          </label>
+          <select
+            name="cost_type"
+            defaultValue={venue.cost_type ?? ''}
+            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+          >
+            <option value="">Unknown</option>
+            {COST_TYPE_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label

@@ -32,7 +32,7 @@ export function deriveMatchCourtStatus(params: {
   if (finalCourtLabel || params.courtPlanMode === 'secured') {
     return {
       status: 'secured',
-      badgeLabel: finalCourtLabel ? `Court secured - ${finalCourtLabel}` : 'Court secured',
+      badgeLabel: finalCourtLabel ?? 'Court secured',
       detailLabel: finalCourtLabel ? `Court secured - ${finalCourtLabel}` : 'Court secured',
     }
   }

@@ -89,21 +89,46 @@ export async function middleware(request: NextRequest) {
     return redirectResponse
   }
 
-  if (user && isProtectedRoute && !isInvitationPage) {
+  if (user && (isProtectedRoute || isOnboarding) && !isInvitationPage) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('display_name')
+      .select('onboarding_completed, onboarding_profile_completed')
       .eq('id', user.id)
       .single()
 
-    if (!profile || !profile.display_name) {
+    if (isOnboarding) {
+      const safeNext = sanitizeNextPath(request.nextUrl.searchParams.get('next'), '/dashboard')
+
+      if (profile?.onboarding_completed) {
+        const redirectResponse = NextResponse.redirect(new URL(safeNext, request.url))
+        redirectResponse.headers.set('x-ph-middleware', 'onboarding-already-complete')
+        return redirectResponse
+      }
+
+      if (pathname.startsWith('/onboarding/profile') && profile?.onboarding_profile_completed) {
+        const redirectResponse = NextResponse.redirect(
+          new URL(`/onboarding/next-steps?next=${encodeURIComponent(safeNext)}`, request.url),
+        )
+        redirectResponse.headers.set('x-ph-middleware', 'onboarding-legal-step')
+        return redirectResponse
+      }
+
+      if (pathname.startsWith('/onboarding/next-steps') && !profile?.onboarding_profile_completed) {
+        const redirectResponse = NextResponse.redirect(
+          new URL(`/onboarding/profile?next=${encodeURIComponent(safeNext)}`, request.url),
+        )
+        redirectResponse.headers.set('x-ph-middleware', 'onboarding-profile-step')
+        return redirectResponse
+      }
+    } else if (!profile?.onboarding_completed) {
       const next = sanitizeNextPath(
         `${pathname}${request.nextUrl.search || ''}`,
         '/dashboard',
       )
-      const redirectResponse = NextResponse.redirect(
-        new URL(`/onboarding/profile?next=${encodeURIComponent(next)}`, request.url),
-      )
+      const destination = profile?.onboarding_profile_completed
+        ? `/onboarding/next-steps?next=${encodeURIComponent(next)}`
+        : `/onboarding/profile?next=${encodeURIComponent(next)}`
+      const redirectResponse = NextResponse.redirect(new URL(destination, request.url))
       redirectResponse.headers.set('x-ph-middleware', 'needs-onboarding')
       return redirectResponse
     }

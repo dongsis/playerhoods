@@ -25,9 +25,11 @@ interface Props {
 function StatusBadge({
   label,
   tone,
+  className,
 }: {
   label: string
   tone: 'green' | 'amber' | 'blue' | 'red' | 'slate'
+  className?: string
 }) {
   const toneClass =
     tone === 'green'
@@ -45,6 +47,7 @@ function StatusBadge({
       className={[
         'text-label inline-flex items-center rounded-full px-2.5 py-1 ring-1',
         toneClass,
+        className ?? '',
       ].join(' ')}
     >
       {label}
@@ -167,7 +170,13 @@ export function MatchCard({ item, userId }: Props) {
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {primaryBadge}
-            {!isCancelled ? <StatusBadge label={courtState.badgeLabel} tone={courtTone} /> : null}
+            {!isCancelled ? (
+              <StatusBadge
+                label={courtState.badgeLabel}
+                tone={courtTone}
+                className={courtState.status === 'secured' ? 'bg-[#F3FCF5] text-[#56B473] ring-[#DDF3E4]' : undefined}
+              />
+            ) : null}
             {myParticipant?.status === 'waiting_list' ? (
               <StatusBadge label="Waiting list" tone="slate" />
             ) : null}

@@ -1,6 +1,6 @@
 /**
  * Phase 1 Play Network Core API
- * Venue Members discovery, Invite Circle, match admission targets/admit
+ * Venue Members discovery, saved registered-player storage, and match admission helpers.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, VenueRelationshipType } from '@/lib/types/database'
@@ -36,6 +36,10 @@ export type VenueInvitableMemberRow = {
   display_name: string | null
 }
 
+// Legacy note:
+// Do not call rpc_venue_members_discovery in new code.
+// Use rpc_venue_people_discovery_v2 instead.
+// See docs/db_canonical_paths.md.
 /** Phase 1: Venue Members discovery. Caller must hold the discovery relationship for the venue kind. */
 export async function getVenueMembersDiscovery(
   supabase: Client,
@@ -100,7 +104,7 @@ export async function getVenueInvitableMembers(
 }
 
 // ============================================================================
-// Invite Circle
+// Saved registered-player storage (legacy internal Invite Circle table / RPC names)
 // ============================================================================
 
 export type InviteCircleRow = {
@@ -116,27 +120,27 @@ export type InviteCircleRow = {
 export function getInviteCircleSourceLabel(source: string | null | undefined): string {
   switch (source) {
     case 'venue_member':
-      return 'Venue member'
+      return 'Saved from venue'
     case 'group_member':
-      return 'Group member'
+      return 'Saved from group'
     case 'match_player':
-      return 'Shared match'
+      return 'Saved from shared match'
     case 'played_with_auto':
-      return 'Played with'
+      return 'Saved after playing together'
     case 'manual':
     default:
-      return 'Saved manually'
+      return 'Saved'
   }
 }
 
-/** Phase 1: List caller's Invite Circle. */
+/** Phase 1: List caller's saved registered players from legacy Invite Circle storage. */
 export async function getInviteCircleList(supabase: Client): Promise<InviteCircleRow[]> {
   const { data, error } = await supabase.rpc('rpc_invite_circle_list')
   if (error) throw error
   return (data ?? []) as InviteCircleRow[]
 }
 
-/** Phase 1: Save user to Invite Circle. Idempotent. */
+/** Phase 1: Save a registered user into legacy Invite Circle storage. Idempotent. */
 export async function saveToInviteCircle(
   supabase: Client,
   targetUserId: string,
@@ -161,7 +165,7 @@ export async function saveToInviteCircle(
   throw error
 }
 
-/** Phase 1: Remove user from Invite Circle. */
+/** Phase 1: Remove a registered user from legacy Invite Circle storage. */
 export async function removeFromInviteCircle(
   supabase: Client,
   targetUserId: string

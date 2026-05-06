@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [registerLegalAccepted, setRegisterLegalAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -152,6 +153,11 @@ export default function LoginPage() {
     setError(null)
     setInfo(null)
 
+    if (targetMode === 'register' && !registerLegalAccepted) {
+      setError('Please agree to the Terms of Use and Privacy Notice to create an account.')
+      return
+    }
+
     if (!guardAgainstRapidSubmit(targetMode)) return
 
     setLoading(true)
@@ -181,6 +187,11 @@ export default function LoginPage() {
     e.preventDefault()
     setError(null)
     setInfo(null)
+
+    if (!registerLegalAccepted) {
+      setError('Please agree to the Terms of Use and Privacy Notice to create an account.')
+      return
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.')
@@ -267,9 +278,9 @@ export default function LoginPage() {
       <div className="ph-page-narrow">
         <div className="mb-6 flex justify-center">
           <img
-            src="/playerhoods-logo-transparent.png"
+            src="/playerhoods-logo-main-ui-cropped.png"
             alt="PlayerHoods"
-            className="h-auto w-full max-w-[280px]"
+            className="h-auto w-full max-w-[220px]"
           />
         </div>
 
@@ -346,9 +357,13 @@ export default function LoginPage() {
           <form onSubmit={handleRegister}>
           <button
             type="button"
-            disabled={loading}
+            disabled={loading || !registerLegalAccepted}
             onClick={() => void handleGoogleAuth('register')}
-            style={secondaryBtnStyle}
+            style={{
+              ...secondaryBtnStyle,
+              opacity: loading || !registerLegalAccepted ? 0.55 : 1,
+              cursor: loading || !registerLegalAccepted ? 'not-allowed' : 'pointer',
+            }}
           >
             <GoogleIcon />
             <span>{loading ? 'Opening Google...' : 'Continue with Google'}</span>
@@ -396,10 +411,37 @@ export default function LoginPage() {
               minLength={MIN_PASSWORD_LENGTH}
             />
           </div>
+          <label style={checkboxRowStyle}>
+            <input
+              type="checkbox"
+              checked={registerLegalAccepted}
+              onChange={(e) => setRegisterLegalAccepted(e.target.checked)}
+              style={checkboxStyle}
+            />
+            <span>
+              I agree to the{' '}
+              <a href="/terms" target="_blank" rel="noreferrer" style={inlineLegalLinkStyle}>
+                Terms of Use
+              </a>{' '}
+              and{' '}
+              <a href="/privacy" target="_blank" rel="noreferrer" style={inlineLegalLinkStyle}>
+                Privacy Notice
+              </a>
+              .
+            </span>
+          </label>
           {error && <p style={errorStyle}>{error}</p>}
           {info && <p style={infoStyle}>{info}</p>}
           {!info && (
-            <button type="submit" disabled={loading} style={primaryBtnStyle}>
+            <button
+              type="submit"
+              disabled={loading || !registerLegalAccepted}
+              style={{
+                ...primaryBtnStyle,
+                opacity: loading || !registerLegalAccepted ? 0.55 : 1,
+                cursor: loading || !registerLegalAccepted ? 'not-allowed' : 'pointer',
+              }}
+            >
               {loading ? 'Creating account...' : 'Create account'}
             </button>
           )}
@@ -633,6 +675,31 @@ const helperTextStyle: React.CSSProperties = {
   marginBottom: '0.9rem',
   color: '#64748B',
   fontSize: '0.76rem',
+}
+
+const checkboxRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.7rem',
+  marginBottom: '1rem',
+  color: '#475569',
+  fontSize: '0.8rem',
+  lineHeight: 1.55,
+}
+
+const checkboxStyle: React.CSSProperties = {
+  marginTop: '0.15rem',
+  width: '16px',
+  height: '16px',
+  accentColor: '#C25E46',
+  flexShrink: 0,
+}
+
+const inlineLegalLinkStyle: React.CSSProperties = {
+  color: '#C25E46',
+  fontWeight: 700,
+  textDecoration: 'underline',
+  textUnderlineOffset: '2px',
 }
 
 const errorStyle: React.CSSProperties = {

@@ -3,11 +3,14 @@
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { cancelMatch } from '@/lib/api/matches'
+import { replaceMyPlayCities } from '@/lib/api/discovery'
+import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
 import {
   updateProfile,
   setDisplayName,
   setPrimaryVenue,
-  setVenueIdentityPreferences,
+  setVenueRelationshipMemberDiscovery,
+  addVenuePreference,
   joinVenue,
   leaveVenue,
   removeVenuePreference,
@@ -34,6 +37,7 @@ import {
 } from '@/lib/api/gear'
 import { importGearDraftFromLink } from '@/lib/gear-link-import'
 import { createRosterGuest, getContactPlayerResolution } from '@/lib/api/roster'
+import { normalizePlayCities } from '@/lib/profile/basic-profile'
 import {
   parseContactScreenshotUploads,
   type ContactImportDraft,
@@ -45,6 +49,24 @@ function revalidateProfileSurfaces() {
   revalidatePath('/profile')
 }
 
+export type DashboardPreferenceSaveResult =
+  | { ok: true }
+  | { ok: false; error: string }
+
+function getActionErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string' &&
+    (error as { message: string }).message.trim()
+  ) {
+    return (error as { message: string }).message
+  }
+  return fallback
+}
+
 export async function cancelDashboardMatchAction(matchId: string) {
   const supabase = await createSupabaseServerClient()
   await cancelMatch(supabase, matchId)
@@ -53,6 +75,20 @@ export async function cancelDashboardMatchAction(matchId: string) {
 
 export async function refreshDashboardAction() {
   revalidateProfileSurfaces()
+}
+
+export async function acceptDashboardIdentityLinkAction(guestId: string) {
+  const supabase = await createSupabaseServerClient()
+  await acceptIdentityLinkCandidate(supabase, guestId)
+  revalidateProfileSurfaces()
+  revalidatePath('/onboarding/next-steps')
+}
+
+export async function keepSeparateDashboardIdentityLinkAction(guestId: string) {
+  const supabase = await createSupabaseServerClient()
+  await keepSeparateIdentityLinkCandidate(supabase, guestId)
+  revalidateProfileSurfaces()
+  revalidatePath('/onboarding/next-steps')
 }
 
 export async function updateDashboardProfileAction(formData: FormData) {
@@ -117,23 +153,72 @@ export async function leaveDashboardVenueAction(venueId: string) {
   revalidateProfileSurfaces()
 }
 
-export async function saveDashboardGlobalPreferencesAction(params: {
-  show_in_venue_member_discovery?: boolean
-  allow_non_group_invites?: boolean
-  shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
-}) {
+export async function saveDashboardVenuePreferenceAction(venueId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await createSupabaseServerClient()
-  await updateProfile(supabase, params)
-  revalidateProfileSurfaces()
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    await addVenuePreference(supabase, user.id, venueId)
+    revalidateProfileSurfaces()
+    return { ok: true }
+  } catch (error: unknown) {
+    const message = (error as { message?: string })?.message ?? String(error ?? '')
+    if (message.includes('already') || message.includes('duplicate')) {
+      return { ok: false, error: 'This venue is already saved.' }
+    }
+    if (message.includes('relationship_not_allowed_for_venue_kind')) {
+      return { ok: false, error: 'This venue cannot be saved in that way.' }
+    }
+    if (message.includes('not_authenticated')) {
+      return { ok: false, error: 'Please log in again.' }
+    }
+    return { ok: false, error: message || 'Failed to save venue.' }
+  }
 }
 
-export async function setDashboardVenuePreferencesAction(venueId: string, params: {
-  visible_in_venue_member_discovery?: 'true' | 'false' | 'inherit'
-  accept_non_group_invites_in_venue?: 'true' | 'false' | 'inherit'
-}) {
-  const supabase = await createSupabaseServerClient()
-  await setVenueIdentityPreferences(supabase, venueId, params)
-  revalidateProfileSurfaces()
+export async function saveDashboardGlobalPreferencesAction(params: {
+  visible_in_city_discovery?: boolean
+  searchable_by_email_or_phone?: boolean
+  play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
+  allow_non_group_invites?: boolean
+  shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
+}): Promise<DashboardPreferenceSaveResult> {
+  try {
+    const supabase = await createSupabaseServerClient()
+    const { play_cities: playCities, ...profileParams } = params
+    if (playCities !== undefined) {
+      const normalizedCities = normalizePlayCities(playCities)
+      await replaceMyPlayCities(supabase, normalizedCities)
+      const nextProfileParams = {
+        ...profileParams,
+        ...(normalizedCities.length === 0 ? { visible_in_city_discovery: false } : {}),
+      }
+      await updateProfile(supabase, {
+        ...nextProfileParams,
+      })
+    } else {
+      await updateProfile(supabase, profileParams)
+    }
+    revalidateProfileSurfaces()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getActionErrorMessage(error, 'Failed to update discovery settings.') }
+  }
+}
+
+export async function setDashboardVenueMemberDiscoveryAction(
+  venueId: string,
+  visibleInVenueMemberDiscovery: boolean,
+): Promise<DashboardPreferenceSaveResult> {
+  try {
+    const supabase = await createSupabaseServerClient()
+    await setVenueRelationshipMemberDiscovery(supabase, venueId, visibleInVenueMemberDiscovery)
+    revalidateProfileSurfaces()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getActionErrorMessage(error, 'Failed to update venue discovery visibility.') }
+  }
 }
 
 export async function removeDashboardVenuePreferenceAction(venueId: string) {

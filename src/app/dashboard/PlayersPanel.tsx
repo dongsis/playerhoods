@@ -602,7 +602,7 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Phase 1: Invite Circle — private list for match invite candidates */}
+      {/* Saved registered players — private saved list later used in direct invite / request-scope user flows */}
       <InviteCirclePanel
         initialItems={inviteCircle}
         refreshToken={inviteCircleRefreshToken}

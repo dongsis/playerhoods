@@ -5,7 +5,11 @@ import type {
   VenueAccessType,
   VenueAdmin,
   VenueAdminWithDetails,
+  VenueCostType,
+  VenueFacilityType,
+  VenueIndoorOutdoor,
   VenueKind,
+  VenueSport,
   Court,
   ProfileDisplay,
   AdminUserSearchResult,
@@ -64,6 +68,16 @@ export async function getVenueCourts(supabase: Client, venueId: string): Promise
     .order('court_code', { ascending: true })
   if (error) throw error
   return data as Court[]
+}
+
+export async function getVenueSports(supabase: Client, venueId: string): Promise<VenueSport[]> {
+  const { data, error } = await supabase
+    .from('venue_sports')
+    .select('*')
+    .eq('venue_id', venueId)
+    .order('sport_id', { ascending: true })
+  if (error) throw error
+  return data as VenueSport[]
 }
 
 // Returns venue_admins rows for a given venue, enriched with display names
@@ -150,6 +164,7 @@ export async function createVenue(
     abbreviation?: string
     location_text?: string
     city?: string
+    province?: string
     postal_code?: string
     country?: string
     website_url?: string
@@ -158,6 +173,12 @@ export async function createVenue(
     contact_email?: string
     venue_phone?: string
     venue_email?: string
+    latitude?: number | null
+    longitude?: number | null
+    indoor_outdoor?: VenueIndoorOutdoor | null
+    facility_type?: VenueFacilityType | null
+    booking_required?: boolean | null
+    cost_type?: VenueCostType | null
     timezone?: string
     notes?: string
     venue_kind?: VenueKind
@@ -169,6 +190,7 @@ export async function createVenue(
     p_abbreviation: data.abbreviation ?? null,
     p_location_text: data.location_text ?? null,
     p_city: data.city ?? null,
+    p_province: data.province ?? null,
     p_postal_code: data.postal_code ?? null,
     p_country: data.country ?? null,
     p_website_url: data.website_url ?? null,
@@ -177,6 +199,12 @@ export async function createVenue(
     p_contact_email: data.contact_email ?? null,
     p_venue_phone: data.venue_phone ?? null,
     p_venue_email: data.venue_email ?? null,
+    p_latitude: data.latitude ?? null,
+    p_longitude: data.longitude ?? null,
+    p_indoor_outdoor: data.indoor_outdoor ?? null,
+    p_facility_type: data.facility_type ?? null,
+    p_booking_required: data.booking_required ?? null,
+    p_cost_type: data.cost_type ?? null,
     p_timezone: data.timezone ?? 'America/Toronto',
     p_notes: data.notes ?? null,
     p_venue_kind: data.venue_kind ?? 'club',
@@ -198,6 +226,7 @@ export async function updateVenue(
     abbreviation?: string | null
     location_text?: string
     city?: string
+    province?: string
     postal_code?: string
     country?: string
     website_url?: string
@@ -206,6 +235,12 @@ export async function updateVenue(
     contact_email?: string
     venue_phone?: string
     venue_email?: string
+    latitude?: number | null
+    longitude?: number | null
+    indoor_outdoor?: VenueIndoorOutdoor | null
+    facility_type?: VenueFacilityType | null
+    booking_required?: boolean | null
+    cost_type?: VenueCostType | null
     timezone?: string
     notes?: string
     venue_kind?: VenueKind
@@ -218,6 +253,7 @@ export async function updateVenue(
     p_abbreviation: data.abbreviation === undefined ? null : data.abbreviation,
     p_location_text: data.location_text ?? null,
     p_city: data.city ?? null,
+    p_province: data.province ?? null,
     p_postal_code: data.postal_code ?? null,
     p_country: data.country ?? null,
     p_website_url: data.website_url ?? null,
@@ -226,6 +262,12 @@ export async function updateVenue(
     p_contact_email: data.contact_email ?? null,
     p_venue_phone: data.venue_phone ?? null,
     p_venue_email: data.venue_email ?? null,
+    p_latitude: data.latitude ?? null,
+    p_longitude: data.longitude ?? null,
+    p_indoor_outdoor: data.indoor_outdoor ?? null,
+    p_facility_type: data.facility_type ?? null,
+    p_booking_required: data.booking_required ?? null,
+    p_cost_type: data.cost_type ?? null,
     p_timezone: data.timezone ?? null,
     p_notes: data.notes ?? null,
     p_venue_kind: data.venue_kind ?? null,

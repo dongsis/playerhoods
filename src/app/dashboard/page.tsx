@@ -1,5 +1,6 @@
 import {
   archiveDashboardGearItemAction,
+  acceptDashboardIdentityLinkAction,
   cancelDashboardMatchAction,
   createDashboardGearImageAction,
   createDashboardGearItemAction,
@@ -9,9 +10,11 @@ import {
   deleteDashboardGearShowcaseEntryAction,
   deleteDashboardGearStringJobAction,
   importDashboardWishlistLinkAction,
+  keepSeparateDashboardIdentityLinkAction,
   importDashboardScreenshotContactsAction,
   leaveDashboardVenueAction,
   joinDashboardVenueAction,
+  saveDashboardVenuePreferenceAction,
   moveDashboardWishlistItemToOwnedAction,
   removeDashboardVenuePreferenceAction,
   refreshDashboardAction,
@@ -20,7 +23,7 @@ import {
   upsertDashboardGearShowcaseEntryAction,
   updateDashboardGearImageAction,
   updateDashboardGearItemAction,
-  setDashboardVenuePreferencesAction,
+  setDashboardVenueMemberDiscoveryAction,
   setDashboardDisplayNameAction,
   setDashboardPrimaryVenueAction,
   setDashboardSportsAction,
@@ -39,14 +42,17 @@ export default async function DashboardPage() {
     <DashboardPageView
       viewModel={viewModel}
       onUpdateProfile={updateDashboardProfileAction}
+      onAcceptIdentityLink={acceptDashboardIdentityLinkAction}
+      onKeepSeparateIdentityLink={keepSeparateDashboardIdentityLinkAction}
       onSetDisplayName={setDashboardDisplayNameAction}
       onAvatarSaved={refreshDashboardAction}
       onSetPrimaryVenue={setDashboardPrimaryVenueAction}
       onLeaveVenue={leaveDashboardVenueAction}
+      onSaveVenuePreference={saveDashboardVenuePreferenceAction}
       onRemoveVenuePreference={removeDashboardVenuePreferenceAction}
       onJoinVenue={joinDashboardVenueAction}
       onSaveGlobalPreferences={saveDashboardGlobalPreferencesAction}
-      onSetVenuePreferences={setDashboardVenuePreferencesAction}
+      onSetVenueMemberDiscovery={setDashboardVenueMemberDiscoveryAction}
       onSetSports={setDashboardSportsAction}
       onSaveSportProfile={saveDashboardSportProfileAction}
       onCreateGearItem={createDashboardGearItemAction}

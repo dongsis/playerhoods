@@ -4,7 +4,13 @@ import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { createVenue } from '@/lib/api/venues'
-import type { VenueAccessType, VenueKind } from '@/lib/types/database'
+import type {
+  VenueAccessType,
+  VenueCostType,
+  VenueFacilityType,
+  VenueIndoorOutdoor,
+  VenueKind,
+} from '@/lib/types/database'
 
 const TIMEZONES = [
   'America/Toronto',
@@ -37,6 +43,22 @@ const ACCESS_TYPE_OPTIONS: { value: VenueAccessType; label: string }[] = [
   { value: 'restricted', label: 'Restricted' },
 ]
 
+const INDOOR_OUTDOOR_OPTIONS: { value: VenueIndoorOutdoor; label: string }[] = [
+  { value: 'indoor', label: 'Indoor' },
+  { value: 'outdoor', label: 'Outdoor' },
+  { value: 'indoor_outdoor', label: 'Indoor/Outdoor' },
+]
+
+const FACILITY_TYPE_OPTIONS: { value: VenueFacilityType; label: string }[] = [
+  { value: 'court_only', label: 'Court Only' },
+  { value: 'full_facility', label: 'Full Facility' },
+]
+
+const COST_TYPE_OPTIONS: { value: VenueCostType; label: string }[] = [
+  { value: 'free', label: 'Free' },
+  { value: 'paid', label: 'Paid' },
+]
+
 export function CreateVenueDialog() {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,6 +78,7 @@ export function CreateVenueDialog() {
           abbreviation: (formData.get('abbreviation') as string)?.trim() || undefined,
           location_text: (formData.get('location_text') as string)?.trim() || undefined,
           city: (formData.get('city') as string)?.trim() || undefined,
+          province: (formData.get('province') as string)?.trim() || undefined,
           postal_code: (formData.get('postal_code') as string)?.trim() || undefined,
           country: (formData.get('country') as string)?.trim() || undefined,
           website_url: (formData.get('website_url') as string)?.trim() || undefined,
@@ -64,6 +87,12 @@ export function CreateVenueDialog() {
           contact_email: (formData.get('contact_email') as string)?.trim() || undefined,
           venue_phone: (formData.get('venue_phone') as string)?.trim() || undefined,
           venue_email: (formData.get('venue_email') as string)?.trim() || undefined,
+          latitude: formData.get('latitude') ? Number(formData.get('latitude')) : null,
+          longitude: formData.get('longitude') ? Number(formData.get('longitude')) : null,
+          indoor_outdoor: ((formData.get('indoor_outdoor') as string) || undefined) as VenueIndoorOutdoor | undefined,
+          facility_type: ((formData.get('facility_type') as string) || undefined) as VenueFacilityType | undefined,
+          booking_required: formData.get('booking_required') === '' ? null : formData.get('booking_required') === 'true',
+          cost_type: ((formData.get('cost_type') as string) || undefined) as VenueCostType | undefined,
           timezone: (formData.get('timezone') as string) || 'America/Toronto',
           notes: (formData.get('notes') as string)?.trim() || undefined,
           venue_kind: ((formData.get('venue_kind') as string) || 'club') as VenueKind,
@@ -179,6 +208,17 @@ export function CreateVenueDialog() {
                 <label
                   style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
                 >
+                  Province / State
+                </label>
+                <input
+                  name="province"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
                   Postal code
                 </label>
                 <input
@@ -256,6 +296,32 @@ export function CreateVenueDialog() {
                 <label
                   style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
                 >
+                  Latitude
+                </label>
+                <input
+                  name="latitude"
+                  type="number"
+                  step="any"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Longitude
+                </label>
+                <input
+                  name="longitude"
+                  type="number"
+                  step="any"
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
                   Venue kind
                 </label>
                 <select
@@ -306,7 +372,74 @@ export function CreateVenueDialog() {
                   ))}
                 </select>
               </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Indoor / Outdoor
+                </label>
+                <select
+                  name="indoor_outdoor"
+                  defaultValue=""
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
+                >
+                  <option value="">Unknown</option>
+                  {INDOOR_OUTDOOR_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div style={{ marginBottom: '1.25rem' }}>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Facility type
+                </label>
+                <select
+                  name="facility_type"
+                  defaultValue=""
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box', marginBottom: '0.75rem' }}
+                >
+                  <option value="">Unknown</option>
+                  {FACILITY_TYPE_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Booking required
+                </label>
+                <select
+                  name="booking_required"
+                  defaultValue=""
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box', marginBottom: '0.75rem' }}
+                >
+                  <option value="">Unknown</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+                <label
+                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
+                >
+                  Cost
+                </label>
+                <select
+                  name="cost_type"
+                  defaultValue=""
+                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box', marginBottom: '0.75rem' }}
+                >
+                  <option value="">Unknown</option>
+                  {COST_TYPE_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
                 <label
                   style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
                 >

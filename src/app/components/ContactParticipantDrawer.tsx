@@ -290,7 +290,7 @@ export function ContactParticipantDrawer({
       displayName={editing ? contactName : (linkedProfile?.display_name ?? contact?.display_name ?? target.displayName)}
       avatarUrl={linkedProfile?.avatar_url ?? target.avatarUrl ?? null}
       avatarFallback="contact"
-      statusClassName={getAvailabilityStatusDotClass(contact?.availability_status ?? linkedProfile?.looking_to_play)}
+      statusClassName={null}
       level={getLevelLabel(primarySportProfile?.level) ?? primarySportProfile?.level ?? null}
       formatLabels={formatLabels}
       connections={connections}

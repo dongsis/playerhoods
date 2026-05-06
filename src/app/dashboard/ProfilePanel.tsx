@@ -1,9 +1,10 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Profile, VenueIdentity, Venue, VenueKind, Sport, UserSportProfile } from '@/lib/types/database'
+import type { Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueKind, Sport, UserSportProfile } from '@/lib/types/database'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   approveMatchProxyBinding,
@@ -17,6 +18,8 @@ import { DisplayNameEditForm } from '@/app/profile/DisplayNameEditForm'
 import { SportsPreferenceForm } from '@/app/profile/SportsPreferenceForm'
 import { DiscoveryAndInvitesSection } from '@/app/profile/DiscoveryAndInvitesSection'
 import { SportProfilesEditor } from '@/app/profile/SportProfilesEditor'
+import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
+import type { DashboardPreferenceSaveResult } from './dashboard.actions'
 import {
   PREFERRED_PLAY_TIME_OPTIONS,
   getAvailabilityStatusDotClass,
@@ -36,43 +39,46 @@ type ProfileData = Pick<
   | 'primary_venue_id'
   | 'contact_channel'
   | 'contact_email'
+  | 'profile_contact_email_normalized'
+  | 'profile_contact_email_verified_at'
   | 'contact_phone'
-  | 'avatar_url'
-  | 'show_in_venue_member_discovery'
-  | 'allow_non_group_invites'
-  | 'shared_group_join_preference'
-  | 'looking_to_play'
+    | 'avatar_url'
+    | 'visible_in_city_discovery'
+    | 'searchable_by_contact_info'
+    | 'allow_non_group_invites'
+    | 'shared_group_join_preference'
+    | 'looking_to_play'
   | 'preferred_play_times'
 >
-
-type VenuePreferenceParams = {
-  visible_in_venue_member_discovery?: 'true' | 'false' | 'inherit'
-  accept_non_group_invites_in_venue?: 'true' | 'false' | 'inherit'
-}
 
 interface Props {
   userId: string
   profile: ProfileData
   userEmail?: string | null
+  verifiedEmails: UserVerifiedEmail[]
   myIdentities: (VenueIdentity & { venue: Venue })[]
   myVenuePrefs: Venue[]
   joinableVenues: Venue[]
   sports: Sport[]
   mySportIds: number[]
   mySportProfiles: UserSportProfile[]
+  myPlayCities: UserPlayCity[]
   onUpdateProfile: (formData: FormData) => Promise<void>
   onSetDisplayName: (newName: string) => Promise<void>
   onAvatarSaved: () => Promise<void>
   onSetPrimaryVenue: (venueId: string) => Promise<void>
   onLeaveVenue: (venueId: string) => Promise<void>
+  onSaveVenuePreference: (venueId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   onRemoveVenuePreference: (venueId: string) => Promise<void>
   onJoinVenue: (venueId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   onSaveGlobalPreferences: (params: {
-    show_in_venue_member_discovery?: boolean
+    visible_in_city_discovery?: boolean
+    searchable_by_email_or_phone?: boolean
+    play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
     shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
-  }) => Promise<void>
-  onSetVenuePreferences: (venueId: string, params: VenuePreferenceParams) => Promise<void>
+  }) => Promise<DashboardPreferenceSaveResult>
+  onSetVenueMemberDiscovery: (venueId: string, visibleInVenueMemberDiscovery: boolean) => Promise<DashboardPreferenceSaveResult>
   onSetSports: (codes: string[]) => Promise<void>
   onSaveSportProfile: (input: {
     sport_id: number
@@ -149,6 +155,293 @@ function FieldLabel({ children }: { children: ReactNode }) {
   )
 }
 
+function ReadOnlyInfoField({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div>
+      <FieldLabel>{label}</FieldLabel>
+      <div className="text-body-main min-h-[44px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700">
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function normalizeCityName(value: string) {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function normalizeEmail(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase() ?? ''
+  return normalized || null
+}
+
+function ProfileInfoRow({
+  label,
+  children,
+  alignStart = false,
+}: {
+  label: string
+  children: ReactNode
+  alignStart?: boolean
+}) {
+  return (
+    <div className={`grid gap-2.5 border-t border-slate-200/80 pt-3.5 sm:grid-cols-[102px_minmax(0,1fr)] ${alignStart ? 'sm:items-start' : 'sm:items-center'}`}>
+      <div className="pt-1">
+        <span className="text-label">{label}</span>
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  )
+}
+
+function CompactLocationEditor({
+  country,
+  region,
+  playCities,
+  availableCities,
+  onSave,
+}: {
+  country: string
+  region: string
+  playCities: UserPlayCity[]
+  availableCities: Array<{ city_name: string; region?: string | null; country?: string | null }>
+  onSave: (params: {
+    play_cities: Array<{ city_name: string; region?: string | null; country?: string | null }>
+  }) => Promise<DashboardPreferenceSaveResult>
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [cityInput, setCityInput] = useState('')
+  const [draftCities, setDraftCities] = useState(
+    playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean),
+  )
+  const [error, setError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setDraftCities(playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean))
+  }, [playCities])
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setIsDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [])
+
+  const citySummary = draftCities.length > 0 ? draftCities.join(', ') : 'Click to add city'
+  const isDirty =
+    JSON.stringify(draftCities) !==
+    JSON.stringify(playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean))
+  const cityMetaMap = useMemo(() => {
+    const map = new Map<string, { region: string | null; country: string | null }>()
+    for (const city of availableCities) {
+      const normalized = normalizeCityName(city.city_name ?? '')
+      if (!normalized || map.has(normalized.toLowerCase())) continue
+      map.set(normalized.toLowerCase(), {
+        region: city.region ?? region,
+        country: city.country ?? country,
+      })
+    }
+    for (const city of playCities) {
+      const normalized = normalizeCityName(city.city_name ?? '')
+      if (!normalized || map.has(normalized.toLowerCase())) continue
+      map.set(normalized.toLowerCase(), {
+        region: city.region ?? region,
+        country: city.country ?? country,
+      })
+    }
+    return map
+  }, [availableCities, country, playCities, region])
+  const cityOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...availableCities.map((city) => normalizeCityName(city.city_name ?? '')),
+          ...playCities.map((city) => normalizeCityName(city.city_name ?? '')),
+        ].filter(Boolean)),
+      ).sort((left, right) => left.localeCompare(right)),
+    [availableCities, playCities],
+  )
+  const filteredCities = useMemo(() => {
+    const query = normalizeCityName(cityInput).toLowerCase()
+    return cityOptions.filter((city) => {
+      if (draftCities.some((entry) => entry.toLowerCase() === city.toLowerCase())) return false
+      return !query || city.toLowerCase().includes(query)
+    })
+  }, [cityInput, cityOptions, draftCities])
+
+  const addCity = (value: string) => {
+    const nextCity = normalizeCityName(value)
+    if (!nextCity) return
+    if (draftCities.some((city) => city.toLowerCase() === nextCity.toLowerCase())) {
+      setError('That city is already listed.')
+      return
+    }
+    setError(null)
+    setDraftCities((current) => [...current, nextCity])
+    setCityInput('')
+    setIsDropdownOpen(false)
+  }
+
+  const removeCity = (cityName: string) => {
+    setError(null)
+    setDraftCities((current) => current.filter((city) => city !== cityName))
+  }
+
+  const handleSave = () => {
+    setError(null)
+    startTransition(async () => {
+      try {
+        const result = await onSave({
+          play_cities: draftCities.map((city_name) => ({
+            city_name,
+            region: cityMetaMap.get(city_name.toLowerCase())?.region ?? region,
+            country: cityMetaMap.get(city_name.toLowerCase())?.country ?? country,
+          })),
+        })
+        if (!result.ok) {
+          setError(result.error)
+          return
+        }
+        setIsOpen(false)
+      } catch (saveError) {
+        const message =
+          saveError && typeof saveError === 'object' && 'message' in saveError && typeof (saveError as { message?: unknown }).message === 'string'
+            ? (saveError as { message: string }).message
+            : 'Could not save cities.'
+        setError(message)
+      }
+    })
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex flex-wrap gap-2">
+        <span className="text-label inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-500">
+          {country}
+        </span>
+        <span className="text-label inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-500">
+          {region}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50"
+      >
+        <div className="text-label text-slate-400">City</div>
+        <div className="text-body-main mt-1 text-slate-800">{citySummary}</div>
+      </button>
+
+      {isOpen ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-3.5">
+          <div className="flex flex-wrap gap-2">
+            {draftCities.length > 0 ? draftCities.map((city) => (
+              <span
+                key={city}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700"
+              >
+                {city}
+                <button
+                  type="button"
+                  onClick={() => removeCity(city)}
+                  className="text-slate-400 transition hover:text-slate-700"
+                  aria-label={`Remove ${city}`}
+                >
+                  ×
+                </button>
+              </span>
+            )) : (
+              <span className="text-body-sub text-slate-400">No city yet.</span>
+            )}
+          </div>
+
+          <div ref={dropdownRef} className="relative mt-3">
+            <input
+              type="text"
+              value={cityInput}
+              onChange={(event) => {
+                setCityInput(event.target.value)
+                setIsDropdownOpen(true)
+              }}
+              onFocus={() => setIsDropdownOpen(true)}
+              placeholder="Search and select a city..."
+              className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-slate-900 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-slate-100"
+            />
+
+            {isDropdownOpen ? (
+              <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
+                {filteredCities.length > 0 ? (
+                  filteredCities.map((city) => (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={() => addCity(city)}
+                      className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-body-main text-[#334155] transition hover:bg-[#F8FBFF] last:border-b-0"
+                    >
+                      <span>{city}</span>
+                      <span className="text-label text-[#94A3B8]">Select</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-body-sub text-[#94A3B8]">
+                    No cities found.
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-body-sub text-slate-400">
+              Click a city chip to remove it.
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftCities(playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean))
+                  setCityInput('')
+                  setError(null)
+                  setIsDropdownOpen(false)
+                  setIsOpen(false)
+                }}
+                className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isPending || !isDirty}
+                className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isPending ? 'Saving...' : 'Save cities'}
+              </button>
+            </div>
+          </div>
+
+          {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 const VENUE_KIND_FILTER_OPTIONS: Array<{ value: 'all' | VenueKind; label: string }> = [
   { value: 'all', label: 'All types' },
   { value: 'club', label: 'Club' },
@@ -196,10 +489,14 @@ function getVenueAccessLabel(accessType: Venue['access_type'] | null | undefined
 function getVenueMetaLine(venue: Venue): string {
   const parts = [
     venue.location_text?.trim() || null,
-    getVenueAccessLabel(venue.access_type),
+    venue.city?.trim() || null,
   ].filter((value): value is string => Boolean(value))
 
   return parts.join(' • ')
+}
+
+function venueUsesMemberRelationship(kind: Venue['venue_kind'] | null | undefined): boolean {
+  return kind === 'club' || kind === 'private_facility' || kind === 'condo' || kind === 'school'
 }
 
 function VenueBadge({
@@ -739,21 +1036,24 @@ export function ProfilePanel({
   userId,
   profile,
   userEmail,
+  verifiedEmails,
   myIdentities,
   myVenuePrefs,
   joinableVenues,
   sports,
   mySportIds,
   mySportProfiles,
+  myPlayCities,
   onUpdateProfile,
   onSetDisplayName,
   onAvatarSaved,
   onSetPrimaryVenue,
   onLeaveVenue,
+  onSaveVenuePreference,
   onRemoveVenuePreference,
   onJoinVenue,
   onSaveGlobalPreferences,
-  onSetVenuePreferences,
+  onSetVenueMemberDiscovery,
   onSetSports,
   onSaveSportProfile,
 }: Props) {
@@ -793,6 +1093,22 @@ export function ProfilePanel({
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(false)
   const lastSavedSnapshotRef = useRef('')
+  const normalizedAuthEmail = normalizeEmail(userEmail)
+  const normalizedProfileContactEmail = normalizeEmail(contactEmail)
+  const verifiedAuthEmailEntry = useMemo(
+    () => verifiedEmails.find((entry) => entry.email_type === 'auth' && entry.email_normalized === normalizedAuthEmail)
+      ?? verifiedEmails.find((entry) => entry.email_type === 'auth')
+      ?? null,
+    [normalizedAuthEmail, verifiedEmails],
+  )
+  const verifiedContactEmailEntry = useMemo(
+    () => (
+      normalizedProfileContactEmail
+        ? verifiedEmails.find((entry) => entry.email_normalized === normalizedProfileContactEmail) ?? null
+        : null
+    ),
+    [normalizedProfileContactEmail, verifiedEmails],
+  )
 
   const normalizedDisplayName = profile.display_name?.trim() ?? ''
   const joinedVenueIds = new Set(myIdentities.map(identity => identity.venue_id))
@@ -817,16 +1133,25 @@ export function ProfilePanel({
   const filteredJoinableVenues = useMemo(() => {
     const cityQuery = venueCitySearch.trim().toLowerCase()
     const nameQuery = venueNameSearch.trim().toLowerCase()
+    const savedVenueIds = new Set(publicVenuePrefs.map((venue) => venue.id))
 
     return joinableVenues.filter((venue) => {
+      if (savedVenueIds.has(venue.id)) return false
       const matchesType = venueTypeFilter === 'all' || venue.venue_kind === venueTypeFilter
       const venueName = `${venue.name} ${venue.abbreviation ?? ''}`.toLowerCase()
-      const venueLocation = (venue.location_text ?? '').toLowerCase()
+      const venueLocation = [
+        venue.city ?? '',
+        venue.province ?? '',
+        venue.country ?? '',
+        venue.location_text ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
       const matchesName = !nameQuery || venueName.includes(nameQuery)
       const matchesCity = !cityQuery || venueLocation.includes(cityQuery)
       return matchesType && matchesName && matchesCity
     })
-  }, [joinableVenues, venueCitySearch, venueNameSearch, venueTypeFilter])
+  }, [joinableVenues, publicVenuePrefs, venueCitySearch, venueNameSearch, venueTypeFilter])
 
   useEffect(() => {
     setSelectedJoinVenueId(defaultJoinVenueId)
@@ -984,6 +1309,34 @@ export function ProfilePanel({
   const smsSelected = contactChannel === 'sms'
   const showAvailabilityDetails =
     availabilityMode === 'busy' || availabilityMode === 'away' || availabilityMode === 'not_looking'
+  const playLocationCountry = myPlayCities[0]?.country?.trim() || DEFAULT_PLAY_COUNTRY
+  const playLocationRegion = myPlayCities[0]?.region?.trim() || DEFAULT_PLAY_REGION
+  const playLocationCities = myPlayCities.length > 0
+    ? myPlayCities
+        .map((city) => city.city_name?.trim?.() ?? '')
+        .filter(Boolean)
+        .join(', ')
+    : 'Not set yet'
+  const availablePlayCities = useMemo(() => {
+    const cityMap = new Map<string, { city_name: string; region?: string | null; country?: string | null }>()
+
+    const addCity = (cityName: string | null | undefined, nextRegion?: string | null, nextCountry?: string | null) => {
+      const normalized = normalizeCityName(cityName ?? '')
+      if (!normalized || cityMap.has(normalized.toLowerCase())) return
+      cityMap.set(normalized.toLowerCase(), {
+        city_name: normalized,
+        region: nextRegion ?? DEFAULT_PLAY_REGION,
+        country: nextCountry ?? DEFAULT_PLAY_COUNTRY,
+      })
+    }
+
+    myPlayCities.forEach((city) => addCity(city.city_name, city.region, city.country))
+    joinableVenues.forEach((venue) => addCity(venue.city, venue.province, venue.country))
+    myVenuePrefs.forEach((venue) => addCity(venue.city, venue.province, venue.country))
+    myIdentities.forEach((identity) => addCity(identity.venue.city, identity.venue.province, identity.venue.country))
+
+    return Array.from(cityMap.values()).sort((left, right) => left.city_name.localeCompare(right.city_name))
+  }, [joinableVenues, myIdentities, myPlayCities, myVenuePrefs])
 
   const handleAvailabilityModeChange = (mode: AvailabilityMode) => {
     const next = AVAILABILITY_MODE_OPTIONS.find((option) => option.value === mode)
@@ -1005,13 +1358,14 @@ export function ProfilePanel({
       isOpen={activeSection === 'basic'}
       onToggle={() => toggleSection('basic')}
     >
-      <div className="grid gap-5 lg:grid-cols-2">
-        <div className="space-y-5">
-          <SubCard>
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-label px-1 text-slate-400">Identity</h4>
-                <div className="mt-4 flex gap-4 items-start">
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] p-5">
+          <div className="space-y-3.5">
+              <div className="grid gap-3 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
+                <div className="pt-1">
+                  <span className="text-label">Identity</span>
+                </div>
+                <div className="flex items-start gap-4">
                   <div className="shrink-0">
                     <AvatarUpload
                       userId={userId}
@@ -1031,37 +1385,57 @@ export function ProfilePanel({
                 </div>
               </div>
 
+              <ProfileInfoRow label="Gender">
+                <div className="flex flex-wrap gap-2.5">
+                  {[
+                    { value: 'male', label: 'Male' },
+                    { value: 'female', label: 'Female' },
+                    { value: 'unspecified', label: 'Another gender' },
+                  ].map((option) => {
+                    const selected = (gender ?? 'unspecified') === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setGender(option.value as Profile['gender'])}
+                        className={`text-body-main inline-flex items-center rounded-full border px-3.5 py-2 transition ${
+                          selected
+                            ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900'
+                        }`}
+                        aria-pressed={selected}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </ProfileInfoRow>
+
               {sports.length > 0 && (
-                <div className="border-t border-slate-200 pt-5">
-                  <FieldLabel>Engaged sports</FieldLabel>
+                <ProfileInfoRow label="Engaged sports" alignStart>
                   <SportsPreferenceForm
                     sports={sports}
                     initialSportIds={mySportIds}
                     onSave={handleSetSports}
                   />
-                </div>
+                </ProfileInfoRow>
               )}
 
-              <div className="border-t border-slate-200 pt-5 max-w-sm">
-                <FieldLabel>Gender</FieldLabel>
-                <select
-                  name="gender"
-                  value={gender ?? 'unspecified'}
-                  onChange={e => setGender((e.target.value as Profile['gender']) ?? 'unspecified')}
-                  className={inputClass}
-                >
-                  <option value="unspecified">Unspecified</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-              </div>
-            </div>
-          </SubCard>
+              <ProfileInfoRow label="Location" alignStart>
+                <CompactLocationEditor
+                  country={playLocationCountry}
+                  region={playLocationRegion}
+                  playCities={myPlayCities}
+                  availableCities={availablePlayCities}
+                  onSave={(params) => onSaveGlobalPreferences(params)}
+                />
+              </ProfileInfoRow>
+          </div>
         </div>
 
-        <div className="space-y-5">
-          <SubCard>
-            <div className="space-y-4">
+        <div className="rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] p-5">
+          <div className="space-y-3.5">
               <div>
                 <h4 className="text-label px-1 text-slate-400">Contact & official</h4>
               </div>
@@ -1093,15 +1467,60 @@ export function ProfilePanel({
 
                 <div className="grid gap-3">
                   <div>
-                    <FieldLabel>Contact email</FieldLabel>
+                    <FieldLabel>Login email</FieldLabel>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="text-body-main text-slate-800">
+                        {userEmail?.trim() || 'No login email available'}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className={`text-label inline-flex items-center rounded-full px-2.5 py-1 ${
+                          verifiedAuthEmailEntry
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {verifiedAuthEmailEntry ? 'Verified auth email' : 'No verified auth email'}
+                        </span>
+                        <span className="text-body-sub text-slate-400">
+                          Used for sign-in, account recovery, and identity linking. Never shown publicly.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <FieldLabel>Profile contact email</FieldLabel>
                     <input
                       type="email"
                       name="contact_email"
-                      placeholder={userEmail ?? 'Your registered email'}
+                      placeholder={userEmail ?? 'Add a contact email'}
                       value={contactEmail}
                       onChange={e => setContactEmail(e.target.value)}
                       className={`${inputClass} ${emailSelected ? 'border-slate-300 bg-white shadow-sm' : ''}`}
                     />
+                    <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
+                      {contactEmail.trim() ? (
+                        <span className={`text-label inline-flex items-center rounded-full px-2.5 py-1 ${
+                          verifiedContactEmailEntry
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {verifiedContactEmailEntry
+                            ? verifiedContactEmailEntry.email_type === 'auth'
+                              ? 'Verified via login email'
+                              : 'Verified for identity linking'
+                            : 'Not verified for identity linking yet'}
+                        </span>
+                      ) : (
+                        <span className="text-body-sub text-slate-400">
+                          Add a contact email for match notifications and exact identity lookup.
+                        </span>
+                      )}
+                      {contactEmail.trim() ? (
+                        <span className="text-body-sub text-slate-400">
+                          Used for player communication and exact email or phone search. Never shown publicly.
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div>
@@ -1118,7 +1537,7 @@ export function ProfilePanel({
                 </div>
               </div>
 
-              <div className="border-t border-slate-200 pt-4">
+              <div className="border-t border-slate-200 pt-3.5">
                 <FieldLabel>Court booking name</FieldLabel>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input
@@ -1140,8 +1559,7 @@ export function ProfilePanel({
                   Your real name will be shared with other players in the same match to make court booking easier.
                 </p>
               </div>
-            </div>
-          </SubCard>
+          </div>
         </div>
       </div>
     </AccordionSection>
@@ -1244,21 +1662,21 @@ export function ProfilePanel({
 
   const privacySection = () => (
     <AccordionSection
-      title="Privacy & Groups"
-      description="Choose where you appear and who can invite you."
+      title="Discovery Settings"
+      description="Choose where other registered players can find you."
       eyebrow="Sharing"
       isOpen={activeSection === 'privacy'}
       onToggle={() => toggleSection('privacy')}
     >
       <SubCard>
         <DiscoveryAndInvitesSection
-          showTitle={false}
-          showInVenueMemberDiscovery={profile.show_in_venue_member_discovery ?? true}
-          allowNonGroupInvites={profile.allow_non_group_invites ?? true}
-          sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'approval_required_all'}
-          identities={myIdentities}
-          onSaveGlobal={onSaveGlobalPreferences}
-          onSetVenuePreferences={onSetVenuePreferences}
+            showTitle={false}
+            visibleInCityDiscovery={profile.visible_in_city_discovery ?? false}
+            searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
+            playCities={myPlayCities}
+            identities={myIdentities}
+            onSaveGlobal={onSaveGlobalPreferences}
+          onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
         />
       </SubCard>
     </AccordionSection>
@@ -1388,7 +1806,7 @@ export function ProfilePanel({
                           <h4 className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</h4>
                           <div className="flex flex-wrap items-center gap-1.5">
                             <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
-                            <VenueBadge tone="starred">starred</VenueBadge>
+                            <VenueBadge tone="starred">saved</VenueBadge>
                           </div>
                         </div>
                         <p className="text-body-sub mt-1 truncate text-slate-400">
@@ -1422,8 +1840,8 @@ export function ProfilePanel({
                               className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {pendingVenueAction?.id === venue.id && pendingVenueAction.kind === 'remove_saved'
-                                ? 'Deleting...'
-                                : 'Delete'}
+                                ? 'Unsaving...'
+                                : 'Unsave'}
                             </button>
                           </div>
                         ) : null}
@@ -1481,32 +1899,7 @@ export function ProfilePanel({
           </div>
 
           <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {filteredJoinableVenues.map((venue) => (
-              <div
-                key={venue.id}
-                className="flex items-center justify-between gap-4 rounded-[22px] border border-slate-100 bg-slate-50/60 p-4 transition hover:border-slate-200 hover:bg-white"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
-                    <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
-                  </div>
-                  <p className="text-label mt-1 truncate text-slate-400">
-                    {getVenueMetaLine(venue)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleQuickJoinVenue(venue.id)}
-                  disabled={isJoiningVenue || !normalizedDisplayName}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label={`Add ${getVenueDisplayName(venue)}`}
-                  title={`Add ${getVenueDisplayName(venue)}`}
-                >
-                  {isJoiningVenue && joiningVenueId === venue.id ? '...' : '+'}
-                </button>
-              </div>
-            ))}
+            {filteredJoinableVenues.map((venue) => renderJoinableVenueCard(venue))}
           </div>
 
           {joinableVenues.length === 0 ? (
@@ -1606,18 +1999,28 @@ export function ProfilePanel({
     })
   }
 
-  const handleQuickJoinVenue = (venueId: string) => {
+  const handleQuickJoinVenue = (venueId: string, relationship: 'member' | 'save' | null = null) => {
+    const venue = joinableVenues.find((entry) => entry.id === venueId)
+    if (!venue) {
+      setJoinError('That venue could not be found.')
+      return
+    }
+
     if (!normalizedDisplayName) {
       setJoinError('Set your display name first, then you can join venues.')
       return
     }
 
     setJoinError(null)
+    setOpenVenueMenuId(null)
     setSelectedJoinVenueId(venueId)
     setJoiningVenueId(venueId)
     startJoiningVenue(async () => {
       try {
-        const result = await onJoinVenue(venueId)
+        const actionMode = relationship ?? (venueUsesMemberRelationship(venue.venue_kind) ? 'member' : 'save')
+        const result = actionMode === 'member'
+          ? await onJoinVenue(venueId)
+          : await onSaveVenuePreference(venueId)
         if (!result.ok) {
           setJoinError(result.error)
           return
@@ -1625,11 +2028,95 @@ export function ProfilePanel({
         setSelectedJoinVenueId('')
         router.refresh()
       } catch (err: unknown) {
-        setJoinError(normalizeActionError(err, 'Failed to join venue'))
+        setJoinError(
+          normalizeActionError(
+            err,
+            relationship === 'save' ? 'Failed to save venue' : 'Failed to join venue',
+          ),
+        )
       } finally {
         setJoiningVenueId(null)
       }
     })
+  }
+
+  const renderJoinableVenueCard = (venue: Venue) => {
+    const menuKey = `join-${venue.id}`
+    const usesMemberRelationship = venueUsesMemberRelationship(venue.venue_kind)
+    const isMenuOpen = openVenueMenuId === menuKey
+    const isBusy = isJoiningVenue && joiningVenueId === venue.id
+
+    return (
+      <div
+        key={venue.id}
+        className="flex items-center justify-between gap-4 rounded-[22px] border border-slate-100 bg-slate-50/60 p-4 transition hover:border-slate-200 hover:bg-white"
+      >
+        <Link
+          href={`/venues/${venue.id}`}
+          className="min-w-0 flex-1 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
+            <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
+          </div>
+          <p className="text-label mt-1 truncate text-slate-400">
+            {getVenueMetaLine(venue)}
+          </p>
+        </Link>
+
+        <div className="relative shrink-0" data-venue-menu-root={menuKey}>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={isMenuOpen}
+            onClick={() => {
+              setJoinError(null)
+              setOpenVenueMenuId((prev) => (prev === menuKey ? null : menuKey))
+            }}
+            disabled={isJoiningVenue || !normalizedDisplayName}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueDisplayName(venue)}`}
+            title={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueDisplayName(venue)}`}
+          >
+            {isBusy ? '...' : '+'}
+          </button>
+
+          {isMenuOpen ? (
+            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[190px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+              {usesMemberRelationship ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickJoinVenue(venue.id, 'member')}
+                    disabled={isJoiningVenue}
+                    className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    I'm a member
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickJoinVenue(venue.id, 'save')}
+                    disabled={isJoiningVenue}
+                    className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Save this venue
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleQuickJoinVenue(venue.id, 'save')}
+                  disabled={isJoiningVenue}
+                  className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Save venue
+                </button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    )
   }
 
   const handleSetPrimaryVenue = (venueId: string) => {
@@ -1667,7 +2154,7 @@ export function ProfilePanel({
   }
 
   const handleRemoveSavedVenue = (venueId: string, venueName: string) => {
-    if (!confirm(`Delete ${venueName} from your public courts?`)) return
+    if (!confirm(`Unsave ${venueName}?`)) return
 
     setVenueActionError(null)
     setPendingVenueAction({ id: venueId, kind: 'remove_saved' })
@@ -1677,7 +2164,7 @@ export function ProfilePanel({
         setOpenVenueMenuId(null)
         router.refresh()
       } catch (err: unknown) {
-        setVenueActionError(normalizeActionError(err, 'Failed to delete public court'))
+        setVenueActionError(normalizeActionError(err, 'Failed to unsave venue'))
       } finally {
         setPendingVenueAction(null)
       }
@@ -1789,6 +2276,22 @@ export function ProfilePanel({
                         Used only as lightweight roster guidance for men&apos;s, women&apos;s, and mixed doubles.
                       </p>
                     </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-6">
+                  <div className="mb-4">
+                    <h3 className="text-title-main text-slate-900">Location</h3>
+                    <p className="mt-1 text-body-sub text-slate-500">
+                      Based on your current play cities.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <ReadOnlyInfoField label="Country" value={playLocationCountry} />
+                    <ReadOnlyInfoField label="Province / State" value={playLocationRegion} />
+                  </div>
+                  <div className="mt-4">
+                    <ReadOnlyInfoField label="Cities" value={playLocationCities} />
                   </div>
                 </div>
 
@@ -2063,7 +2566,7 @@ export function ProfilePanel({
                               <h4 className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</h4>
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
-                                <VenueBadge tone="starred">starred</VenueBadge>
+                                <VenueBadge tone="starred">saved</VenueBadge>
                               </div>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-body-sub text-slate-400">
@@ -2097,8 +2600,8 @@ export function ProfilePanel({
                                   className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   {pendingVenueAction?.id === venue.id && pendingVenueAction.kind === 'remove_saved'
-                                    ? 'Deleting...'
-                                    : 'Delete'}
+                                    ? 'Unsaving...'
+                                    : 'Unsave'}
                                 </button>
                               </div>
                             )}
@@ -2201,18 +2704,18 @@ export function ProfilePanel({
         </SectionCard>
 
         <SectionCard
-          title="Privacy & Groups"
-          description="Choose where you appear and who can invite you."
+          title="Discovery Settings"
+          description="Choose where other registered players can find you."
           tone="soft"
         >
-          <DiscoveryAndInvitesSection
+        <DiscoveryAndInvitesSection
             showTitle={false}
-            showInVenueMemberDiscovery={profile.show_in_venue_member_discovery ?? true}
-            allowNonGroupInvites={profile.allow_non_group_invites ?? true}
-            sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'approval_required_all'}
+            visibleInCityDiscovery={profile.visible_in_city_discovery ?? false}
+            searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
+            playCities={myPlayCities}
             identities={myIdentities}
             onSaveGlobal={onSaveGlobalPreferences}
-            onSetVenuePreferences={onSetVenuePreferences}
+          onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
           />
         </SectionCard>
       </div>

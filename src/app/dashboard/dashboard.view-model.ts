@@ -13,9 +13,12 @@ type DashboardProfile = Pick<
   | 'primary_venue_id'
   | 'contact_channel'
   | 'contact_email'
+  | 'profile_contact_email_normalized'
+  | 'profile_contact_email_verified_at'
   | 'contact_phone'
   | 'avatar_url'
-  | 'show_in_venue_member_discovery'
+  | 'visible_in_city_discovery'
+  | 'searchable_by_contact_info'
   | 'allow_non_group_invites'
   | 'shared_group_join_preference'
   | 'looking_to_play'
@@ -29,6 +32,8 @@ export type DashboardPageViewModel = {
   inboxUnreadCount: number
   playersData: DashboardLoaderData['playersData']
   inviteCircle: DashboardLoaderData['inviteCircle']
+  verifiedEmails: DashboardLoaderData['verifiedEmails']
+  identityLinkCandidates: DashboardLoaderData['identityLinkCandidates']
   profile: DashboardProfile
   myIdentities: DashboardLoaderData['myIdentities']
   myVenuePrefs: DashboardLoaderData['myVenuePrefs']
@@ -36,6 +41,7 @@ export type DashboardPageViewModel = {
   sports: DashboardLoaderData['sports']
   mySports: DashboardLoaderData['mySports']
   mySportProfiles: DashboardLoaderData['mySportProfiles']
+  myPlayCities: DashboardLoaderData['myPlayCities']
   gearItems: DashboardLoaderData['gearItems']
   gearImages: DashboardLoaderData['gearImages']
   gearStringJobs: DashboardLoaderData['gearStringJobs']
@@ -55,9 +61,12 @@ const EMPTY_PROFILE: DashboardProfile = {
   primary_venue_id: null,
   contact_channel: 'email',
   contact_email: null,
+  profile_contact_email_normalized: null,
+  profile_contact_email_verified_at: null,
   contact_phone: null,
   avatar_url: null,
-  show_in_venue_member_discovery: true,
+  visible_in_city_discovery: false,
+  searchable_by_contact_info: false,
   allow_non_group_invites: true,
   shared_group_join_preference: 'approval_required_all',
   looking_to_play: null,
@@ -72,6 +81,8 @@ export function buildDashboardPageViewModel(loaderData: DashboardLoaderData): Da
     inboxUnreadCount: loaderData.inboxUnreadCount,
     playersData: loaderData.playersData,
     inviteCircle: loaderData.inviteCircle,
+    verifiedEmails: loaderData.verifiedEmails,
+    identityLinkCandidates: loaderData.identityLinkCandidates,
     profile: loaderData.profile ?? {
       ...EMPTY_PROFILE,
       display_name: loaderData.user.email ?? '',
@@ -82,6 +93,7 @@ export function buildDashboardPageViewModel(loaderData: DashboardLoaderData): Da
     sports: loaderData.sports,
     mySports: loaderData.mySports,
     mySportProfiles: loaderData.mySportProfiles,
+    myPlayCities: loaderData.myPlayCities,
     gearItems: loaderData.gearItems,
     gearImages: loaderData.gearImages,
     gearStringJobs: loaderData.gearStringJobs,

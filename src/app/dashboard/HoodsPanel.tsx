@@ -17,6 +17,11 @@ import {
   type GuestLookupRow,
 } from '@/lib/api/hoods'
 import {
+  getCityPlayersDiscovery,
+  searchPlayersByEmailOrPhone,
+  type CityDiscoveryRow,
+} from '@/lib/api/discovery'
+import {
   getAdmissionTargets,
   inviteUserToMatch,
   nominateGuest,
@@ -25,6 +30,7 @@ import {
 } from '@/lib/api/matches'
 import type { InviteCircleRow } from '@/lib/api/play-network'
 import {
+  getInviteCircleList,
   getVenueMembersDiscovery,
   getVenueInvitableMembers,
   removeFromInviteCircle,
@@ -54,26 +60,25 @@ import { setGuestSports } from '@/lib/api/sports'
 import { getLevelLabel } from '@/lib/profile-options'
 import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
 import { getPreferredPlayTimeLabel } from '@/lib/profile-options'
-import { getGroupIconMeta } from '@/lib/group-icons'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import type {
   AvailabilityStatus,
   Sport,
+  UserPlayCity,
   Venue,
   VenueIdentity,
 } from '@/lib/types/database'
 
 type SupportedSportCode = 'tennis' | 'pickleball' | 'badminton'
 type HoodSection = 'hood' | 'discover'
-type HoodFilter = 'all' | 'saved' | 'group'
-type DiscoverSource = 'club_members' | 'played_with'
+type HoodFilter = 'all' | 'saved' | 'group' | 'contacts'
+type DiscoverSource = 'club_members' | 'city_players' | 'search_people'
 type IdentityType = 'platform' | 'contact' | 'linked'
 type ContactGender = 'male' | 'female' | 'unspecified' | null
 type SourceBadge =
   | 'My Contact'
   | 'Starred'
   | 'From Group'
-  | 'Played With'
   | 'Linked'
 
 type HoodSport = Sport & { code: SupportedSportCode }
@@ -90,6 +95,7 @@ type MutablePerson = {
   sourceBadges: Set<SourceBadge>
   groupNames: Set<string>
   clubNames: Set<string>
+  cityNames: Set<string>
   isMyContact: boolean
   isSaved: boolean
   isFromGroup: boolean
@@ -122,6 +128,7 @@ type HoodPerson = {
   sourceBadges: SourceBadge[]
   groupNames: string[]
   clubNames: string[]
+  cityNames: string[]
   isMyContact: boolean
   isSaved: boolean
   isFromGroup: boolean
@@ -148,14 +155,18 @@ type ClubDiscoverPerson = {
   clubNames: string[]
 }
 
-type ClubDiscoverGroup = {
-  groupId: string
-  name: string
-  description: string | null
-  primarySportId: number | null
-  iconKey: string
-  clubNames: string[]
-  memberCount: number
+type CityDiscoverPerson = {
+  userId: string
+  displayName: string
+  cityNames: string[]
+  isSaved: boolean
+}
+
+type SearchDiscoverPerson = {
+  userId: string
+  displayName: string
+  matchType: 'email' | 'phone'
+  isSaved: boolean
 }
 
 type SupportData = {
@@ -176,6 +187,7 @@ type Props = {
   myIdentities: (VenueIdentity & { venue: Venue })[]
   sports: Sport[]
   enabledSportIds: number[]
+  myPlayCities: UserPlayCity[]
   onRefreshDashboardLive: () => Promise<void>
   onParseScreenshots: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
   onImportScreenshotContacts: (drafts: Array<{
@@ -442,10 +454,6 @@ function buildCanonicalKey(input: {
   return `unknown:${Math.random().toString(36).slice(2)}`
 }
 
-function toPersonMatchKey(person: HoodPerson): string {
-  return `${person.userId ?? ''}:${person.guestId ?? ''}:${person.personId ?? ''}`
-}
-
 function ensurePerson(
   map: Map<string, MutablePerson>,
   seed: Partial<MutablePerson> & { key: string; displayName: string; sportLabel: string },
@@ -502,6 +510,7 @@ function ensurePerson(
     sourceBadges: new Set(),
     groupNames: new Set(),
     clubNames: new Set(),
+    cityNames: new Set(),
     isMyContact: seed.isMyContact ?? false,
     isSaved: seed.isSaved ?? false,
     isFromGroup: seed.isFromGroup ?? false,
@@ -531,15 +540,26 @@ function finalizePeople(map: Map<string, MutablePerson>): HoodPerson[] {
     sourceBadges: Array.from(person.sourceBadges),
     groupNames: Array.from(person.groupNames),
     clubNames: Array.from(person.clubNames),
+    cityNames: Array.from(person.cityNames),
   }))
+}
+
+function isContactModulePerson(person: Pick<HoodPerson, 'guestId' | 'isMyContact' | 'canEditContact' | 'identityType'>): boolean {
+  return person.guestId !== null || person.isMyContact || person.canEditContact || person.identityType !== 'platform'
+}
+
+function isRegisteredPlayerPerson(person: HoodPerson): boolean {
+  return person.userId !== null && !isContactModulePerson(person)
 }
 
 function matchesFilter(person: HoodPerson, filter: HoodFilter): boolean {
   switch (filter) {
     case 'saved':
-      return isPersonStarred(person)
+      return isRegisteredPlayerPerson(person) && isPersonStarred(person)
     case 'group':
-      return person.isFromGroup
+      return isRegisteredPlayerPerson(person) && person.isFromGroup
+    case 'contacts':
+      return isContactModulePerson(person)
     case 'all':
     default:
       return true
@@ -559,7 +579,7 @@ function sortHoodPeople(left: HoodPerson, right: HoodPerson, openMatchCount: Map
 }
 
 function sortDiscoverPeople(left: HoodPerson, right: HoodPerson): number {
-  if (left.sharedMatchCount !== right.sharedMatchCount) return right.sharedMatchCount - left.sharedMatchCount
+  if (left.cityNames.length !== right.cityNames.length) return right.cityNames.length - left.cityNames.length
   if (left.clubNames.length !== right.clubNames.length) return right.clubNames.length - left.clubNames.length
   return left.displayName.localeCompare(right.displayName)
 }
@@ -591,13 +611,19 @@ function readPersistedHoodsUiState(userId: string): {
       ? parsed.selectedSportCode
       : 'tennis'
     const hoodFilter: HoodFilter =
-      parsed.hoodFilter === 'contacts' || parsed.hoodFilter === 'saved'
-        ? 'saved'
+      parsed.hoodFilter === 'contacts'
+        ? 'contacts'
+        : parsed.hoodFilter === 'saved'
+          ? 'saved'
         : parsed.hoodFilter === 'group'
           ? 'group'
           : 'all'
     const discoverSource: DiscoverSource =
-      parsed.discoverSource === 'played_with' ? 'played_with' : 'club_members'
+      parsed.discoverSource === 'city_players'
+        ? 'city_players'
+        : parsed.discoverSource === 'search_people'
+          ? 'search_people'
+          : 'club_members'
 
     return { section, selectedSportCode, hoodFilter, discoverSource }
   } catch {
@@ -615,10 +641,19 @@ function sourceBadgeClass(badge: SourceBadge) {
       return 'bg-sky-50 text-sky-700'
     case 'Linked':
       return 'bg-violet-50 text-violet-700'
-    case 'Played With':
-      return 'bg-rose-50 text-rose-700'
     default:
       return 'bg-slate-100 text-slate-700'
+  }
+}
+
+function getSourceBadgeLabel(badge: SourceBadge): string {
+  switch (badge) {
+    case 'Starred':
+      return 'Saved'
+    case 'From Group':
+      return 'From Groups'
+    default:
+      return badge
   }
 }
 
@@ -642,17 +677,25 @@ function getPeopleEmptyState(
   sportName: string,
 ): string {
   if (section === 'discover') {
-    return `No ${discoverSource === 'club_members' ? 'club members' : 'played with people'} are available in ${sportName} right now.`
+    if (discoverSource === 'city_players') {
+      return `No city players are available in ${sportName} right now.`
+    }
+    if (discoverSource === 'search_people') {
+      return 'Enter an exact email or phone number to find a registered player.'
+    }
+    return `No club members are available in ${sportName} right now.`
   }
 
   switch (hoodFilter) {
     case 'saved':
-      return `No starred people are in your ${sportName.toLowerCase()} hood yet.`
+      return `No saved registered players are in your ${sportName.toLowerCase()} hood yet.`
     case 'group':
-      return `No people from groups are in your ${sportName.toLowerCase()} hood yet.`
+      return `No registered players from groups are in your ${sportName.toLowerCase()} hood yet.`
+    case 'contacts':
+      return `No contact players are in your ${sportName.toLowerCase()} contacts yet.`
     case 'all':
     default:
-      return `Your ${sportName} Hood is empty. Add contacts, save players, or bring people in through groups.`
+      return `Your ${sportName} Hood is empty. Save players, add contacts, or bring people in through groups.`
   }
 }
 
@@ -838,7 +881,7 @@ function HoodPersonDrawer({
   const currentStatusLabel = person.statusLabel ?? formatAvailabilityLabel(profile?.looking_to_play)
   const currentStatusDotClass = getAvailabilityStatusDotClass(currentStatusLabel)
   const isStarred = isPersonStarred(person)
-  const isContactDetail = person.guestId !== null || person.isMyContact || person.canEditContact
+  const isContactDetail = isContactModulePerson(person)
   const canViewPrivateContactInfo = person.isMyContact || person.canEditContact
   const contactVenueLabel = sharedClubNames.join(', ') || 'Not shared yet'
   const detailTitle = isContactDetail ? 'Basic Info' : 'Profile Details'
@@ -906,7 +949,7 @@ function HoodPersonDrawer({
             key={badge}
             className={`text-label rounded-md border border-transparent px-2 py-0.5 ${sourceBadgeClass(badge)}`}
           >
-            {badge.toUpperCase()}
+            {getSourceBadgeLabel(badge).toUpperCase()}
           </span>
         ))}
     </>
@@ -1038,7 +1081,9 @@ function HoodPersonDrawer({
               <span className={isStarred ? 'text-[#EAB308]' : 'text-slate-300'}>
                 {isStarred ? '★' : '☆'}
               </span>
-              {isStarred ? 'Unstar contact' : 'Star contact'}
+              {isContactDetail
+                ? (isStarred ? 'Unstar contact' : 'Star contact')
+                : (isStarred ? 'Unsave player' : 'Save player')}
             </button>
           ) : null}
           <button
@@ -1075,7 +1120,7 @@ function HoodPersonDrawer({
       displayName={editingContact ? contactName : person.displayName}
       avatarUrl={person.avatarUrl}
       avatarFallback={isContactDetail ? 'contact' : 'initial'}
-      statusClassName={currentStatusDotClass}
+      statusClassName={isContactDetail ? null : currentStatusDotClass}
       headerBadges={headerBadges}
       level={getLevelLabel(activeSportProfile?.level) ?? activeSportProfile?.level ?? null}
       formatLabels={formatLabels}
@@ -1185,16 +1230,19 @@ function HoodCard({
   onInviteNew: (person: HoodPerson) => void
   pendingInviteMatchId: string | null
 }) {
-  const isContactCard = person.guestId !== null || person.isMyContact || person.canEditContact
+  const isContactCard = isContactModulePerson(person)
   const genderPill = formatGenderPill(person.gender)
   const sharedClubSet = new Set(myClubNames)
   const sharedClubNames = person.clubNames.filter((clubName) => sharedClubSet.has(clubName))
   const clubSummary = sharedClubNames.slice(0, 2).join(' · ')
+  const citySummary = person.cityNames.slice(0, 2).join(' · ')
   const levelLabel = formatCompactLevel(person.level)
   const currentStatusDotClass = getAvailabilityStatusDotClass(person.statusLabel)
   const shouldShowAvailabilityDot = !isContactCard
   const isStarred = isPersonStarred(person)
-  const starButtonLabel = isStarred ? 'Unstar player' : 'Star player'
+  const starButtonLabel = isContactCard
+    ? (isStarred ? 'Unstar contact' : 'Star contact')
+    : (isStarred ? 'Unsave player' : 'Save player')
 
   return (
     <article
@@ -1235,11 +1283,15 @@ function HoodCard({
                   </span>
                 ) : null}
               </div>
-              {(clubSummary || levelLabel || (shouldShowAvailabilityDot && currentStatusDotClass)) && (
+              {(clubSummary || citySummary || levelLabel || (shouldShowAvailabilityDot && currentStatusDotClass)) && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   {clubSummary ? (
                     <span className="text-body-sub truncate text-[#3B82F6]">
                       {clubSummary}
+                    </span>
+                  ) : citySummary ? (
+                    <span className="text-body-sub truncate text-[#3B82F6]">
+                      {citySummary}
                     </span>
                   ) : null}
                   {shouldShowAvailabilityDot && currentStatusDotClass ? (
@@ -1365,6 +1417,7 @@ export function HoodsPanel({
   myIdentities,
   sports,
   enabledSportIds,
+  myPlayCities,
   onRefreshDashboardLive,
   onParseScreenshots,
   onImportScreenshotContacts,
@@ -1391,7 +1444,12 @@ export function HoodsPanel({
   const [hoodFilter, setHoodFilter] = useState<HoodFilter>(persistedUiState?.hoodFilter ?? 'all')
   const [discoverSource, setDiscoverSource] = useState<DiscoverSource>(persistedUiState?.discoverSource ?? 'club_members')
   const [search, setSearch] = useState('')
+  const [searchPeopleInput, setSearchPeopleInput] = useState('')
+  const [submittedSearchPeopleQuery, setSubmittedSearchPeopleQuery] = useState('')
+  const [searchPeopleRequestKey, setSearchPeopleRequestKey] = useState(0)
+  const [selectedCity, setSelectedCity] = useState<string>(myPlayCities[0]?.city_name ?? '')
   const [contactToolsOpen, setContactToolsOpen] = useState(false)
+  const [inviteCircleRows, setInviteCircleRows] = useState<InviteCircleRow[]>(inviteCircle)
   const [supportData, setSupportData] = useState<SupportData>({
     contacts: [],
     contactsByGuestId: new Map(),
@@ -1402,14 +1460,20 @@ export function HoodsPanel({
     guestSportsByGuestId: new Map(),
   })
   const [clubDiscover, setClubDiscover] = useState<ClubDiscoverPerson[]>([])
-  const [clubDiscoverGroups, setClubDiscoverGroups] = useState<ClubDiscoverGroup[]>([])
+  const [cityDiscover, setCityDiscover] = useState<CityDiscoverPerson[]>([])
+  const [searchDiscover, setSearchDiscover] = useState<SearchDiscoverPerson[]>([])
   const [clubProfiles, setClubProfiles] = useState<Map<string, PublicPlayerProfile | null>>(new Map())
+  const [cityProfiles, setCityProfiles] = useState<Map<string, PublicPlayerProfile | null>>(new Map())
+  const [searchProfiles, setSearchProfiles] = useState<Map<string, PublicPlayerProfile | null>>(new Map())
   const [directInviteClubMemberIds, setDirectInviteClubMemberIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [refreshingSupportData, setRefreshingSupportData] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [clubDiscoverError, setClubDiscoverError] = useState<string | null>(null)
+  const [cityDiscoverError, setCityDiscoverError] = useState<string | null>(null)
+  const [searchDiscoverError, setSearchDiscoverError] = useState<string | null>(null)
+  const [searchDiscoverLoading, setSearchDiscoverLoading] = useState(false)
   const [activeDrawerKey, setActiveDrawerKey] = useState<string | null>(null)
   const [activeInviteKey, setActiveInviteKey] = useState<string | null>(null)
   const [activeMenuKey, setActiveMenuKey] = useState<string | null>(null)
@@ -1423,6 +1487,7 @@ export function HoodsPanel({
   const [contactPhone, setContactPhone] = useState('')
   const [contactGender, setContactGender] = useState<ContactGender>(null)
   const [creatingContact, setCreatingContact] = useState(false)
+  const [savedStateOverrides, setSavedStateOverrides] = useState<Record<string, boolean>>({})
   const hasLoadedSupportDataRef = useRef(false)
 
   useEffect(() => {
@@ -1509,6 +1574,15 @@ export function HoodsPanel({
     return 'No groups available yet.'
   }, [groupDialogPerson])
 
+  const applySavedOverride = useCallback((person: HoodPerson): HoodPerson => {
+    const override = savedStateOverrides[person.key]
+    if (override === undefined) return person
+    return {
+      ...person,
+      isSaved: override,
+    }
+  }, [savedStateOverrides])
+
   const loadSupportData = useCallback(async (options?: { foreground?: boolean }) => {
     const foreground = options?.foreground ?? !hasLoadedSupportDataRef.current
     if (foreground) {
@@ -1551,7 +1625,7 @@ export function HoodsPanel({
 
       const userIds = Array.from(
         new Set([
-          ...inviteCircle.map((row) => row.target_user_id),
+          ...inviteCircleRows.map((row) => row.target_user_id),
           ...groups.flatMap((group) => group.members.map((member) => member.userId)),
           ...contacts.map((contact) => contact.linked_user_id).filter((value): value is string => Boolean(value)),
           ...items.flatMap((item) =>
@@ -1601,11 +1675,25 @@ export function HoodsPanel({
         setRefreshingSupportData(false)
       }
     }
-  }, [groups, inviteCircle, items])
+  }, [groups, inviteCircleRows, items])
+
+  useEffect(() => {
+    setInviteCircleRows(inviteCircle)
+  }, [inviteCircle])
 
   useEffect(() => {
     void loadSupportData({ foreground: !hasLoadedSupportDataRef.current })
   }, [loadSupportData])
+
+  useEffect(() => {
+    if (myPlayCities.length === 0) {
+      setSelectedCity('')
+      return
+    }
+    if (!selectedCity || !myPlayCities.some((city) => city.city_name === selectedCity)) {
+      setSelectedCity(myPlayCities[0]?.city_name ?? '')
+    }
+  }, [myPlayCities, selectedCity])
 
   useEffect(() => {
     if (!selectedSport) return
@@ -1658,31 +1746,6 @@ export function HoodsPanel({
           fetchPublicPlayerProfiles(supabase, userIds),
           fetchUserSportsMap(supabase, userIds),
         ])
-        const candidateGroups = groups.filter(({ group, members }) =>
-          group.open_to_club_members
-          && group.venue_id != null
-          && venueIds.includes(group.venue_id)
-          && !members.some((member) => member.userId === userId)
-          && (group.primary_sport_id == null || group.primary_sport_id === selectedSport.id),
-        )
-
-        const nextDiscoverGroups = candidateGroups.reduce<ClubDiscoverGroup[]>((acc, { group, members }) => {
-            const venue = myIdentities.find((identity) => identity.venue_id === group.venue_id)?.venue
-            const clubName = venue ? getVenueDisplayName(venue) : null
-            if (!clubName) return acc
-
-            acc.push({
-              groupId: group.id,
-              name: group.name,
-              description: group.description ?? null,
-              primarySportId: group.primary_sport_id ?? null,
-              iconKey: group.icon_key ?? 'spark',
-              clubNames: [clubName],
-              memberCount: members.length,
-            })
-            return acc
-          }, [])
-
         if (cancelled) return
 
         setClubProfiles(profiles)
@@ -1693,13 +1756,11 @@ export function HoodsPanel({
             || (userSportsMap.get(person.userId) ?? []).includes(selectedSport.id),
           ),
         )
-        setClubDiscoverGroups(nextDiscoverGroups)
       } catch (clubError) {
         console.error('[hoods] club discover:', clubError)
         if (!cancelled) {
           setClubProfiles(new Map())
           setClubDiscover([])
-          setClubDiscoverGroups([])
           setDirectInviteClubMemberIds(new Set())
           setClubDiscoverError((clubError as Error).message || 'Failed to load club members.')
         }
@@ -1712,15 +1773,136 @@ export function HoodsPanel({
     }
   }, [groups, myIdentities, selectedSport, userId])
 
+  useEffect(() => {
+    if (!selectedSport || !selectedCity) {
+      setCityDiscover([])
+      setCityProfiles(new Map())
+      setCityDiscoverError(null)
+      return
+    }
+
+    const supabase = createSupabaseBrowserClient()
+    let cancelled = false
+
+    const loadCityDiscover = async () => {
+      try {
+        setCityDiscoverError(null)
+        const rows = await getCityPlayersDiscovery(supabase, selectedCity, null)
+        const userIds = rows.map((row) => row.user_id)
+        const [profiles, userSportsMap] = await Promise.all([
+          fetchPublicPlayerProfiles(supabase, userIds),
+          fetchUserSportsMap(supabase, userIds),
+        ])
+
+        if (cancelled) return
+
+        setCityProfiles(profiles)
+        setCityDiscover(
+          rows
+            .filter((row) => row.user_id !== userId)
+            .filter((row) =>
+              profileMatchesSport(profiles.get(row.user_id), selectedSport.id)
+              || (userSportsMap.get(row.user_id) ?? []).includes(selectedSport.id),
+            )
+            .map((row) => ({
+              userId: row.user_id,
+              displayName: normalizeDisplayName(row.display_name),
+              cityNames: row.shared_city_names,
+              isSaved: row.is_saved,
+            })),
+        )
+      } catch (cityError) {
+        console.error('[hoods] city discover:', cityError)
+        if (!cancelled) {
+          setCityDiscover([])
+          setCityProfiles(new Map())
+          setCityDiscoverError((cityError as Error).message || 'Failed to load city players.')
+        }
+      }
+    }
+
+    void loadCityDiscover()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCity, selectedSport, userId])
+
+  useEffect(() => {
+    if (discoverSource !== 'search_people') {
+      setSearchDiscover([])
+      setSearchProfiles(new Map())
+      setSearchDiscoverError(null)
+      setSearchDiscoverLoading(false)
+      return
+    }
+
+    const query = submittedSearchPeopleQuery.trim()
+    if (!query) {
+      setSearchDiscover([])
+      setSearchProfiles(new Map())
+      setSearchDiscoverError(null)
+      setSearchDiscoverLoading(false)
+      return
+    }
+
+    const supabase = createSupabaseBrowserClient()
+    let cancelled = false
+    setSearchDiscoverLoading(true)
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setSearchDiscoverError(null)
+          const rows = await searchPlayersByEmailOrPhone(supabase, query)
+          const userIds = rows.map((row) => row.user_id)
+          const [profiles, userSportsMap] = await Promise.all([
+            fetchPublicPlayerProfiles(supabase, userIds),
+            fetchUserSportsMap(supabase, userIds),
+          ])
+
+          if (cancelled) return
+
+          setSearchProfiles(profiles)
+          setSearchDiscover(
+            rows
+              .filter((row) =>
+                profileMatchesSport(profiles.get(row.user_id), selectedSport?.id ?? 0)
+                || (userSportsMap.get(row.user_id) ?? []).includes(selectedSport?.id ?? 0),
+              )
+              .map((row) => ({
+                userId: row.user_id,
+                displayName: normalizeDisplayName(row.display_name),
+                matchType: row.match_type,
+                isSaved: row.is_saved,
+              })),
+          )
+          setSearchDiscoverLoading(false)
+        } catch (searchError) {
+          console.error('[hoods] exact search:', searchError)
+          if (!cancelled) {
+            setSearchDiscover([])
+            setSearchProfiles(new Map())
+            setSearchDiscoverError((searchError as Error).message || 'Search is temporarily unavailable.')
+            setSearchDiscoverLoading(false)
+          }
+        }
+      })()
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [discoverSource, searchPeopleRequestKey, selectedSport, submittedSearchPeopleQuery])
+
   const combinedProfiles = useMemo(
-    () => new Map([...supportData.profilesByUserId, ...clubProfiles]),
-    [clubProfiles, supportData.profilesByUserId],
+    () => new Map([...supportData.profilesByUserId, ...clubProfiles, ...cityProfiles, ...searchProfiles]),
+    [cityProfiles, clubProfiles, searchProfiles, supportData.profilesByUserId],
   )
 
   const hoodPeople = useMemo(() => {
     if (!selectedSport) return [] as HoodPerson[]
     const map = new Map<string, MutablePerson>()
-    const savedUserIds = new Set(inviteCircle.map((row) => row.target_user_id))
+    const savedUserIds = new Set(inviteCircleRows.map((row) => row.target_user_id))
 
     for (const contact of supportData.contacts) {
       const lookup = supportData.guestLookupByGuestId.get(contact.guest_id)
@@ -1777,7 +1959,7 @@ export function HoodsPanel({
       }
     }
 
-    for (const row of inviteCircle) {
+    for (const row of inviteCircleRows) {
       const profile = combinedProfiles.get(row.target_user_id)
       if (!profileMatchesSport(profile, selectedSport.id)) continue
       if (row.target_user_id === userId) continue
@@ -1908,126 +2090,11 @@ export function HoodsPanel({
     }
 
     return finalizePeople(map)
-  }, [combinedProfiles, directInviteClubMemberIds, groups, inviteCircle, selectedSport, sportNameByIdAll, supportData, userId])
-
-  const hoodKeySet = useMemo(
-    () => new Set(hoodPeople.map((person) => toPersonMatchKey(person))),
-    [hoodPeople],
-  )
-
-  const playedWithPeople = useMemo(() => {
-    if (!selectedSport) return [] as HoodPerson[]
-    const map = new Map<string, MutablePerson>()
-    const nowIso = new Date().toISOString()
-
-    for (const item of items) {
-      if (item.match.sport_id !== selectedSport.id) continue
-      if (item.match.status === 'cancelled') continue
-      if (!isPastMatch(item, nowIso)) continue
-      if (!item.myParticipant || item.myParticipant.status !== 'confirmed') continue
-
-      for (const participant of item.participants) {
-        if (participant.id === item.myParticipant.id) continue
-        if (participant.status !== 'confirmed') continue
-
-        if (participant.user_id && participant.user_id !== userId) {
-          const profile = combinedProfiles.get(participant.user_id)
-          const sportProfile = getSportProfile(profile, selectedSport.id)
-          const key = buildCanonicalKey({ userId: participant.user_id })
-          const person = ensurePerson(map, {
-            key,
-            userId: participant.user_id,
-            displayName: normalizeDisplayName(profile?.display_name ?? participant.display_name),
-            avatarUrl: profile?.avatar_url ?? participant.avatar_url ?? null,
-            identityType: 'platform',
-            isPlayedWith: true,
-            gender: profile?.gender ?? null,
-            level: sportProfile?.level ?? null,
-            playType: sportProfile?.play_style ?? null,
-            statusLabel: formatStatusLabel(profile),
-            engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
-            preferredFormats: sportProfile?.preferred_formats ?? [],
-            sportLabel: selectedSport.display_name,
-            recentInteractionAt: item.match.start_at_utc ?? item.match.created_at,
-            sharedMatchCount: 0,
-            saveSourceMatchId: item.match.id,
-          })
-          person.isPlayedWith = true
-          person.sharedMatchCount += 1
-          person.sourceBadges.add('Played With')
-          person.recentInteractionAt = item.match.start_at_utc ?? item.match.created_at
-          const sharedVenueNames = profile?.shared_venue_names ?? []
-          if (directInviteClubMemberIds.has(participant.user_id)) {
-            person.isClubMember = true
-          }
-          for (const venueName of sharedVenueNames) {
-            person.clubNames.add(venueNameAliasMap.get(venueName) ?? venueName)
-          }
-          continue
-        }
-
-        if (!participant.guest_id) continue
-
-        const ownedContact = supportData.contactsByGuestId.get(participant.guest_id)
-        const linkedUserId = ownedContact?.linked_user_id ?? null
-        const linkedProfile = linkedUserId ? combinedProfiles.get(linkedUserId) : null
-        const lookup = supportData.guestLookupByGuestId.get(participant.guest_id)
-        const key = buildCanonicalKey({
-          linkedUserId,
-          userId: linkedUserId,
-          personId: lookup?.person_id ?? null,
-          guestId: participant.guest_id,
-        })
-        const sportProfile = getSportProfile(linkedProfile, selectedSport.id)
-        const person = ensurePerson(map, {
-          key,
-          userId: linkedUserId,
-          guestId: participant.guest_id,
-          personId: lookup?.person_id ?? null,
-          linkedUserId,
-          displayName: normalizeDisplayName(linkedProfile?.display_name ?? participant.display_name),
-          avatarUrl: linkedProfile?.avatar_url ?? null,
-          identityType: linkedUserId ? 'linked' : 'contact',
-          isPlayedWith: true,
-          isLinked: Boolean(linkedUserId),
-          isMyContact: Boolean(ownedContact),
-          isSaved: Boolean(lookup?.person_id && supportData.savedContactPersonIds.has(lookup.person_id)),
-          canEditContact: Boolean(ownedContact),
-          gender: linkedProfile?.gender ?? ownedContact?.gender ?? null,
-          level: sportProfile?.level ?? null,
-          playType: sportProfile?.play_style ?? null,
-          statusLabel: formatStatusLabel(linkedProfile, ownedContact ?? null),
-          engagedSports: linkedProfile
-            ? linkedProfile.sport_profiles.map((entry) => entry.sport_name)
-            : ((supportData.guestSportsByGuestId.get(participant.guest_id) ?? []).map((sportId) => sportNameByIdAll.get(sportId) ?? selectedSport.display_name)),
-          preferredFormats: sportProfile?.preferred_formats ?? [],
-          sportLabel: selectedSport.display_name,
-          recentInteractionAt: item.match.start_at_utc ?? item.match.created_at,
-          sharedMatchCount: 0,
-          saveSourceMatchId: item.match.id,
-        })
-        person.isPlayedWith = true
-        person.sharedMatchCount += 1
-        person.sourceBadges.add('Played With')
-        person.recentInteractionAt = item.match.start_at_utc ?? item.match.created_at
-        if (linkedUserId) person.sourceBadges.add('Linked')
-        if (ownedContact) person.sourceBadges.add('My Contact')
-        if (person.isSaved) person.sourceBadges.add('Starred')
-        const sharedVenueNames = linkedProfile?.shared_venue_names ?? []
-        if (linkedUserId && directInviteClubMemberIds.has(linkedUserId)) {
-          person.isClubMember = true
-        }
-        for (const venueName of sharedVenueNames) {
-          person.clubNames.add(venueNameAliasMap.get(venueName) ?? venueName)
-        }
-      }
-    }
-
-    return finalizePeople(map).filter((person) => !hoodKeySet.has(toPersonMatchKey(person)))
-  }, [combinedProfiles, directInviteClubMemberIds, hoodKeySet, items, selectedSport, sportNameByIdAll, supportData, userId])
+  }, [combinedProfiles, directInviteClubMemberIds, groups, inviteCircleRows, selectedSport, sportNameByIdAll, supportData, userId])
 
   const discoverPeople = useMemo(() => {
     if (!selectedSport) return [] as HoodPerson[]
+    const savedUserIds = new Set(inviteCircleRows.map((row) => row.target_user_id))
 
     if (discoverSource === 'club_members') {
       const map = new Map<string, MutablePerson>()
@@ -2043,6 +2110,7 @@ export function HoodsPanel({
           avatarUrl: profile?.avatar_url ?? null,
           identityType: 'platform',
           isClubMember: true,
+          isSaved: savedUserIds.has(clubMember.userId),
           gender: profile?.gender ?? null,
           level: sportProfile?.level ?? null,
           playType: sportProfile?.play_style ?? null,
@@ -2052,6 +2120,7 @@ export function HoodsPanel({
           sportLabel: selectedSport.display_name,
         })
         person.isClubMember = true
+        if (savedUserIds.has(clubMember.userId)) person.sourceBadges.add('Starred')
         for (const clubName of clubMember.clubNames) {
           person.clubNames.add(clubName)
         }
@@ -2059,8 +2128,65 @@ export function HoodsPanel({
       return finalizePeople(map)
     }
 
-    return playedWithPeople
-  }, [clubDiscover, combinedProfiles, directInviteClubMemberIds, discoverSource, hoodKeySet, playedWithPeople, selectedSport, userId])
+    if (discoverSource === 'city_players') {
+      const map = new Map<string, MutablePerson>()
+      for (const cityPlayer of cityDiscover) {
+        if (cityPlayer.userId === userId) continue
+        const profile = combinedProfiles.get(cityPlayer.userId)
+        const sportProfile = getSportProfile(profile, selectedSport.id)
+        const key = buildCanonicalKey({ userId: cityPlayer.userId })
+        const person = ensurePerson(map, {
+          key,
+          userId: cityPlayer.userId,
+          displayName: normalizeDisplayName(profile?.display_name ?? cityPlayer.displayName),
+          avatarUrl: profile?.avatar_url ?? null,
+          identityType: 'platform',
+          isSaved: savedUserIds.has(cityPlayer.userId) || cityPlayer.isSaved,
+          gender: profile?.gender ?? null,
+          level: sportProfile?.level ?? null,
+          playType: sportProfile?.play_style ?? null,
+          statusLabel: formatStatusLabel(profile),
+          engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
+          preferredFormats: sportProfile?.preferred_formats ?? [],
+          sportLabel: selectedSport.display_name,
+        })
+        if (savedUserIds.has(cityPlayer.userId) || cityPlayer.isSaved) person.sourceBadges.add('Starred')
+        for (const cityName of cityPlayer.cityNames) {
+          person.cityNames.add(cityName)
+        }
+      }
+      return finalizePeople(map)
+    }
+
+    if (discoverSource === 'search_people') {
+      const map = new Map<string, MutablePerson>()
+      for (const result of searchDiscover) {
+        if (result.userId === userId) continue
+        const profile = combinedProfiles.get(result.userId)
+        const sportProfile = getSportProfile(profile, selectedSport.id)
+        const key = buildCanonicalKey({ userId: result.userId })
+        const person = ensurePerson(map, {
+          key,
+          userId: result.userId,
+          displayName: normalizeDisplayName(profile?.display_name ?? result.displayName),
+          avatarUrl: profile?.avatar_url ?? null,
+          identityType: 'platform',
+          isSaved: savedUserIds.has(result.userId) || result.isSaved,
+          gender: profile?.gender ?? null,
+          level: sportProfile?.level ?? null,
+          playType: sportProfile?.play_style ?? null,
+          statusLabel: formatStatusLabel(profile),
+          engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
+          preferredFormats: sportProfile?.preferred_formats ?? [],
+          sportLabel: selectedSport.display_name,
+        })
+        if (savedUserIds.has(result.userId) || result.isSaved) person.sourceBadges.add('Starred')
+      }
+      return finalizePeople(map)
+    }
+
+    return [] as HoodPerson[]
+  }, [cityDiscover, clubDiscover, combinedProfiles, discoverSource, inviteCircleRows, searchDiscover, selectedSport, userId])
 
   const openMatches = useMemo(() => {
     if (!selectedSport) return [] as MatchListItem[]
@@ -2142,6 +2268,7 @@ export function HoodsPanel({
           person.displayName,
           person.groupNames.join(' '),
           person.clubNames.join(' '),
+          person.cityNames.join(' '),
           person.sourceBadges.join(' '),
         ]
           .join(' ')
@@ -2152,6 +2279,9 @@ export function HoodsPanel({
   }, [hoodFilter, hoodPeople, openMatchCount, search])
 
   const filteredDiscoverPeople = useMemo(() => {
+    if (discoverSource === 'search_people') {
+      return [...discoverPeople].sort(sortDiscoverPeople)
+    }
     const query = search.trim().toLowerCase()
     return discoverPeople
       .filter((person) => {
@@ -2159,6 +2289,7 @@ export function HoodsPanel({
         return [
           person.displayName,
           person.clubNames.join(' '),
+          person.cityNames.join(' '),
           person.sourceBadges.join(' '),
         ]
           .join(' ')
@@ -2166,36 +2297,15 @@ export function HoodsPanel({
           .includes(query)
       })
       .sort(sortDiscoverPeople)
-  }, [discoverPeople, search])
+  }, [discoverPeople, discoverSource, search])
 
-  const sportNameById = useMemo(
-    () => new Map(sports.map((sport) => [sport.id, sport.display_name])),
-    [sports],
-  )
+  const activeDrawerPerson = useMemo(() => {
+    const person = [...hoodPeople, ...discoverPeople].find((entry) => entry.key === activeDrawerKey) ?? null
+    return person ? applySavedOverride(person) : null
+  }, [activeDrawerKey, applySavedOverride, discoverPeople, hoodPeople])
 
-  const filteredDiscoverGroups = useMemo(() => {
-    if (section !== 'discover' || discoverSource !== 'club_members') return [] as ClubDiscoverGroup[]
-    const query = search.trim().toLowerCase()
-    return clubDiscoverGroups
-      .filter((group) => {
-        if (!query) return true
-        return [
-          group.name,
-          group.description ?? '',
-          group.clubNames.join(' '),
-          group.primarySportId ? sportNameById.get(group.primarySportId) ?? '' : '',
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(query)
-      })
-      .sort((left, right) => left.name.localeCompare(right.name))
-  }, [clubDiscoverGroups, discoverSource, search, section, sportNameById])
-
-  const activeDrawerPerson = useMemo(
-    () => [...hoodPeople, ...discoverPeople].find((person) => person.key === activeDrawerKey) ?? null,
-    [activeDrawerKey, discoverPeople, hoodPeople],
-  )
+  const hasSubmittedSearchPeople = submittedSearchPeopleQuery.trim().length > 0
+  const showSearchPeoplePanel = section === 'discover' && discoverSource === 'search_people'
 
   const navigateToNewMatch = useCallback((person?: HoodPerson | null) => {
     if (!selectedSport) return
@@ -2209,12 +2319,18 @@ export function HoodsPanel({
 
   const handleSaveToggle = useCallback(async (person: HoodPerson) => {
     const supabase = createSupabaseBrowserClient()
+    const originalSavedState = person.isSaved
+    const nextSavedState = !originalSavedState
     setError(null)
     setMessage(null)
+    setSavedStateOverrides((current) => ({
+      ...current,
+      [person.key]: nextSavedState,
+    }))
     try {
       if (person.isSaved && person.userId) {
         await removeFromInviteCircle(supabase, person.userId)
-        setMessage(`${person.displayName} was removed from Starred.`)
+        setMessage(`${person.displayName} was removed from Saved.`)
       } else if (person.isSaved && person.personId) {
         const { error: removeError } = await supabase
           .from('person_relationships')
@@ -2223,10 +2339,10 @@ export function HoodsPanel({
           .eq('person_id', person.personId)
           .eq('relationship_type', 'saved')
         if (removeError) throw removeError
-        setMessage(`${person.displayName} was removed from Starred.`)
+        setMessage(`${person.displayName} was removed from Saved.`)
       } else if (person.userId) {
         await saveToInviteCircle(supabase, person.userId, person.isPlayedWith ? 'played_with_auto' : 'manual')
-        setMessage(`${person.displayName} is now starred.`)
+        setMessage(`${person.displayName} is now saved.`)
       } else if (person.guestId) {
         await saveContactPlayer(supabase, person.guestId, {
           source: person.saveSourceGroupId ? 'group_contact' : person.saveSourceMatchId ? 'shared_match' : 'manual',
@@ -2235,8 +2351,16 @@ export function HoodsPanel({
         })
         setMessage(`${person.displayName} is now starred.`)
       }
+      if (person.userId) {
+        const nextInviteCircleRows = await getInviteCircleList(supabase)
+        setInviteCircleRows(nextInviteCircleRows)
+      }
       await loadSupportData()
     } catch (saveError) {
+      setSavedStateOverrides((current) => ({
+        ...current,
+        [person.key]: originalSavedState,
+      }))
       setError((saveError as Error).message)
     }
   }, [loadSupportData])
@@ -2336,6 +2460,23 @@ export function HoodsPanel({
     }
   }, [contactDisplayName, contactEmail, contactGender, contactPhone, loadSupportData, selectedSport])
 
+  const handleSearchPeopleSubmit = useCallback((event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setMessage(null)
+    setError(null)
+    setSearchDiscoverError(null)
+    const normalizedQuery = searchPeopleInput.trim()
+    if (!normalizedQuery) {
+      setSubmittedSearchPeopleQuery('')
+      setSearchDiscover([])
+      setSearchProfiles(new Map())
+      setSearchDiscoverLoading(false)
+      return
+    }
+    setSubmittedSearchPeopleQuery(normalizedQuery)
+    setSearchPeopleRequestKey((current) => current + 1)
+  }, [searchPeopleInput])
+
   const handleUpdateContact = useCallback(async (input: {
     guest_id: string
     display_name: string
@@ -2401,8 +2542,11 @@ export function HoodsPanel({
     )
   }
 
-  const activePeople = section === 'discover' ? filteredDiscoverPeople : filteredHoodPeople
-  const showAddContactButton = section === 'hood' && (hoodFilter === 'all' || hoodFilter === 'saved')
+  const activePeople = useMemo(
+    () => (section === 'discover' ? filteredDiscoverPeople : filteredHoodPeople).map(applySavedOverride),
+    [applySavedOverride, filteredDiscoverPeople, filteredHoodPeople, section],
+  )
+  const showAddContactButton = section === 'hood' && hoodFilter === 'contacts'
   const showContactTools = showAddContactButton && contactToolsOpen
   return (
     <div className="space-y-5">
@@ -2444,13 +2588,20 @@ export function HoodsPanel({
           </button>
         </div>
 
+        {section === 'discover' ? (
+          <p className="mt-3 text-body-sub text-[#64748B]">
+            Discover players. Save them to your Hood. Invite them to play.
+          </p>
+        ) : null}
+
         <div className="mt-3 flex flex-wrap items-center gap-2 md:gap-3">
           <div className="flex flex-wrap gap-2">
             {section === 'hood'
               ? ([
                   ['all', 'All'],
-                  ['saved', 'Starred'],
-                  ['group', 'From Group'],
+                  ['saved', 'Saved'],
+                  ['group', 'From Groups'],
+                  ['contacts', 'Contacts'],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
@@ -2471,7 +2622,8 @@ export function HoodsPanel({
                 ))
               : ([
                   ['club_members', 'Club Members'],
-                  ['played_with', 'Played With'],
+                  ['city_players', 'City Players'],
+                  ['search_people', 'Search People'],
                 ] as const).map(([value, label]) => (
                 <button
                   key={value}
@@ -2492,14 +2644,51 @@ export function HoodsPanel({
                 ))}
           </div>
 
-          <input
-            type="text"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={section === 'discover' && discoverSource === 'club_members' ? 'Search people or groups' : 'Search people'}
-            className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
-          />
+          {!showSearchPeoplePanel ? (
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={
+                section === 'discover'
+                  ? 'Search people'
+                  : hoodFilter === 'contacts'
+                    ? 'Search contacts'
+                    : 'Search people'
+              }
+              className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
+            />
+          ) : null}
         </div>
+
+        {section === 'discover' && discoverSource === 'city_players' ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {myPlayCities.length === 0 ? (
+              <span className="text-body-sub text-[#94A3B8]">
+                Add play cities in My Profile to use City Players discovery.
+              </span>
+            ) : (
+              myPlayCities.map((city) => (
+                <button
+                  key={city.id}
+                  type="button"
+                  onClick={() => {
+                    clearMessage()
+                    setSelectedCity(city.city_name)
+                  }}
+                  className={[
+                    'text-body-sub rounded-full px-3 py-1.5 transition',
+                    selectedCity === city.city_name
+                      ? 'bg-[#1E293B] text-white'
+                      : 'bg-[#F0F7FF] text-[#475569] hover:bg-[#E8F1FB]',
+                  ].join(' ')}
+                >
+                  {city.city_name}
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
       </div>
 
       {message && (
@@ -2517,9 +2706,48 @@ export function HoodsPanel({
           Club Members discovery is temporarily unavailable: {clubDiscoverError}
         </div>
       )}
+      {!error && cityDiscoverError && section === 'discover' && discoverSource === 'city_players' && (
+        <div className="text-body-main rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+          City Players discovery is temporarily unavailable: {cityDiscoverError}
+        </div>
+      )}
+      {!error && searchDiscoverError && section === 'discover' && discoverSource === 'search_people' && (
+        <div className="text-body-main rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+          Search People is temporarily unavailable: {searchDiscoverError}
+        </div>
+      )}
       {refreshingSupportData && !loading ? (
         <div className="text-body-sub rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-500">
           Updating hood...
+        </div>
+      ) : null}
+
+      {showSearchPeoplePanel ? (
+        <div className="rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
+          <div className="flex flex-col gap-4">
+            <div>
+              <h3 className="text-h2 text-[#1E293B]">Find a registered player</h3>
+              <p className="text-body-sub mt-1 text-[#64748B]">
+                Only registered players who allow email/phone lookup can be found.
+              </p>
+            </div>
+            <form onSubmit={handleSearchPeopleSubmit} className="flex flex-col gap-3 sm:flex-row">
+              <input
+                type="text"
+                value={searchPeopleInput}
+                onChange={(event) => setSearchPeopleInput(event.target.value)}
+                placeholder="Enter exact email or phone"
+                className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
+              />
+              <button
+                type="submit"
+                disabled={searchDiscoverLoading || searchPeopleInput.trim().length === 0}
+                className="text-body-main rounded-full bg-[#1E293B] px-5 py-2.5 font-semibold text-white transition hover:bg-[#334155] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {searchDiscoverLoading ? 'Searching...' : 'Search'}
+              </button>
+            </form>
+          </div>
         </div>
       ) : null}
 
@@ -2673,7 +2901,22 @@ export function HoodsPanel({
         <div className="text-body-main rounded-[28px] border border-slate-200 bg-white p-6 text-slate-500">
           Loading hood...
         </div>
-      ) : activePeople.length === 0 && filteredDiscoverGroups.length === 0 ? (
+      ) : showSearchPeoplePanel && searchDiscoverLoading ? (
+        <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
+          Looking for a matching registered player…
+        </div>
+      ) : showSearchPeoplePanel && !hasSubmittedSearchPeople ? (
+        <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
+          Search by exact email or phone to find a registered player you already know.
+        </div>
+      ) : showSearchPeoplePanel && hasSubmittedSearchPeople && activePeople.length === 0 ? (
+        <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
+          <p>No available player found for this search.</p>
+          <p className="mt-2 text-body-sub text-slate-400">
+            Check the email or phone number, or ask the player to enable email/phone lookup in their discovery settings.
+          </p>
+        </div>
+      ) : activePeople.length === 0 ? (
         <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
           {getPeopleEmptyState(section, hoodFilter, discoverSource, selectedSport.display_name)}
         </div>
@@ -2712,46 +2955,6 @@ export function HoodsPanel({
             </div>
           ) : null}
 
-          {section === 'discover' && discoverSource === 'club_members' && filteredDiscoverGroups.length > 0 ? (
-            <section className="rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
-              <div className="mb-4">
-                <div className="text-label text-[#94A3B8]">Groups</div>
-                <p className="text-body-sub mt-1 text-[#64748B]">Open groups people from your club can discover.</p>
-              </div>
-              <div className="space-y-3">
-                {filteredDiscoverGroups.map((group) => {
-                  const icon = getGroupIconMeta(group.iconKey)
-                  const sportName = group.primarySportId ? sportNameById.get(group.primarySportId) ?? 'Shared Group' : 'Shared Group'
-                  const preview = group.description?.trim() || `Open to ${group.clubNames.join(', ')}.`
-                  return (
-                    <button
-                      key={group.groupId}
-                      type="button"
-                      onClick={() => router.push(`/groups/${group.groupId}`)}
-                      className="flex w-full items-center gap-4 rounded-[22px] border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4 text-left transition hover:border-[#C25E46]/35 hover:bg-white"
-                    >
-                      <div className="flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#EEF2F7] bg-white text-[22px] shadow-[0_10px_24px_-22px_rgba(30,41,59,0.25)]">
-                        {icon.emoji}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-h2 truncate text-[#1E293B]">{group.name}</div>
-                          <span className="text-label rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[#C25E46]">
-                            {sportName}
-                          </span>
-                        </div>
-                        <div className="text-body-sub mt-1 text-[#64748B]">{preview}</div>
-                        <div className="text-body-sub mt-2 text-[#94A3B8]">{group.clubNames.join(' · ')}</div>
-                      </div>
-                      <div className="text-body-sub shrink-0 rounded-[10px] bg-white px-2 py-1 font-bold text-[#94A3B8]">
-                        {group.memberCount}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </section>
-          ) : null}
         </div>
       )}
 

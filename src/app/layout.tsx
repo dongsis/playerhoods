@@ -3,6 +3,7 @@ import { maskEmail } from '@/lib/auth-ui'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import type { Profile } from '@/lib/types/database'
 import { ChunkRecovery } from '@/app/components/ChunkRecovery'
+import { SiteFooterLinks } from '@/app/components/SiteFooterLinks'
 import './globals.css'
 
 const chunkRecoveryScript = `
@@ -66,9 +67,13 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
-      <body className="font-sans bg-[#F0F7FF] text-[#1E293B]">
+      <body className="min-h-screen font-sans bg-[#F0F7FF] text-[#1E293B]">
         <script dangerouslySetInnerHTML={{ __html: chunkRecoveryScript }} />
         <ChunkRecovery />
+        <div className="flex min-h-screen flex-col">
+          <main className="flex-1">{children}</main>
+          <SiteFooterLinks />
+        </div>
         {user && (
           <div
             style={{
@@ -89,7 +94,6 @@ export default async function RootLayout({
             {displayLabel}
           </div>
         )}
-        {children}
       </body>
     </html>
   )
