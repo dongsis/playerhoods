@@ -7,6 +7,7 @@ const RELOAD_FLAG = 'ph_build_refresh_once'
 export function BuildRefreshGuard({ buildId }: { buildId: string }) {
   const [needsRefresh, setNeedsRefresh] = useState(false)
   const refreshingRef = useRef(false)
+  const hasCheckedRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -47,16 +48,16 @@ export function BuildRefreshGuard({ buildId }: { buildId: string }) {
         void checkBuildVersion()
       }
     }
-
-    const interval = window.setInterval(() => {
+    
+    if (!hasCheckedRef.current) {
+      hasCheckedRef.current = true
       void checkBuildVersion()
-    }, 45000)
+    }
 
     document.addEventListener('visibilitychange', onVisible)
 
     return () => {
       cancelled = true
-      window.clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [buildId])
