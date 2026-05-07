@@ -32,7 +32,7 @@ if (Test-Path $stdout) { Remove-Item $stdout -Force }
 if (Test-Path $stderr) { Remove-Item $stderr -Force }
 
 Start-Process -FilePath cmd.exe `
-  -ArgumentList '/c', 'set NODE_ENV=production&& set NEXT_DIST_DIR=.next&& npm run start > .next-start.out 2> .next-start.err' `
+  -ArgumentList '/c', 'set NODE_ENV=production&& set NEXT_DIST_DIR=.next&& npm.cmd run start > .next-start.out 2> .next-start.err' `
   -WorkingDirectory $root `
   -WindowStyle Hidden
 

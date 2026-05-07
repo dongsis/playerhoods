@@ -14,7 +14,7 @@ foreach ($dir in $distDirs) {
 
 New-Item -ItemType Directory -Force -Path '.next\server' | Out-Null
 
-npm run build
+npm.cmd run build
 if ($LASTEXITCODE -ne 0) {
   throw "Build failed with exit code $LASTEXITCODE"
 }
