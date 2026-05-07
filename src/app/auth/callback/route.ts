@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import type { EmailOtpType } from '@supabase/supabase-js'
 import { sanitizeNextPath } from '@/lib/auth-ui'
 
 function buildLoginRedirect(requestUrl: URL, notice?: string) {
@@ -16,20 +17,67 @@ function buildClientOAuthRedirect(requestUrl: URL, next: string, code: string) {
   return loginUrl
 }
 
+function buildRedirectWithNotice(target: URL, notice?: string) {
+  if (notice) {
+    target.searchParams.set('notice', notice)
+  }
+  return target
+}
+
+function copyCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie)
+  })
+}
+
+function buildPostAuthRedirect({
+  requestUrl,
+  next,
+  notice,
+  onboardingCompleted,
+  onboardingProfileCompleted,
+}: {
+  requestUrl: URL
+  next: string
+  notice?: string
+  onboardingCompleted: boolean
+  onboardingProfileCompleted: boolean
+}) {
+  if (!onboardingCompleted) {
+    if (onboardingProfileCompleted) {
+      const nextStepsUrl = new URL('/onboarding/next-steps', requestUrl.origin)
+      nextStepsUrl.searchParams.set('next', next)
+      if (notice) nextStepsUrl.searchParams.set('notice', notice)
+      return nextStepsUrl
+    }
+
+    const onboardingUrl = new URL('/onboarding/profile', requestUrl.origin)
+    onboardingUrl.searchParams.set('next', next)
+    if (notice) onboardingUrl.searchParams.set('notice', notice)
+    return onboardingUrl
+  }
+
+  return buildRedirectWithNotice(new URL(next, requestUrl.origin), notice)
+}
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
+  const tokenHash = requestUrl.searchParams.get('token_hash')
   const type = requestUrl.searchParams.get('type')
+  const otpType = type as EmailOtpType | null
   const defaultNext = type === 'recovery' ? '/reset-password' : '/dashboard'
   const next = sanitizeNextPath(requestUrl.searchParams.get('next'), defaultNext)
   const providerError = requestUrl.searchParams.get('error')
+  const isRecoveryFlow = type === 'recovery'
+  const isEmailVerificationFlow = !isRecoveryFlow && (type === 'signup' || type === 'email' || type === 'magiclink')
 
   if (providerError) {
     console.error('[auth:callback]', providerError, requestUrl.searchParams.get('error_description'))
     return NextResponse.redirect(buildLoginRedirect(requestUrl, 'reset-link-invalid'))
   }
 
-  if (!code) {
+  if (!code && !tokenHash) {
     if (next === '/reset-password') {
       return NextResponse.redirect(buildLoginRedirect(requestUrl, 'reset-link-invalid'))
     }
@@ -37,8 +85,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const redirectUrl = new URL(next, requestUrl.origin)
-    const response = NextResponse.redirect(redirectUrl)
+    const initialRedirectUrl = new URL(next, requestUrl.origin)
+    const response = NextResponse.redirect(initialRedirectUrl)
     const serverUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
 
     const supabase = createServerClient(
@@ -58,10 +106,20 @@ export async function GET(request: NextRequest) {
       },
     )
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    const authResult = code
+      ? await supabase.auth.exchangeCodeForSession(code)
+      : tokenHash && otpType
+        ? await supabase.auth.verifyOtp({
+          type: otpType,
+          token_hash: tokenHash,
+        })
+        : { error: new Error('auth_callback_payload_missing') }
+
+    const { error } = authResult
     if (error) {
       console.error('[auth:callback]', error)
-      if (error.code === 'pkce_code_verifier_not_found' && next !== '/reset-password') {
+      const errorCode = 'code' in error && typeof error.code === 'string' ? error.code : null
+      if (errorCode === 'pkce_code_verifier_not_found' && code && next !== '/reset-password') {
         return NextResponse.redirect(buildClientOAuthRedirect(requestUrl, next, code))
       }
       if (next === '/reset-password') {
@@ -70,7 +128,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(buildLoginRedirect(requestUrl))
     }
 
-    return response
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    let redirectUrl = new URL(next, requestUrl.origin)
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_completed, onboarding_profile_completed')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      redirectUrl = buildPostAuthRedirect({
+        requestUrl,
+        next,
+        notice: isEmailVerificationFlow ? 'email-verified' : undefined,
+        onboardingCompleted: Boolean(profile?.onboarding_completed),
+        onboardingProfileCompleted: Boolean(profile?.onboarding_profile_completed),
+      })
+    }
+
+    const finalResponse = NextResponse.redirect(redirectUrl)
+    copyCookies(response, finalResponse)
+    return finalResponse
   } catch (err) {
     console.error('[auth:callback]', err)
     if (next === '/reset-password') {

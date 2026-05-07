@@ -1725,9 +1725,9 @@ export function ProfilePanel({
             </span>
           </div>
 
-          <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
             {sortedJoinedIdentities.length === 0 && sortedPublicVenuePrefs.length === 0 ? (
-              <div className="text-body-main rounded-[24px] border-2 border-dashed border-slate-200 bg-white px-5 py-10 text-center text-slate-400">
+              <div className="text-body-main rounded-[24px] border-2 border-dashed border-slate-200 bg-white px-5 py-10 text-center text-slate-400 md:col-span-2">
                 No venues saved yet.
               </div>
             ) : (
@@ -1738,7 +1738,7 @@ export function ProfilePanel({
                   return (
                     <div
                       key={identity.id}
-                      className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
+                      className="flex h-full items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 overflow-hidden">
@@ -1813,7 +1813,7 @@ export function ProfilePanel({
                   return (
                     <div
                       key={venue.id}
-                      className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
+                      className="flex h-full items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 overflow-hidden">
@@ -2488,9 +2488,9 @@ export function ProfilePanel({
                 <span className="text-label text-slate-400">{sortedJoinedIdentities.length + sortedPublicVenuePrefs.length} saved</span>
               </div>
 
-              <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
                 {sortedJoinedIdentities.length === 0 && sortedPublicVenuePrefs.length === 0 ? (
-                  <div className="text-body-main rounded-[24px] border-2 border-dashed border-slate-200 bg-white px-5 py-10 text-center text-slate-400">
+                  <div className="text-body-main rounded-[24px] border-2 border-dashed border-slate-200 bg-white px-5 py-10 text-center text-slate-400 md:col-span-2">
                     No venues saved yet.
                   </div>
                 ) : (
@@ -2501,7 +2501,7 @@ export function ProfilePanel({
                       return (
                         <div
                           key={identity.id}
-                          className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
+                          className="flex h-full items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2 overflow-hidden">
@@ -2576,7 +2576,7 @@ export function ProfilePanel({
                       return (
                         <div
                           key={venue.id}
-                          className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
+                          className="flex h-full items-center justify-between gap-4 rounded-[24px] border border-slate-200/70 bg-white p-4 shadow-[0_12px_30px_-30px_rgba(15,23,42,0.18)] transition hover:border-slate-300"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2 overflow-hidden">

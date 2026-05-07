@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import type { IdentityLinkCandidate } from '@/lib/types/database'
 
 type Props = {
@@ -26,6 +27,7 @@ export function IdentityLinkReviewCard({
   emptyStateLabel = 'No pending identity links.',
   className = '',
 }: Props) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [activeGuestId, setActiveGuestId] = useState<string | null>(null)
@@ -47,6 +49,7 @@ export function IdentityLinkReviewCard({
         } else {
           await onKeepSeparate(guestId)
         }
+        router.refresh()
       } catch (nextError) {
         const message =
           nextError && typeof nextError === 'object' && 'message' in nextError && typeof (nextError as { message?: unknown }).message === 'string'

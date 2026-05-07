@@ -34,13 +34,19 @@ import { DashboardPageView } from './DashboardPageView'
 import { loadDashboardPageData } from './dashboard.loader'
 import { buildDashboardPageViewModel } from './dashboard.view-model'
 
-export default async function DashboardPage() {
+interface Props {
+  searchParams: Promise<{ notice?: string }>
+}
+
+export default async function DashboardPage({ searchParams }: Props) {
   const loaderData = await loadDashboardPageData()
   const viewModel = buildDashboardPageViewModel(loaderData)
+  const { notice } = await searchParams
 
   return (
     <DashboardPageView
       viewModel={viewModel}
+      notice={notice ?? null}
       onUpdateProfile={updateDashboardProfileAction}
       onAcceptIdentityLink={acceptDashboardIdentityLinkAction}
       onKeepSeparateIdentityLink={keepSeparateDashboardIdentityLinkAction}

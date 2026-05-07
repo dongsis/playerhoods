@@ -352,7 +352,49 @@ export async function getMyParticipation(supabase: Client, matchId: string, user
   return data as MatchParticipant | null
 }
 
-export async function getVenues(supabase: Client) {
+export async function getVenues(
+  supabase: Client,
+  options?: {
+    relatedOnly?: boolean
+  },
+) {
+  if (options?.relatedOnly) {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError) throw userError
+    if (!user) return [] as Venue[]
+
+    const { data: relationshipRows, error: relationshipError } = await supabase
+      .from('venue_user_relationships')
+      .select('venue_id, relationship_type')
+      .eq('user_id', user.id)
+      .in('relationship_type', ['member', 'starred'])
+
+    if (relationshipError) throw relationshipError
+
+    const venueIds = [
+      ...new Set(
+        ((relationshipRows ?? []) as Array<{ venue_id: string; relationship_type: 'member' | 'starred' }>)
+          .map((row) => row.venue_id)
+          .filter(Boolean),
+      ),
+    ]
+
+    if (venueIds.length === 0) return [] as Venue[]
+
+    const { data, error } = await supabase
+      .from('venues')
+      .select('*')
+      .in('id', venueIds)
+      .order('name', { ascending: true })
+
+    if (error) throw error
+    return data as Venue[]
+  }
+
   const { data, error } = await supabase
     .from('venues')
     .select('*')

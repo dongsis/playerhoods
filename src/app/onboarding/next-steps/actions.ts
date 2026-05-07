@@ -49,3 +49,26 @@ export async function keepSeparateOnboardingIdentityLinkAction(guestId: string) 
   revalidatePath('/onboarding/next-steps')
   revalidatePath('/profile')
 }
+
+export async function completeOnboardingNextStepAction() {
+  const user = await getUser()
+  if (!user) {
+    throw new Error('Please log in again.')
+  }
+
+  const supabase = await createSupabaseServerClient()
+  const { error } = await supabase
+    .from('profiles')
+    .update({ onboarding_completed: true })
+    .eq('id', user.id)
+    .eq('onboarding_profile_completed', true)
+
+  if (error) {
+    throw error
+  }
+
+  revalidatePath('/dashboard')
+  revalidatePath('/onboarding/profile')
+  revalidatePath('/onboarding/next-steps')
+  revalidatePath('/profile')
+}

@@ -1490,7 +1490,7 @@ export function CreateMatchInline({
         setGroupMembersById(Object.fromEntries(memberEntries))
       })
       .catch(console.error)
-    getVenues(supabase).then(setVenues).catch(console.error)
+    getVenues(supabase, { relatedOnly: true }).then(setVenues).catch(console.error)
     listSports(supabase).then(setSports).catch(console.error)
   }, [])
 

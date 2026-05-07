@@ -5,14 +5,14 @@ import type { Profile, Venue } from '@/lib/types/database'
 import { ProfileForm } from './ProfileForm'
 
 interface Props {
-  searchParams: Promise<{ next?: string }>
+  searchParams: Promise<{ next?: string; notice?: string }>
 }
 
 export default async function OnboardingProfilePage({ searchParams }: Props) {
   const user = await getUser()
   if (!user) redirect('/login')
 
-  const { next } = await searchParams
+  const { next, notice } = await searchParams
   const supabase = await createSupabaseServerClient()
 
   const [{ data: profile }, sportsResult, venuesResult] = await Promise.all([
@@ -53,6 +53,11 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
         </div>
 
         <div className="px-8 py-8">
+          {notice === 'email-verified' ? (
+            <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
+              Email verified. Welcome to PlayerHoods.
+            </div>
+          ) : null}
           <ProfileForm
             existing={(profile as Profile | null) ?? null}
             next={next || '/dashboard'}

@@ -6,6 +6,7 @@ import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { InviteCircleRow } from '@/lib/api/play-network'
 import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { LeftNav, NavIcon, type DashTab } from './LeftNav'
 import { InboxPanel } from './InboxPanel'
 import { MatchesPanel } from './MatchesPanel'
@@ -23,6 +24,7 @@ import type { DashboardPreferenceSaveResult } from './dashboard.actions'
 interface Props {
   userId: string
   items: MatchListItem[]
+  notice?: string | null
   userEmail?: string | null
   playersData: PlayersData
   inviteCircle: InviteCircleRow[]
@@ -192,6 +194,7 @@ function MobileBottomNav({
 export function DashboardShell({
   userId,
   items,
+  notice,
   userEmail,
   inboxUnreadCount,
   playersData,
@@ -441,6 +444,22 @@ export function DashboardShell({
 
       {/* Main content */}
       <main className={`flex-1 px-4 pb-28 pt-4 md:px-6 md:py-8 ${shouldLeftAlignMain ? '' : `${mainWidthClass} mx-auto`}`}>
+        {notice === 'email-verified' ? (
+          <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
+            Email verified. Welcome to PlayerHoods.
+          </div>
+        ) : null}
+        {identityLinkCandidates.length > 0 && activeTab !== 'profile' ? (
+          <div className="mb-6">
+            <IdentityLinkReviewCard
+              title="We found invitations for you"
+              body="These records match your verified email. Link them to your account so your previous invitations and matches show up correctly."
+              candidates={identityLinkCandidates}
+              onAccept={onAcceptIdentityLink}
+              onKeepSeparate={onKeepSeparateIdentityLink}
+            />
+          </div>
+        ) : null}
         {activeTab === 'inbox' && (
           <InboxPanel onUnreadChange={setInboxBadge} />
         )}

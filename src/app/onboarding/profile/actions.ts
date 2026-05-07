@@ -36,6 +36,8 @@ function mapOnboardingError(error: unknown) {
       return 'One of the selected venues could not be found.'
     case 'club_city_mismatch':
       return 'One of the selected venues does not match your chosen play cities.'
+    case 'relationship_not_allowed_for_venue_kind':
+      return 'One of the selected venues can be saved, but not joined as a club membership.'
     case 'not_authenticated':
       return 'Please log in again.'
     default:

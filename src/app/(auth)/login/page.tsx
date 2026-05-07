@@ -12,7 +12,7 @@ import {
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 type Mode = 'login' | 'register' | 'forgot'
-type NoticeKey = 'password-updated' | 'reset-link-invalid' | null
+type NoticeKey = 'password-updated' | 'reset-link-invalid' | 'email-verified' | null
 
 export default function LoginPage() {
   const searchParams = useSearchParams()
@@ -21,7 +21,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [registerLegalAccepted, setRegisterLegalAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [authSettling, setAuthSettling] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -69,6 +68,13 @@ export default function LoginPage() {
       setMode('forgot')
       setInfo(null)
       setError('That reset link is invalid or has expired. Please request a new one.')
+      return
+    }
+
+    if (notice === 'email-verified') {
+      setMode('login')
+      setError(null)
+      setInfo('Email verified. Welcome to PlayerHoods.')
     }
   }, [searchParams])
 
@@ -184,11 +190,6 @@ export default function LoginPage() {
     setError(null)
     setInfo(null)
 
-    if (targetMode === 'register' && !registerLegalAccepted) {
-      setError('Please agree to the Terms of Use and Privacy Notice to create an account.')
-      return
-    }
-
     if (!guardAgainstRapidSubmit(targetMode)) return
 
     if (shouldRouteGoogleThroughCanonicalHost && canonicalSiteOrigin) {
@@ -229,11 +230,6 @@ export default function LoginPage() {
     setError(null)
     setInfo(null)
 
-    if (!registerLegalAccepted) {
-      setError('Please agree to the Terms of Use and Privacy Notice to create an account.')
-      return
-    }
-
     if (password !== confirmPassword) {
       setError('Passwords do not match.')
       return
@@ -269,7 +265,7 @@ export default function LoginPage() {
         return
       }
 
-      setInfo('If this email can be used, check your inbox for the confirmation link.')
+      setInfo('We sent you a confirmation email. Please verify your email.')
     } catch (err) {
       console.error('[auth:register]', err)
       setError(mapAuthErrorToUiMessage('register'))
@@ -426,12 +422,12 @@ export default function LoginPage() {
           <form onSubmit={handleRegister}>
           <button
             type="button"
-            disabled={loading || !registerLegalAccepted}
+            disabled={loading}
             onClick={() => void handleGoogleAuth('register')}
             style={{
               ...secondaryBtnStyle,
-              opacity: loading || !registerLegalAccepted ? 0.55 : 1,
-              cursor: loading || !registerLegalAccepted ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.55 : 1,
+              cursor: loading ? 'not-allowed' : 'pointer',
             }}
           >
             <GoogleIcon />
@@ -485,25 +481,16 @@ export default function LoginPage() {
               minLength={MIN_PASSWORD_LENGTH}
             />
           </div>
-          <label style={checkboxRowStyle}>
-            <input
-              type="checkbox"
-              checked={registerLegalAccepted}
-              onChange={(e) => setRegisterLegalAccepted(e.target.checked)}
-              style={checkboxStyle}
-            />
-              <span>I agree.</span>
-          </label>
           {error && <p style={errorStyle}>{error}</p>}
           {info && <p style={infoStyle}>{info}</p>}
           {!info && (
             <button
               type="submit"
-              disabled={loading || !registerLegalAccepted}
+              disabled={loading}
               style={{
                 ...primaryBtnStyle,
-                opacity: loading || !registerLegalAccepted ? 0.55 : 1,
-                cursor: loading || !registerLegalAccepted ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.55 : 1,
+                cursor: loading ? 'not-allowed' : 'pointer',
               }}
             >
               {loading ? 'Creating account...' : 'Create account'}
@@ -839,24 +826,6 @@ const helperTextStyle: React.CSSProperties = {
   marginBottom: '0.9rem',
   color: '#64748B',
   fontSize: '0.76rem',
-}
-
-const checkboxRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '0.7rem',
-  marginBottom: '1rem',
-  color: '#475569',
-  fontSize: '0.8rem',
-  lineHeight: 1.55,
-}
-
-const checkboxStyle: React.CSSProperties = {
-  marginTop: '0.15rem',
-  width: '16px',
-  height: '16px',
-  accentColor: '#C25E46',
-  flexShrink: 0,
 }
 
 const inlineLegalLinkStyle: React.CSSProperties = {

@@ -828,13 +828,9 @@ export function MatchManagePanel({
   ])
 
   const removeCandidates = useMemo<RemoveRowItem[]>(() => {
-    const matchesSearch = (value: string) =>
-      !search.trim() || value.toLowerCase().includes(search.trim().toLowerCase())
-
     if (removeMode === 'confirmed') {
       return confirmedParticipants
         .filter((participant) => participant.user_id !== organizerUserId)
-        .filter((participant) => matchesSearch(participant.display_name))
         .map((participant) => ({
           key: `remove:${participant.id}`,
           name: participant.display_name,
@@ -873,7 +869,6 @@ export function MatchManagePanel({
 
     if (removeMode === 'invites') {
       const userRows = activeInviteParticipants
-        .filter((participant) => matchesSearch(participant.display_name))
         .map((participant) => ({
           key: `invite:${participant.id}`,
           name: participant.display_name,
@@ -910,7 +905,6 @@ export function MatchManagePanel({
         }))
 
       const groupRows = activeGroupInvites
-        .filter((group) => matchesSearch(group.group_name))
         .map((group) => ({
           key: `invite-group:${group.group_id}`,
           name: group.group_name,
@@ -945,7 +939,6 @@ export function MatchManagePanel({
 
     return [
       ...activeRequestUsers
-        .filter((user) => matchesSearch(user.name))
         .map((user) => ({
           key: `request:user:${user.id}`,
           name: user.name,
@@ -976,7 +969,6 @@ export function MatchManagePanel({
           },
         })),
       ...activeRequestGroups
-        .filter((group) => matchesSearch(group.name))
         .map((group) => ({
           key: `request:group:${group.id}`,
           name: group.name,
@@ -1014,7 +1006,6 @@ export function MatchManagePanel({
     organizerUserId,
     pendingRemovalKeys,
     removeMode,
-    search,
   ])
 
   const stageAdd = (candidate: CandidateItem) => {
@@ -1405,21 +1396,21 @@ export function MatchManagePanel({
                 Select Target
               </div>
               <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-                <div className="relative mb-6">
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder={
-                      panelMode === 'remove'
-                        ? 'Search players, invites, or groups...'
-                        : inviteMode === 'request'
+                {panelMode === 'invite' ? (
+                  <div className="relative mb-6">
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder={
+                        inviteMode === 'request'
                           ? 'Search saved registered players or groups...'
                           : 'Search saved registered players, contacts, or groups...'
-                    }
-                    className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
-                  />
-                </div>
+                      }
+                      className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
+                    />
+                  </div>
+                ) : null}
 
                 {panelMode === 'invite' ? (
                   <div className="flex flex-wrap gap-2">

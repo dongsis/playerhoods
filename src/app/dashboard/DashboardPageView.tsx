@@ -8,6 +8,7 @@ import type { DashboardPreferenceSaveResult } from './dashboard.actions'
 
 type DashboardPageViewProps = {
   viewModel: DashboardPageViewModel
+  notice?: string | null
   onUpdateProfile: (formData: FormData) => Promise<void>
   onAcceptIdentityLink: (guestId: string) => Promise<void>
   onKeepSeparateIdentityLink: (guestId: string) => Promise<void>
@@ -67,6 +68,7 @@ type DashboardPageViewProps = {
 
 export function DashboardPageView({
   viewModel,
+  notice,
   onUpdateProfile,
   onAcceptIdentityLink,
   onKeepSeparateIdentityLink,
@@ -102,6 +104,7 @@ export function DashboardPageView({
     <DashboardShell
       userId={viewModel.userId}
       items={viewModel.items}
+      notice={notice ?? null}
       userEmail={viewModel.userEmail}
       inboxUnreadCount={viewModel.inboxUnreadCount}
       playersData={viewModel.playersData}
