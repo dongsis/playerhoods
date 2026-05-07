@@ -7,6 +7,7 @@ import { saveToInviteCircle, type InviteCircleSource } from '@/lib/api/play-netw
 type SavedPlayerButtonProps = {
   targetUserId: string
   source: InviteCircleSource
+  currentUserId?: string | null
   initialSaved?: boolean
   onChange?: (targetUserId: string, saved: boolean) => void
   saveLabel?: string
@@ -18,6 +19,7 @@ type SavedPlayerButtonProps = {
 export function SavedPlayerButton({
   targetUserId,
   source,
+  currentUserId = null,
   initialSaved = false,
   onChange,
   saveLabel = 'Save player',
@@ -26,10 +28,30 @@ export function SavedPlayerButton({
   const [saved, setSaved] = useState(initialSaved)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resolvedCurrentUserId, setResolvedCurrentUserId] = useState<string | null>(currentUserId)
 
   useEffect(() => {
     setSaved(initialSaved)
   }, [initialSaved])
+
+  useEffect(() => {
+    if (currentUserId) {
+      setResolvedCurrentUserId(currentUserId)
+      return
+    }
+
+    let cancelled = false
+    const supabase = createSupabaseBrowserClient()
+
+    supabase.auth.getUser().then(({ data, error: userError }) => {
+      if (cancelled || userError) return
+      setResolvedCurrentUserId(data.user?.id ?? null)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentUserId])
 
   const handleSave = async () => {
     if (pending || saved) return
@@ -52,6 +74,10 @@ export function SavedPlayerButton({
   const className = compact
     ? 'text-body-sub shrink-0 rounded-xl border border-slate-100 px-4 py-2 font-semibold text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-600 disabled:opacity-50'
     : 'text-body-main shrink-0 rounded-lg bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100 disabled:opacity-50'
+
+  if (resolvedCurrentUserId && targetUserId === resolvedCurrentUserId) {
+    return null
+  }
 
   if (saved && !error) {
     return null

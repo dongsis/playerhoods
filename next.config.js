@@ -5,7 +5,7 @@ const defaultDistDir = isVercel
   ? '.next'
   : process.env.NODE_ENV === 'development'
     ? '.next-dev'
-    : '.next-build'
+    : '.next'
 const distDir = explicitDistDir || defaultDistDir
 
 const nextConfig = {

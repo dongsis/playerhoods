@@ -9,6 +9,7 @@ import { deriveMatchCourtStatus, type MatchCourtState } from '@/lib/utils/match-
 import type { MatchRosterInsight } from '@/lib/utils/match-roster'
 import { formatTimeWindow } from '@/lib/utils/format-time'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
+import type { IdentityLinkCandidate } from '@/lib/types/database'
 import type { MatchDetailLoaderData } from './match-detail.loader'
 
 function isSelfWithdrawAssociated(
@@ -69,6 +70,8 @@ export type MatchDetailPageViewModel = {
   savedLineup: MatchLineupSnapshot | null
   canViewLineup: boolean
   isFormed: boolean
+  identityLinkCandidates: IdentityLinkCandidate[]
+  hasLinkedGuestIdentity: boolean
 }
 
 export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData): MatchDetailPageViewModel {
@@ -162,6 +165,12 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     .map((participant) => participant.id)
   const canViewLineup = isOrganizer || isCurrentLineupSnapshot(savedLineup, confirmedPlayerIds)
   const savedAdmissionTargets = admissionTargets.filter((target) => target.source === 'invite_circle')
+  const hasLinkedGuestIdentity = Boolean(
+    myParticipant &&
+    myParticipant.guest_id &&
+    myParticipant.linked_user_id &&
+    myParticipant.linked_user_id === user?.id,
+  )
 
   return {
     matchId,
@@ -205,7 +214,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     scopeUsersForInvite: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
     scopeUsersForNominate: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
     contactTargets: admissionTargetsToContactPlayers(admissionTargets),
-    showSelfActionsSection: match.status === 'active' && !isOrganizer && selfNeedsTopAction,
+    showSelfActionsSection: match.status === 'active' && !isOrganizer && selfNeedsTopAction && loaderData.identityLinkCandidates.length === 0,
     showNominateSection: match.status === 'active' && canNominate,
     showNominateGuestSection: match.status === 'active' && canNominateGuest && !isOrganizer,
     showOrganizerAdminSection: match.status === 'active' && isOrganizer,
@@ -216,5 +225,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     savedLineup,
     canViewLineup,
     isFormed,
+    identityLinkCandidates: loaderData.identityLinkCandidates,
+    hasLinkedGuestIdentity,
   }
 }

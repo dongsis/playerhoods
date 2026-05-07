@@ -9,6 +9,34 @@ export function sanitizeNextPath(input: string | null | undefined, fallback = '/
   return input
 }
 
+export function getConfiguredSiteOrigin() {
+  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim()
+  if (!configuredSiteUrl) return null
+
+  try {
+    return new URL(configuredSiteUrl).origin
+  } catch {
+    return null
+  }
+}
+
+export function getConfiguredSiteHost() {
+  const origin = getConfiguredSiteOrigin()
+  if (!origin) return null
+
+  try {
+    return new URL(origin).hostname
+  } catch {
+    return null
+  }
+}
+
+export function shouldUseCanonicalLocalAuthHost(currentHost: string | null | undefined) {
+  const configuredHost = getConfiguredSiteHost()
+  if (configuredHost !== 'localhost') return false
+  return !!currentHost && currentHost !== 'localhost'
+}
+
 export function maskEmail(email: string | null | undefined) {
   if (!email) return ''
 

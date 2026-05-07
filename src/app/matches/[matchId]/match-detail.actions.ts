@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import {
   cancelMatch,
@@ -51,6 +52,8 @@ function revalidateMatchSurfaces(matchId: string) {
   revalidatePath(`/matches/${matchId}`)
   revalidatePath('/matches')
   revalidatePath('/dashboard')
+  revalidatePath('/profile')
+  revalidatePath('/onboarding/next-steps')
 }
 
 export async function updateMatchDetailsAction(
@@ -267,5 +270,17 @@ export async function removeMatchParticipantAction(
     },
     venueName,
   )
+  revalidateMatchSurfaces(matchId)
+}
+
+export async function acceptMatchIdentityLinkAction(matchId: string, guestId: string) {
+  const supabase = await createSupabaseServerClient()
+  await acceptIdentityLinkCandidate(supabase, guestId)
+  revalidateMatchSurfaces(matchId)
+}
+
+export async function keepSeparateMatchIdentityLinkAction(matchId: string, guestId: string) {
+  const supabase = await createSupabaseServerClient()
+  await keepSeparateIdentityLinkCandidate(supabase, guestId)
   revalidateMatchSurfaces(matchId)
 }

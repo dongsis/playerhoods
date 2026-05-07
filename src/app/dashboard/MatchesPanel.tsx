@@ -6,7 +6,6 @@ import Link from 'next/link'
 import type { MatchListItem } from '@/lib/api/matches'
 import { acceptMatchInvite } from '@/lib/api/matches'
 import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
-import { HostPlayerMark } from '@/app/components/HostPlayerMark'
 import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
@@ -247,12 +246,15 @@ function ParticipantRosterSummary({
                           </span>
                         ) : null}
                         <span className="relative z-10 inline-flex min-w-0 items-center gap-1">
-                        <span className={participant.user_id === organizerId ? 'truncate font-semibold text-[#0F172A]' : 'truncate'}>
+                        <span
+                          className={
+                            participant.user_id === organizerId
+                              ? 'inline-flex items-center rounded-[10px] border border-[#D7DEE8] bg-[#F6F7F9] px-2.5 py-[0.2rem] text-[0.93em] font-semibold tracking-[-0.01em] text-[#1F2937] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
+                              : 'truncate'
+                          }
+                        >
                           {participant.display_name}
                         </span>
-                        {participant.user_id === organizerId ? (
-                          <HostPlayerMark className="h-6 w-6 shrink-0 text-[11px]" />
-                        ) : null}
                         </span>
                       </span>
                     </span>
@@ -608,10 +610,10 @@ function ExpiryBanner({
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
     <div className="mb-3 flex items-center gap-2">
-      <h3 className="text-[12px] font-semibold uppercase tracking-[0.17em] text-[#94A3B8] sm:text-[13px]">
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8] sm:text-[12px]">
         {label}
       </h3>
-      <span className="text-[12px] font-medium text-[#CBD5E1] sm:text-[13px]">{count}</span>
+      <span className="text-[11px] font-medium text-[#CBD5E1] sm:text-[12px]">{count}</span>
       <span className="h-px flex-1 bg-[#E2E8F0]" />
     </div>
   )
@@ -990,6 +992,144 @@ function WeeklyCalendar({
 
 const PAGE_SIZE = 20
 
+function getMobileDateParts(item: MatchListItem, venueTimezone?: string | null) {
+  const dateSource = item.match.start_at_utc
+    ? new Date(item.match.start_at_utc)
+    : item.match.match_date
+      ? new Date(`${item.match.match_date}T${item.match.start_time || '12:00'}:00`)
+      : null
+
+  if (!dateSource || Number.isNaN(dateSource.getTime())) {
+    return { weekday: 'TBD', month: '', day: '' }
+  }
+
+  const weekday = new Intl.DateTimeFormat('en-CA', { weekday: 'short', timeZone: venueTimezone ?? 'UTC' }).format(dateSource).toUpperCase()
+  const month = new Intl.DateTimeFormat('en-CA', { month: 'short', timeZone: venueTimezone ?? 'UTC' }).format(dateSource).toUpperCase()
+  const day = new Intl.DateTimeFormat('en-CA', { day: 'numeric', timeZone: venueTimezone ?? 'UTC' }).format(dateSource)
+  return { weekday, month, day }
+}
+
+function getMobileTimeLabel(item: MatchListItem) {
+  const raw = formatTimeWindow(
+    item.match.start_at_utc,
+    item.match.match_date,
+    item.match.start_time,
+    item.match.duration_minutes,
+    item.venueTimezone ?? 'UTC',
+  )
+
+  if (!raw) return 'Time TBD'
+  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean)
+  return parts.length >= 2 ? parts[parts.length - 1] : raw
+}
+
+function getOrganizerLabel(item: MatchListItem) {
+  const organizer = getSafeParticipants(item).find((participant) => participant.user_id === item.match.organizer_id)
+  return organizer?.display_name ?? 'Host'
+}
+
+function MobileStatusBadge({
+  label,
+  tone = 'neutral',
+}: {
+  label: string
+  tone?: 'neutral' | 'orange' | 'green' | 'blue'
+}) {
+  const toneClass =
+    tone === 'green'
+      ? 'border-[#BBF7D0] bg-[#F0FDF4] text-[#16A34A]'
+      : tone === 'orange'
+        ? 'border-[#F4C7B8] bg-[#FFF7ED] text-[#C25E46]'
+        : tone === 'blue'
+          ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]'
+          : 'border-[#D7E1EE] bg-white text-[#64748B]'
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.12em] ${toneClass}`}>
+      {label}
+    </span>
+  )
+}
+
+function MobileMatchCard({
+  item,
+  userId,
+}: {
+  item: MatchListItem
+  userId: string
+}) {
+  const { weekday, month, day } = getMobileDateParts(item, item.venueTimezone)
+  const hostLabel = getOrganizerLabel(item)
+  const timeLabel = getMobileTimeLabel(item)
+  const courtBadgeTone =
+    item.courtState.status === 'secured'
+      ? 'green'
+      : item.courtState.status === 'walk_in'
+        ? 'blue'
+        : 'orange'
+  const summaryCount = Math.max(item.confirmedCount - 1, 0)
+  const hostIsYou = item.match.organizer_id === userId
+
+  return (
+    <Link
+      href={`/matches/${item.match.id}`}
+      className="block rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_14px_34px_rgba(15,23,42,0.06)] transition hover:border-[#D6DEE9]"
+    >
+      <div className="flex gap-4">
+        <div className="flex h-[104px] w-[86px] shrink-0 flex-col items-center justify-center rounded-[24px] bg-[#F8FAFC] text-center">
+          <span className="text-[12px] font-black uppercase tracking-[0.16em] text-[#C25E46]">{weekday}</span>
+          <span className="mt-1 text-[14px] font-bold uppercase tracking-[0.12em] text-[#64748B]">{month}</span>
+          <span className="mt-1 text-[34px] font-black leading-none text-[#1E293B]">{day}</span>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[28px] font-black leading-none tracking-[-0.03em] text-[#1E293B]">
+                {item.sportName ?? 'Match'}
+                {item.match.game_type ? (
+                  <>
+                    {' '}
+                    <span className="font-black text-[#1E293B]">&middot;</span>{' '}
+                    {item.match.game_type.charAt(0).toUpperCase() + item.match.game_type.slice(1)}
+                  </>
+                ) : null}
+              </p>
+              <p className="mt-2 text-[15px] font-bold tracking-[-0.02em] text-[#1E293B]">{timeLabel}</p>
+              {item.venueName ? <p className="mt-1 text-body-main text-[#1E293B]">{item.venueName}</p> : null}
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <MobileStatusBadge label={item.isFormed ? 'Formed' : `${item.confirmedCount}/${item.match.required_count}`} tone={item.isFormed ? 'green' : 'orange'} />
+              <MobileStatusBadge label={item.courtState.badgeLabel} tone={courtBadgeTone} />
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-[#E2E8F0] pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#D7E1EE] bg-[#F8FAFC] text-[22px] font-medium text-[#5B718F]">
+                    {hostLabel.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-title-main text-[#1E293B]">{hostLabel}</p>
+                    <p className="mt-1 text-body-sub text-[#64748B]">
+                      {hostIsYou ? 'Host' : 'Host'} ✓ {summaryCount > 0 ? ` | +${summaryCount} players` : ''}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <span className="shrink-0 text-[15px] font-extrabold tracking-[-0.02em] text-[#C25E46]">
+                {'Details ->'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 interface Props {
   items: MatchListItem[]
   userId: string
@@ -1011,6 +1151,7 @@ export function MatchesPanel({
 }: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'calendar' | 'history'>('upcoming')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
+  const [mobileCreateExpandSignal, setMobileCreateExpandSignal] = useState(0)
 
   const now = useMemo(() => new Date().toISOString(), [])
 
@@ -1062,6 +1203,7 @@ export function MatchesPanel({
   const visibleCancelled = cancelled
   const visibleRemoved = removed
   const visibleActionNeeded = actionNeeded
+  const mobileInitials = userId.slice(0, 2).toUpperCase()
 
   const subTabBtn = (key: 'upcoming' | 'calendar' | 'history', label: string, count?: number) => (
     <button
@@ -1082,8 +1224,136 @@ export function MatchesPanel({
     </button>
   )
 
+  const openMobileCreate = () => {
+    setMobileCreateExpandSignal((value) => value + 1)
+    window.setTimeout(() => {
+      document.getElementById('create-match-inline')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+  }
+
   return (
     <div className="space-y-8">
+      <div className="space-y-6 md:hidden">
+        <section className="rounded-[32px] border border-[#E2E8F0] bg-white px-5 pb-5 pt-4 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <img
+              src="/playerhoods-logo-transparent.png"
+              alt="PlayerHoods"
+              width={1122}
+              height={1402}
+              className="h-auto w-[180px] object-contain"
+            />
+            <div className="flex items-center gap-3">
+              <span className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M15 17H9" />
+                  <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+                </svg>
+                {(visibleActionNeeded.length + visibleCancelled.length + visibleRemoved.length) > 0 ? (
+                  <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#F97316]" />
+                ) : null}
+              </span>
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#1E3A6D] text-[18px] font-black text-white">
+                {mobileInitials}
+              </span>
+            </div>
+          </div>
+
+          <h1 className="text-h1 text-[#1E293B]">Matches</h1>
+
+          <div className="mt-5 inline-flex w-full rounded-full border border-[#E2E8F0] bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+            {subTabBtn('upcoming', 'Upcoming', incoming.length)}
+            {subTabBtn('calendar', 'Calendar')}
+            {subTabBtn('history', 'History', history.length)}
+          </div>
+        </section>
+
+        {subTab === 'upcoming' ? (
+          <>
+            <section className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <SectionHeading label="My Matches" count={incoming.length} />
+                {incoming.length > 0 ? <span className="text-body-main font-bold text-[#C25E46]">View all -&gt;</span> : null}
+              </div>
+              {incoming.length === 0 ? (
+                <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-body-main text-[#94A3B8]">
+                  No upcoming matches.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {incoming.map((item) => (
+                    <MobileMatchCard key={`mobile-incoming-${item.match.id}`} item={item} userId={userId} />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-4">
+              <SectionHeading label="Looking for Players" count={lookingFor.length} />
+              {lookingFor.length === 0 ? (
+                <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-6 py-10 text-center shadow-[0_12px_30px_rgba(15,23,42,0.03)]">
+                  <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#F8FAFC] text-[#94A3B8]">
+                    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <circle cx="9" cy="9" r="2.5" />
+                      <circle cx="16.5" cy="10" r="2" />
+                      <path d="M4.5 17c.8-2.4 2.7-3.5 4.5-3.5s3.7 1.1 4.5 3.5" />
+                      <path d="M14 16.5c.5-1.7 1.8-2.5 3.3-2.5 1.2 0 2.3.5 3.2 1.6" />
+                    </svg>
+                  </div>
+                  <p className="text-title-main text-[#1E293B]">No open matches right now.</p>
+                  <p className="mt-2 text-body-main text-[#94A3B8]">Create a match or check back later.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {lookingFor.map((item) => (
+                    <MobileMatchCard key={`mobile-looking-${item.match.id}`} item={item} userId={userId} />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        ) : subTab === 'calendar' ? (
+          <section className="rounded-[28px] border border-[#E2E8F0] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+            <WeeklyCalendar items={items} userId={userId} />
+          </section>
+        ) : (
+          <section className="space-y-4">
+            <SectionHeading label="History" count={history.length} />
+            {history.length === 0 ? (
+              <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-body-main text-[#94A3B8]">
+                No match history.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {history.slice(0, historyShown).map((item) => (
+                  <MobileMatchCard key={`mobile-history-${item.match.id}`} item={item} userId={userId} />
+                ))}
+                {historyShown < history.length ? (
+                  <button
+                    onClick={() => setHistoryShown((n) => n + PAGE_SIZE)}
+                    className="text-body-main w-full rounded-full border border-[#E2E8F0] bg-white py-3 font-semibold text-[#64748B]"
+                  >
+                    Load more
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </section>
+        )}
+
+        <div className="sticky bottom-[5.3rem] z-20 px-1">
+          <button
+            type="button"
+            onClick={openMobileCreate}
+            className="flex w-full items-center justify-center gap-4 rounded-full bg-[#C25E46] px-6 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-white shadow-[0_24px_40px_rgba(194,94,70,0.28)]"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-[28px] font-medium leading-none text-[#C25E46]">+</span>
+            Create Match
+          </button>
+        </div>
+      </div>
+
+      <div className="hidden space-y-8 md:block">
       <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
         <div className="flex items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
           <div>
@@ -1228,9 +1498,13 @@ export function MatchesPanel({
       </section>
 
       <section className="pt-1">
-        <CreateMatchInline defaultVenueId={defaultVenueId} />
+        <CreateMatchInline defaultVenueId={defaultVenueId} expandSignal={mobileCreateExpandSignal} />
       </section>
+      </div>
 
+      <div className="md:hidden">
+        <CreateMatchInline defaultVenueId={defaultVenueId} expandSignal={mobileCreateExpandSignal} />
+      </div>
     </div>
   )
 }

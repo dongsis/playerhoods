@@ -452,7 +452,7 @@ function ReviewMatchModal({
       role="dialog"
       aria-modal="true"
       onClick={onClose}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-[#1E293B]/28 p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-[#1E293B]/38 p-4"
     >
       <div
         onClick={(event) => event.stopPropagation()}
@@ -509,7 +509,7 @@ function ReviewMatchModal({
               <p className="text-label text-[#94A3B8]">Court</p>
               <p className="text-title-main mt-0.5 text-[#1E293B]">
                 {courtLabel}
-                {courtSecured ? <span className="text-body-sub ml-1 font-bold text-[#22C55E]">● SECURED</span> : null}
+                {courtSecured ? <span className="text-body-sub ml-1 font-bold text-[#1E293B]">• SECURED</span> : null}
               </p>
             </div>
             <div>
@@ -522,9 +522,9 @@ function ReviewMatchModal({
 
           {recurring ? (
             <>
-              <div className="rounded-2xl border border-[#DBEAFE] bg-[#EFF6FF] px-4 py-3">
+              <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
                 <p className="text-label">Recurring Setup</p>
-                <p className="text-body-main mt-1 text-[#3B82F6]">
+                <p className="text-body-main mt-1 text-[#1E293B]">
                   Creates {recurringCount} weekly match instances. Players sign up for each week separately.
                 </p>
               </div>
@@ -537,18 +537,18 @@ function ReviewMatchModal({
 
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                <span className="text-label text-slate-500">Directly Invited</span>
+                <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
+                <span className="text-label text-[#64748B]">Directly Invited</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {directInviteItems.length > 0 ? directInviteItems.map((item) => (
                   <span
                     key={`review-direct-${item.label}`}
-                    className="text-body-main inline-flex max-w-full items-center gap-1.5 rounded-full border border-orange-100 bg-orange-50 px-2.5 py-1 font-medium text-orange-600"
+                    className="text-body-main inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#E2E8F0] bg-white px-2.5 py-1 font-medium text-[#1E293B]"
                   >
                     <span className="font-semibold">{item.label}</span>
                     {item.members && item.members.length > 0 ? (
-                      <span className="text-body-sub truncate font-medium text-orange-400">
+                      <span className="text-body-sub truncate font-medium text-[#475569]">
                         · {item.members.join(', ')}
                       </span>
                     ) : null}
@@ -561,18 +561,18 @@ function ReviewMatchModal({
 
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                <span className="text-label text-slate-500">Open to Request</span>
+                <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
+                <span className="text-label text-[#64748B]">Open to Request</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {requestItems.length > 0 ? requestItems.map((item) => (
                   <span
                     key={`review-request-${item.label}`}
-                    className="text-body-main inline-flex max-w-full items-center gap-1.5 rounded-full border border-green-100 bg-green-50 px-2.5 py-1 font-medium text-green-600"
+                    className="text-body-main inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#E2E8F0] bg-white px-2.5 py-1 font-medium text-[#1E293B]"
                   >
                     <span className="font-semibold">{item.label}</span>
                     {item.members && item.members.length > 0 ? (
-                      <span className="text-body-sub truncate font-medium text-green-400">
+                      <span className="text-body-sub truncate font-medium text-[#475569]">
                         · {item.members.join(', ')}
                       </span>
                     ) : null}
@@ -589,7 +589,7 @@ function ReviewMatchModal({
               <div className="border-t border-slate-100" />
               <div>
                 <p className="text-label text-slate-400">Host Note</p>
-                <p className="text-body-main mt-2 whitespace-pre-line rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 leading-relaxed text-slate-600">
+                <p className="text-body-main mt-2 whitespace-pre-line rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 leading-relaxed text-[#1E293B]">
                   {organizerNote.trim()}
                 </p>
               </div>
@@ -606,7 +606,7 @@ function ReviewMatchModal({
               type="button"
               onClick={onConfirm}
               disabled={posting}
-              className="text-h2 w-full rounded-2xl bg-orange-500 py-4 text-white transition hover:-translate-y-[1px] hover:bg-orange-600 hover:shadow-[0_10px_15px_-3px_rgba(249,115,22,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="text-h2 w-full rounded-2xl bg-[#C25E46] py-4 text-white transition hover:-translate-y-[1px] hover:bg-[#AA523D] hover:shadow-[0_10px_15px_-3px_rgba(194,94,70,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {posting ? (recurring ? 'Creating...' : 'Posting...') : (recurring ? 'Create Recurring Match' : 'Post Match Now')}
             </button>
@@ -940,7 +940,13 @@ function MiniCalendar({
   )
 }
 
-export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string }) {
+export function CreateMatchInline({
+  defaultVenueId,
+  expandSignal,
+}: {
+  defaultVenueId?: string
+  expandSignal?: number
+}) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
   const [matchMode] = useState<'one-time' | 'recurring'>('one-time')
@@ -973,6 +979,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [calendarIndicators, setCalendarIndicators] = useState<Record<string, Array<'confirmed' | 'waiting'>>>({})
   const [savedPlayers, setSavedPlayers] = useState<UserInviteCandidateSeed[]>([])
+  const [linkedContactUsers, setLinkedContactUsers] = useState<UserInviteCandidateSeed[]>([])
   const [contactPlayers, setContactPlayers] = useState<InviteCandidate[]>([])
   const [createdMatchId, setCreatedMatchId] = useState<string | null>(null)
   const [inviteTargets, setInviteTargets] = useState<ScopeUser[]>([])
@@ -1024,7 +1031,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       existing.sourceLabels = mergedLabels
     }
 
-    const userCandidates = savedPlayers.map((member) => ({
+    const userCandidates = [...savedPlayers, ...linkedContactUsers].map((member) => ({
       key: `user:${member.userId}`,
       kind: 'user' as const,
       name: member.name,
@@ -1053,7 +1060,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       if (leftPriority !== rightPriority) return leftPriority - rightPriority
       return left.name.localeCompare(right.name)
     })
-  }, [contactPlayers, currentUserId, savedPlayers])
+  }, [contactPlayers, currentUserId, linkedContactUsers, savedPlayers])
 
   const requestScopeUserCandidates = useMemo(
     () =>
@@ -1190,6 +1197,11 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       }),
     [gameType, selectedSport?.display_name, selectedVenue?.name],
   )
+
+  useEffect(() => {
+    if (typeof expandSignal !== 'number' || expandSignal <= 0) return
+    setCreateExpanded(true)
+  }, [expandSignal])
 
   const selectedFormatLabel = useMemo(() => {
     const source = gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS
@@ -1372,7 +1384,65 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       })
       .catch(console.error)
     getContactPlayerResolution(supabase)
-      .then((rows) => {
+      .then(async (rows) => {
+        const linkedUserIds = Array.from(
+          new Set(
+            rows
+              .map((row) => row.linked_user_id)
+              .filter((linkedUserId): linkedUserId is string => Boolean(linkedUserId)),
+          ),
+        )
+        const linkedProfileMap = new Map<
+          string,
+          {
+            display_name: string
+            gender: 'male' | 'female' | 'unspecified' | null
+            availability_status: AvailabilityStatus | null
+            availability_note: string | null
+            availability_until: string | null
+          }
+        >()
+
+        if (linkedUserIds.length > 0) {
+          const { data: linkedProfiles, error: linkedProfilesError } = await supabase
+            .from('profiles')
+            .select('id, display_name, gender, availability_status, availability_note, availability_until')
+            .in('id', linkedUserIds)
+
+          if (linkedProfilesError) {
+            console.error('[CreateMatchInline] linked contact profiles:', linkedProfilesError)
+          } else {
+            ;((linkedProfiles ?? []) as Array<{
+              id: string
+              display_name: string
+              gender: 'male' | 'female' | 'unspecified' | null
+              availability_status: AvailabilityStatus | null
+              availability_note: string | null
+              availability_until: string | null
+            }>).forEach((profile) => {
+              linkedProfileMap.set(profile.id, profile)
+            })
+          }
+        }
+
+        setLinkedContactUsers(
+          rows
+            .filter((row) => row.linked_user_id)
+            .map((row) => {
+              const linkedProfile = row.linked_user_id ? linkedProfileMap.get(row.linked_user_id) : null
+              return {
+                userId: row.linked_user_id as string,
+                name: linkedProfile?.display_name?.trim() || row.display_name.trim() || 'Unknown',
+                source: 'contact_players' as const,
+                sourceLabel: 'Contacts',
+                gender: linkedProfile?.gender ?? row.gender ?? null,
+                availabilityStatus: linkedProfile?.availability_status ?? row.availability_status ?? 'available',
+                availabilityNote: linkedProfile?.availability_note ?? row.availability_note ?? null,
+                availabilityUntil: linkedProfile?.availability_until ?? row.availability_until ?? null,
+              }
+            }),
+        )
+
         setContactPlayers(
           rows
             .filter((row) => row.resolution_state === 'contact_only' && !row.linked_user_id)
@@ -1396,6 +1466,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
       })
       .catch((contactError) => {
         console.error('[CreateMatchInline] contact players:', contactError)
+        setLinkedContactUsers([])
         setContactPlayers([])
       })
     getGroups(supabase)
@@ -2112,19 +2183,26 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
 
   return (
     <>
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form
+      id="create-match-inline"
+      onSubmit={handleSubmit}
+      className={[
+        'space-y-6 transition duration-200',
+        reviewOpen ? 'pointer-events-none select-none opacity-60 grayscale-[0.55] saturate-[0.45]' : '',
+      ].join(' ')}
+    >
       <section className={`overflow-hidden ${DS_CARD}`}>
         <button
           type="button"
           onClick={() => setCreateExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between px-6 py-5 text-left transition hover:bg-[#FFF8F5]"
+          className="flex w-full items-center justify-between px-5 py-5 text-left transition hover:bg-[#FFF8F5] md:px-6"
         >
           <div className="flex items-center gap-3">
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#C25E46] text-lg font-bold leading-none text-white shadow-[0_8px_18px_rgba(194,94,70,0.24)]">
               +
             </span>
             <div>
-              <p className="text-label text-[#C25E46]">Create a Match</p>
+              <p className="text-label text-[#C25E46]">{createExpanded ? 'Hide Create Match' : 'Create a Match'}</p>
             </div>
           </div>
           <span
@@ -2136,7 +2214,30 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
         </button>
 
         {createExpanded ? (
-          <div className="space-y-6 border-t border-[#F1F5F9] px-6 pb-6 pt-6">
+          <div className="space-y-6 border-t border-[#F1F5F9] px-5 pb-6 pt-6 md:px-6">
+      <div className="md:hidden">
+        <div className="mb-5">
+          <h2 className="text-h1 text-[#1E293B]">Create a Match</h2>
+          <div className="mt-4 grid grid-cols-4 gap-2">
+            {[
+              { step: 1, label: 'General' },
+              { step: 2, label: 'Schedule' },
+              { step: 3, label: 'Players' },
+              { step: 4, label: 'Host Note' },
+            ].map((item, index) => (
+              <div key={item.label} className="flex flex-col items-center gap-2 text-center">
+                <div className="flex w-full items-center">
+                  <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-[15px] font-black ${index === 0 ? 'border-[#C25E46] bg-[#C25E46] text-white' : 'border-[#D7E1EE] bg-white text-[#94A3B8]'}`}>
+                    {item.step}
+                  </span>
+                  {index < 3 ? <span className={`ml-2 h-px flex-1 ${index === 0 ? 'bg-[#C25E46]' : 'bg-[#D7E1EE]'}`} /> : null}
+                </div>
+                <span className={`text-[12px] font-semibold ${index === 0 ? 'text-[#C25E46]' : 'text-[#64748B]'}`}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
       <section className="rounded-2xl bg-white">
         <div className="mb-3 flex items-center">
           <div className={`mr-3 ${DS_STEP}`}>
@@ -2730,7 +2831,8 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
               </p>
             )}
 
-            <div className="mb-20 flex flex-col gap-4 md:flex-row">
+            <div className="sticky bottom-[5.3rem] z-20 -mx-5 border-t border-[#E2E8F0] bg-white/95 px-5 pb-1 pt-4 backdrop-blur md:static md:mx-0 md:border-t-0 md:bg-transparent md:px-0 md:pb-0">
+            <div className="mb-20 flex flex-col gap-4 md:mb-0 md:flex-row">
               <button
                 type="submit"
                 disabled={loading}
@@ -2740,6 +2842,7 @@ export function CreateMatchInline({ defaultVenueId }: { defaultVenueId?: string 
                   ? (matchMode === 'recurring' ? 'Creating...' : 'Posting...')
                   : (matchMode === 'recurring' ? 'Review & Create Recurring Match' : 'Review & Post Match')}
               </button>
+            </div>
             </div>
           </div>
         ) : null}

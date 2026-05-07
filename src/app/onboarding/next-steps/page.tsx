@@ -12,7 +12,9 @@ export default async function OnboardingNextStepsPage({ searchParams }: Props) {
   if (!user) redirect('/login')
 
   const { next } = await searchParams
+  const continueHref = sanitizeNextPath(next, '/dashboard')
   const supabase = await createSupabaseServerClient()
+
   const { data: profile } = await supabase
     .from('profiles')
     .select('onboarding_profile_completed, onboarding_completed')
@@ -20,7 +22,7 @@ export default async function OnboardingNextStepsPage({ searchParams }: Props) {
     .single()
 
   if (profile?.onboarding_completed) {
-    redirect(sanitizeNextPath(next, '/dashboard'))
+    redirect(continueHref)
   }
 
   if (!profile?.onboarding_profile_completed) {
@@ -28,8 +30,8 @@ export default async function OnboardingNextStepsPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="ph-page-narrow max-w-[760px] px-4 py-10">
-      <LegalAgreementCard continueHref={sanitizeNextPath(next, '/dashboard')} />
+    <div className="ph-page-narrow max-w-[880px] px-4 py-8">
+      <LegalAgreementCard continueHref={continueHref} />
     </div>
   )
 }

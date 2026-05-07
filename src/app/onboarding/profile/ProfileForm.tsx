@@ -12,7 +12,7 @@ type PlayCityRecord = {
   country: string | null
 }
 
-type VenueOption = Pick<Venue, 'id' | 'name' | 'city' | 'province' | 'country' | 'venue_kind'>
+type VenueOption = Pick<Venue, 'id' | 'name' | 'abbreviation' | 'city' | 'province' | 'country' | 'location_text' | 'venue_kind'>
 
 interface Props {
   existing: Profile | null
@@ -191,8 +191,18 @@ export function ProfileForm({ existing, next, sports, venues }: Props) {
       const venueCity = normalizeCityName(venue.city ?? '')
       if (!selectedCityNames.has(venueCity)) return false
       if (selectedVenues.some((selectedVenue) => selectedVenue.id === venue.id)) return false
-      const label = getVenueDisplayName(venue as Venue)
-      return !query || label.toLowerCase().includes(query)
+      const searchBlob = [
+        getVenueDisplayName(venue as Venue),
+        venue.name,
+        venue.abbreviation ?? '',
+        venue.city ?? '',
+        venue.province ?? '',
+        venue.country ?? '',
+        venue.location_text ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+      return !query || searchBlob.includes(query)
     })
   }, [clubInput, selectedCities, selectedVenues, venues])
 
@@ -298,7 +308,7 @@ export function ProfileForm({ existing, next, sports, venues }: Props) {
       const searchParams = new URLSearchParams()
       if (next) searchParams.set('next', next)
       if (primarySportId) searchParams.set('primarySportId', String(primarySportId))
-      window.location.assign(`/onboarding/next-steps${searchParams.toString() ? `?${searchParams.toString()}` : ''}`)
+      window.location.assign(next || `/dashboard${searchParams.toString() ? `?${searchParams.toString()}` : ''}`)
     } catch (saveError) {
       console.error('[onboarding:profile]', saveError)
       setErrorMessages((current) => ({
@@ -508,24 +518,26 @@ export function ProfileForm({ existing, next, sports, venues }: Props) {
             {isClubDropdownOpen ? (
               <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
                 {availableFilteredVenues.length > 0 ? (
-                  availableFilteredVenues.map((venue) => (
-                    <div
-                      key={venue.id}
-                      className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-title-main truncate text-[#1E293B]">{getVenueDisplayName(venue as Venue)}</div>
-                        <div className="text-body-sub text-[#64748B]">{venue.city ?? 'Unknown city'}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => addVenue(venue)}
-                        className="rounded-full bg-[#F0F7FF] px-3 py-1.5 text-body-main font-semibold text-[#1E293B] transition hover:bg-[#E8F1FB]"
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {availableFilteredVenues.map((venue) => (
+                      <div
+                        key={venue.id}
+                        className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 last:border-b-0"
                       >
-                        Add venue
-                      </button>
-                    </div>
-                  ))
+                        <div className="min-w-0">
+                          <div className="text-body-main truncate font-semibold text-[#1E293B]">{getVenueDisplayName(venue as Venue)}</div>
+                          <div className="text-body-sub text-[#64748B]">{venue.city ?? 'Unknown city'}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addVenue(venue)}
+                          className="shrink-0 rounded-full bg-[#F0F7FF] px-3 py-1 text-body-sub font-semibold text-[#1E293B] transition hover:bg-[#E8F1FB]"
+                        >
+                          Add venue
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <div className="px-4 py-3 text-body-sub text-[#94A3B8]">
                     No new clubs or venues found for your selected cities.
@@ -542,6 +554,9 @@ export function ProfileForm({ existing, next, sports, venues }: Props) {
           <h2 className="text-h2 text-[#1E293B]">Who can find me?</h2>
           <p className="text-body-sub mt-1 text-[#64748B]">
             Choose where other players can find and save you. Your email and phone will not be shown.
+          </p>
+          <p className="mt-3 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
+            To make it easier for you and your friends to find each other, we recommend keeping your phone number on your profile. We will not show it publicly.
           </p>
         </div>
 

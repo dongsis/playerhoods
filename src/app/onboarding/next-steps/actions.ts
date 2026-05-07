@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { LEGAL_AGREEMENT_VERSION } from '@/lib/legal'
 
@@ -11,28 +12,14 @@ export async function acceptOnboardingLegalAgreementAction() {
   }
 
   const supabase = await createSupabaseServerClient()
-  const now = new Date().toISOString()
+  const { error } = await supabase.rpc('rpc_complete_onboarding_legal_agreement', {
+    p_age_confirmation_version: LEGAL_AGREEMENT_VERSION,
+    p_terms_version: LEGAL_AGREEMENT_VERSION,
+    p_privacy_version: LEGAL_AGREEMENT_VERSION,
+    p_responsible_use_version: LEGAL_AGREEMENT_VERSION,
+  })
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({
-      age_confirmed_at: now,
-      age_confirmation_version: LEGAL_AGREEMENT_VERSION,
-      terms_accepted_at: now,
-      terms_version: LEGAL_AGREEMENT_VERSION,
-      privacy_accepted_at: now,
-      privacy_version: LEGAL_AGREEMENT_VERSION,
-      responsible_use_accepted_at: now,
-      responsible_use_version: LEGAL_AGREEMENT_VERSION,
-      onboarding_completed: true,
-      updated_at: now,
-    })
-    .eq('id', user.id)
-    .eq('onboarding_profile_completed', true)
-    .select('id')
-    .single()
-
-  if (error || !data) {
+  if (error) {
     return {
       ok: false as const,
       error: 'Could not save your legal agreement. Please try again.',
@@ -45,4 +32,20 @@ export async function acceptOnboardingLegalAgreementAction() {
   revalidatePath('/profile')
 
   return { ok: true as const }
+}
+
+export async function acceptOnboardingIdentityLinkAction(guestId: string) {
+  const supabase = await createSupabaseServerClient()
+  await acceptIdentityLinkCandidate(supabase, guestId)
+  revalidatePath('/dashboard')
+  revalidatePath('/onboarding/next-steps')
+  revalidatePath('/profile')
+}
+
+export async function keepSeparateOnboardingIdentityLinkAction(guestId: string) {
+  const supabase = await createSupabaseServerClient()
+  await keepSeparateIdentityLinkCandidate(supabase, guestId)
+  revalidatePath('/dashboard')
+  revalidatePath('/onboarding/next-steps')
+  revalidatePath('/profile')
 }

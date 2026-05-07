@@ -18,6 +18,7 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
   const [savedPlayerIds, setSavedPlayerIds] = useState<Set<string>>(
     () => new Set(initialSavedPlayerIds),
   )
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -25,6 +26,20 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
   useEffect(() => {
     setSavedPlayerIds(new Set(initialSavedPlayerIds))
   }, [initialSavedPlayerIds])
+
+  useEffect(() => {
+    let cancelled = false
+    const supabase = createSupabaseBrowserClient()
+
+    supabase.auth.getUser().then(({ data, error: userError }) => {
+      if (cancelled || userError) return
+      setCurrentUserId(data.user?.id ?? null)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -99,6 +114,7 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
               <SavedPlayerButton
                 targetUserId={member.user_id}
                 source="venue_member"
+                currentUserId={currentUserId}
                 initialSaved={savedPlayerIds.has(member.user_id)}
                 onChange={handleSavedPlayerChange}
                 savedLabel="Saved"

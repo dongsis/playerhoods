@@ -4,8 +4,10 @@ import { useSearchParams } from 'next/navigation'
 import {
   AUTH_SUBMIT_THROTTLE_MS,
   MIN_PASSWORD_LENGTH,
+  getConfiguredSiteOrigin,
   mapAuthErrorToUiMessage,
   sanitizeNextPath,
+  shouldUseCanonicalLocalAuthHost,
 } from '@/lib/auth-ui'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
@@ -21,6 +23,7 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [registerLegalAccepted, setRegisterLegalAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [authSettling, setAuthSettling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const lastSubmitAtRef = useRef<Record<Mode, number>>({
@@ -28,6 +31,7 @@ export default function LoginPage() {
     register: 0,
     forgot: 0,
   })
+  const redirectingRef = useRef(false)
 
   const nextPath = useMemo(
     () => sanitizeNextPath(searchParams.get('next'), '/dashboard'),
@@ -35,6 +39,16 @@ export default function LoginPage() {
   )
   const oauthCode = searchParams.get('code')
   const oauthAccessToken = searchParams.get('access_token')
+  const canonicalSiteOrigin = getConfiguredSiteOrigin()
+  const currentHost =
+    typeof window === 'undefined' ? null : window.location.hostname
+  const shouldRouteGoogleThroughCanonicalHost = shouldUseCanonicalLocalAuthHost(currentHost)
+
+  function redirectToNext() {
+    if (redirectingRef.current) return
+    redirectingRef.current = true
+    window.location.replace(nextPath)
+  }
 
   useEffect(() => {
     const nextMode = searchParams.get('mode')
@@ -61,6 +75,13 @@ export default function LoginPage() {
   useEffect(() => {
     let cancelled = false
     const supabase = createSupabaseBrowserClient()
+    const shouldSettleOAuth = !!oauthCode || !!oauthAccessToken
+
+    if (shouldSettleOAuth) {
+      setAuthSettling(true)
+      setError(null)
+      setInfo('Finishing sign-in…')
+    }
 
     async function settleOAuthSession() {
       if (oauthCode) {
@@ -69,6 +90,8 @@ export default function LoginPage() {
         if (exchangeError) {
           console.error('[auth:oauth:settle]', exchangeError)
           setError('Unable to finish Google sign in. Please try again.')
+          setInfo(null)
+          setAuthSettling(false)
           setLoading(false)
           return
         }
@@ -76,7 +99,15 @@ export default function LoginPage() {
 
       const { data } = await supabase.auth.getSession()
       if (!cancelled && data.session) {
-        window.location.replace(nextPath)
+        redirectToNext()
+        return
+      }
+
+      if (!cancelled) {
+        setAuthSettling(false)
+        if (shouldSettleOAuth) {
+          setInfo(null)
+        }
       }
     }
 
@@ -85,7 +116,7 @@ export default function LoginPage() {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled || !session) return
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        window.location.replace(nextPath)
+        redirectToNext()
       }
     })
 
@@ -159,6 +190,16 @@ export default function LoginPage() {
     }
 
     if (!guardAgainstRapidSubmit(targetMode)) return
+
+    if (shouldRouteGoogleThroughCanonicalHost && canonicalSiteOrigin) {
+      const canonicalLoginUrl = new URL('/login', canonicalSiteOrigin)
+      canonicalLoginUrl.searchParams.set('next', nextPath)
+      if (targetMode === 'register') {
+        canonicalLoginUrl.searchParams.set('mode', 'register')
+      }
+      window.location.assign(canonicalLoginUrl.toString())
+      return
+    }
 
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
@@ -274,19 +315,25 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#EEF1F7] px-4 py-10">
-      <div className="ph-page-narrow">
-        <div className="mb-6 flex justify-center">
+    <div
+      className="min-h-screen bg-[#EEF1F7] px-4 py-10"
+      style={pageShellStyle}
+    >
+      <div className="ph-page-narrow" style={pageNarrowStyle}>
+        <div className="mb-6 flex justify-center" style={logoWrapStyle}>
           <img
-            src="/playerhoods-logo-main-ui-cropped.png"
+            src="/playerhoods-logo-transparent.png"
             alt="PlayerHoods"
-            className="h-auto w-full max-w-[220px]"
+            width={1122}
+            height={1402}
+            className="h-auto w-full max-w-[220px] object-contain"
+            style={logoStyle}
           />
         </div>
 
-        <section className="ph-card px-6 py-6">
-          <h1 className="ph-title">{titles[mode]}</h1>
-          <p className="ph-subtitle mb-6 mt-2">
+        <section className="ph-card px-6 py-6" style={cardStyle}>
+          <h1 className="ph-title" style={titleStyle}>{titles[mode]}</h1>
+          <p className="ph-subtitle mb-6 mt-2" style={subtitleStyle}>
             {mode === 'login'
               ? 'Sign in to manage matches, groups, and player coordination.'
               : mode === 'register'
@@ -294,7 +341,24 @@ export default function LoginPage() {
                 : 'Enter your email and we will send a reset link if the account exists.'}
           </p>
 
-        {mode === 'login' && (
+        {authSettling ? (
+          <div style={settlingWrapStyle}>
+            <div style={settlingBadgeStyle}>Google sign-in</div>
+            <h2 style={settlingTitleStyle}>Finishing sign-in…</h2>
+            <p style={settlingBodyStyle}>
+              We are finishing your Google session and taking you to your dashboard.
+            </p>
+            {error && <p style={errorStyle}>{error}</p>}
+            {!error && info && <p style={infoStyle}>{info}</p>}
+            <button
+              type="button"
+              onClick={() => window.location.assign(`/login?next=${encodeURIComponent(nextPath)}`)}
+              style={secondaryBtnStyle}
+            >
+              Back to sign in
+            </button>
+          </div>
+        ) : mode === 'login' && (
           <form onSubmit={handleLogin}>
           <button
             type="button"
@@ -305,6 +369,11 @@ export default function LoginPage() {
             <GoogleIcon />
             <span>{loading ? 'Opening Google...' : 'Continue with Google'}</span>
           </button>
+          <p style={oauthHintStyle}>
+            {shouldRouteGoogleThroughCanonicalHost
+              ? 'Google sign-in will reopen on localhost for local testing.'
+              : 'For local Google sign-in, use localhost.'}
+          </p>
 
           <div style={separatorStyle}>
             <span style={separatorLineStyle} />
@@ -353,7 +422,7 @@ export default function LoginPage() {
           </form>
         )}
 
-        {mode === 'register' && (
+        {!authSettling && mode === 'register' && (
           <form onSubmit={handleRegister}>
           <button
             type="button"
@@ -368,6 +437,11 @@ export default function LoginPage() {
             <GoogleIcon />
             <span>{loading ? 'Opening Google...' : 'Continue with Google'}</span>
           </button>
+          <p style={oauthHintStyle}>
+            {shouldRouteGoogleThroughCanonicalHost
+              ? 'Google sign-in will reopen on localhost for local testing.'
+              : 'For local Google sign-in, use localhost.'}
+          </p>
 
           <div style={separatorStyle}>
             <span style={separatorLineStyle} />
@@ -418,17 +492,7 @@ export default function LoginPage() {
               onChange={(e) => setRegisterLegalAccepted(e.target.checked)}
               style={checkboxStyle}
             />
-            <span>
-              I agree to the{' '}
-              <a href="/terms" target="_blank" rel="noreferrer" style={inlineLegalLinkStyle}>
-                Terms of Use
-              </a>{' '}
-              and{' '}
-              <a href="/privacy" target="_blank" rel="noreferrer" style={inlineLegalLinkStyle}>
-                Privacy Notice
-              </a>
-              .
-            </span>
+              <span>I agree.</span>
           </label>
           {error && <p style={errorStyle}>{error}</p>}
           {info && <p style={infoStyle}>{info}</p>}
@@ -454,7 +518,7 @@ export default function LoginPage() {
           </form>
         )}
 
-        {mode === 'forgot' && (
+        {!authSettling && mode === 'forgot' && (
           <form onSubmit={handleForgot}>
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Email</label>
@@ -582,6 +646,98 @@ const inputStyle: React.CSSProperties = {
   color: '#1E293B',
 }
 
+const pageShellStyle: React.CSSProperties = {
+  minHeight: '100vh',
+  background: '#EEF1F7',
+  padding: '2.5rem 1rem',
+}
+
+const pageNarrowStyle: React.CSSProperties = {
+  width: '100%',
+  maxWidth: '760px',
+  margin: '0 auto',
+}
+
+const logoWrapStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  minHeight: '275px',
+  marginBottom: '1.5rem',
+}
+
+const logoStyle: React.CSSProperties = {
+  width: '100%',
+  maxWidth: '220px',
+  height: 'auto',
+  display: 'block',
+  aspectRatio: '1122 / 1402',
+}
+
+const cardStyle: React.CSSProperties = {
+  background: '#FFFFFF',
+  border: '1px solid #D9E3F2',
+  borderRadius: '28px',
+  boxShadow: '0 18px 42px rgba(30, 41, 59, 0.08)',
+  padding: '1.5rem',
+}
+
+const titleStyle: React.CSSProperties = {
+  margin: 0,
+  color: '#0F172A',
+  fontSize: '2rem',
+  lineHeight: 1.05,
+  fontWeight: 800,
+  letterSpacing: '-0.03em',
+}
+
+const subtitleStyle: React.CSSProperties = {
+  marginTop: '0.5rem',
+  marginBottom: '1.5rem',
+  color: '#64748B',
+  fontSize: '0.95rem',
+  lineHeight: 1.45,
+}
+
+const settlingWrapStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  textAlign: 'center',
+  gap: '0.85rem',
+  padding: '1rem 0 0.5rem',
+}
+
+const settlingBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: '999px',
+  padding: '0.4rem 0.8rem',
+  background: '#E8F0FE',
+  color: '#365DA8',
+  fontSize: '0.72rem',
+  fontWeight: 800,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+}
+
+const settlingTitleStyle: React.CSSProperties = {
+  margin: 0,
+  color: '#0F172A',
+  fontSize: '1.45rem',
+  lineHeight: 1.1,
+  fontWeight: 800,
+}
+
+const settlingBodyStyle: React.CSSProperties = {
+  margin: 0,
+  maxWidth: '29rem',
+  color: '#64748B',
+  fontSize: '0.92rem',
+  lineHeight: 1.55,
+}
+
 const passwordFieldStyle: React.CSSProperties = {
   position: 'relative',
 }
@@ -636,6 +792,14 @@ const secondaryBtnStyle: React.CSSProperties = {
   border: '1px solid #E2E8F0',
   borderRadius: '999px',
   fontWeight: 700,
+}
+
+const oauthHintStyle: React.CSSProperties = {
+  marginTop: '-0.35rem',
+  marginBottom: '1rem',
+  color: '#64748B',
+  fontSize: '0.74rem',
+  textAlign: 'center',
 }
 
 const separatorStyle: React.CSSProperties = {

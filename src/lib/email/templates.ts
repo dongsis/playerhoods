@@ -2,12 +2,7 @@
  * HTML email templates for participant notifications.
  */
 
-const BASE_STYLES = `
-  body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; color: #333; }
-  .card { max-width: 480px; margin: 0 auto; padding: 1.5rem; }
-  .btn { display: inline-block; padding: 0.5rem 1rem; background: #0369a1; color: white; text-decoration: none; border-radius: 6px; }
-  .meta { font-size: 0.85rem; color: #666; margin-top: 1rem; }
-`
+import { escapeHtml, renderEmailLayout, type EmailDetail } from '@/lib/email/render-email-layout'
 
 export type MatchInfo = {
   matchId: string
@@ -18,156 +13,126 @@ export type MatchInfo = {
   siteUrl: string
 }
 
-const FALLBACK_SITE_URL = 'http://localhost:3000'
-
 function matchLink(m: MatchInfo): string {
-  const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : FALLBACK_SITE_URL
+  const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : 'http://localhost:3000'
   return `${base}/matches/${m.matchId}`
 }
 
-/** Game formed: 比赛成局 */
+function buildMatchDetails(m: MatchInfo): EmailDetail[] {
+  return [
+    { label: 'Sport', value: m.gameType || 'Match' },
+    { label: 'When', value: [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD' },
+    { label: 'Where', value: m.venueName || 'TBD' },
+  ]
+}
+
 export function gameFormedEmail(m: MatchInfo): string {
-  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.venueName || 'TBD'
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="card">
-    <h2>Game formed</h2>
-    <p>Your match <strong>${m.gameType}</strong> is confirmed.</p>
-    <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
-    <p><a href="${matchLink(m)}" class="btn">View match</a></p>
-    <p class="meta">PlayerHoods</p>
-  </div>
-</body>
-</html>
-`
+  return renderEmailLayout({
+    eyebrow: 'Match update',
+    title: 'Game formed',
+    introHtml: `Your <strong>${escapeHtml(m.gameType || 'match')}</strong> is now confirmed.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'View match',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'What happens next',
+    secondaryBody:
+      'Open the match page to review the roster, court details, and any last-minute notes from the organizer.',
+    footerNote: 'You are receiving this email because you are part of a PlayerHoods match.',
+    siteUrl: m.siteUrl,
+  })
 }
 
-/** Match time change pending: 比赛改时间待确认 */
 export function matchTimeChangePendingEmail(m: MatchInfo): string {
-  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.venueName || 'TBD'
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="card">
-    <h2>Match time changed — please confirm</h2>
-    <p>The schedule for <strong>${m.gameType}</strong> has been updated.</p>
-    <p><strong>New time:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
-    <p>Please confirm you can still make it.</p>
-    <p><a href="${matchLink(m)}" class="btn">Confirm attendance</a></p>
-    <p class="meta">PlayerHoods</p>
-  </div>
-</body>
-</html>
-`
+  return renderEmailLayout({
+    eyebrow: 'Schedule update',
+    title: 'Match time changed',
+    introHtml: `The schedule for <strong>${escapeHtml(m.gameType || 'your match')}</strong> has been updated. Please confirm that you can still make it.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'Confirm attendance',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Need to adjust?',
+    secondaryBody:
+      'If the new time no longer works, update your response on the match page as soon as possible so the organizer can refill the spot.',
+    footerNote: 'You are receiving this email because you are part of a PlayerHoods match.',
+    siteUrl: m.siteUrl,
+  })
 }
 
-/** Guest nominated: Contact Player 被提名 */
 export function guestNominatedEmail(m: MatchInfo, nominatorName: string): string {
-  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.venueName || 'TBD'
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="card">
-    <h2>You're nominated</h2>
-    <p><strong>${nominatorName}</strong> nominated you for a match: <strong>${m.gameType}</strong>.</p>
-    <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
-    <p><a href="${matchLink(m)}" class="btn">View match</a></p>
-    <p class="meta">PlayerHoods</p>
-  </div>
-</body>
-</html>
-`
+  return renderEmailLayout({
+    eyebrow: 'Nomination',
+    title: "You're nominated",
+    introHtml: `<strong>${escapeHtml(nominatorName)}</strong> nominated you for <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'View match',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Why you got this',
+    secondaryBody:
+      'A PlayerHoods user added you as a possible player for this match. Review the details before deciding whether to join.',
+    footerNote: 'This message relates to a PlayerHoods match nomination.',
+    siteUrl: m.siteUrl,
+  })
 }
 
-/** Guest org approved: wording aligned with invite copy */
 export function guestOrgApprovedEmail(m: MatchInfo, inviterName: string): string {
-  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.venueName || 'TBD'
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="card">
-    <h2>You're invited</h2>
-    <p><strong>${inviterName}</strong> invited you to a match: <strong>${m.gameType}</strong>.</p>
-    <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
-    <p><a href="${matchLink(m)}" class="btn">View match</a></p>
-    <p class="meta">PlayerHoods</p>
-  </div>
-</body>
-</html>
-`
+  return renderEmailLayout({
+    eyebrow: 'Invitation',
+    title: "You're invited",
+    introHtml: `<strong>${escapeHtml(inviterName)}</strong> invited you to <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'View match',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Before you respond',
+    secondaryBody:
+      'Open the match to check the date, venue, and roster details. You can respond from the match page.',
+    footerNote: 'This message relates to a PlayerHoods match invitation.',
+    siteUrl: m.siteUrl,
+  })
 }
 
-/** Guest delegate confirmed: 已确认能来 */
 export function guestDelegateConfirmedEmail(m: MatchInfo): string {
-  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.venueName || 'TBD'
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="card">
-    <h2>You're confirmed</h2>
-    <p>Your participation in <strong>${m.gameType}</strong> is confirmed.</p>
-    <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
-    <p><a href="${matchLink(m)}" class="btn">View match</a></p>
-    <p class="meta">PlayerHoods</p>
-  </div>
-</body>
-</html>
-`
+  return renderEmailLayout({
+    eyebrow: 'Confirmation',
+    title: "You're confirmed",
+    introHtml: `Your participation in <strong>${escapeHtml(m.gameType || 'this match')}</strong> is confirmed.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'View match',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Be ready to play',
+    secondaryBody:
+      'Use the match page to check for any organizer notes, court updates, or late schedule changes.',
+    footerNote: 'You are receiving this email because your PlayerHoods match status changed.',
+    siteUrl: m.siteUrl,
+  })
 }
 
 export function matchRemovedEmail(m: MatchInfo): string {
-  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.venueName || 'TBD'
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="card">
-    <h2>Removed from match</h2>
-    <p>You were removed from <strong>${m.gameType}</strong>.</p>
-    <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
-    <p><a href="${matchLink(m)}" class="btn">View match</a></p>
-    <p class="meta">PlayerHoods</p>
-  </div>
-</body>
-</html>
-`
+  return renderEmailLayout({
+    eyebrow: 'Roster update',
+    title: 'Removed from match',
+    introHtml: `You were removed from <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'View match',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Need more context?',
+    secondaryBody:
+      'Open the match page to review the latest status. If you think this was unexpected, reach out to the organizer directly.',
+    footerNote: 'You are receiving this email because your PlayerHoods match status changed.',
+    siteUrl: m.siteUrl,
+  })
 }
 
-/** Invite / Nominate: 被邀请或提名 */
 export function inviteOrNominateEmail(m: MatchInfo, inviterName: string): string {
-  const timeStr = [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD'
-  const location = m.venueName || 'TBD'
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="card">
-    <h2>You're invited</h2>
-    <p><strong>${inviterName}</strong> invited you to a match: <strong>${m.gameType}</strong>.</p>
-    <p><strong>When:</strong> ${timeStr}<br><strong>Where:</strong> ${location}</p>
-    <p><a href="${matchLink(m)}" class="btn">View & respond</a></p>
-    <p class="meta">PlayerHoods</p>
-  </div>
-</body>
-</html>
-`
+  return renderEmailLayout({
+    eyebrow: 'Invitation',
+    title: "You're invited",
+    introHtml: `<strong>${escapeHtml(inviterName)}</strong> invited you to <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'View and respond',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Next step',
+    secondaryBody: 'Review the match details, then respond from the match page when you are ready.',
+    footerNote: 'This message relates to a PlayerHoods match invitation.',
+    siteUrl: m.siteUrl,
+  })
 }

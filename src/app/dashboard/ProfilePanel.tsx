@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueKind, Sport, UserSportProfile } from '@/lib/types/database'
+import type { IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueKind, Sport, UserSportProfile } from '@/lib/types/database'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   approveMatchProxyBinding,
@@ -14,6 +14,7 @@ import {
   type MatchProxyDashboardRow,
 } from '@/lib/api/matches'
 import { AvatarUpload } from './AvatarUpload'
+import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { DisplayNameEditForm } from '@/app/profile/DisplayNameEditForm'
 import { SportsPreferenceForm } from '@/app/profile/SportsPreferenceForm'
 import { DiscoveryAndInvitesSection } from '@/app/profile/DiscoveryAndInvitesSection'
@@ -56,6 +57,7 @@ interface Props {
   profile: ProfileData
   userEmail?: string | null
   verifiedEmails: UserVerifiedEmail[]
+  identityLinkCandidates: IdentityLinkCandidate[]
   myIdentities: (VenueIdentity & { venue: Venue })[]
   myVenuePrefs: Venue[]
   joinableVenues: Venue[]
@@ -64,6 +66,8 @@ interface Props {
   mySportProfiles: UserSportProfile[]
   myPlayCities: UserPlayCity[]
   onUpdateProfile: (formData: FormData) => Promise<void>
+  onAcceptIdentityLink: (guestId: string) => Promise<void>
+  onKeepSeparateIdentityLink: (guestId: string) => Promise<void>
   onSetDisplayName: (newName: string) => Promise<void>
   onAvatarSaved: () => Promise<void>
   onSetPrimaryVenue: (venueId: string) => Promise<void>
@@ -328,7 +332,7 @@ function CompactLocationEditor({
   }
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         <span className="text-label inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-500">
           {country}
@@ -348,12 +352,12 @@ function CompactLocationEditor({
       </button>
 
       {isOpen ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-3.5">
+        <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 px-3.5 py-3">
           <div className="flex flex-wrap gap-2">
             {draftCities.length > 0 ? draftCities.map((city) => (
               <span
                 key={city}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700"
               >
                 {city}
                 <button
@@ -370,7 +374,7 @@ function CompactLocationEditor({
             )}
           </div>
 
-          <div ref={dropdownRef} className="relative mt-3">
+          <div ref={dropdownRef} className="relative">
             <input
               type="text"
               value={cityInput}
@@ -406,7 +410,7 @@ function CompactLocationEditor({
             ) : null}
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-body-sub text-slate-400">
               Click a city chip to remove it.
             </div>
@@ -435,7 +439,7 @@ function CompactLocationEditor({
             </div>
           </div>
 
-          {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
         </div>
       ) : null}
     </div>
@@ -1037,6 +1041,7 @@ export function ProfilePanel({
   profile,
   userEmail,
   verifiedEmails,
+  identityLinkCandidates,
   myIdentities,
   myVenuePrefs,
   joinableVenues,
@@ -1045,6 +1050,8 @@ export function ProfilePanel({
   mySportProfiles,
   myPlayCities,
   onUpdateProfile,
+  onAcceptIdentityLink,
+  onKeepSeparateIdentityLink,
   onSetDisplayName,
   onAvatarSaved,
   onSetPrimaryVenue,
@@ -1138,7 +1145,14 @@ export function ProfilePanel({
     return joinableVenues.filter((venue) => {
       if (savedVenueIds.has(venue.id)) return false
       const matchesType = venueTypeFilter === 'all' || venue.venue_kind === venueTypeFilter
-      const venueName = `${venue.name} ${venue.abbreviation ?? ''}`.toLowerCase()
+      const venueName = [
+        getVenueDisplayName(venue),
+        venue.name,
+        venue.abbreviation ?? '',
+        venue.location_text ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
       const venueLocation = [
         venue.city ?? '',
         venue.province ?? '',
@@ -1927,6 +1941,16 @@ export function ProfilePanel({
         </div>
       </div>
 
+      {identityLinkCandidates.length > 0 ? (
+        <IdentityLinkReviewCard
+          title="Review previous invitations"
+          body="These records are associated with your verified email. Linking them will help PlayerHoods recognize them as yours going forward."
+          candidates={identityLinkCandidates}
+          onAccept={onAcceptIdentityLink}
+          onKeepSeparate={onKeepSeparateIdentityLink}
+        />
+      ) : null}
+
       {basicInfoSection()}
       {venuesSection()}
       {availabilitySection()}
@@ -2201,140 +2225,112 @@ export function ProfilePanel({
         <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.95fr)]">
           <div className="space-y-5">
             <PanelCard title="Basic Info" description="Identity, contact, and playing context.">
-              <div className="space-y-6">
-                <div>
-                  <div className="mb-3">
-                    <h3 className="text-title-main text-slate-900">Display name</h3>
-                    <p className="mt-1 text-body-sub text-slate-500">
-                      Shown to other players in matches and venues.
-                    </p>
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(296px,0.94fr)]">
+                <div className="space-y-3.5 xl:border-r xl:border-slate-200 xl:pr-5">
+                  <div className="grid gap-2.5 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-start">
+                    <div className="pt-1">
+                      <span className="text-label">Identity</span>
+                    </div>
+                    <div className="flex items-start gap-3.5">
+                      <div className="shrink-0">
+                        <AvatarUpload
+                          userId={userId}
+                          currentAvatarUrl={profile.avatar_url ?? null}
+                          onSaved={handleAvatarSaved}
+                          compact
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <FieldLabel>Display name</FieldLabel>
+                        {profile.display_name ? (
+                          <DisplayNameEditForm displayName={profile.display_name} onSave={onSetDisplayName} />
+                        ) : (
+                          <p className="text-body-sub text-slate-500">Set your display name to control how you appear.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {profile.display_name ? (
-                    <DisplayNameEditForm displayName={profile.display_name} onSave={onSetDisplayName} />
-                  ) : (
-                    <p className="text-body-sub text-slate-500">Set your display name to control how you appear.</p>
+
+                  <ProfileInfoRow label="Gender">
+                    <div className="flex flex-wrap gap-2.5">
+                      {[
+                        { value: 'male', label: 'Male' },
+                        { value: 'female', label: 'Female' },
+                        { value: 'unspecified', label: 'Another gender' },
+                      ].map((option) => {
+                        const selected = (gender ?? 'unspecified') === option.value
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setGender(option.value as Profile['gender'])}
+                            className={`text-body-main inline-flex items-center rounded-full border px-3.5 py-2 transition ${
+                              selected
+                                ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900'
+                            }`}
+                            aria-pressed={selected}
+                          >
+                            {option.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </ProfileInfoRow>
+
+                  {sports.length > 0 && (
+                    <ProfileInfoRow label="Engaged sports" alignStart>
+                      <SportsPreferenceForm
+                        sports={sports}
+                        initialSportIds={mySportIds}
+                        onSave={handleSetSports}
+                      />
+                    </ProfileInfoRow>
                   )}
-                </div>
 
-                {sports.length > 0 && (
-                  <div className="border-t border-slate-200 pt-6">
-                    <div className="mb-4">
-                      <h3 className="text-title-main text-slate-900">My sports</h3>
-                      <p className="mt-1 text-body-sub text-slate-500">
-                        Keep your player context light and current.
-                      </p>
-                    </div>
-                    <SportsPreferenceForm
-                      sports={sports}
-                      initialSportIds={mySportIds}
-                      onSave={handleSetSports}
+                  <ProfileInfoRow label="Location" alignStart>
+                    <CompactLocationEditor
+                      country={playLocationCountry}
+                      region={playLocationRegion}
+                      playCities={myPlayCities}
+                      availableCities={availablePlayCities}
+                      onSave={(params) => onSaveGlobalPreferences(params)}
                     />
-                  </div>
-                )}
-
-                <div className="border-t border-slate-200 pt-6">
-                  <div className="mb-4">
-                    <h3 className="text-title-main text-slate-900">Full name</h3>
-                    <p className="mt-1 text-body-sub text-slate-500">
-                      Used for court bookings and partner coordination.
-                    </p>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <FieldLabel>First name</FieldLabel>
-                      <input
-                        name="first_name"
-                        value={firstName}
-                        onChange={e => setFirstName(e.target.value)}
-                        className={inputClass}
-                      />
-                    </div>
-                    <div>
-                      <FieldLabel>Last name</FieldLabel>
-                      <input
-                        name="last_name"
-                        value={lastName}
-                        onChange={e => setLastName(e.target.value)}
-                        className={inputClass}
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <FieldLabel>Gender</FieldLabel>
-                      <select
-                        name="gender"
-                        value={gender ?? 'unspecified'}
-                        onChange={e => setGender((e.target.value as Profile['gender']) ?? 'unspecified')}
-                        className={inputClass}
-                      >
-                        <option value="unspecified">Unspecified</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                      </select>
-                      <p className="mt-2 text-body-sub text-slate-500">
-                        Used only as lightweight roster guidance for men&apos;s, women&apos;s, and mixed doubles.
-                      </p>
-                    </div>
-                  </div>
+                  </ProfileInfoRow>
                 </div>
 
-                <div className="border-t border-slate-200 pt-6">
-                  <div className="mb-4">
-                    <h3 className="text-title-main text-slate-900">Location</h3>
-                    <p className="mt-1 text-body-sub text-slate-500">
-                      Based on your current play cities.
-                    </p>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <ReadOnlyInfoField label="Country" value={playLocationCountry} />
-                    <ReadOnlyInfoField label="Province / State" value={playLocationRegion} />
-                  </div>
-                  <div className="mt-4">
-                    <ReadOnlyInfoField label="Cities" value={playLocationCities} />
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-200 pt-6">
-                  <div className="mb-4">
-                    <h3 className="text-title-main text-slate-900">Invitation contact</h3>
-                    <p className="mt-1 text-body-sub text-slate-500">
-                      Choose how invites reach you.
-                    </p>
+                <div className="space-y-3.5 xl:pl-1">
+                  <div className="pb-0.5">
+                    <h3 className="text-label px-1 text-slate-400">Contact & official</h3>
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setContactChannel('email')}
-                        className={`text-body-main inline-flex items-center rounded-full border px-4 py-2 font-medium transition ${
-                          emailSelected
-                            ? 'border-slate-900 bg-slate-900 text-white'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                        }`}
-                        aria-pressed={emailSelected}
-                      >
-                        Email
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setContactChannel('sms')}
-                        className={`text-body-main inline-flex items-center rounded-full border px-4 py-2 font-medium transition ${
-                          smsSelected
-                            ? 'border-slate-900 bg-slate-900 text-white'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                        }`}
-                        aria-pressed={smsSelected}
-                      >
-                        SMS
-                      </button>
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between gap-3 px-1">
+                      <label className="text-label text-slate-800">Receive via</label>
+                      <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setContactChannel('email')}
+                          className={`text-label rounded-md px-3 py-1 transition ${
+                            emailSelected ? 'bg-slate-900 text-white' : 'text-slate-400'
+                          }`}
+                        >
+                          Email
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setContactChannel('sms')}
+                          className={`text-label rounded-md px-3 py-1 transition ${
+                            smsSelected ? 'bg-slate-900 text-white' : 'text-slate-400'
+                          }`}
+                        >
+                          SMS
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="grid gap-4">
-                      <div className={`rounded-[22px] border p-4 transition ${
-                        emailSelected ? 'border-slate-300 bg-slate-50/80 shadow-sm' : 'border-slate-200 bg-white'
-                      }`}>
+                    <div className="grid gap-2.5">
+                      <div>
                         <FieldLabel>Contact email</FieldLabel>
                         <input
                           type="email"
@@ -2346,9 +2342,7 @@ export function ProfilePanel({
                         />
                       </div>
 
-                      <div className={`rounded-[22px] border p-4 transition ${
-                        smsSelected ? 'border-slate-300 bg-slate-50/80 shadow-sm' : 'border-slate-200 bg-white'
-                      }`}>
+                      <div>
                         <FieldLabel>Contact phone</FieldLabel>
                         <input
                           type="tel"
@@ -2360,6 +2354,29 @@ export function ProfilePanel({
                         />
                       </div>
                     </div>
+                  </div>
+
+                  <div className="border-t border-slate-200 pt-3.5">
+                    <FieldLabel>Court booking name</FieldLabel>
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      <input
+                        name="first_name"
+                        value={firstName}
+                        onChange={e => setFirstName(e.target.value)}
+                        className={inputClass}
+                        placeholder="First name"
+                      />
+                      <input
+                        name="last_name"
+                        value={lastName}
+                        onChange={e => setLastName(e.target.value)}
+                        className={inputClass}
+                        placeholder="Last name"
+                      />
+                    </div>
+                    <p className="mt-2 px-1 text-body-sub italic text-slate-400">
+                      Your real name will be shared with other players in the same match to make court booking easier.
+                    </p>
                   </div>
                 </div>
               </div>

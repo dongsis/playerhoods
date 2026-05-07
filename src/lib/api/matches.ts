@@ -63,6 +63,7 @@ export type MatchParticipantEnriched = MatchParticipant & {
   proxy_manageable_by_viewer?: boolean
   saved_by_viewer?: boolean
   contact_player_person_id?: string | null
+  linked_user_id?: string | null
 }
 
 /** Flattened activity row for ActivityFeed — all names resolved server-side. */
@@ -1330,7 +1331,7 @@ export async function getMatchListData(
   const guestIds = [...new Set(allParticipants.filter(p => p.guest_id).map(p => p.guest_id as string))]
   const guestParticipantIds = allParticipants.filter(p => p.guest_id).map(p => p.id)
 
-  const [profilesRes, guestsRes, identityLinksRes] = await Promise.all([
+  const [profilesRes, guestsRes, identityLinksRes, contactIdentityLinksRes] = await Promise.all([
     userIds.length > 0
       ? supabase.from('profiles').select('id, display_name, avatar_url, gender').in('id', userIds)
       : Promise.resolve({ data: [], error: null }),
@@ -1350,6 +1351,17 @@ export async function getMatchListData(
           return r.error ? { data: [] } : r
         })()
       : Promise.resolve({ data: [] }),
+    userId && guestIds.length > 0
+      ? (async () => {
+          const r = await supabase
+            .from('identity_links')
+            .select('linked_id, user_id')
+            .eq('user_id', userId)
+            .eq('linked_type', 'contact')
+            .in('linked_id', guestIds)
+          return r.error ? { data: [] } : r
+        })()
+      : Promise.resolve({ data: [] }),
   ])
   if (profilesRes.error) {
     logMatchListSoftFailure('profiles', profilesRes.error)
@@ -1365,6 +1377,9 @@ export async function getMatchListData(
   const participantLinkedToUser = new Map(
     ((identityLinksRes.data ?? []) as { linked_id: string; user_id: string }[]).map((r) => [r.linked_id, r.user_id])
   )
+  const contactLinkedToUser = new Map(
+    ((contactIdentityLinksRes.data ?? []) as { linked_id: string; user_id: string }[]).map((r) => [r.linked_id, r.user_id])
+  )
 
   const byMatch = new Map<string, MatchParticipant[]>()
   for (const p of allParticipants) {
@@ -1378,7 +1393,9 @@ export async function getMatchListData(
     const mps = byMatch.get(match.id) ?? []
 
     const enriched: MatchParticipantEnriched[] = mps.map(p => {
-      const linkedUserId = p.guest_id ? participantLinkedToUser.get(p.id) : null
+      const linkedUserId = p.guest_id
+        ? (participantLinkedToUser.get(p.id) ?? contactLinkedToUser.get(p.guest_id) ?? null)
+        : null
       const effectiveUserId = p.user_id ?? linkedUserId
       const displayName = effectiveUserId
         ? (profileMap.get(effectiveUserId) ?? resolveNameFromMaps(p.user_id, p.guest_id, profileMap, guestMap))
@@ -1397,7 +1414,12 @@ export async function getMatchListData(
     const pending = enriched.filter((participant) => participant.status === 'pending')
     const waiting = enriched.filter((participant) => participant.status === 'waiting_list')
     const myParticipant = userId
-      ? (enriched.find(p => p.user_id === userId || participantLinkedToUser.get(p.id) === userId) ?? null)
+      ? (enriched.find(
+          p =>
+            p.user_id === userId ||
+            participantLinkedToUser.get(p.id) === userId ||
+            (p.guest_id ? contactLinkedToUser.get(p.guest_id) === userId : false),
+        ) ?? null)
       : null
     const formed = formedError ? null : (formedMap.get(match.id) ?? null)
     const rosterInsight = deriveMatchRosterInsight(match, enriched)
@@ -1594,6 +1616,7 @@ export async function getMatchDetailData(
       proxy_manageable_by_viewer: proxyManageableParticipantIds.has(p.id),
       saved_by_viewer: guestPersonId ? savedContactPersonIdSet.has(guestPersonId) : false,
       contact_player_person_id: guestPersonId,
+      linked_user_id: linkedUserId,
     }
   })
 

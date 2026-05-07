@@ -1,10 +1,36 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { sanitizeNextPath } from '@/lib/auth-ui'
+import { getConfiguredSiteOrigin, sanitizeNextPath, shouldUseCanonicalLocalAuthHost } from '@/lib/auth-ui'
+
+function applyNoStoreHeaders(response: NextResponse) {
+  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  response.headers.set('Pragma', 'no-cache')
+  response.headers.set('Expires', '0')
+  return response
+}
 
 export async function middleware(request: NextRequest) {
   const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL
   const requestHost = request.headers.get('host')?.split(':')[0] ?? null
+  const pathname = request.nextUrl.pathname
+  const isLoginRoute = pathname.startsWith('/login')
+  const isAuthCallback = pathname.startsWith('/auth/callback')
+  const isResetPasswordRoute = pathname.startsWith('/reset-password')
+  const isCanonicalLocalAuthRoute = isLoginRoute || isAuthCallback || isResetPasswordRoute
+
+  if (shouldUseCanonicalLocalAuthHost(requestHost) && isCanonicalLocalAuthRoute) {
+    const configuredOrigin = getConfiguredSiteOrigin()
+    if (configuredOrigin) {
+      const canonicalUrl = new URL(request.url)
+      const targetBase = new URL(configuredOrigin)
+      canonicalUrl.protocol = targetBase.protocol
+      canonicalUrl.host = targetBase.host
+      const redirectResponse = NextResponse.redirect(canonicalUrl)
+      redirectResponse.headers.set('x-ph-middleware', 'canonical-local-auth-host')
+      return applyNoStoreHeaders(redirectResponse)
+    }
+  }
+
   if (requestHost === '0.0.0.0' && configuredSiteUrl) {
     const canonicalUrl = new URL(request.url)
     const targetBase = new URL(configuredSiteUrl)
@@ -12,7 +38,7 @@ export async function middleware(request: NextRequest) {
     canonicalUrl.host = targetBase.host
     const redirectResponse = NextResponse.redirect(canonicalUrl)
     redirectResponse.headers.set('x-ph-middleware', 'canonical-host')
-    return redirectResponse
+    return applyNoStoreHeaders(redirectResponse)
   }
 
   let response = NextResponse.next({
@@ -21,15 +47,11 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  const pathname = request.nextUrl.pathname
   const isSupabaseProxy = pathname.startsWith('/supabase/')
   if (isSupabaseProxy) {
     response.headers.set('x-ph-middleware', 'supabase-proxy')
     return response
   }
-  const isLoginRoute = pathname.startsWith('/login')
-  const isAuthCallback = pathname.startsWith('/auth/callback')
-  const isResetPasswordRoute = pathname.startsWith('/reset-password')
   const isInvitationPage = pathname.startsWith('/invitations/')
   const isOnboarding = pathname.startsWith('/onboarding')
   const isPublicRoute = pathname === '/'
@@ -79,14 +101,14 @@ export async function middleware(request: NextRequest) {
     loginUrl.searchParams.set('next', safeNext)
     const redirectResponse = NextResponse.redirect(loginUrl)
     redirectResponse.headers.set('x-ph-middleware', 'auth-required')
-    return redirectResponse
+    return applyNoStoreHeaders(redirectResponse)
   }
 
   if (user && isLoginRoute) {
     const safeNext = sanitizeNextPath(request.nextUrl.searchParams.get('next'), '/dashboard')
     const redirectResponse = NextResponse.redirect(new URL(safeNext, request.url))
     redirectResponse.headers.set('x-ph-middleware', 'already-authed')
-    return redirectResponse
+    return applyNoStoreHeaders(redirectResponse)
   }
 
   if (user && (isProtectedRoute || isOnboarding) && !isInvitationPage) {
@@ -102,7 +124,7 @@ export async function middleware(request: NextRequest) {
       if (profile?.onboarding_completed) {
         const redirectResponse = NextResponse.redirect(new URL(safeNext, request.url))
         redirectResponse.headers.set('x-ph-middleware', 'onboarding-already-complete')
-        return redirectResponse
+        return applyNoStoreHeaders(redirectResponse)
       }
 
       if (pathname.startsWith('/onboarding/profile') && profile?.onboarding_profile_completed) {
@@ -110,7 +132,7 @@ export async function middleware(request: NextRequest) {
           new URL(`/onboarding/next-steps?next=${encodeURIComponent(safeNext)}`, request.url),
         )
         redirectResponse.headers.set('x-ph-middleware', 'onboarding-legal-step')
-        return redirectResponse
+        return applyNoStoreHeaders(redirectResponse)
       }
 
       if (pathname.startsWith('/onboarding/next-steps') && !profile?.onboarding_profile_completed) {
@@ -118,7 +140,7 @@ export async function middleware(request: NextRequest) {
           new URL(`/onboarding/profile?next=${encodeURIComponent(safeNext)}`, request.url),
         )
         redirectResponse.headers.set('x-ph-middleware', 'onboarding-profile-step')
-        return redirectResponse
+        return applyNoStoreHeaders(redirectResponse)
       }
     } else if (!profile?.onboarding_completed) {
       const next = sanitizeNextPath(
@@ -130,11 +152,14 @@ export async function middleware(request: NextRequest) {
         : `/onboarding/profile?next=${encodeURIComponent(next)}`
       const redirectResponse = NextResponse.redirect(new URL(destination, request.url))
       redirectResponse.headers.set('x-ph-middleware', 'needs-onboarding')
-      return redirectResponse
+      return applyNoStoreHeaders(redirectResponse)
     }
   }
 
   response.headers.set('x-ph-middleware', 'pass')
+  if (!pathname.startsWith('/_next/')) {
+    applyNoStoreHeaders(response)
+  }
   return response
 }
 

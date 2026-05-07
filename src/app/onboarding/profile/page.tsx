@@ -24,7 +24,7 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
     listSports(supabase),
     supabase
       .from('venues')
-      .select('id, name, city, province, country, venue_kind')
+      .select('id, name, abbreviation, city, province, country, location_text, venue_kind')
       .not('city', 'is', null)
       .order('name', { ascending: true }),
   ])
@@ -57,7 +57,7 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
             existing={(profile as Profile | null) ?? null}
             next={next || '/dashboard'}
             sports={sportsResult.filter((sport) => sport.is_active)}
-            venues={((venuesResult.data ?? []) as Pick<Venue, 'id' | 'name' | 'city' | 'province' | 'country' | 'venue_kind'>[])}
+            venues={((venuesResult.data ?? []) as Pick<Venue, 'id' | 'name' | 'abbreviation' | 'city' | 'province' | 'country' | 'location_text' | 'venue_kind'>[])}
           />
         </div>
       </section>

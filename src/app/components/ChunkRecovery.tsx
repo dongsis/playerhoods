@@ -15,6 +15,18 @@ function shouldRecoverFromChunkError(value: unknown): boolean {
   return /ChunkLoadError|Loading chunk [\w-]+ failed|Failed to fetch dynamically imported module/i.test(message)
 }
 
+function isStaticAssetLoadFailure(target: EventTarget | null): boolean {
+  if (!target || typeof target !== 'object') return false
+
+  const asset = target as Partial<HTMLScriptElement & HTMLLinkElement>
+  const tagName = String(asset.tagName ?? '').toUpperCase()
+  if (tagName !== 'SCRIPT' && tagName !== 'LINK') return false
+
+  const src = String(asset.src ?? '')
+  const href = String(asset.href ?? '')
+  return src.includes('/_next/static/') || href.includes('/_next/static/')
+}
+
 export function ChunkRecovery() {
   useEffect(() => {
     const recover = () => {
@@ -29,7 +41,11 @@ export function ChunkRecovery() {
     }
 
     const handleError = (event: ErrorEvent) => {
-      if (shouldRecoverFromChunkError(event.error) || shouldRecoverFromChunkError(event.message)) {
+      if (
+        shouldRecoverFromChunkError(event.error) ||
+        shouldRecoverFromChunkError(event.message) ||
+        isStaticAssetLoadFailure(event.target)
+      ) {
         recover()
       }
     }

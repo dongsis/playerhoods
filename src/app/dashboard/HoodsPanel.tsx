@@ -2328,10 +2328,7 @@ export function HoodsPanel({
       [person.key]: nextSavedState,
     }))
     try {
-      if (person.isSaved && person.userId) {
-        await removeFromInviteCircle(supabase, person.userId)
-        setMessage(`${person.displayName} was removed from Saved.`)
-      } else if (person.isSaved && person.personId) {
+      if (person.isSaved && person.personId && isContactModulePerson(person)) {
         const { error: removeError } = await supabase
           .from('person_relationships')
           .delete()
@@ -2340,18 +2337,21 @@ export function HoodsPanel({
           .eq('relationship_type', 'saved')
         if (removeError) throw removeError
         setMessage(`${person.displayName} was removed from Saved.`)
-      } else if (person.userId) {
-        await saveToInviteCircle(supabase, person.userId, person.isPlayedWith ? 'played_with_auto' : 'manual')
-        setMessage(`${person.displayName} is now saved.`)
-      } else if (person.guestId) {
+      } else if (person.isSaved && person.userId) {
+        await removeFromInviteCircle(supabase, person.userId)
+        setMessage(`${person.displayName} was removed from Saved.`)
+      } else if (person.guestId && isContactModulePerson(person)) {
         await saveContactPlayer(supabase, person.guestId, {
           source: person.saveSourceGroupId ? 'group_contact' : person.saveSourceMatchId ? 'shared_match' : 'manual',
           groupId: person.saveSourceGroupId,
           matchId: person.saveSourceMatchId,
         })
         setMessage(`${person.displayName} is now starred.`)
+      } else if (person.userId) {
+        await saveToInviteCircle(supabase, person.userId, person.isPlayedWith ? 'played_with_auto' : 'manual')
+        setMessage(`${person.displayName} is now saved.`)
       }
-      if (person.userId) {
+      if (person.userId && !isContactModulePerson(person)) {
         const nextInviteCircleRows = await getInviteCircleList(supabase)
         setInviteCircleRows(nextInviteCircleRows)
       }

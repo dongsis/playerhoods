@@ -9,6 +9,7 @@ type SaveContactPlayerButtonProps = {
   source: ContactPlayerSaveSource
   groupId?: string | null
   matchId?: string | null
+  hidden?: boolean
   compact?: boolean
   saveLabel?: string
 }
@@ -18,6 +19,7 @@ export function SaveContactPlayerButton({
   source,
   groupId = null,
   matchId = null,
+  hidden = false,
   compact = false,
   saveLabel = 'Save',
 }: SaveContactPlayerButtonProps) {
@@ -50,6 +52,10 @@ export function SaveContactPlayerButton({
   const className = compact
     ? 'text-body-sub shrink-0 rounded-xl border border-[#5ca0a0]/20 px-4 py-2 font-semibold text-[#5ca0a0] transition-all hover:bg-[#5ca0a0]/5 disabled:opacity-50'
     : 'text-body-main shrink-0 rounded-lg bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100 disabled:opacity-50'
+
+  if (hidden) {
+    return null
+  }
 
   if (saved && !error) {
     return null

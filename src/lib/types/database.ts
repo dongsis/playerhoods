@@ -325,6 +325,9 @@ export type ContactRecord = {
   raw_email: string | null
   owner_notes: string | null
   source: string
+  archived_at: string | null
+  archive_reason: string | null
+  replaced_by_user_id: string | null
   created_at: string
 }
 
@@ -1582,6 +1585,15 @@ export interface Database {
       rpc_identity_link_keep_separate: {
         Args: { p_guest_id: string }
         Returns: void
+      }
+      rpc_complete_onboarding_legal_agreement: {
+        Args: {
+          p_age_confirmation_version: string
+          p_terms_version: string
+          p_privacy_version: string
+          p_responsible_use_version: string
+        }
+        Returns: Json
       }
     }
     Enums: Record<string, never>

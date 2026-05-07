@@ -20,6 +20,8 @@ export async function acceptIdentityLinkCandidate(
   linked_user_id: string
   linked_match_participant_count: number
   saved_owner_count: number
+  archived_contact_count: number
+  owner_notification_count: number
 }> {
   const { data, error } = await supabase.rpc('rpc_identity_link_accept', {
     p_guest_id: guestId,
@@ -31,6 +33,8 @@ export async function acceptIdentityLinkCandidate(
     linked_user_id: string
     linked_match_participant_count: number
     saved_owner_count: number
+    archived_contact_count: number
+    owner_notification_count: number
   }
 }
 

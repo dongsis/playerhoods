@@ -17,6 +17,7 @@ const KIND_LABELS: Record<string, string> = {
   invited: 'You were invited',
   nominated: 'You were invited',
   removed: 'No longer invited',
+  contact_joined_playerhoods: 'A contact joined PlayerHoods',
   delegate_target_confirmed: 'Your invited person was confirmed',
   delegate_target_removed: 'Your invited person was removed',
   court_plan_updated: 'Court plan updated',
@@ -41,7 +42,7 @@ function getNotificationTone(kind: string): string {
   if (kind === 'removed' || kind === 'match_cancelled' || kind === 'group_join_request_declined') {
     return 'bg-[#FEF2F2] text-[#EF4444] ring-[#FECACA]'
   }
-  if (kind === 'court_plan_updated' || kind === 'group_added' || kind === 'group_join_request_accepted') {
+  if (kind === 'court_plan_updated' || kind === 'group_added' || kind === 'group_join_request_accepted' || kind === 'contact_joined_playerhoods') {
     return 'bg-[#ECFDF5] text-[#22C55E] ring-[#DCFCE7]'
   }
   if (kind === 'invited' || kind === 'nominated' || kind === 'waiting_list_promoted') {

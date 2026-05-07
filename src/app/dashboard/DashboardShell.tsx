@@ -6,7 +6,7 @@ import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { InviteCircleRow } from '@/lib/api/play-network'
 import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
-import { LeftNav, type DashTab } from './LeftNav'
+import { LeftNav, NavIcon, type DashTab } from './LeftNav'
 import { InboxPanel } from './InboxPanel'
 import { MatchesPanel } from './MatchesPanel'
 import { HoodsPanel } from './HoodsPanel'
@@ -65,6 +65,8 @@ interface Props {
   myAdminVenues: (VenueAdmin & { venue: Venue })[]
   isSuperAdmin: boolean
   onUpdateProfile: (formData: FormData) => Promise<void>
+  onAcceptIdentityLink: (guestId: string) => Promise<void>
+  onKeepSeparateIdentityLink: (guestId: string) => Promise<void>
   onSetDisplayName: (newName: string) => Promise<void>
   onAvatarSaved: () => Promise<void>
   onSetPrimaryVenue: (venueId: string) => Promise<void>
@@ -121,6 +123,7 @@ interface Props {
 }
 
 const DASH_TABS: DashTab[] = ['inbox', 'matches', 'hoods', 'groups', 'venues', 'gear', 'profile', 'admin']
+const MOBILE_DASH_TABS: DashTab[] = ['inbox', 'matches', 'hoods', 'groups', 'profile']
 
 function isDashTab(value: string | null): value is DashTab {
   return value !== null && DASH_TABS.includes(value as DashTab)
@@ -133,6 +136,57 @@ function getDismissedMatchStorageKey(userId: string) {
 type DashboardLiveResponse = {
   items: MatchListItem[]
   inboxUnreadCount: number
+}
+
+function MobileBottomNav({
+  active,
+  onTab,
+  badges,
+}: {
+  active: DashTab
+  onTab: (tab: DashTab) => void
+  badges: Partial<Record<DashTab, number | undefined>>
+}) {
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#E2E8F0] bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.7rem)] pt-2 shadow-[0_-14px_30px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+      <div className="mx-auto flex max-w-xl items-end justify-between gap-1">
+        {MOBILE_DASH_TABS.map((tab) => {
+          const isActive = active === tab
+          const label = tab === 'profile' ? 'Profile' : `${tab.charAt(0).toUpperCase()}${tab.slice(1)}`
+          const badge = badges[tab] ?? 0
+
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => onTab(tab)}
+              className={[
+                'relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[20px] px-2 py-2.5 transition',
+                isActive
+                  ? 'bg-[#FFF8F5] text-[#C25E46]'
+                  : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#1E293B]',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'inline-flex h-9 w-9 items-center justify-center rounded-full transition',
+                  isActive ? 'bg-[#C25E46] text-white shadow-[0_10px_20px_rgba(194,94,70,0.18)]' : 'bg-[#F8FAFC] text-current',
+                ].join(' ')}
+              >
+                <NavIcon tab={tab} className="h-[18px] w-[18px]" />
+              </span>
+              <span className="text-[11px] font-semibold tracking-[-0.01em]">{label}</span>
+              {badge > 0 ? (
+                <span className="absolute right-[22%] top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#EF4444] px-1 text-[10px] font-bold leading-none text-white">
+                  {badge > 99 ? '99+' : badge}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    </nav>
+  )
 }
 
 export function DashboardShell({
@@ -159,6 +213,8 @@ export function DashboardShell({
   myAdminVenues,
   isSuperAdmin,
   onUpdateProfile,
+  onAcceptIdentityLink,
+  onKeepSeparateIdentityLink,
   onSetDisplayName,
   onAvatarSaved,
   onSetPrimaryVenue,
@@ -374,7 +430,7 @@ export function DashboardShell({
   return (
     <div className="flex min-h-screen bg-[#F0F7FF]">
       {/* Left nav — sticky sidebar */}
-      <aside className="sticky top-0 h-screen w-60 shrink-0 border-r border-[#E2E8F0] bg-[#F1F1F3]">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r border-[#E2E8F0] bg-[#F1F1F3] md:block">
         <LeftNav
           active={activeTab}
           onTab={setActiveTab}
@@ -384,7 +440,7 @@ export function DashboardShell({
       </aside>
 
       {/* Main content */}
-      <main className={`flex-1 px-6 py-8 ${shouldLeftAlignMain ? '' : `${mainWidthClass} mx-auto`}`}>
+      <main className={`flex-1 px-4 pb-28 pt-4 md:px-6 md:py-8 ${shouldLeftAlignMain ? '' : `${mainWidthClass} mx-auto`}`}>
         {activeTab === 'inbox' && (
           <InboxPanel onUnreadChange={setInboxBadge} />
         )}
@@ -441,6 +497,8 @@ export function DashboardShell({
             mySportProfiles={mySportProfiles}
             myPlayCities={myPlayCities}
             onUpdateProfile={onUpdateProfile}
+            onAcceptIdentityLink={onAcceptIdentityLink}
+            onKeepSeparateIdentityLink={onKeepSeparateIdentityLink}
             onSetDisplayName={onSetDisplayName}
             onAvatarSaved={onAvatarSaved}
             onSetPrimaryVenue={onSetPrimaryVenue}
@@ -491,6 +549,7 @@ export function DashboardShell({
           />
         )}
       </main>
+      <MobileBottomNav active={activeTab} onTab={setActiveTab} badges={{ ...badges, inbox: badges.inbox ?? inboxBadge }} />
     </div>
   )
 }

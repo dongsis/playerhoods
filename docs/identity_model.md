@@ -249,6 +249,37 @@ That confirmed-link workflow may then:
 - preserve private notes and historical invitations
 - switch future invitations to the registered-user path
 
+For MVP this soft archive means:
+
+- set `contact_records.archived_at`
+- set `contact_records.archive_reason = linked_to_registered_user`
+- set `contact_records.replaced_by_user_id`
+- hide archived contact records from active Contacts / Hoods contact views by default
+- do not delete historical guest rows, invitations, notes, or match participation rows
+
+## MVP Review Scope
+
+Current MVP review scope is intentionally limited.
+
+Included:
+
+- guest / contact records that already exist in the PlayerHoods identity graph
+- verified-email high-confidence candidates for explicit user review
+
+Not included:
+
+- generic `invitation_target` review for plain historical email invitation rows with no contact / guest identity object behind them
+
+Reason:
+
+- those rows often do not carry enough identity context to produce a useful merge or ownership transition
+- they usually do not include private contact notes, saved-player relationships, or shared-person structure
+
+Current MVP product choice:
+
+- keep explicit review focused on guest / contact candidates
+- when a contact is explicitly linked, notify relevant contact owners in-app that future invitations can go to the registered PlayerHoods account
+
 ## Privacy Rules
 
 PlayerHoods must not publicly show:

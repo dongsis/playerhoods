@@ -676,6 +676,7 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
                       <SavedPlayerButton
                         targetUserId={m.userId}
                         source="venue_member"
+                        currentUserId={userId ?? null}
                         initialSaved={savedPlayerIds.has(m.userId)}
                         onChange={handleSavedPlayerChange}
                         compact
@@ -831,6 +832,7 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
                           <SavedPlayerButton
                             targetUserId={m.userId}
                             source="group_member"
+                            currentUserId={userId ?? null}
                             initialSaved={savedPlayerIds.has(m.userId)}
                             onChange={handleSavedPlayerChange}
                             compact
@@ -883,6 +885,7 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
                 <SavedPlayerButton
                   targetUserId={r.userId}
                   source="manual"
+                  currentUserId={userId ?? null}
                   initialSaved={savedPlayerIds.has(r.userId)}
                   onChange={handleSavedPlayerChange}
                   compact

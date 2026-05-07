@@ -164,9 +164,11 @@ function MemberListItem({
 function ContactListItem({
   groupId,
   contact,
+  currentPersonId,
 }: {
   groupId: string
-  contact: Pick<GroupContactWithDisplay, 'group_contact_id' | 'guest_id' | 'display_name'>
+  contact: Pick<GroupContactWithDisplay, 'group_contact_id' | 'guest_id' | 'display_name' | 'person_id'>
+  currentPersonId: string | null
 }) {
   return (
     <div
@@ -212,6 +214,7 @@ function ContactListItem({
         guestId={contact.guest_id}
         source="group_contact"
         groupId={groupId}
+        hidden={Boolean(currentPersonId && contact.person_id === currentPersonId)}
         compact
         saveLabel="Save player"
       />
@@ -231,7 +234,7 @@ export default async function GroupDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [membership, members, groupContacts, sportRow, sports, myIdentities, groupVenueRow] = await Promise.all([
+  const [membership, members, groupContacts, sportRow, sports, myIdentities, groupVenueRow, mePersonRow] = await Promise.all([
     user ? getMyGroupMembership(supabase, groupId, user.id) : Promise.resolve(null),
     getGroupMembers(supabase, groupId),
     getGroupContacts(supabase, groupId),
@@ -243,6 +246,9 @@ export default async function GroupDetailPage({ params }: Props) {
     group.venue_id
       ? supabase.from('venues').select('id, name').eq('id', group.venue_id).single()
       : Promise.resolve({ data: null, error: null }),
+    user
+      ? supabase.from('people').select('person_id').eq('linked_user_id', user.id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ])
 
   const isBoundaryKeeper = user?.id === group.boundary_keeper_id
@@ -252,6 +258,7 @@ export default async function GroupDetailPage({ params }: Props) {
   const activeMembers = members.filter((member) => member.status === 'active')
   const sportName = sportRow?.data?.display_name ?? null
   const groupVenueName = ((groupVenueRow.data as { id: string; name: string } | null)?.name) ?? null
+  const myPersonId = ((mePersonRow.data as { person_id: string } | null)?.person_id) ?? null
   const invitableUsers = canManageMembership ? await getInvitableUsers(supabase, groupId) : []
   const availableContactPlayers = canManageMembership
     ? await getContactPlayerResolution(supabase)
@@ -422,6 +429,7 @@ export default async function GroupDetailPage({ params }: Props) {
                       key={contact.group_contact_id}
                       groupId={groupId}
                       contact={contact}
+                      currentPersonId={myPersonId}
                     />
                   ))}
                 </>

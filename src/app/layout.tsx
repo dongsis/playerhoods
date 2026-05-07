@@ -3,13 +3,23 @@ import { maskEmail } from '@/lib/auth-ui'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import type { Profile } from '@/lib/types/database'
 import { ChunkRecovery } from '@/app/components/ChunkRecovery'
+import { BuildRefreshGuard } from '@/app/components/BuildRefreshGuard'
 import { SiteFooterLinks } from '@/app/components/SiteFooterLinks'
+import { getCurrentBuildId } from '@/lib/runtime-meta'
 import './globals.css'
 
 const chunkRecoveryScript = `
 (() => {
   const FLAG = 'ph_chunk_recovery_once';
   const pattern = /ChunkLoadError|Loading chunk [\\w-]+ failed|Failed to fetch dynamically imported module/i;
+  const isStaticAssetTarget = (target) => {
+    if (!target || typeof target !== 'object') return false;
+    const tagName = 'tagName' in target ? String(target.tagName || '').toUpperCase() : '';
+    if (tagName !== 'SCRIPT' && tagName !== 'LINK') return false;
+    const src = 'src' in target ? String(target.src || '') : '';
+    const href = 'href' in target ? String(target.href || '') : '';
+    return src.includes('/_next/static/') || href.includes('/_next/static/');
+  };
 
   const shouldRecover = (value) => {
     const message =
@@ -33,7 +43,11 @@ const chunkRecoveryScript = `
   };
 
   window.addEventListener('error', (event) => {
-    if (shouldRecover(event.error) || shouldRecover(event.message)) recover();
+    if (
+      shouldRecover(event.error) ||
+      shouldRecover(event.message) ||
+      isStaticAssetTarget(event.target)
+    ) recover();
   });
 
   window.addEventListener('unhandledrejection', (event) => {
@@ -53,6 +67,7 @@ export default async function RootLayout({
   children: React.ReactNode
 }) {
   const user = await getUser()
+  const buildId = await getCurrentBuildId()
 
   let displayLabel = ''
   if (user) {
@@ -68,6 +83,7 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen font-sans bg-[#F0F7FF] text-[#1E293B]">
+        <BuildRefreshGuard buildId={buildId} />
         <script dangerouslySetInnerHTML={{ __html: chunkRecoveryScript }} />
         <ChunkRecovery />
         <div className="flex min-h-screen flex-col">

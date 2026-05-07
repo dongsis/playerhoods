@@ -22,16 +22,30 @@ export type NotificationWithContext = NotificationWithActor & {
   participant_snapshot?: NotificationParticipantSnapshot
 }
 
+async function getViewerUserId(supabase: SupabaseClient): Promise<string | null> {
+  const { data, error } = await supabase.auth.getUser()
+  if (error) throw error
+  return data.user?.id ?? null
+}
+
 /** Fetch notifications for the current user, newest first. */
 export async function getNotifications(
   supabase: SupabaseClient,
   limit = 50
 ): Promise<NotificationWithContext[]> {
-  const { data, error } = await supabase
+  const viewerUserId = await getViewerUserId(supabase)
+
+  let query = supabase
     .from('notifications')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (viewerUserId) {
+    query = query.or(`actor_user_id.is.null,actor_user_id.neq.${viewerUserId}`)
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
   const rows = (data || []) as Notification[]
@@ -72,10 +86,18 @@ export async function getNotifications(
 
 /** Count unread notifications. */
 export async function getUnreadNotificationCount(supabase: SupabaseClient): Promise<number> {
-  const { count, error } = await supabase
+  const viewerUserId = await getViewerUserId(supabase)
+
+  let query = supabase
     .from('notifications')
     .select('*', { count: 'exact', head: true })
     .is('read_at', null)
+
+  if (viewerUserId) {
+    query = query.or(`actor_user_id.is.null,actor_user_id.neq.${viewerUserId}`)
+  }
+
+  const { count, error } = await query
 
   if (error) throw error
   return count ?? 0

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
-import { HostPlayerMark } from '@/app/components/HostPlayerMark'
 import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
 import {
   acceptMatchInvite,
@@ -204,15 +203,12 @@ export function MatchCard({ item, userId }: Props) {
                         <span
                           className={
                             participant.user_id === match.organizer_id
-                              ? 'truncate font-semibold text-[#0F172A]'
+                              ? 'inline-flex items-center rounded-[10px] border border-[#D7DEE8] bg-[#F6F7F9] px-2.5 py-[0.2rem] text-[0.93em] font-semibold tracking-[-0.01em] text-[#1F2937] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
                               : 'truncate'
                           }
                         >
                           {participant.display_name}
                         </span>
-                        {participant.user_id === match.organizer_id ? (
-                          <HostPlayerMark className="h-6 w-6 shrink-0 text-[11px]" />
-                        ) : null}
                         </span>
                       </span>
                     </span>

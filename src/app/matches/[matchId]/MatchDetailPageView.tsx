@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { MatchActions } from './MatchActions'
 import { ParticipantGroups } from './ParticipantGroups'
 import { ActivityFeed } from './ActivityFeed'
@@ -76,6 +77,8 @@ type MatchDetailPageViewProps = {
   onCancelMatch: (reason: string) => Promise<void>
   onSaveCourtPlan: (data: MatchCourtPlanUpdateInput) => Promise<void>
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
+  onAcceptIdentityLink: (guestId: string) => Promise<void>
+  onKeepSeparateIdentityLink: (guestId: string) => Promise<void>
 }
 
 function MatchHeaderSection({
@@ -120,7 +123,19 @@ function MatchHeaderSection({
 
   return (
     <>
-      <nav style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
+      <div className="mb-4 flex items-center justify-between md:hidden">
+        <Link
+          href="/dashboard"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[26px] font-light text-[#1E293B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+          aria-label="Back to matches"
+        >
+          <span aria-hidden="true">&lt;</span>
+        </Link>
+        <h2 className="text-h2 text-[#1E293B]">Match Detail</h2>
+        <span className="h-11 w-11" />
+      </div>
+
+      <nav style={{ marginBottom: '1rem', fontSize: '0.85rem' }} className="hidden md:block">
         <Link
           href="/dashboard"
           style={{
@@ -341,6 +356,31 @@ function MatchSelfActionsSection({
   )
 }
 
+function LinkedContactNotice({
+  viewModel,
+}: Pick<MatchDetailPageViewProps, 'viewModel'>) {
+  if (!viewModel.hasLinkedGuestIdentity || viewModel.identityLinkCandidates.length > 0) {
+    return null
+  }
+
+  return (
+    <section
+      style={{
+        marginBottom: '1rem',
+        padding: '0.85rem 1rem',
+        border: '1px solid #D9E5F4',
+        borderRadius: '20px',
+        background: '#F8FBFF',
+      }}
+    >
+      <p style={{ margin: 0, color: '#5B6B84', fontSize: '0.82rem', lineHeight: 1.5 }}>
+        This contact invite is already linked to your account. If match details still look limited,
+        the match is using older visibility rules for linked contact participants.
+      </p>
+    </section>
+  )
+}
+
 function MatchParticipantsSection({
   viewModel,
   onRemoveParticipant,
@@ -433,6 +473,8 @@ export function MatchDetailPageView({
   onSaveCourtPlan,
   onRemoveParticipant,
   onSaveLineup,
+  onAcceptIdentityLink,
+  onKeepSeparateIdentityLink,
 }: MatchDetailPageViewProps) {
   const showManagePanel =
     viewModel.showOrganizerAdminSection ||
@@ -459,7 +501,7 @@ export function MatchDetailPageView({
   const pageMaxWidth = showToolsSection ? '920px' : '720px'
 
   return (
-    <div style={{ maxWidth: pageMaxWidth, margin: '0 auto', padding: '0.75rem 1rem 1.5rem', background: '#F0F7FF' }}>
+    <div style={{ maxWidth: pageMaxWidth, margin: '0 auto', padding: '0.75rem 1rem 1.5rem', background: '#F0F7FF' }} className="pb-24 md:pb-6">
       <AutoRefresh />
       <MatchHeaderSection
         viewModel={viewModel}
@@ -467,6 +509,20 @@ export function MatchDetailPageView({
         onCancelMatch={onCancelMatch}
         onSaveCourtPlan={onSaveCourtPlan}
       />
+      {viewModel.identityLinkCandidates.length > 0 ? (
+        <div style={{ marginBottom: '1.1rem' }}>
+          <IdentityLinkReviewCard
+            title="Link your contact profile"
+            body="We found a contact or invitation that matches your verified email. Link it to your account to accept this match and manage future invites."
+            candidates={viewModel.identityLinkCandidates}
+            onAccept={onAcceptIdentityLink}
+            onKeepSeparate={onKeepSeparateIdentityLink}
+            acceptLabel="Link and continue"
+            keepSeparateLabel="Keep separate for now"
+          />
+        </div>
+      ) : null}
+      <LinkedContactNotice viewModel={viewModel} />
       <MatchSelfActionsSection viewModel={viewModel} />
       <MatchParticipantsSection viewModel={viewModel} onRemoveParticipant={onRemoveParticipant} />
       <MatchChatSection
@@ -475,32 +531,70 @@ export function MatchDetailPageView({
         onPostMessage={onPostMessage}
       />
       {showToolsSection ? (
-        <MatchToolsSection
-          showInviteTools={showManagePanel}
-          showRoundRobinTools={showRoundRobinTools}
-          matchId={viewModel.matchId}
-          matchStatus={viewModel.match.status}
-          gameType={viewModel.match.game_type}
-          finalCourtLabel={viewModel.match.final_court_label}
-          matchCourts={viewModel.matchCourts}
-          isOrganizer={viewModel.isOrganizer}
-          organizerUserId={viewModel.match.organizer_id}
-          requiredCount={viewModel.match.required_count}
-          confirmedParticipants={confirmedParticipants}
-          activeInviteParticipants={activeInviteParticipants}
-          activeGroupInvites={viewModel.groupInvitations}
-          activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
-          activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
-          candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForNominate}
-          contactTargets={viewModel.contactTargets}
-          candidateGroups={viewModel.allGroups.filter((group) =>
-            group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
-          )}
-          savedLineup={viewModel.savedLineup}
-          onUpdateMatchDetails={onUpdateMatchDetails}
-          onRemoveParticipant={onRemoveParticipant}
-          onSaveLineup={onSaveLineup}
-        />
+        <>
+          <details className="mb-4 md:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-center gap-3 rounded-[24px] border border-[#E2E8F0] bg-white px-5 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-[#C25E46] shadow-[0_16px_36px_rgba(15,23,42,0.06)] marker:hidden">
+              <span className="text-[28px] leading-none">+</span>
+              Invite Players
+            </summary>
+            <div className="mt-4">
+              <MatchToolsSection
+                showInviteTools={showManagePanel}
+                showRoundRobinTools={showRoundRobinTools}
+                matchId={viewModel.matchId}
+                matchStatus={viewModel.match.status}
+                gameType={viewModel.match.game_type}
+                finalCourtLabel={viewModel.match.final_court_label}
+                matchCourts={viewModel.matchCourts}
+                isOrganizer={viewModel.isOrganizer}
+                organizerUserId={viewModel.match.organizer_id}
+                requiredCount={viewModel.match.required_count}
+                confirmedParticipants={confirmedParticipants}
+                activeInviteParticipants={activeInviteParticipants}
+                activeGroupInvites={viewModel.groupInvitations}
+                activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
+                activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
+                candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForNominate}
+                contactTargets={viewModel.contactTargets}
+                candidateGroups={viewModel.allGroups.filter((group) =>
+                  group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
+                )}
+                savedLineup={viewModel.savedLineup}
+                onUpdateMatchDetails={onUpdateMatchDetails}
+                onRemoveParticipant={onRemoveParticipant}
+                onSaveLineup={onSaveLineup}
+              />
+            </div>
+          </details>
+          <div className="hidden md:block">
+            <MatchToolsSection
+              showInviteTools={showManagePanel}
+              showRoundRobinTools={showRoundRobinTools}
+              matchId={viewModel.matchId}
+              matchStatus={viewModel.match.status}
+              gameType={viewModel.match.game_type}
+              finalCourtLabel={viewModel.match.final_court_label}
+              matchCourts={viewModel.matchCourts}
+              isOrganizer={viewModel.isOrganizer}
+              organizerUserId={viewModel.match.organizer_id}
+              requiredCount={viewModel.match.required_count}
+              confirmedParticipants={confirmedParticipants}
+              activeInviteParticipants={activeInviteParticipants}
+              activeGroupInvites={viewModel.groupInvitations}
+              activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
+              activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
+              candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForNominate}
+              contactTargets={viewModel.contactTargets}
+              candidateGroups={viewModel.allGroups.filter((group) =>
+                group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
+              )}
+              savedLineup={viewModel.savedLineup}
+              onUpdateMatchDetails={onUpdateMatchDetails}
+              onRemoveParticipant={onRemoveParticipant}
+              onSaveLineup={onSaveLineup}
+            />
+          </div>
+        </>
       ) : null}
     </div>
   )

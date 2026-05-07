@@ -175,6 +175,11 @@ export function ParticipantDetailPanel({
 }: Props) {
   if (!open) return null
 
+  const showStatusDot = avatarFallback !== 'contact' && Boolean(statusClassName)
+  const titleClassName = avatarFallback === 'contact'
+    ? 'text-[1.45rem] font-black tracking-tight text-slate-900'
+    : 'text-[1.7rem] font-black tracking-tight text-slate-900'
+
   return (
     <div className="fixed inset-0 z-[120]">
       <button
@@ -194,7 +199,7 @@ export function ParticipantDetailPanel({
                 fallback={avatarFallback}
                 className="h-14 w-14 border-2 border-white text-lg shadow-sm"
               />
-              {statusClassName ? (
+              {showStatusDot ? (
                 <span
                   className={`absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-[3px] border-white ${statusClassName}`}
                   aria-hidden="true"
@@ -202,7 +207,7 @@ export function ParticipantDetailPanel({
               ) : null}
             </div>
             <div className="min-w-0">
-              <h2 className="text-[1.7rem] font-black tracking-tight text-slate-900">
+              <h2 className={titleClassName}>
                 {displayName}
               </h2>
               {headerBadges ? (

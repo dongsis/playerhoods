@@ -281,7 +281,12 @@ function ParticipantRow({
   const isGuest = p.guest_id !== null
   const isHostRow = organizerUserId !== null && p.user_id === organizerUserId
   const canSavePlayer = !isGuest && p.user_id !== null && p.user_id !== myUserId
-  const canSaveContactPlayer = Boolean(isGuest && p.guest_id !== null)
+  const canSaveContactPlayer = Boolean(
+    isGuest
+    && p.guest_id !== null
+    && !isMe
+    && (!myUserId || p.linked_user_id !== myUserId),
+  )
   const canOpenDetails = Boolean(p.user_id || p.guest_id)
   const isPendingParticipant = p.status === 'pending'
   const isWaitingListParticipant = p.status === 'waiting_list'
@@ -578,6 +583,7 @@ function ParticipantRow({
               <SavedPlayerButton
                 targetUserId={p.user_id!}
                 source="match_player"
+                currentUserId={myUserId}
                 initialSaved={initiallySaved}
                 compact
                 savedLabel="Saved"

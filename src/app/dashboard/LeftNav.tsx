@@ -108,7 +108,7 @@ function LogOutIcon({ className = 'h-[18px] w-[18px]' }: { className?: string })
   )
 }
 
-function NavIcon({ tab, className = 'h-[18px] w-[18px]' }: { tab: DashTab; className?: string }) {
+export function NavIcon({ tab, className = 'h-[18px] w-[18px]' }: { tab: DashTab; className?: string }) {
   switch (tab) {
     case 'inbox':
       return <MailIcon className={className} />
@@ -161,13 +161,15 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
         <button
           type="button"
           onClick={() => onTab('matches')}
-          className="group flex w-full items-center justify-start rounded-3xl px-0 py-1 transition-colors hover:bg-transparent"
+          className="group flex w-full items-center justify-center rounded-3xl px-0 py-1 transition-colors hover:bg-transparent"
           aria-label="Playerhoods home"
         >
           <img
-            src="/playerhoods-logo-main-ui-cropped.png"
+            src="/playerhoods-logo-transparent.png"
             alt="Playerhoods"
-            className="-ml-4 h-auto w-full max-w-[245px] origin-left transition-transform duration-200 group-hover:scale-[1.01]"
+            width={1122}
+            height={1402}
+            className="mx-auto h-auto w-full max-w-[245px] object-contain transition-transform duration-200 group-hover:scale-[1.01]"
           />
         </button>
       </div>

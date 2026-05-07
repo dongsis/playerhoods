@@ -10,8 +10,9 @@ import {
   type MatchDetailData,
 } from '@/lib/api/matches'
 import { getGroups } from '@/lib/api/groups'
+import { getIdentityLinkCandidates } from '@/lib/api/identity-links'
 import { getInviteCircleList, type InviteCircleRow } from '@/lib/api/play-network'
-import type { Court, Group, MatchCourt } from '@/lib/types/database'
+import type { Court, Group, MatchCourt, IdentityLinkCandidate } from '@/lib/types/database'
 
 type MatchDetailUser = Awaited<ReturnType<typeof getUser>>
 
@@ -25,6 +26,7 @@ export type MatchDetailLoaderData = {
   admissionTargets: AdmissionTarget[]
   inviteCircle: InviteCircleRow[]
   allGroups: Group[]
+  identityLinkCandidates: IdentityLinkCandidate[]
 }
 
 async function loadWithFallback<T>(label: string, loader: () => Promise<T>, fallback: T): Promise<T> {
@@ -69,7 +71,7 @@ export async function loadMatchDetailPageData(matchId: string): Promise<MatchDet
       : Promise.resolve([] as Court[]),
   ])
 
-  const [admissionTargets, inviteCircle, allGroups] = await Promise.all([
+  const [admissionTargets, inviteCircle, allGroups, identityLinkCandidates] = await Promise.all([
     detail.match.status === 'active'
       ? loadWithFallback('admissionTargets', () => getAdmissionTargets(supabase, matchId), [] as AdmissionTarget[])
       : Promise.resolve([] as AdmissionTarget[]),
@@ -79,6 +81,9 @@ export async function loadMatchDetailPageData(matchId: string): Promise<MatchDet
     detail.isOrganizer && detail.match.status === 'active'
       ? loadWithFallback('groups', () => getGroups(supabase), [] as Group[])
       : Promise.resolve([] as Group[]),
+    user
+      ? loadWithFallback('identityLinkCandidates', () => getIdentityLinkCandidates(supabase), [] as IdentityLinkCandidate[])
+      : Promise.resolve([] as IdentityLinkCandidate[]),
   ])
 
   return {
@@ -91,5 +96,6 @@ export async function loadMatchDetailPageData(matchId: string): Promise<MatchDet
     admissionTargets,
     inviteCircle,
     allGroups,
+    identityLinkCandidates,
   }
 }
