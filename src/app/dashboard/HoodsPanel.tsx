@@ -1628,6 +1628,8 @@ export function HoodsPanel({
           ...inviteCircleRows.map((row) => row.target_user_id),
           ...groups.flatMap((group) => group.members.map((member) => member.userId)),
           ...contacts.map((contact) => contact.linked_user_id).filter((value): value is string => Boolean(value)),
+          ...Array.from(groupContactsByGroupId.values()).flat().map((contact) => contact.linked_user_id).filter((value): value is string => Boolean(value)),
+          ...Array.from(guestLookupByGuestId.values()).map((guest) => guest.linked_user_id).filter((value): value is string => Boolean(value)),
           ...items.flatMap((item) =>
             item.participants
               .map((participant) => participant.user_id)
@@ -2030,9 +2032,9 @@ export function HoodsPanel({
 
       for (const contact of supportData.groupContactsByGroupId.get(group.group.id) ?? []) {
         const ownedContact = supportData.contactsByGuestId.get(contact.guest_id)
-        const linkedUserId = ownedContact?.linked_user_id ?? null
-        const linkedProfile = linkedUserId ? combinedProfiles.get(linkedUserId) : null
         const lookup = supportData.guestLookupByGuestId.get(contact.guest_id)
+        const linkedUserId = contact.linked_user_id ?? ownedContact?.linked_user_id ?? lookup?.linked_user_id ?? null
+        const linkedProfile = linkedUserId ? combinedProfiles.get(linkedUserId) : null
         const guestSportIds = supportData.guestSportsByGuestId.get(contact.guest_id) ?? []
         if (
           !groupMatchesSelectedSport

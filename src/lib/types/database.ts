@@ -1503,6 +1503,10 @@ export interface Database {
         Args: { p_group_id: string }
         Returns: { group_contact_id: string; guest_id: string; person_id: string; display_name: string; avatar_url: string | null; membership_type: string; created_by: string; created_at: string }[]
       }
+      rpc_group_contact_list_v2: {
+        Args: { p_group_id: string }
+        Returns: { group_contact_id: string; guest_id: string; person_id: string; display_name: string; avatar_url: string | null; linked_user_id: string | null; membership_type: string; created_by: string; created_at: string }[]
+      }
       rpc_group_resources_archive_stale: {
         Args: { p_group_id: string }
         Returns: number
@@ -1514,6 +1518,10 @@ export interface Database {
       rpc_contact_player_lookup: {
         Args: { p_guest_ids: string[] }
         Returns: { guest_id: string; person_id: string | null; display_name: string; avatar_url: string | null; primary_sport_id: number | null }[]
+      }
+      rpc_contact_player_lookup_v2: {
+        Args: { p_guest_ids: string[] }
+        Returns: { guest_id: string; person_id: string | null; display_name: string; avatar_url: string | null; primary_sport_id: number | null; linked_user_id: string | null }[]
       }
       // v1.6.3: Sports RPCs
       rpc_sports_list: {

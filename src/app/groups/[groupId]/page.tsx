@@ -164,12 +164,17 @@ function MemberListItem({
 function ContactListItem({
   groupId,
   contact,
+  linkedProfile,
   currentPersonId,
 }: {
   groupId: string
-  contact: Pick<GroupContactWithDisplay, 'group_contact_id' | 'guest_id' | 'display_name' | 'person_id'>
+  contact: Pick<GroupContactWithDisplay, 'group_contact_id' | 'guest_id' | 'display_name' | 'person_id' | 'linked_user_id'>
+  linkedProfile: { display_name: string | null; avatar_url: string | null } | null
   currentPersonId: string | null
 }) {
+  const displayName = linkedProfile?.display_name || contact.display_name
+  const isLinked = Boolean(contact.linked_user_id)
+
   return (
     <div
       style={{
@@ -197,16 +202,21 @@ function ContactListItem({
             }}
           />
           <Avatar
-            src={null}
-            displayName={contact.display_name}
+            src={linkedProfile?.avatar_url ?? null}
+            displayName={displayName}
             size="md"
-            fallback="contact"
+            fallback={isLinked ? 'initial' : 'contact'}
             className="h-[1.8rem] w-[1.8rem]"
           />
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-            <span style={{ color: '#0f172a', fontSize: '0.98rem', fontWeight: 600 }}>{contact.display_name}</span>
+            <span style={{ color: '#0f172a', fontSize: '0.98rem', fontWeight: 600 }}>{displayName}</span>
+            {isLinked ? (
+              <span style={{ color: '#0284c7', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                PlayerHoods profile
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -214,7 +224,7 @@ function ContactListItem({
         guestId={contact.guest_id}
         source="group_contact"
         groupId={groupId}
-        hidden={Boolean(currentPersonId && contact.person_id === currentPersonId)}
+        hidden={Boolean(isLinked || (currentPersonId && contact.person_id === currentPersonId))}
         compact
         saveLabel="Save player"
       />
@@ -270,6 +280,17 @@ export default async function GroupDetailPage({ params }: Props) {
       guest_id: contact.guest_id,
       display_name: contact.display_name,
     }))
+  const linkedGroupContactUserIds = Array.from(
+    new Set(groupContacts.map((contact) => contact.linked_user_id).filter((value): value is string => Boolean(value))),
+  )
+  const linkedGroupContactProfilesRes = linkedGroupContactUserIds.length > 0
+    ? await supabase.from('profile_display').select('id, display_name, avatar_url').in('id', linkedGroupContactUserIds)
+    : { data: [], error: null }
+  if (linkedGroupContactProfilesRes.error) throw linkedGroupContactProfilesRes.error
+  const linkedGroupContactProfileMap = new Map(
+    ((linkedGroupContactProfilesRes.data ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[])
+      .map((profile) => [profile.id, { display_name: profile.display_name, avatar_url: profile.avatar_url }]),
+  )
   const totalListedPeople = activeMembers.length + groupContacts.length
   const groupIcon = getGroupIconMeta(group.icon_key)
 
@@ -429,6 +450,7 @@ export default async function GroupDetailPage({ params }: Props) {
                       key={contact.group_contact_id}
                       groupId={groupId}
                       contact={contact}
+                      linkedProfile={contact.linked_user_id ? linkedGroupContactProfileMap.get(contact.linked_user_id) ?? null : null}
                       currentPersonId={myPersonId}
                     />
                   ))}

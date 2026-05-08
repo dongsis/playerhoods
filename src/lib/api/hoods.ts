@@ -17,6 +17,7 @@ export type GuestLookupRow = {
   display_name: string
   avatar_url: string | null
   primary_sport_id: number | null
+  linked_user_id?: string | null
 }
 
 export async function fetchPublicPlayerProfiles(
@@ -70,7 +71,7 @@ export async function fetchGuestLookupMap(
     return new Map()
   }
 
-  const { data, error } = await supabase.rpc('rpc_contact_player_lookup', {
+  const { data, error } = await supabase.rpc('rpc_contact_player_lookup_v2', {
     p_guest_ids: uniqueGuestIds,
   })
   if (error) throw error

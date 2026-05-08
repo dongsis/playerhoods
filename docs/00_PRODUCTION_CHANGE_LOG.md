@@ -55,6 +55,7 @@ If a status cannot be confirmed, write `Unknown`. Do not infer.
 | 2026-05-08 | baseline-2026-05-08-bc36051 | Baseline | Production baseline confirmed | bc3605189be29fc432747f6ad728161140e90827 | Up to 20260508144500_mark_legacy_group_invite_user_rpc.sql | Yes | Yes | Login page only | Production aligned, smoke test pending | GitHub main, Vercel Production, and Supabase Remote aligned. |
 | 2026-05-08 | docs-release-governance-baseline-2026-05-08 | Patch | Added release governance and production change log documents | 0aa52e4579927ca9c85c09b9ad0f70483d8fdecf | None | Unknown | N/A | Not verified | GitHub only | Documentation-only governance patch. No deploy or remote migration apply performed by Codex. |
 | 2026-05-08 | docs-release-governance-template-2026-05-08 | Patch | Expanded governance docs into authoritative rule and fact-record templates | Unknown | None | Unknown | N/A | Not verified | GitHub only after push | Documentation-only governance patch. Commit hash is reported in the task final report because a commit cannot self-reference its own final hash. |
+| 2026-05-08 | SR-20260508-contact-link-person-scope | Structural Release | Link accept and active Contact/Hoods UI move linked contacts to registered-user identity by person scope | Unknown | 20260508162000_identity_link_person_scope_active_identity.sql | Unknown | Not applied at write time | Not verified | Draft before commit | Structural release record created before commit/deploy/apply. Final commit/deploy/apply/test status must be reconciled after rollout. |
 
 ## 2026-05-08 - baseline-2026-05-08-bc36051
 
@@ -154,3 +155,103 @@ This patch does not deploy Vercel Production and does not apply Supabase Remote 
 ### Rollback
 
 Revert the GitHub commit reported in the final task report for `docs-release-governance-template-2026-05-08`.
+
+## 2026-05-08 - SR-20260508-contact-link-person-scope
+
+**Type:** Structural Release  
+**Commit:** Unknown  
+**Migration:** `20260508162000_identity_link_person_scope_active_identity.sql`  
+**Status:** Draft before commit
+
+### Summary
+
+This release changes the Contact Player link-accept path and active Contact/Hoods rendering so that a linked Contact Player is treated as the registered user's active identity while preserving historical contact data.
+
+The intended behavior is:
+
+- Link accept runs by canonical `person_id`, not only by one `guest_id`.
+- Active owner-private contact records for the linked person are soft archived.
+- Historical contact records, invitations, notes, and match participation rows are preserved.
+- Contact owners and saved users are mapped toward the registered-user invite path.
+- Contact owners, saved users, and group/Hood keepers receive notifications.
+- Hoods and group contact UI can render the registered PlayerHoods profile for linked contacts.
+- Link does not grant Match Proxy, group member, limited member, or keeper permissions.
+
+### Files
+
+| Area | Files |
+|---|---|
+| Migration | `supabase/migrations/20260508162000_identity_link_person_scope_active_identity.sql` |
+| Hoods UI | `src/app/dashboard/HoodsPanel.tsx` |
+| Group UI | `src/app/groups/[groupId]/page.tsx` |
+| API clients | `src/lib/api/groups.ts`, `src/lib/api/hoods.ts` |
+| Types | `src/lib/types/database.ts` |
+
+### Migration Details
+
+| Item | Status |
+|---|---|
+| Destructive migration | No |
+| Drops tables/columns/RPCs | No |
+| Deletes historical rows | No |
+| Creates/replaces RPCs | Yes |
+| Soft archives active contact records during link accept | Yes |
+| Applies automatically on migration apply | Function definitions only; business data changes occur when `rpc_identity_link_accept` is executed |
+
+New/changed RPC behavior:
+
+- `rpc_identity_link_accept(uuid)` becomes person-scoped for active contact compatibility rows.
+- `rpc_contact_player_resolution()` resolves linked state through `people.linked_user_id` or accepted contact identity links.
+- `rpc_contact_player_lookup_v2(uuid[])` returns `linked_user_id`.
+- `rpc_group_contact_list_v2(uuid)` returns `linked_user_id`.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local | Draft | Local diff reviewed |
+| GitHub main | Unknown | Not committed at record-write time |
+| Vercel Preview | Unknown | Not deployed at record-write time |
+| Vercel Production | Unknown | Not deployed at record-write time |
+| Supabase Local | Pending rehearsal | Build/reset not yet recorded in this entry at write time |
+| Supabase Remote | Not applied at write time | `20260508162000...` not yet applied remotely |
+| Production verification | Not verified | Online tests not yet executed |
+
+### Online Verification Plan
+
+Minimum smoke:
+
+1. Open `https://www.playerhoods.com/login` and confirm HTTP 200.
+2. Log in with test account A, test account B, and a keeper account.
+3. Create or use a Contact Player where multiple owner/saved/group contact paths point to the same canonical person.
+4. Complete link accept as the corresponding registered user.
+5. Verify the contact owner receives a notification.
+6. Verify the saved user receives a notification.
+7. Verify the Hood/Group keeper receives a notification.
+8. Verify Contacts/Hoods active UI does not duplicate Contact card and Registered User card.
+9. Verify old contact phone/email/notes are not shown as primary registered profile information.
+10. Verify historical invitation, notes, and match participation remain accessible.
+11. Verify the linked user did not automatically receive Match Proxy or group/member permissions.
+12. Verify future invitation path uses the registered-user path.
+
+### Known Risks
+
+- If a registered user already has a separate `people.linked_user_id` row, the contact person cannot also claim the same `linked_user_id` because of the unique partial index. The release relies on accepted `identity_links` and v2 lookup RPCs to render the registered-user identity in that case.
+- Notification fanout depends on existing relationship/contact/group-contact rows being correctly tied to the canonical `person_id`.
+- Full production verification requires real test accounts and may require seeded or pre-existing multi-owner contact data.
+
+### Rollback
+
+Code rollback:
+
+- Revert the structural release commit.
+- Redeploy the previous known-good production commit.
+
+Database rollback:
+
+- Add a follow-up rollback migration restoring the previous RPC definitions for `rpc_identity_link_accept` and `rpc_contact_player_resolution`, and stop frontend usage of `rpc_contact_player_lookup_v2` / `rpc_group_contact_list_v2`.
+- Do not drop v2 RPCs until frontend has been rolled back.
+- For business writes already produced by link accept, repair by scoped data fix:
+  - restore mistakenly archived `contact_records` by clearing `archived_at`, `archive_reason`, and `replaced_by_user_id` for the affected person/time window;
+  - remove or mark erroneous notifications;
+  - remove erroneous `user_invite_circle` or `person_relationships` rows only after scoped audit.

@@ -442,6 +442,7 @@ export type GroupContactWithDisplay = {
   person_id: string
   display_name: string
   avatar_url: string | null
+  linked_user_id?: string | null
   gender?: string | null
   membership_type: string
   created_by: string
@@ -467,7 +468,7 @@ export async function getGroupContacts(
   supabase: Client,
   groupId: string,
 ): Promise<GroupContactWithDisplay[]> {
-  const { data, error } = await supabase.rpc('rpc_group_contact_list', {
+  const { data, error } = await supabase.rpc('rpc_group_contact_list_v2', {
     p_group_id: groupId,
   })
   if (error) throw error
