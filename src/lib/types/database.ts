@@ -1595,6 +1595,10 @@ export interface Database {
         }
         Returns: Json
       }
+      rpc_complete_onboarding_next_step: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

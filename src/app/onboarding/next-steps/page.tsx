@@ -38,11 +38,7 @@ export default async function OnboardingNextStepsPage({ searchParams }: Props) {
   const identityLinkCandidates = await getIdentityLinkCandidates(supabase).catch(() => [])
 
   if (identityLinkCandidates.length === 0) {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ onboarding_completed: true })
-      .eq('id', user.id)
-      .eq('onboarding_profile_completed', true)
+    const { error } = await supabase.rpc('rpc_complete_onboarding_next_step')
 
     if (!error) {
       redirect(continueHref)

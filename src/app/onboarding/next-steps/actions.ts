@@ -57,11 +57,7 @@ export async function completeOnboardingNextStepAction() {
   }
 
   const supabase = await createSupabaseServerClient()
-  const { error } = await supabase
-    .from('profiles')
-    .update({ onboarding_completed: true })
-    .eq('id', user.id)
-    .eq('onboarding_profile_completed', true)
+  const { error } = await supabase.rpc('rpc_complete_onboarding_next_step')
 
   if (error) {
     throw error
