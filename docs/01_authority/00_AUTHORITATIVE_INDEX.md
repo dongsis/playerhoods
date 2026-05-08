@@ -79,6 +79,22 @@ then the implementation is considered drift and must be corrected via append-onl
 
 ## 4. Canonical Topic Map
 
+### 4.0 Release / Deployment Governance
+
+**Governance documents:**  
+- `../00_RELEASE_GOVERNANCE.md`
+- `../00_PRODUCTION_CHANGE_LOG.md`
+
+**Covers:**  
+- environment definitions for Local, GitHub, Vercel Preview, Vercel Production, Supabase Local, and Supabase Remote
+- Patch / Mini Release / Structural Release classification
+- production alignment and verification status definitions
+- required production change logging
+- Unknown Rule for unverifiable deployment, migration, and production-test state
+- required Environment Impact Report for Codex tasks
+
+These documents govern release/deployment status language. They do not override DB canonical behavior rules, but they are authoritative for how production state is recorded and reported.
+
 ### 4.1 Participant Lifecycle
 
 **Canonical documents:**  

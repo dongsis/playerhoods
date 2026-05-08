@@ -2,80 +2,147 @@
 
 Last updated: 2026-05-08
 
-This document defines how PlayerHoods tracks production-related changes across code, deployments, and databases.
+This document is the rulebook for Codex, Cursor, Claude Code, and maintainers when changing PlayerHoods production-related code, database behavior, deployment state, or release documentation.
 
-## Environments
+`00_RELEASE_GOVERNANCE.md` records rules.  
+`00_PRODUCTION_CHANGE_LOG.md` records facts.
 
-| Environment | Definition | Notes |
+## Environment Definitions
+
+| Environment | Definition | Do Not Confuse With |
 |---|---|---|
-| Local | The developer workspace on this machine. | May contain uncommitted changes, local logs, local builds, and local database state. Local is not production. |
-| GitHub | The remote repository state, especially `main`. | A commit on GitHub is source-controlled, but not automatically proven deployed or applied to any database. |
-| Vercel Preview | A non-production Vercel deployment, usually branch/PR scoped. | Useful for review, but not the production user surface. |
-| Vercel Production | The production web deployment served to users. | Must be reconciled to a specific Git commit before being called aligned. |
-| Supabase Local | The local Supabase stack and local database. | Used for migration rehearsal and local testing. It does not prove remote database state. |
-| Supabase Remote | The production Supabase project and remote database. | Must be checked independently with remote migration state before being called aligned. |
+| Local code | The current workspace on this machine, including uncommitted files. | GitHub, Preview, Production |
+| GitHub | The remote repository state, especially `main`. | Vercel Production or Supabase Remote |
+| Vercel Preview | Non-production Vercel deployment for branch/preview review. | Production |
+| Vercel Production | The production web deployment served to users. Must be tied to a specific commit before being called deployed. | GitHub commit alone |
+| Supabase Local | Local Supabase stack and local database. Useful for migration rehearsal. | Supabase Remote |
+| Supabase Remote | Production Supabase project and remote database. Must be checked directly for migration state. | Local migration files |
 
-## Change Types
+## Release Types
 
-| Type | Definition |
+| Type | Definition | Logging Requirement |
+|---|---|---|
+| Patch | Small, low-risk change with limited blast radius, such as docs, copy, minor UI, or a narrow bug fix. | One change-log row is usually enough unless production state is affected. |
+| Mini Release | Bounded product change touching a small flow or multiple files. May include a narrow additive migration. | Change-log row plus short notes and verification status. |
+| Structural Release | Change affecting canonical identity, permissions, RLS, RPCs, migrations, data model, invitation/request/confirmation flows, Contact Player, Identity Link, Saved/Invite Circle, Request Scope, Group/Hoods visibility, or other multi-surface behavior. | Detailed change-log block required, including rollout, verification, rollback, and known risks. |
+
+## Status Definitions
+
+| Status | Definition |
 |---|---|
-| Patch | A small, low-risk change with limited blast radius. Usually UI copy, local styling, minor bug fix, or docs. May not require a migration. |
-| Mini Release | A bounded product change that touches multiple files or one small flow. May include a migration if the migration is additive and narrow. Requires a clear verification plan. |
-| Structural Release | A change that affects canonical identity, permissions, data model, business workflow, database functions, migration semantics, or multi-surface behavior. Requires explicit release assessment, rollout order, verification, and rollback plan. |
-
-## Release States
-
-| State | Definition |
-|---|---|
-| Draft | Local-only work. Not committed to GitHub. Not deployed. Not applied to Supabase Remote. |
-| GitHub only | Committed and pushed to GitHub, but not confirmed deployed to Vercel Production or applied to Supabase Remote. |
-| Production deployed | Confirmed deployed to Vercel Production at a specific commit. Database state may still be pending. |
-| DB remote applied | Confirmed applied to Supabase Remote through a specific migration. Web production deployment may still be pending. |
-| Production aligned | GitHub main, Vercel Production, and Supabase Remote are reconciled and point to the expected commit/migration state. |
-| Verified | Production aligned and required production smoke/core-flow checks have passed. |
-| Rolled back | A previous production change has been reverted or superseded by a rollback commit, deployment, and/or database rollback/fix migration. |
+| Draft | Local changes only, not committed. |
+| GitHub only | Committed to GitHub, not confirmed deployed. |
+| Preview deployed | Confirmed deployed to Vercel Preview. |
+| Production deployed | Confirmed deployed to Vercel Production at a specific commit. |
+| DB remote applied | Related Supabase migration confirmed applied to Supabase Remote. |
+| Production aligned | GitHub main, Vercel Production, and Supabase Remote are aligned for the change. |
+| Verified | Required production smoke/core-flow checks passed. Login page reachability alone is not full verification. |
+| Rolled back | Change was reverted, disabled, or superseded by a rollback commit/deployment/fix migration. |
 
 ## Unknown Rule
 
-If a state cannot be confirmed from reliable evidence, write `Unknown`.
+If a status cannot be confirmed, write `Unknown`. Do not infer.
 
-Do not guess. Do not infer production deployment, remote database application, or production verification from local success alone.
+Required examples:
 
-Examples:
+- A GitHub commit is not the same as Vercel Production deployed.
+- A migration file created locally or committed to GitHub is not the same as Supabase Remote applied.
+- A successful local build is not production verification.
+- A reachable login page is not a full production smoke test.
 
-- If GitHub has a commit but Vercel Production commit was not checked, Vercel Production is `Unknown`.
-- If a migration exists locally but `supabase migration list --linked` was not checked, Supabase Remote is `Unknown`.
-- If the login page loads but core flows were not tested, production verification is `login page only; core flows not verified`.
+## Required Start-of-Task Reading
 
-## Environment Impact Report
+For production-related work, read these first:
 
-Codex must output an Environment Impact Report for every task that touches or evaluates production-related code, database behavior, release state, deployment state, or production verification.
+1. `docs/00_RELEASE_GOVERNANCE.md`
+2. `docs/00_PRODUCTION_CHANGE_LOG.md`
+
+Then classify the change as Patch, Mini Release, or Structural Release before acting.
+
+## Required Final Report
+
+Every Codex task that touches or evaluates production-related work must end with an Environment Impact Report.
 
 The report must include:
 
-- Local worktree impact
+- Local code impact
 - GitHub impact
 - Vercel Preview impact
 - Vercel Production impact
 - Supabase Local impact
 - Supabase Remote impact
 - Production verification impact
+- Current status
 - Unknowns
 
 If there is no impact for an environment, write `No change`.
 
-## Production Change Log Requirement
+## Required Change Log Update
 
-Every production-related change must update `docs/00_PRODUCTION_CHANGE_LOG.md`.
+Every production-related change must update:
 
-This includes:
+`docs/00_PRODUCTION_CHANGE_LOG.md`
 
-- Production baseline records
-- GitHub-only changes intended for production
-- Vercel Production deployments
-- Supabase Remote migration applications
-- Production verification results
-- Rollbacks
-- Structural Release assessments
+This includes local-only Draft changes, GitHub-only commits, Vercel Production deployments, Supabase Remote migration applications, production verification, rollback, and release assessments.
 
-The change log should state what is known and mark unknowns explicitly.
+Each record must include:
+
+1. Date
+2. Change ID
+3. Release Type
+4. Summary
+5. GitHub commit hash
+6. Migration file, if any
+7. Vercel Production status
+8. Supabase Remote status
+9. Production verification status
+10. Current status
+11. Rollback method
+
+For Structural Releases, also include:
+
+- Migration details
+- Remote apply status
+- Vercel deployment status
+- Online verification steps
+- Rollback method
+- Known risks
+
+## What Not To Record As Product Change
+
+Do not record local runtime logs as product changes, including:
+
+- `.next-start.err`
+- `.next-start.out`
+- `.next-dev.*`
+- other generated local runtime logs
+
+Do not record secrets, tokens, passwords, service-role keys, or private user data.
+
+Safe to record:
+
+- Commit hashes
+- Migration filenames
+- Deployment status
+- Verification steps
+- Rollback notes
+
+## Fixed Language
+
+Use precise language:
+
+Correct:
+
+> Current GitHub main committed content is aligned with Vercel Production and Supabase Remote. Local uncommitted changes are not part of production.
+
+Incorrect:
+
+> All current changes are in production.
+
+Correct:
+
+> Login page reachable only; core flows not verified.
+
+Incorrect:
+
+> Production verified.
