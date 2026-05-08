@@ -55,7 +55,7 @@ export function InviteUserForm({ groupId, invitableUsers }: Props) {
   if (invitableUsers.length === 0) {
     return (
       <p style={{ color: '#98a2b3', fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
-        Everyone is already a member or there are no other users on the platform.
+        Everyone in your saved player list is already a member, or you have no saved players yet.
       </p>
     )
   }

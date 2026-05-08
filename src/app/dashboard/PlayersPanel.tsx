@@ -21,48 +21,27 @@ interface Props {
 }
 
 /** Compute invitable users for a group from already-loaded PlayersData. */
-function getInvitableForGroup(data: PlayersData, groupId: string): InvitableUser[] {
+function getInvitableForGroup(data: PlayersData, groupId: string, inviteCircle: InviteCircleRow[]): InvitableUser[] {
   const existingIds = new Set(
     (data.groups.find(g => g.group.id === groupId)?.members ?? []).map(m => m.userId)
   )
-  const seen = new Set<string>()
-  const result: InvitableUser[] = []
-  for (const { members } of data.venues) {
-    for (const m of members) {
-      if (!seen.has(m.userId) && !existingIds.has(m.userId)) {
-        seen.add(m.userId)
-        result.push({ id: m.userId, display_name: m.handle })
-      }
-    }
-  }
-  for (const p of data.noVenue) {
-    if (!seen.has(p.id) && !existingIds.has(p.id)) {
-      seen.add(p.id)
-      result.push({ id: p.id, display_name: p.display_name })
-    }
-  }
-  return result.sort((a, b) => a.display_name.localeCompare(b.display_name))
+  return inviteCircle
+    .filter((row) => !existingIds.has(row.target_user_id))
+    .map((row) => ({
+      id: row.target_user_id,
+      display_name: row.target_display_name ?? 'Player',
+    }))
+    .sort((a, b) => a.display_name.localeCompare(b.display_name))
 }
 
-/** All platform players (excluding self) as InvitableUser[], for group creation. */
-function getAllCandidates(data: PlayersData, excludeUserId?: string): InvitableUser[] {
-  const seen = new Set<string>()
-  const result: InvitableUser[] = []
-  for (const { members } of data.venues) {
-    for (const m of members) {
-      if (!seen.has(m.userId) && m.userId !== excludeUserId) {
-        seen.add(m.userId)
-        result.push({ id: m.userId, display_name: m.handle })
-      }
-    }
-  }
-  for (const p of data.noVenue) {
-    if (!seen.has(p.id) && p.id !== excludeUserId) {
-      seen.add(p.id)
-      result.push({ id: p.id, display_name: p.display_name ?? '' })
-    }
-  }
-  return result.sort((a, b) => a.display_name.localeCompare(b.display_name))
+/** Saved registered players as InvitableUser[], for group creation. */
+function getAllCandidates(inviteCircle: InviteCircleRow[]): InvitableUser[] {
+  return inviteCircle
+    .map((row) => ({
+      id: row.target_user_id,
+      display_name: row.target_display_name ?? 'Player',
+    }))
+    .sort((a, b) => a.display_name.localeCompare(b.display_name))
 }
 
 type View = 'venue' | 'group' | 'all'
@@ -728,7 +707,7 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
           )}
           {userId && showCreateGroup && (
             <CreateGroupPanel
-              candidates={getAllCandidates(data, userId)}
+              candidates={getAllCandidates(inviteCircle)}
               onClose={() => setShowCreateGroup(false)}
             />
           )}
@@ -807,7 +786,7 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
                   {inviteOpen && (
                     <GroupInvitePanel
                       group={group}
-                      initialUsers={getInvitableForGroup(data, group.id)}
+                      initialUsers={getInvitableForGroup(data, group.id, inviteCircle)}
                       onClose={() => setOpenInviteGroupId(null)}
                     />
                   )}

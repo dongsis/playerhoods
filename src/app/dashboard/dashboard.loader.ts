@@ -5,7 +5,7 @@ import { getMatchListData, type MatchListItem } from '@/lib/api/matches'
 import { getUnreadNotificationCount } from '@/lib/api/notifications'
 import { getAllPlayersGroupedByVenue, type PlayersData } from '@/lib/api/players'
 import { getMyPlayCities } from '@/lib/api/discovery'
-import { getIdentityLinkCandidates } from '@/lib/api/identity-links'
+import { getIdentityLinkCandidates, reconcileIdentityGuestParticipants } from '@/lib/api/identity-links'
 import { getMyVenueIdentities, getJoinableVenues, getMyVenuePreferences } from '@/lib/api/identities'
 import { isSuperAdmin, getMyAdminVenues } from '@/lib/api/venues'
 import { listSports, getMySports } from '@/lib/api/sports'
@@ -71,6 +71,9 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
   }
 
   const supabase = await createSupabaseServerClient()
+  await reconcileIdentityGuestParticipants(supabase).catch((error) => {
+    console.error('[Dashboard] reconcile identity:', error)
+  })
 
   const [
     items,

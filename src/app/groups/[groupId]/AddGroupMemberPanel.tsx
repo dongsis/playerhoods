@@ -167,7 +167,7 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
                   cursor: 'pointer',
                 }}
               >
-                Registered player
+                Saved player
               </button>
               <button
                 type="button"

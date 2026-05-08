@@ -565,7 +565,10 @@ export type IdentityLinkCandidate = {
   display_name: string
   guest_email: string | null
   matched_email_normalized: string
-  matched_email_type: 'auth' | 'profile_contact'
+  matched_email_type: 'auth' | 'profile_contact' | 'auth_phone'
+  guest_phone?: string | null
+  matched_contact_normalized?: string | null
+  matched_contact_type?: 'auth' | 'profile_contact' | 'auth_phone' | null
   match_participant_count: number
   contact_owner_count: number
   group_contact_count: number

@@ -1587,19 +1587,35 @@ export async function getMatchDetailData(
     ((('error' in proxyManageableRes && proxyManageableRes.error) ? [] : (proxyManageableRes.data ?? [])) as { match_participant_id: string }[])
       .map((row) => row.match_participant_id)
   )
-  const savedContactRelationshipsRes = userId && guestPersonIds.length > 0
-    ? await supabase
-        .from('person_relationships')
-        .select('person_id')
-        .eq('relationship_type', 'saved')
-        .in('person_id', guestPersonIds)
-    : { data: [] }
+  const [savedContactRelationshipsRes, ownedGuestsRes] = await Promise.all([
+    userId && guestPersonIds.length > 0
+      ? supabase
+          .from('person_relationships')
+          .select('person_id')
+          .eq('relationship_type', 'saved')
+          .in('person_id', guestPersonIds)
+      : Promise.resolve({ data: [] }),
+    userId && guestIds.length > 0
+      ? supabase
+          .from('guests')
+          .select('id')
+          .eq('created_by', userId)
+          .in('id', guestIds)
+      : Promise.resolve({ data: [] }),
+  ])
   if ('error' in savedContactRelationshipsRes && savedContactRelationshipsRes.error) {
     logMatchDetailSoftFailure(matchId, 'saved_contact_relationships', savedContactRelationshipsRes.error)
+  }
+  if ('error' in ownedGuestsRes && ownedGuestsRes.error) {
+    logMatchDetailSoftFailure(matchId, 'owned_match_contact_guests', ownedGuestsRes.error)
   }
   const savedContactPersonIdSet = new Set(
     (((('error' in savedContactRelationshipsRes && savedContactRelationshipsRes.error) ? [] : (savedContactRelationshipsRes.data ?? []))) as { person_id: string }[])
       .map((relationship) => relationship.person_id),
+  )
+  const ownedGuestIdSet = new Set(
+    (((('error' in ownedGuestsRes && ownedGuestsRes.error) ? [] : (ownedGuestsRes.data ?? []))) as { id: string }[])
+      .map((guest) => guest.id),
   )
 
   const scopeGroupIds = match.invitation_scope_group_ids ?? []
@@ -1656,7 +1672,10 @@ export async function getMatchDetailData(
       gender: normalizeMatchGender(profileDisplay?.gender ?? null),
       shares_group_with_viewer: effectiveUserId ? sharedGroupMap.get(effectiveUserId) ?? false : false,
       proxy_manageable_by_viewer: proxyManageableParticipantIds.has(p.id),
-      saved_by_viewer: guestPersonId ? savedContactPersonIdSet.has(guestPersonId) : false,
+      saved_by_viewer: Boolean(
+        (guestPersonId && savedContactPersonIdSet.has(guestPersonId))
+        || (p.guest_id && ownedGuestIdSet.has(p.guest_id)),
+      ),
       contact_player_person_id: guestPersonId,
       linked_user_id: linkedUserId,
     }

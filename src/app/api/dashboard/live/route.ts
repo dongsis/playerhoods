@@ -3,6 +3,7 @@ import { unstable_noStore as noStore } from 'next/cache'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getMatchListData } from '@/lib/api/matches'
 import { getUnreadNotificationCount } from '@/lib/api/notifications'
+import { reconcileIdentityGuestParticipants } from '@/lib/api/identity-links'
 
 export async function GET() {
   noStore()
@@ -13,6 +14,9 @@ export async function GET() {
   }
 
   const supabase = await createSupabaseServerClient()
+  await reconcileIdentityGuestParticipants(supabase).catch((error) => {
+    console.error('[Dashboard live] reconcile identity:', error)
+  })
 
   const [items, inboxUnreadCount] = await Promise.all([
     getMatchListData(supabase, user.id).catch((error) => {

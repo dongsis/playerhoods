@@ -39,6 +39,19 @@ export function IdentityLinkReviewCard({
     }
   }, [candidates])
 
+  const getMatchedContactLabel = (candidate: IdentityLinkCandidate) => {
+    const contactType = candidate.matched_contact_type ?? candidate.matched_email_type
+    if (contactType === 'auth_phone') return 'Verified login phone'
+    return contactType === 'profile_contact' ? 'Verified profile contact email' : 'Verified login email'
+  }
+
+  const getMatchedContactValue = (candidate: IdentityLinkCandidate) => {
+    if ((candidate.matched_contact_type ?? candidate.matched_email_type) === 'auth_phone') {
+      return candidate.guest_phone ?? candidate.matched_contact_normalized ?? candidate.matched_email_normalized
+    }
+    return candidate.guest_email ?? candidate.matched_contact_normalized ?? candidate.matched_email_normalized
+  }
+
   const handleAction = (guestId: string, action: 'accept' | 'keep') => {
     setError(null)
     setActiveGuestId(guestId)
@@ -102,14 +115,14 @@ export function IdentityLinkReviewCard({
                     <div className="text-title-main text-[#1E293B]">{candidate.display_name}</div>
                     <div className="mt-1 flex flex-wrap gap-2">
                       <span className="text-label inline-flex items-center rounded-full bg-[#E2E8F0] px-2.5 py-1 text-[#64748B]">
-                        {candidate.matched_email_type === 'profile_contact' ? 'Verified profile contact email' : 'Verified login email'}
+                        {getMatchedContactLabel(candidate)}
                       </span>
                       <span className="text-label inline-flex items-center rounded-full bg-[#EEF6FF] px-2.5 py-1 text-[#4B6B92]">
                         {candidate.match_participant_count} match record{candidate.match_participant_count === 1 ? '' : 's'}
                       </span>
                     </div>
                     <p className="mt-2 text-body-sub text-[#64748B]">
-                      {candidate.guest_email ?? candidate.matched_email_normalized}
+                      {getMatchedContactValue(candidate)}
                     </p>
                   </div>
 

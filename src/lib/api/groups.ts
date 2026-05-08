@@ -288,8 +288,8 @@ export async function createGroup(
 }
 
 /**
- * All users who can be invited to a group (not already an active/pending member).
- * Returns sorted list of { id, display_name }.
+ * Saved registered players who can be added to a group (not already active/pending).
+ * This mirrors the registered-player scope used by match invite.
  */
 export async function getInvitableUsers(
   supabase: Client,
@@ -306,10 +306,7 @@ export async function getInvitableUsers(
       .select('target_user_id')
       .eq('group_id', groupId)
       .eq('status', 'pending'),
-    supabase
-      .from('profile_display')
-      .select('id, display_name')
-      .order('display_name', { ascending: true }),
+    supabase.rpc('rpc_invite_circle_list'),
   ])
 
   const existingIds = new Set((membersRes.data ?? []).map(m => m.user_id))
@@ -317,8 +314,37 @@ export async function getInvitableUsers(
     existingIds.add(request.target_user_id)
   }
 
-  return ((usersRes.data ?? []) as { id: string; display_name: string }[])
-    .filter(u => !existingIds.has(u.id))
+  return ((usersRes.data ?? []) as {
+    target_user_id: string
+    target_display_name: string | null
+  }[])
+    .filter(u => !existingIds.has(u.target_user_id))
+    .map((u) => ({
+      id: u.target_user_id,
+      display_name: u.target_display_name ?? 'Player',
+    }))
+    .sort((a, b) => a.display_name.localeCompare(b.display_name))
+}
+
+/**
+ * Saved registered players available during new group creation.
+ * This mirrors match invite's registered-player scope before a group exists.
+ */
+export async function getSavedRegisteredPlayerCandidates(
+  supabase: Client,
+): Promise<{ id: string; display_name: string }[]> {
+  const { data, error } = await supabase.rpc('rpc_invite_circle_list')
+  if (error) throw error
+
+  return ((data ?? []) as {
+    target_user_id: string
+    target_display_name: string | null
+  }[])
+    .map((row) => ({
+      id: row.target_user_id,
+      display_name: row.target_display_name ?? 'Player',
+    }))
+    .sort((a, b) => a.display_name.localeCompare(b.display_name))
 }
 
 export type GroupAddMemberResult = {

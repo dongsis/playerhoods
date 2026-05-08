@@ -11,6 +11,13 @@ export async function getIdentityLinkCandidates(
   return (data ?? []) as IdentityLinkCandidate[]
 }
 
+export async function reconcileIdentityGuestParticipants(
+  supabase: Client,
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_reconcile_identity_guest_participants')
+  if (error) throw error
+}
+
 export async function acceptIdentityLinkCandidate(
   supabase: Client,
   guestId: string,

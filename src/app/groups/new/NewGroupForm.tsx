@@ -198,10 +198,10 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <div className="text-label mb-2 text-[#94A3B8]">Registered Players</div>
+                  <div className="text-label mb-2 text-[#94A3B8]">Saved Registered Players</div>
                   {invitableUsers.length === 0 ? (
                     <div className="text-body-sub rounded-[16px] border border-dashed border-[#D9E2EC] bg-white px-3 py-3 text-[#94A3B8]">
-                      No players available right now.
+                      No saved players available right now.
                     </div>
                   ) : (
                     <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
