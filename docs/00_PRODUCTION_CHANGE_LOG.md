@@ -55,7 +55,7 @@ If a status cannot be confirmed, write `Unknown`. Do not infer.
 | 2026-05-08 | baseline-2026-05-08-bc36051 | Baseline | Production baseline confirmed | bc3605189be29fc432747f6ad728161140e90827 | Up to 20260508144500_mark_legacy_group_invite_user_rpc.sql | Yes | Yes | Login page only | Production aligned, smoke test pending | GitHub main, Vercel Production, and Supabase Remote aligned. |
 | 2026-05-08 | docs-release-governance-baseline-2026-05-08 | Patch | Added release governance and production change log documents | 0aa52e4579927ca9c85c09b9ad0f70483d8fdecf | None | Unknown | N/A | Not verified | GitHub only | Documentation-only governance patch. No deploy or remote migration apply performed by Codex. |
 | 2026-05-08 | docs-release-governance-template-2026-05-08 | Patch | Expanded governance docs into authoritative rule and fact-record templates | Unknown | None | Unknown | N/A | Not verified | GitHub only after push | Documentation-only governance patch. Commit hash is reported in the task final report because a commit cannot self-reference its own final hash. |
-| 2026-05-08 | SR-20260508-contact-link-person-scope | Structural Release | Link accept and active Contact/Hoods UI move linked contacts to registered-user identity by person scope | Unknown | 20260508162000_identity_link_person_scope_active_identity.sql | Unknown | Not applied at write time | Not verified | Draft before commit | Structural release record created before commit/deploy/apply. Final commit/deploy/apply/test status must be reconciled after rollout. |
+| 2026-05-08 | SR-20260508-contact-link-person-scope | Structural Release | Link accept and active Contact/Hoods UI move linked contacts to registered-user identity by person scope | aaf05faf988d9a409274575b9591a92c6bd2e6f9 | 20260508162000_identity_link_person_scope_active_identity.sql | Yes | Yes | Login page only; core flows not verified | Production aligned, full smoke test pending | Vercel Production deployed SR commit and Supabase Remote applied migration. Full contact/link flow requires test accounts and fixture data. |
 
 ## 2026-05-08 - baseline-2026-05-08-bc36051
 
@@ -159,9 +159,9 @@ Revert the GitHub commit reported in the final task report for `docs-release-gov
 ## 2026-05-08 - SR-20260508-contact-link-person-scope
 
 **Type:** Structural Release  
-**Commit:** Unknown  
+**Commit:** `aaf05faf988d9a409274575b9591a92c6bd2e6f9`  
 **Migration:** `20260508162000_identity_link_person_scope_active_identity.sql`  
-**Status:** Draft before commit
+**Status:** Production aligned, full smoke test pending
 
 ### Summary
 
@@ -209,30 +209,36 @@ New/changed RPC behavior:
 
 | Area | Status | Evidence |
 |---|---|---|
-| Local | Draft | Local diff reviewed |
-| GitHub main | Unknown | Not committed at record-write time |
-| Vercel Preview | Unknown | Not deployed at record-write time |
-| Vercel Production | Unknown | Not deployed at record-write time |
-| Supabase Local | Pending rehearsal | Build/reset not yet recorded in this entry at write time |
-| Supabase Remote | Not applied at write time | `20260508162000...` not yet applied remotely |
-| Production verification | Not verified | Online tests not yet executed |
+| Local | Build and migration rehearsal passed | `npm.cmd run build`; `supabase db reset` |
+| GitHub main | `aaf05faf988d9a409274575b9591a92c6bd2e6f9` | Pushed to `origin/main` |
+| Vercel Preview | Unknown | Not checked |
+| Vercel Production | `aaf05faf988d9a409274575b9591a92c6bd2e6f9` | GitHub deployment `4626931573`; commit status success |
+| Supabase Local | Applied in reset rehearsal | `supabase db reset` applied `20260508162000...` |
+| Supabase Remote | Applied | `supabase migration list --linked` shows `20260508162000` remote/local |
+| Production verification | Login page only; core flows not verified | `https://www.playerhoods.com/login` returned HTTP 200; no production test-account core-flow execution |
 
-### Online Verification Plan
+### Online Verification Status
 
 Minimum smoke:
 
-1. Open `https://www.playerhoods.com/login` and confirm HTTP 200.
-2. Log in with test account A, test account B, and a keeper account.
-3. Create or use a Contact Player where multiple owner/saved/group contact paths point to the same canonical person.
-4. Complete link accept as the corresponding registered user.
-5. Verify the contact owner receives a notification.
-6. Verify the saved user receives a notification.
-7. Verify the Hood/Group keeper receives a notification.
-8. Verify Contacts/Hoods active UI does not duplicate Contact card and Registered User card.
-9. Verify old contact phone/email/notes are not shown as primary registered profile information.
-10. Verify historical invitation, notes, and match participation remain accessible.
-11. Verify the linked user did not automatically receive Match Proxy or group/member permissions.
-12. Verify future invitation path uses the registered-user path.
+| Step | Status | Notes |
+|---|---|---|
+| Open `https://www.playerhoods.com/login` and confirm HTTP 200 | Passed | HTTP 200 returned from Vercel on 2026-05-08 |
+| Log in with test account A, test account B, and a keeper account | Not verified | Test credentials were not available in the task context |
+| Create or use a Contact Player where multiple owner/saved/group contact paths point to the same canonical person | Not verified | Requires authenticated test accounts and fixture data |
+| Complete link accept as the corresponding registered user | Not verified | Requires authenticated test accounts and fixture data |
+| Verify the contact owner receives a notification | Not verified | Requires full contact/link flow |
+| Verify the saved user receives a notification | Not verified | Requires full contact/link flow |
+| Verify the Hood/Group keeper receives a notification | Not verified | Requires full contact/link flow |
+| Verify Contacts/Hoods active UI does not duplicate Contact card and Registered User card | Not verified | Requires full contact/link flow |
+| Verify old contact phone/email/notes are not shown as primary registered profile information | Not verified | Requires full contact/link flow |
+| Verify historical invitation, notes, and match participation remain accessible | Not verified | Requires full contact/link flow |
+| Verify the linked user did not automatically receive Match Proxy or group/member permissions | Not verified | Requires full contact/link flow |
+| Verify future invitation path uses the registered-user path | Not verified | Requires full contact/link flow |
+
+### Keep / Rollback Decision
+
+Keep with limited verification. Build, local migration rehearsal, GitHub push, Vercel Production deployment, Supabase Remote migration apply, and login-page smoke passed. Full production core-flow verification remains pending and should be completed before marking this release `Verified`.
 
 ### Known Risks
 
