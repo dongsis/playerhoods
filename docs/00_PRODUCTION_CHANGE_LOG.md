@@ -57,6 +57,7 @@ If a status cannot be confirmed, write `Unknown`. Do not infer.
 | 2026-05-08 | docs-release-governance-template-2026-05-08 | Patch | Expanded governance docs into authoritative rule and fact-record templates | Unknown | None | Unknown | N/A | Not verified | GitHub only after push | Documentation-only governance patch. Commit hash is reported in the task final report because a commit cannot self-reference its own final hash. |
 | 2026-05-08 | SR-20260508-contact-link-person-scope | Structural Release | Link accept and active Contact/Hoods UI move linked contacts to registered-user identity by person scope | aaf05faf988d9a409274575b9591a92c6bd2e6f9 | 20260508162000_identity_link_person_scope_active_identity.sql | Yes | Yes | Login page only; core flows not verified | Production aligned, full smoke test pending | Vercel Production deployed SR commit and Supabase Remote applied migration. Full contact/link flow requires test accounts and fixture data. |
 | 2026-05-09 | MR-20260509-login-identity-link-polish | Mini Release | Polished login page presentation, compressed identity-link review copy, and returned inline identity-link action errors instead of throwing | 91f9f6e9ca165642bc9b7e25e269f18b71c42750 | None | Yes | No change | Login/dashboard smoke passed | Production aligned for code; changelog follow-up pending deploy | Vercel deployment `4629225098` succeeded for product commit. Roll back by reverting the GitHub commit and redeploying the previous Vercel production commit. |
+| 2026-05-09 | DBFIX-20260509-identity-link-notification-null-casts | Patch | Fixed `rpc_identity_link_accept` notification inserts by casting null match references to uuid | 087a8748a76bc1496a2718dbac859d109e002d10 | 20260509053000_fix_identity_link_notification_null_casts.sql | Pending | Yes | RPC rollback-transaction smoke passed; browser retest pending matching candidate | DB remote applied, GitHub commit pending push | Remote migration was applied immediately to unblock production Identity Link accept. Roll back with a follow-up migration restoring the previous RPC definition or reverting this migration's function body. |
 
 ## 2026-05-08 - baseline-2026-05-08-bc36051
 
@@ -322,3 +323,43 @@ Database rollback:
 
 - The Identity Link full acceptance path depends on existing production fixture data; if the production test account has no candidates, verification can only cover login/dashboard reachability and absence of regressions on the card-free path.
 - Login page visual verification should include desktop and mobile viewport checks after production deploy.
+
+## 2026-05-09 - DBFIX-20260509-identity-link-notification-null-casts
+
+**Type:** Patch  
+**Commit:** `087a8748a76bc1496a2718dbac859d109e002d10`  
+**Migration:** `20260509053000_fix_identity_link_notification_null_casts.sql`  
+**Status:** DB remote applied; GitHub push pending at log-write time
+
+### Summary
+
+Production Identity Link accept failed when `rpc_identity_link_accept(uuid)` attempted to insert owner/saved/keeper notifications with bare `null` values for `match_id` and `match_participant_id`. PostgreSQL inferred those `null` values as text inside `INSERT ... SELECT`, causing a uuid type error before the link could complete.
+
+The migration recreates the current Identity Link RPC definitions and casts notification match references as `null::uuid`.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local | SQL migration applied locally | `psql ... -f supabase/migrations/20260509053000_fix_identity_link_notification_null_casts.sql` |
+| GitHub main | Pending | Commit created locally; push pending at log-write time |
+| Vercel Preview | Unknown | Not checked |
+| Vercel Production | Pending | Migration-only repo commit does not affect runtime code, but production deployment should still be checked after push |
+| Supabase Local | Applied | Local psql apply succeeded |
+| Supabase Remote | Applied | `supabase db push`; `supabase migration list --linked` shows `20260509053000` on Remote |
+| Production verification | RPC smoke passed | Same production user/candidate RPC call returned `ok: true` inside a rollback transaction |
+
+### Rollback
+
+Database rollback:
+
+- Add a follow-up migration restoring the previous `rpc_identity_link_accept(uuid)` function body from `20260508162000_identity_link_person_scope_active_identity.sql`, or replace only the notification insert casts with the previous bare `null` expressions.
+- No data repair is required for the failed attempts because the original transaction aborted before link writes completed.
+
+Code rollback:
+
+- No application code rollback is required for this DB-only fix.
+
+### Known Risks
+
+- The rollback-transaction smoke confirms the RPC can complete, but it does not leave a persistent link. A browser retest with an account that still has an Identity Link candidate is still needed to confirm the UI path removes the card after success.
