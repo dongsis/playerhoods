@@ -4,14 +4,14 @@ import type { GearImageInput, GearItemInput, GearShowcaseEntryInput, GearStringJ
 import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob } from '@/lib/types/database'
 import type { GearLinkImportDraft } from '@/lib/gear-link-import'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
-import type { DashboardPreferenceSaveResult } from './dashboard.actions'
+import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
 
 type DashboardPageViewProps = {
   viewModel: DashboardPageViewModel
   notice?: string | null
   onUpdateProfile: (formData: FormData) => Promise<void>
-  onAcceptIdentityLink: (guestId: string) => Promise<void>
-  onKeepSeparateIdentityLink: (guestId: string) => Promise<void>
+  onAcceptIdentityLink: (guestId: string) => Promise<IdentityLinkActionResult>
+  onKeepSeparateIdentityLink: (guestId: string) => Promise<IdentityLinkActionResult>
   onSetDisplayName: (newName: string) => Promise<void>
   onAvatarSaved: () => Promise<void>
   onSetPrimaryVenue: (venueId: string) => Promise<void>

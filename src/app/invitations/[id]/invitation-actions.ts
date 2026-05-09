@@ -4,6 +4,23 @@ import { revalidatePath } from 'next/cache'
 import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 
+type IdentityLinkActionResult = { ok: true } | { ok: false; error: string }
+
+function getIdentityLinkActionError(error: unknown): string {
+  const message =
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : ''
+
+  if (message.includes('not_authenticated')) return 'Please log in again.'
+  if (message.includes('review_required')) return 'Please verify your contact information before linking.'
+  if (message.includes('guest_not_found')) return 'This invitation is no longer available to link.'
+  return 'Could not link this invitation. Please try again.'
+}
+
 function revalidateInvitationSurfaces(invitationId: string, relatedId?: string | null, relatedType?: string | null) {
   revalidatePath(`/invitations/${invitationId}`)
   revalidatePath('/dashboard')
@@ -64,18 +81,23 @@ export async function acceptInvitationIdentityLinkAndContinueAction(
   guestId: string,
   relatedId?: string | null,
   relatedType?: string | null,
-) {
+): Promise<IdentityLinkActionResult> {
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
   if (!user) {
-    throw new Error('Please log in again.')
+    return { ok: false, error: 'Please log in again.' }
   }
 
-  await acceptIdentityLinkCandidate(supabase, guestId)
+  try {
+    await acceptIdentityLinkCandidate(supabase, guestId)
 
-  await callInvitationRpc(supabase, 'rpc_email_invitation_accept', invitationId)
+    await callInvitationRpc(supabase, 'rpc_email_invitation_accept', invitationId)
 
-  revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
+    revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getIdentityLinkActionError(error) }
+  }
 }
 
 export async function keepSeparateInvitationIdentityLinkAction(
@@ -83,13 +105,18 @@ export async function keepSeparateInvitationIdentityLinkAction(
   guestId: string,
   relatedId?: string | null,
   relatedType?: string | null,
-) {
+): Promise<IdentityLinkActionResult> {
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
   if (!user) {
-    throw new Error('Please log in again.')
+    return { ok: false, error: 'Please log in again.' }
   }
 
-  await keepSeparateIdentityLinkCandidate(supabase, guestId)
-  revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
+  try {
+    await keepSeparateIdentityLinkCandidate(supabase, guestId)
+    revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getIdentityLinkActionError(error) }
+  }
 }

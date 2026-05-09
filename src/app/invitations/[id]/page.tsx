@@ -40,21 +40,6 @@ export default async function InvitationPage({ params }: Props) {
         return matchedEmail === normalizedTargetEmail || guestEmail === normalizedTargetEmail
       })
     : []
-  const acceptLinkAndContinueAction = acceptInvitationIdentityLinkAndContinueAction.bind(
-    null,
-    id,
-    undefined as never,
-    inv.related_id,
-    inv.related_type,
-  )
-  const keepSeparateLinkAction = keepSeparateInvitationIdentityLinkAction.bind(
-    null,
-    id,
-    undefined as never,
-    inv.related_id,
-    inv.related_type,
-  )
-
   if (inv.related_type === 'match_proxy_binding') {
     return (
       <div style={{ maxWidth: 480, margin: '2rem auto', padding: '0 1rem' }}>
@@ -126,17 +111,17 @@ export default async function InvitationPage({ params }: Props) {
           {user && relevantIdentityLinkCandidates.length > 0 ? (
             <IdentityLinkReviewCard
               title="Link your contact profile"
-              body="We found a contact player record for this invitation. Link it to your account before accepting so your match history and contact identity stay together."
+              body="We found matches linked to your contact information."
               candidates={relevantIdentityLinkCandidates}
               acceptLabel="Link and continue"
               keepSeparateLabel="Keep separate for now"
               onAccept={async (guestId) => {
                 'use server'
-                await acceptInvitationIdentityLinkAndContinueAction(id, guestId, inv.related_id, inv.related_type)
+                return acceptInvitationIdentityLinkAndContinueAction(id, guestId, inv.related_id, inv.related_type)
               }}
               onKeepSeparate={async (guestId) => {
                 'use server'
-                await keepSeparateInvitationIdentityLinkAction(id, guestId, inv.related_id, inv.related_type)
+                return keepSeparateInvitationIdentityLinkAction(id, guestId, inv.related_id, inv.related_type)
               }}
             />
           ) : user ? (

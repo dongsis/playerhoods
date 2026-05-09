@@ -310,32 +310,73 @@ export default function LoginPage() {
     forgot: 'Reset password',
   }
 
+  const subtitles: Record<Mode, string> = {
+    login: 'Sign in to manage matches, groups, and player coordination.',
+    register: 'Create your account and get your player profile ready.',
+    forgot: 'Enter your email and we will send a reset link if the account exists.',
+  }
+
   return (
-    <div
-      className="min-h-screen bg-[#EEF1F7] px-4 py-10"
-      style={pageShellStyle}
-    >
-      <div className="ph-page-narrow" style={pageNarrowStyle}>
-        <div className="mb-6 flex justify-center" style={logoWrapStyle}>
+    <main style={pageShellStyle}>
+      <style>{`
+        body:has(.ph-login-card-stage) footer {
+          display: none !important;
+        }
+        @media (max-width: 980px) {
+          .ph-login-hero-copy { display: none !important; }
+          .ph-login-card-stage {
+            position: relative !important;
+            inset: auto !important;
+            min-height: 100svh !important;
+            width: 100% !important;
+            padding: 1rem !important;
+          }
+          .ph-login-card {
+            width: min(100%, 31rem) !important;
+            padding: 2rem 1.4rem !important;
+          }
+        }
+        @media (max-width: 520px) {
+          .ph-login-card { border-radius: 24px !important; }
+          .ph-login-card h2 { font-size: 2rem !important; }
+        }
+      `}</style>
+      <div style={backdropStyle} aria-hidden="true" />
+      <section className="ph-login-hero-copy" style={heroCopyStyle} aria-hidden="true">
+        <div style={brandRowStyle}>
+          <img src="/playerhoods-logo-transparent.png" alt="" style={brandMarkStyle} />
+          <span style={brandNameStyle}>PlayerHoods</span>
+        </div>
+        <h1 style={heroTitleStyle}>
+          <strong>Bring players together.</strong>
+          <span>Keep the game going.</span>
+        </h1>
+        <p style={heroSubtitleStyle}>
+          Find partners, join matches, and build a stronger racket sports community.
+        </p>
+        <div style={featureCardsStyle}>
+          <FeatureCard icon={<ConnectIcon />} title="Connect" body="Find partners and groups" />
+          <FeatureCard icon={<CalendarIcon />} title="Play" body="Organize matches with ease" />
+          <FeatureCard icon={<TrophyIcon />} title="Grow" body="Be part of a thriving community" />
+        </div>
+        <div style={trustRowStyle}>
+          <TrustItem text="Trusted by players everywhere" />
+          <TrustItem text="Built for racket sports communities" />
+          <TrustItem text="Safe, secure, and player-first" />
+        </div>
+      </section>
+
+      <section className="ph-login-card-stage" style={cardStageStyle} aria-label={titles[mode]}>
+        <div className="ph-login-card" style={cardStyle}>
           <img
             src="/playerhoods-logo-transparent.png"
             alt="PlayerHoods"
             width={1122}
             height={1402}
-            className="h-auto w-full max-w-[220px] object-contain"
             style={logoStyle}
           />
-        </div>
-
-        <section className="ph-card px-6 py-6" style={cardStyle}>
-          <h1 className="ph-title" style={titleStyle}>{titles[mode]}</h1>
-          <p className="ph-subtitle mb-6 mt-2" style={subtitleStyle}>
-            {mode === 'login'
-              ? 'Sign in to manage matches, groups, and player coordination.'
-              : mode === 'register'
-                ? 'Create your account and get your player profile ready.'
-                : 'Enter your email and we will send a reset link if the account exists.'}
-          </p>
+          <h2 style={titleStyle}>{titles[mode]}</h2>
+          <p style={subtitleStyle}>{subtitles[mode]}</p>
 
         {authSettling ? (
           <div style={settlingWrapStyle}>
@@ -365,38 +406,26 @@ export default function LoginPage() {
             <GoogleIcon />
             <span>{loading ? 'Opening Google...' : 'Continue with Google'}</span>
           </button>
-          <p style={oauthHintStyle}>
-            {shouldRouteGoogleThroughCanonicalHost
-              ? 'Google sign-in will reopen on localhost for local testing.'
-              : 'For local Google sign-in, use localhost.'}
-          </p>
 
           <div style={separatorStyle}>
             <span style={separatorLineStyle} />
-            <span style={separatorTextStyle}>or</span>
+            <span style={separatorTextStyle}>OR</span>
             <span style={separatorLineStyle} />
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Email</label>
-            <input
-              data-testid="login-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-              style={inputStyle}
-            />
+            <label style={labelStyle}>Email</label>
+            <IconInput icon={<MailIcon />} data-testid="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required placeholder="Enter your email" />
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Password</label>
+            <label style={labelStyle}>Password</label>
             <PasswordInput
               data-testid="login-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
+              placeholder="Enter your password"
             />
           </div>
           <div style={{ textAlign: 'right', marginBottom: '1.25rem' }}>
@@ -407,7 +436,8 @@ export default function LoginPage() {
           {error && <p style={errorStyle}>{error}</p>}
           {info && <p style={infoStyle}>{info}</p>}
           <button data-testid="login-submit" type="submit" disabled={loading} style={primaryBtnStyle}>
-            {loading ? 'Signing in...' : 'Sign in'}
+            <span>{loading ? 'Signing in...' : 'Sign In'}</span>
+            <span style={primaryArrowStyle} aria-hidden="true">→</span>
           </button>
           <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#555', textAlign: 'center' }}>
             Need an account?{' '}
@@ -433,52 +463,38 @@ export default function LoginPage() {
             <GoogleIcon />
             <span>{loading ? 'Opening Google...' : 'Continue with Google'}</span>
           </button>
-          <p style={oauthHintStyle}>
-            {shouldRouteGoogleThroughCanonicalHost
-              ? 'Google sign-in will reopen on localhost for local testing.'
-              : 'For local Google sign-in, use localhost.'}
-          </p>
 
           <div style={separatorStyle}>
             <span style={separatorLineStyle} />
-            <span style={separatorTextStyle}>or</span>
+            <span style={separatorTextStyle}>OR</span>
             <span style={separatorLineStyle} />
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-              style={inputStyle}
-            />
+            <label style={labelStyle}>Email</label>
+            <IconInput icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required placeholder="Enter your email" />
           </div>
           <div style={{ marginBottom: '0.35rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>
-              Password
-            </label>
+            <label style={labelStyle}>Password</label>
             <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
               required
               minLength={MIN_PASSWORD_LENGTH}
+              placeholder="Enter your password"
             />
           </div>
           <p style={helperTextStyle}>At least {MIN_PASSWORD_LENGTH} characters.</p>
           <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>
-              Confirm password
-            </label>
+            <label style={labelStyle}>Confirm password</label>
             <PasswordInput
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               autoComplete="new-password"
               required
               minLength={MIN_PASSWORD_LENGTH}
+              placeholder="Confirm your password"
             />
           </div>
           {error && <p style={errorStyle}>{error}</p>}
@@ -508,15 +524,8 @@ export default function LoginPage() {
         {!authSettling && mode === 'forgot' && (
           <form onSubmit={handleForgot}>
           <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.9rem' }}>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-              style={inputStyle}
-            />
+            <label style={labelStyle}>Email</label>
+            <IconInput icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required placeholder="Enter your email" />
           </div>
           {error && <p style={errorStyle}>{error}</p>}
           {info && <p style={infoStyle}>{info}</p>}
@@ -532,9 +541,9 @@ export default function LoginPage() {
           </p>
           </form>
         )}
-        </section>
       </div>
-    </div>
+      </section>
+    </main>
   )
 }
 
@@ -544,7 +553,42 @@ type PasswordInputProps = {
   autoComplete?: string
   required?: boolean
   minLength?: number
+  placeholder?: string
   'data-testid'?: string
+}
+
+type IconInputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  icon: React.ReactNode
+}
+
+function IconInput({ icon, style, ...props }: IconInputProps) {
+  return (
+    <div style={iconFieldStyle}>
+      <span style={fieldIconStyle} aria-hidden="true">{icon}</span>
+      <input {...props} style={{ ...inputStyle, ...style }} />
+    </div>
+  )
+}
+
+function FeatureCard({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+  return (
+    <article style={featureCardStyle}>
+      <span style={featureIconStyle}>{icon}</span>
+      <span style={featureTextStyle}>
+        <strong style={featureTitleStyle}>{title}</strong>
+        <span style={featureBodyStyle}>{body}</span>
+      </span>
+    </article>
+  )
+}
+
+function TrustItem({ text }: { text: string }) {
+  return (
+    <span style={trustItemStyle}>
+      <CheckIcon />
+      <span>{text}</span>
+    </span>
+  )
 }
 
 function PasswordInput(props: PasswordInputProps) {
@@ -552,6 +596,9 @@ function PasswordInput(props: PasswordInputProps) {
 
   return (
     <div style={passwordFieldStyle}>
+      <span style={fieldIconStyle} aria-hidden="true">
+        <LockIcon />
+      </span>
       <input
         {...props}
         type={isVisible ? 'text' : 'password'}
@@ -622,68 +669,255 @@ function GoogleIcon() {
   )
 }
 
+function LockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M7 10V8a5 5 0 0110 0v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M6.5 10h11A1.5 1.5 0 0119 11.5v6A1.5 1.5 0 0117.5 19h-11A1.5 1.5 0 015 17.5v-6A1.5 1.5 0 016.5 10z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function MailIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 6.75h16v10.5H4z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M4.75 7.5L12 13l7.25-5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function ConnectIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M11 15.5a5 5 0 100-10 5 5 0 000 10zM21 16.5a4.5 4.5 0 100-9 4.5 4.5 0 000 9zM3.5 26.5c.8-4.8 3.4-7.2 7.5-7.2s6.7 2.4 7.5 7.2M16.5 25.5c.9-3.7 2.7-5.5 5.2-5.5 3.2 0 5.2 2.1 6 6.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M7 8h18a2 2 0 012 2v15a2 2 0 01-2 2H7a2 2 0 01-2-2V10a2 2 0 012-2zM5 14h22M11 5v6M21 5v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 18h3M16 18h3M22 18h1M10 23h3M16 23h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function TrophyIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M10 6h12v4c0 5-2.4 8-6 8s-6-3-6-8V6zM16 18v5M11 26h10M8 9H5.5c0 4 1.8 6.4 5 7.2M24 9h2.5c0 4-1.8 6.4-5 7.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <circle cx="9" cy="9" r="8" fill="#9AC43D" />
+      <path d="M5.2 9.1l2.2 2.2 5.4-5.6" stroke="#153B20" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '0.8rem 0.95rem',
-  fontSize: '0.85rem',
+  padding: '0.92rem 3rem',
+  fontSize: '0.95rem',
   boxSizing: 'border-box',
-  border: '1px solid #E2E8F0',
-  borderRadius: '12px',
-  background: '#fff',
-  color: '#1E293B',
+  border: '1px solid #D7E0EC',
+  borderRadius: '10px',
+  background: 'rgba(255,255,255,0.96)',
+  color: '#102653',
+  outline: 'none',
 }
 
 const pageShellStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  background: '#EEF1F7',
-  padding: '2.5rem 1rem',
+  position: 'relative',
+  minHeight: '100svh',
+  overflow: 'hidden',
+  background: '#D9EBF7',
+  color: '#0A285C',
+  fontFamily:
+    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
 }
 
-const pageNarrowStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: '760px',
-  margin: '0 auto',
+const backdropStyle: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  backgroundImage:
+    'linear-gradient(90deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 42%, rgba(255,255,255,0.02) 100%), url("/login-playerhoods-hero.png")',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  transform: 'scale(1.01)',
 }
 
-const logoWrapStyle: React.CSSProperties = {
+const heroCopyStyle: React.CSSProperties = {
+  position: 'relative',
+  zIndex: 1,
+  display: 'none',
+  width: '55vw',
+  maxWidth: '58rem',
+  minHeight: '100svh',
+  padding: '7vh 0 2.5rem 8vw',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+}
+
+const brandRowStyle: React.CSSProperties = {
   display: 'flex',
-  justifyContent: 'center',
   alignItems: 'center',
-  minHeight: '275px',
-  marginBottom: '1.5rem',
+  gap: '1.35rem',
+  marginBottom: '2rem',
+}
+
+const brandMarkStyle: React.CSSProperties = {
+  width: '5.3rem',
+  height: '6.45rem',
+  objectFit: 'contain',
+}
+
+const brandNameStyle: React.CSSProperties = {
+  color: '#061D4F',
+  fontFamily: 'Georgia, "Times New Roman", serif',
+  fontSize: '3.05rem',
+  fontWeight: 700,
+}
+
+const heroTitleStyle: React.CSSProperties = {
+  margin: 0,
+  color: '#082A64',
+  fontSize: 'clamp(2.8rem, 4.6vw, 5.4rem)',
+  lineHeight: 1.05,
+  fontWeight: 500,
+  letterSpacing: 0,
+  display: 'flex',
+  flexDirection: 'column',
+}
+
+const heroSubtitleStyle: React.CSSProperties = {
+  maxWidth: '33rem',
+  margin: '1.2rem 0 0',
+  color: '#2F4466',
+  fontSize: '1.18rem',
+  lineHeight: 1.45,
+}
+
+const featureCardsStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(10rem, 1fr))',
+  gap: '0.8rem',
+  width: 'min(100%, 37rem)',
+  marginTop: 'auto',
+  marginLeft: '11.5rem',
+  marginBottom: '1rem',
+}
+
+const featureCardStyle: React.CSSProperties = {
+  minHeight: '5.25rem',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.85rem',
+  padding: '0.85rem 1rem',
+  borderRadius: '8px',
+  background: 'rgba(15, 42, 79, 0.9)',
+  color: '#FFFFFF',
+  boxShadow: '0 12px 24px rgba(6, 25, 57, 0.24)',
+  backdropFilter: 'blur(12px)',
+}
+
+const featureIconStyle: React.CSSProperties = {
+  color: '#A6C83B',
+  flex: '0 0 auto',
+}
+
+const featureTextStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.12rem',
+}
+
+const featureTitleStyle: React.CSSProperties = {
+  fontSize: '1rem',
+  lineHeight: 1.1,
+}
+
+const featureBodyStyle: React.CSSProperties = {
+  fontSize: '0.76rem',
+  lineHeight: 1.2,
+}
+
+const trustRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(10rem, 1fr))',
+  gap: '1.3rem',
+  width: 'min(100%, 40rem)',
+  marginLeft: '16rem',
+  color: '#FFFFFF',
+}
+
+const trustItemStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.65rem',
+  minWidth: 0,
+  fontSize: '0.76rem',
+  lineHeight: 1.25,
+}
+
+const cardStageStyle: React.CSSProperties = {
+  position: 'absolute',
+  zIndex: 2,
+  top: 0,
+  right: 0,
+  bottom: 0,
+  width: '43.5vw',
+  minWidth: '34rem',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '4vh 7vw 4vh 1.5rem',
 }
 
 const logoStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: '220px',
-  height: 'auto',
+  width: '5.4rem',
+  height: '6.7rem',
+  objectFit: 'contain',
   display: 'block',
-  aspectRatio: '1122 / 1402',
+  margin: '0 auto 0.25rem',
 }
 
 const cardStyle: React.CSSProperties = {
+  width: 'min(100%, 34.8rem)',
+  minHeight: '46rem',
+  maxHeight: '92svh',
+  overflowY: 'auto',
   background: '#FFFFFF',
-  border: '1px solid #D9E3F2',
-  borderRadius: '28px',
-  boxShadow: '0 18px 42px rgba(30, 41, 59, 0.08)',
-  padding: '1.5rem',
+  border: '1px solid rgba(255,255,255,0.72)',
+  borderRadius: '26px',
+  boxShadow: '0 26px 60px rgba(12, 33, 71, 0.28)',
+  padding: '2.35rem 2.55rem 2rem',
 }
 
 const titleStyle: React.CSSProperties = {
   margin: 0,
-  color: '#0F172A',
-  fontSize: '2rem',
-  lineHeight: 1.05,
-  fontWeight: 800,
-  letterSpacing: '-0.03em',
+  color: '#071D46',
+  fontSize: '2.28rem',
+  lineHeight: 1.08,
+  fontWeight: 850,
+  letterSpacing: 0,
+  textAlign: 'center',
 }
 
 const subtitleStyle: React.CSSProperties = {
-  marginTop: '0.5rem',
-  marginBottom: '1.5rem',
-  color: '#64748B',
-  fontSize: '0.95rem',
+  maxWidth: '19rem',
+  margin: '0.8rem auto 1.8rem',
+  color: '#5D6D8E',
+  fontSize: '0.96rem',
   lineHeight: 1.45,
+  textAlign: 'center',
 }
 
 const settlingWrapStyle: React.CSSProperties = {
@@ -731,7 +965,7 @@ const passwordFieldStyle: React.CSSProperties = {
 
 const passwordInputStyle: React.CSSProperties = {
   ...inputStyle,
-  paddingRight: '2.75rem',
+  paddingRight: '3rem',
 }
 
 const passwordToggleStyle: React.CSSProperties = {
@@ -751,49 +985,62 @@ const passwordToggleStyle: React.CSSProperties = {
 
 const primaryBtnStyle: React.CSSProperties = {
   width: '100%',
-  padding: '0.85rem 1rem',
-  fontSize: '0.78rem',
+  minHeight: '3rem',
+  padding: '0.5rem 0.55rem 0.5rem 1.4rem',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.75rem',
+  position: 'relative',
+  fontSize: '0.98rem',
   cursor: 'pointer',
-  background: '#C25E46',
+  background: '#064CB7',
   color: '#fff',
   border: 'none',
   borderRadius: '999px',
-  fontWeight: 900,
-  letterSpacing: '0.08em',
-  textTransform: 'uppercase',
-  boxShadow: '0 12px 28px rgba(194, 94, 70, 0.28)',
+  fontWeight: 800,
+  letterSpacing: 0,
+  boxShadow: '0 14px 24px rgba(4, 58, 145, 0.28)',
+}
+
+const primaryArrowStyle: React.CSSProperties = {
+  position: 'absolute',
+  right: '0.45rem',
+  width: '2.25rem',
+  height: '2.25rem',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: '999px',
+  background: '#FFFFFF',
+  color: '#064CB7',
+  fontSize: '1.55rem',
+  fontWeight: 600,
 }
 
 const secondaryBtnStyle: React.CSSProperties = {
   width: '100%',
+  minHeight: '3.05rem',
   padding: '0.8rem 1rem',
-  marginBottom: '1rem',
+  marginBottom: '1.8rem',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '0.7rem',
-  fontSize: '0.84rem',
+  gap: '0.75rem',
+  fontSize: '0.95rem',
   cursor: 'pointer',
-  background: '#fff',
-  color: '#1E293B',
-  border: '1px solid #E2E8F0',
+  background: 'rgba(255,255,255,0.92)',
+  color: '#0C1D42',
+  border: '1px solid #BFCBE0',
   borderRadius: '999px',
-  fontWeight: 700,
-}
-
-const oauthHintStyle: React.CSSProperties = {
-  marginTop: '-0.35rem',
-  marginBottom: '1rem',
-  color: '#64748B',
-  fontSize: '0.74rem',
-  textAlign: 'center',
+  fontWeight: 800,
 }
 
 const separatorStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '0.75rem',
-  marginBottom: '1rem',
+  gap: '1rem',
+  marginBottom: '1.25rem',
 }
 
 const separatorLineStyle: React.CSSProperties = {
@@ -803,21 +1050,44 @@ const separatorLineStyle: React.CSSProperties = {
 }
 
 const separatorTextStyle: React.CSSProperties = {
-  color: '#94A3B8',
+  color: '#697894',
   fontSize: '0.76rem',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
+  fontWeight: 800,
+  letterSpacing: 0,
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: '0.42rem',
+  color: '#0C1D42',
+  fontSize: '0.84rem',
+  fontWeight: 800,
+}
+
+const iconFieldStyle: React.CSSProperties = {
+  position: 'relative',
+}
+
+const fieldIconStyle: React.CSSProperties = {
+  position: 'absolute',
+  left: '0.9rem',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  zIndex: 1,
+  color: '#8DA0BD',
+  display: 'inline-flex',
+  alignItems: 'center',
 }
 
 const linkBtnStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
   padding: 0,
-  color: '#C25E46',
+  color: '#064CB7',
   cursor: 'pointer',
   fontSize: 'inherit',
-  textDecoration: 'none',
+  textDecoration: 'underline',
+  textUnderlineOffset: '2px',
   fontWeight: 700,
 }
 

@@ -53,6 +53,10 @@ export type DashboardPreferenceSaveResult =
   | { ok: true }
   | { ok: false; error: string }
 
+export type IdentityLinkActionResult =
+  | { ok: true }
+  | { ok: false; error: string }
+
 function getActionErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) return error.message
   if (
@@ -67,6 +71,14 @@ function getActionErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
+function getIdentityLinkActionError(error: unknown): string {
+  const message = getActionErrorMessage(error, '')
+  if (message.includes('not_authenticated')) return 'Please log in again.'
+  if (message.includes('review_required')) return 'Please verify your contact information before linking.'
+  if (message.includes('guest_not_found')) return 'This invitation is no longer available to link.'
+  return 'Could not link this invitation. Please try again.'
+}
+
 export async function cancelDashboardMatchAction(matchId: string) {
   const supabase = await createSupabaseServerClient()
   await cancelMatch(supabase, matchId)
@@ -77,18 +89,34 @@ export async function refreshDashboardAction() {
   revalidateProfileSurfaces()
 }
 
-export async function acceptDashboardIdentityLinkAction(guestId: string) {
-  const supabase = await createSupabaseServerClient()
-  await acceptIdentityLinkCandidate(supabase, guestId)
-  revalidateProfileSurfaces()
-  revalidatePath('/onboarding/next-steps')
+export async function acceptDashboardIdentityLinkAction(guestId: string): Promise<IdentityLinkActionResult> {
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    await acceptIdentityLinkCandidate(supabase, guestId)
+    revalidateProfileSurfaces()
+    revalidatePath('/onboarding/next-steps')
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getIdentityLinkActionError(error) }
+  }
 }
 
-export async function keepSeparateDashboardIdentityLinkAction(guestId: string) {
-  const supabase = await createSupabaseServerClient()
-  await keepSeparateIdentityLinkCandidate(supabase, guestId)
-  revalidateProfileSurfaces()
-  revalidatePath('/onboarding/next-steps')
+export async function keepSeparateDashboardIdentityLinkAction(guestId: string): Promise<IdentityLinkActionResult> {
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    await keepSeparateIdentityLinkCandidate(supabase, guestId)
+    revalidateProfileSurfaces()
+    revalidatePath('/onboarding/next-steps')
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getIdentityLinkActionError(error) }
+  }
 }
 
 export async function updateDashboardProfileAction(formData: FormData) {

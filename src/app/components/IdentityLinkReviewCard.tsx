@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { IdentityLinkCandidate } from '@/lib/types/database'
 
@@ -8,8 +8,8 @@ type Props = {
   title: string
   body: string
   candidates: IdentityLinkCandidate[]
-  onAccept: (guestId: string) => Promise<void>
-  onKeepSeparate: (guestId: string) => Promise<void>
+  onAccept: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
+  onKeepSeparate: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
   acceptLabel?: string
   keepSeparateLabel?: string
   emptyStateLabel?: string
@@ -31,13 +31,6 @@ export function IdentityLinkReviewCard({
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [activeGuestId, setActiveGuestId] = useState<string | null>(null)
-  const summary = useMemo(() => {
-    const totalMatches = candidates.reduce((sum, candidate) => sum + candidate.match_participant_count, 0)
-    return {
-      count: candidates.length,
-      totalMatches,
-    }
-  }, [candidates])
 
   const getMatchedContactLabel = (candidate: IdentityLinkCandidate) => {
     const contactType = candidate.matched_contact_type ?? candidate.matched_email_type
@@ -57,10 +50,12 @@ export function IdentityLinkReviewCard({
     setActiveGuestId(guestId)
     startTransition(async () => {
       try {
-        if (action === 'accept') {
-          await onAccept(guestId)
-        } else {
-          await onKeepSeparate(guestId)
+        const result = action === 'accept'
+          ? await onAccept(guestId)
+          : await onKeepSeparate(guestId)
+        if (result && typeof result === 'object' && 'ok' in result && !result.ok) {
+          setError(result.error ?? 'Could not update the identity link.')
+          return
         }
         router.refresh()
       } catch (nextError) {
@@ -81,21 +76,6 @@ export function IdentityLinkReviewCard({
         <h2 className="text-h2 text-[#1E293B]">{title}</h2>
         <p className="mt-1 text-body-sub text-[#64748B]">{body}</p>
       </div>
-
-      {candidates.length > 0 ? (
-        <div className="mb-4 rounded-[20px] border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-3">
-          <p className="text-body-main text-[#334155]">
-            {summary.count === 1
-              ? '1 contact or invitation record matches your verified email.'
-              : `${summary.count} contact or invitation records match your verified email.`}
-          </p>
-          <p className="mt-1 text-body-sub text-[#94A3B8]">
-            {summary.totalMatches > 0
-              ? `We also found ${summary.totalMatches} related match participation record${summary.totalMatches === 1 ? '' : 's'}.`
-              : 'These matches will be easier to manage after linking.'}
-          </p>
-        </div>
-      ) : null}
 
       <div className="space-y-3">
         {candidates.length === 0 ? (

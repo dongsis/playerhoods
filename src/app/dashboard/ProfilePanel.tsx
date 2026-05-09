@@ -20,7 +20,7 @@ import { SportsPreferenceForm } from '@/app/profile/SportsPreferenceForm'
 import { DiscoveryAndInvitesSection } from '@/app/profile/DiscoveryAndInvitesSection'
 import { SportProfilesEditor } from '@/app/profile/SportProfilesEditor'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
-import type { DashboardPreferenceSaveResult } from './dashboard.actions'
+import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
 import {
   PREFERRED_PLAY_TIME_OPTIONS,
   getAvailabilityStatusDotClass,
@@ -66,8 +66,8 @@ interface Props {
   mySportProfiles: UserSportProfile[]
   myPlayCities: UserPlayCity[]
   onUpdateProfile: (formData: FormData) => Promise<void>
-  onAcceptIdentityLink: (guestId: string) => Promise<void>
-  onKeepSeparateIdentityLink: (guestId: string) => Promise<void>
+  onAcceptIdentityLink: (guestId: string) => Promise<IdentityLinkActionResult>
+  onKeepSeparateIdentityLink: (guestId: string) => Promise<IdentityLinkActionResult>
   onSetDisplayName: (newName: string) => Promise<void>
   onAvatarSaved: () => Promise<void>
   onSetPrimaryVenue: (venueId: string) => Promise<void>
@@ -1944,7 +1944,7 @@ export function ProfilePanel({
       {identityLinkCandidates.length > 0 ? (
         <IdentityLinkReviewCard
           title="Review previous invitations"
-          body="These records are associated with your verified email. Linking them will help PlayerHoods recognize them as yours going forward."
+          body="We found matches linked to your contact information."
           candidates={identityLinkCandidates}
           onAccept={onAcceptIdentityLink}
           onKeepSeparate={onKeepSeparateIdentityLink}

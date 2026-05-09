@@ -48,6 +48,23 @@ type MatchRemovalNotificationSnapshot = MatchNotificationSnapshot & {
   venue_id: string | null
 }
 
+type IdentityLinkActionResult = { ok: true } | { ok: false; error: string }
+
+function getIdentityLinkActionError(error: unknown): string {
+  const message =
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : ''
+
+  if (message.includes('not_authenticated')) return 'Please log in again.'
+  if (message.includes('review_required')) return 'Please verify your contact information before linking.'
+  if (message.includes('guest_not_found')) return 'This invitation is no longer available to link.'
+  return 'Could not link this invitation. Please try again.'
+}
+
 function revalidateMatchSurfaces(matchId: string) {
   revalidatePath(`/matches/${matchId}`)
   revalidatePath('/matches')
@@ -273,14 +290,30 @@ export async function removeMatchParticipantAction(
   revalidateMatchSurfaces(matchId)
 }
 
-export async function acceptMatchIdentityLinkAction(matchId: string, guestId: string) {
-  const supabase = await createSupabaseServerClient()
-  await acceptIdentityLinkCandidate(supabase, guestId)
-  revalidateMatchSurfaces(matchId)
+export async function acceptMatchIdentityLinkAction(matchId: string, guestId: string): Promise<IdentityLinkActionResult> {
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    await acceptIdentityLinkCandidate(supabase, guestId)
+    revalidateMatchSurfaces(matchId)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getIdentityLinkActionError(error) }
+  }
 }
 
-export async function keepSeparateMatchIdentityLinkAction(matchId: string, guestId: string) {
-  const supabase = await createSupabaseServerClient()
-  await keepSeparateIdentityLinkCandidate(supabase, guestId)
-  revalidateMatchSurfaces(matchId)
+export async function keepSeparateMatchIdentityLinkAction(matchId: string, guestId: string): Promise<IdentityLinkActionResult> {
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    await keepSeparateIdentityLinkCandidate(supabase, guestId)
+    revalidateMatchSurfaces(matchId)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getIdentityLinkActionError(error) }
+  }
 }

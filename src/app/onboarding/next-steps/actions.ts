@@ -5,6 +5,24 @@ import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { LEGAL_AGREEMENT_VERSION } from '@/lib/legal'
 
+type IdentityLinkActionResult = { ok: true } | { ok: false; error: string }
+
+function getIdentityLinkActionError(error: unknown): string {
+  const message =
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : ''
+
+  if (message.includes('not_authenticated')) return 'Please log in again.'
+  if (message.includes('review_required')) return 'Please verify your contact information before linking.'
+  if (message.includes('guest_not_found')) return 'This invitation is no longer available to link.'
+  if (message.trim()) return 'Could not link this invitation. Please try again.'
+  return 'Could not link this invitation. Please try again.'
+}
+
 export async function acceptOnboardingLegalAgreementAction() {
   const user = await getUser()
   if (!user) {
@@ -34,20 +52,36 @@ export async function acceptOnboardingLegalAgreementAction() {
   return { ok: true as const }
 }
 
-export async function acceptOnboardingIdentityLinkAction(guestId: string) {
-  const supabase = await createSupabaseServerClient()
-  await acceptIdentityLinkCandidate(supabase, guestId)
-  revalidatePath('/dashboard')
-  revalidatePath('/onboarding/next-steps')
-  revalidatePath('/profile')
+export async function acceptOnboardingIdentityLinkAction(guestId: string): Promise<IdentityLinkActionResult> {
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    await acceptIdentityLinkCandidate(supabase, guestId)
+    revalidatePath('/dashboard')
+    revalidatePath('/onboarding/next-steps')
+    revalidatePath('/profile')
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getIdentityLinkActionError(error) }
+  }
 }
 
-export async function keepSeparateOnboardingIdentityLinkAction(guestId: string) {
-  const supabase = await createSupabaseServerClient()
-  await keepSeparateIdentityLinkCandidate(supabase, guestId)
-  revalidatePath('/dashboard')
-  revalidatePath('/onboarding/next-steps')
-  revalidatePath('/profile')
+export async function keepSeparateOnboardingIdentityLinkAction(guestId: string): Promise<IdentityLinkActionResult> {
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    await keepSeparateIdentityLinkCandidate(supabase, guestId)
+    revalidatePath('/dashboard')
+    revalidatePath('/onboarding/next-steps')
+    revalidatePath('/profile')
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: getIdentityLinkActionError(error) }
+  }
 }
 
 export async function completeOnboardingNextStepAction() {

@@ -14,8 +14,8 @@ export function OnboardingIdentityLinkStep({
 }: {
   continueHref: string
   candidates: IdentityLinkCandidate[]
-  onAccept: (guestId: string) => Promise<void>
-  onKeepSeparate: (guestId: string) => Promise<void>
+  onAccept: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
+  onKeepSeparate: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
   onSkip: () => Promise<void>
 }) {
   const router = useRouter()
@@ -36,13 +36,13 @@ export function OnboardingIdentityLinkStep({
           <div className="ph-kicker mb-3">Final step</div>
           <h1 className="ph-title">We found invitations for you</h1>
           <p className="ph-subtitle mt-3 max-w-[620px] text-[13px] leading-6">
-            This email or phone number was previously used for PlayerHoods match invitations. You can link those invitations to your new account so they are easier to manage.
+            We found matches linked to your contact information.
           </p>
         </div>
 
         <IdentityLinkReviewCard
           title="Review previous invitations"
-          body="These records are associated with your verified email or phone number. Linking them will help PlayerHoods recognize them as yours going forward."
+          body="Link them to your account so PlayerHoods can recognize them as yours going forward."
           candidates={candidates}
           onAccept={onAccept}
           onKeepSeparate={onKeepSeparate}

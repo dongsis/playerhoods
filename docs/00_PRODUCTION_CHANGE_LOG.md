@@ -56,6 +56,7 @@ If a status cannot be confirmed, write `Unknown`. Do not infer.
 | 2026-05-08 | docs-release-governance-baseline-2026-05-08 | Patch | Added release governance and production change log documents | 0aa52e4579927ca9c85c09b9ad0f70483d8fdecf | None | Unknown | N/A | Not verified | GitHub only | Documentation-only governance patch. No deploy or remote migration apply performed by Codex. |
 | 2026-05-08 | docs-release-governance-template-2026-05-08 | Patch | Expanded governance docs into authoritative rule and fact-record templates | Unknown | None | Unknown | N/A | Not verified | GitHub only after push | Documentation-only governance patch. Commit hash is reported in the task final report because a commit cannot self-reference its own final hash. |
 | 2026-05-08 | SR-20260508-contact-link-person-scope | Structural Release | Link accept and active Contact/Hoods UI move linked contacts to registered-user identity by person scope | aaf05faf988d9a409274575b9591a92c6bd2e6f9 | 20260508162000_identity_link_person_scope_active_identity.sql | Yes | Yes | Login page only; core flows not verified | Production aligned, full smoke test pending | Vercel Production deployed SR commit and Supabase Remote applied migration. Full contact/link flow requires test accounts and fixture data. |
+| 2026-05-09 | MR-20260509-login-identity-link-polish | Mini Release | Polished login page presentation, compressed identity-link review copy, and returned inline identity-link action errors instead of throwing | Unknown | None | Pending | No change expected; remote state pending direct check | Pending | Draft | Roll back by reverting the GitHub commit and redeploying the previous Vercel production commit. |
 
 ## 2026-05-08 - baseline-2026-05-08-bc36051
 
@@ -261,3 +262,61 @@ Database rollback:
   - restore mistakenly archived `contact_records` by clearing `archived_at`, `archive_reason`, and `replaced_by_user_id` for the affected person/time window;
   - remove or mark erroneous notifications;
   - remove erroneous `user_invite_circle` or `person_relationships` rows only after scoped audit.
+
+## 2026-05-09 - MR-20260509-login-identity-link-polish
+
+**Type:** Mini Release  
+**Commit:** Unknown until pushed  
+**Migration:** None  
+**Status:** Draft
+
+### Summary
+
+This mini release prepares the current local code for production by:
+
+- Updating the `/login` page presentation and adding `public/login-playerhoods-hero.png`.
+- Returning structured identity-link action results from dashboard, invitation, match-detail, and onboarding surfaces so failed link/keep-separate actions render inline errors instead of uncaught server-action failures.
+- Compressing identity-link review copy to reduce user confusion around contact/invitation matching.
+- Removing an onboarding profile recommendation callout that over-emphasized phone entry.
+- Adding `docs/recent_code_change_requests_2026-05-05_to_2026-05-08.md` as a local work summary artifact.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local | Build passed | `npm.cmd run build` on 2026-05-09 |
+| GitHub main | Pending | Not pushed at log-write time |
+| Vercel Preview | Unknown | Not checked |
+| Vercel Production | Pending | Must be confirmed after push |
+| Supabase Local | No change | No migration added |
+| Supabase Remote | No change expected; pending direct check | No migration added; remote list must still be checked |
+| Production verification | Pending | Must be verified with production test account after deploy |
+
+### Migration Details
+
+No database migration is required for this mini release. The code continues using existing identity-link APIs and RPC-backed behavior from earlier migrations.
+
+### Online Verification Plan
+
+Minimum production checks after Vercel deploy:
+
+- Confirm `https://www.playerhoods.com/login` serves the newly deployed commit.
+- Log in with the production test account.
+- Confirm login succeeds and authenticated dashboard loads.
+- If the test account has identity-link candidates, confirm the review card renders and action errors stay inline.
+
+### Rollback
+
+Code rollback:
+
+- Revert the GitHub commit for this mini release.
+- Redeploy the previous known-good Vercel Production commit.
+
+Database rollback:
+
+- No database rollback required because no migration is introduced.
+
+### Known Risks
+
+- The Identity Link full acceptance path depends on existing production fixture data; if the production test account has no candidates, verification can only cover login/dashboard reachability and absence of regressions on the card-free path.
+- Login page visual verification should include desktop and mobile viewport checks after production deploy.

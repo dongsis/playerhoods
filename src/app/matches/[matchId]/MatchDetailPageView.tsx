@@ -77,8 +77,8 @@ type MatchDetailPageViewProps = {
   onCancelMatch: (reason: string) => Promise<void>
   onSaveCourtPlan: (data: MatchCourtPlanUpdateInput) => Promise<void>
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
-  onAcceptIdentityLink: (guestId: string) => Promise<void>
-  onKeepSeparateIdentityLink: (guestId: string) => Promise<void>
+  onAcceptIdentityLink: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
+  onKeepSeparateIdentityLink: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
 }
 
 function MatchHeaderSection({
@@ -513,7 +513,7 @@ export function MatchDetailPageView({
         <div style={{ marginBottom: '1.1rem' }}>
           <IdentityLinkReviewCard
             title="Link your contact profile"
-            body="We found a contact or invitation that matches your verified email. Link it to your account to accept this match and manage future invites."
+            body="We found matches linked to your contact information."
             candidates={viewModel.identityLinkCandidates}
             onAccept={onAcceptIdentityLink}
             onKeepSeparate={onKeepSeparateIdentityLink}

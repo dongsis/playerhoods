@@ -555,9 +555,6 @@ export function ProfileForm({ existing, next, sports, venues }: Props) {
           <p className="text-body-sub mt-1 text-[#64748B]">
             Choose where other players can find and save you. Your email and phone will not be shown.
           </p>
-          <p className="mt-3 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
-            To make it easier for you and your friends to find each other, we recommend keeping your phone number on your profile. We will not show it publicly.
-          </p>
         </div>
 
         <div className="flex items-start justify-between gap-4">
