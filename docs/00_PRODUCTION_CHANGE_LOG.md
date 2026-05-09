@@ -58,6 +58,39 @@ If a status cannot be confirmed, write `Unknown`. Do not infer.
 | 2026-05-08 | SR-20260508-contact-link-person-scope | Structural Release | Link accept and active Contact/Hoods UI move linked contacts to registered-user identity by person scope | aaf05faf988d9a409274575b9591a92c6bd2e6f9 | 20260508162000_identity_link_person_scope_active_identity.sql | Yes | Yes | Login page only; core flows not verified | Production aligned, full smoke test pending | Vercel Production deployed SR commit and Supabase Remote applied migration. Full contact/link flow requires test accounts and fixture data. |
 | 2026-05-09 | MR-20260509-login-identity-link-polish | Mini Release | Polished login page presentation, compressed identity-link review copy, and returned inline identity-link action errors instead of throwing | 91f9f6e9ca165642bc9b7e25e269f18b71c42750 | None | Yes | No change | Login/dashboard smoke passed | Production aligned for code; changelog follow-up pending deploy | Vercel deployment `4629225098` succeeded for product commit. Roll back by reverting the GitHub commit and redeploying the previous Vercel production commit. |
 | 2026-05-09 | DBFIX-20260509-identity-link-notification-null-casts | Patch | Fixed `rpc_identity_link_accept` notification inserts by casting null match references to uuid | 087a8748a76bc1496a2718dbac859d109e002d10 | 20260509053000_fix_identity_link_notification_null_casts.sql | Yes | Yes | RPC rollback-transaction smoke passed; dashboard browser smoke showed no candidate on alternate test account | Production aligned for DB fix | Remote migration was applied immediately to unblock production Identity Link accept. Roll back with a follow-up migration restoring the previous RPC definition or reverting this migration's function body. |
+| 2026-05-09 | DBFIX-20260509-profile-update-rpc-compatibility | Patch | Removed ambiguous legacy `rpc_profile_update` overload and fixed profile-save date/name handling for production RPC calls | Unknown | 20260509061000_drop_legacy_profile_update_overload.sql; 20260509062000_fix_profile_update_availability_until_date.sql; 20260509063000_fix_profile_update_empty_names.sql | Unknown | Yes | RPC rollback-transaction smoke passed with production screenshot-like payload | DB remote applied, GitHub/Vercel confirmation pending | Remote migrations were applied immediately to unblock production Profile Settings save. Roll back with follow-up migrations restoring the previous RPC overload/function body, then redeploy compatible application code if needed. |
+
+## 2026-05-09 - DBFIX-20260509-profile-update-rpc-compatibility
+
+**Type:** Patch  
+**Commit:** Unknown  
+**Migration:** `20260509061000_drop_legacy_profile_update_overload.sql`; `20260509062000_fix_profile_update_availability_until_date.sql`; `20260509063000_fix_profile_update_empty_names.sql`  
+**Status:** DB remote applied, GitHub/Vercel confirmation pending
+
+### Summary
+
+Fixed production Profile Settings save failures caused by remote `rpc_profile_update` incompatibilities:
+
+- Removed the legacy shorter `rpc_profile_update` overload so PostgREST can choose the canonical named-argument RPC.
+- Corrected `availability_until` assignment to store a date value instead of text.
+- Kept blank first and last names as empty strings instead of writing null into not-null profile columns.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| GitHub main | Pending | Commit hash is produced after this document content is finalized |
+| Vercel Production | Unknown | To be confirmed after GitHub push |
+| Supabase Remote | Applied | Remote migration list includes all three profile-update migrations |
+| Production verification | RPC smoke passed | Rollback-transaction call using screenshot-like Profile Settings payload completed without error |
+
+### Notes
+
+This patch is database-only. It does not include the current uncommitted dashboard/profile UI worktree changes.
+
+### Rollback
+
+Apply a follow-up migration restoring the previous `rpc_profile_update` function body and, only if required by older deployed code, the legacy shorter overload. If a Vercel deployment has already consumed this migration set, redeploy the last compatible production commit after the rollback migration is confirmed remote-applied.
 
 ## 2026-05-08 - baseline-2026-05-08-bc36051
 
