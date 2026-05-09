@@ -56,7 +56,7 @@ If a status cannot be confirmed, write `Unknown`. Do not infer.
 | 2026-05-08 | docs-release-governance-baseline-2026-05-08 | Patch | Added release governance and production change log documents | 0aa52e4579927ca9c85c09b9ad0f70483d8fdecf | None | Unknown | N/A | Not verified | GitHub only | Documentation-only governance patch. No deploy or remote migration apply performed by Codex. |
 | 2026-05-08 | docs-release-governance-template-2026-05-08 | Patch | Expanded governance docs into authoritative rule and fact-record templates | Unknown | None | Unknown | N/A | Not verified | GitHub only after push | Documentation-only governance patch. Commit hash is reported in the task final report because a commit cannot self-reference its own final hash. |
 | 2026-05-08 | SR-20260508-contact-link-person-scope | Structural Release | Link accept and active Contact/Hoods UI move linked contacts to registered-user identity by person scope | aaf05faf988d9a409274575b9591a92c6bd2e6f9 | 20260508162000_identity_link_person_scope_active_identity.sql | Yes | Yes | Login page only; core flows not verified | Production aligned, full smoke test pending | Vercel Production deployed SR commit and Supabase Remote applied migration. Full contact/link flow requires test accounts and fixture data. |
-| 2026-05-09 | MR-20260509-login-identity-link-polish | Mini Release | Polished login page presentation, compressed identity-link review copy, and returned inline identity-link action errors instead of throwing | Unknown | None | Pending | No change expected; remote state pending direct check | Pending | Draft | Roll back by reverting the GitHub commit and redeploying the previous Vercel production commit. |
+| 2026-05-09 | MR-20260509-login-identity-link-polish | Mini Release | Polished login page presentation, compressed identity-link review copy, and returned inline identity-link action errors instead of throwing | 91f9f6e9ca165642bc9b7e25e269f18b71c42750 | None | Yes | No change | Login/dashboard smoke passed | Production aligned for code; changelog follow-up pending deploy | Vercel deployment `4629225098` succeeded for product commit. Roll back by reverting the GitHub commit and redeploying the previous Vercel production commit. |
 
 ## 2026-05-08 - baseline-2026-05-08-bc36051
 
@@ -266,9 +266,9 @@ Database rollback:
 ## 2026-05-09 - MR-20260509-login-identity-link-polish
 
 **Type:** Mini Release  
-**Commit:** Unknown until pushed  
+**Commit:** `91f9f6e9ca165642bc9b7e25e269f18b71c42750`  
 **Migration:** None  
-**Status:** Draft
+**Status:** Production aligned for code; changelog follow-up pending deploy
 
 ### Summary
 
@@ -285,12 +285,12 @@ This mini release prepares the current local code for production by:
 | Area | Status | Evidence |
 |---|---|---|
 | Local | Build passed | `npm.cmd run build` on 2026-05-09 |
-| GitHub main | Pending | Not pushed at log-write time |
+| GitHub main | `91f9f6e9ca165642bc9b7e25e269f18b71c42750` | Pushed to `origin/main` |
 | Vercel Preview | Unknown | Not checked |
-| Vercel Production | Pending | Must be confirmed after push |
+| Vercel Production | `91f9f6e9ca165642bc9b7e25e269f18b71c42750` | GitHub deployment `4629225098`; status `success`; environment `Production` |
 | Supabase Local | No change | No migration added |
-| Supabase Remote | No change expected; pending direct check | No migration added; remote list must still be checked |
-| Production verification | Pending | Must be verified with production test account after deploy |
+| Supabase Remote | No change | `supabase migration list --linked` shows remote aligned through `20260508162000`; no new migration in this release |
+| Production verification | Login/dashboard smoke passed | `/login` rendered new hero/form; production test account reached `/dashboard` without auth error |
 
 ### Migration Details
 
@@ -300,10 +300,12 @@ No database migration is required for this mini release. The code continues usin
 
 Minimum production checks after Vercel deploy:
 
-- Confirm `https://www.playerhoods.com/login` serves the newly deployed commit.
-- Log in with the production test account.
-- Confirm login succeeds and authenticated dashboard loads.
-- If the test account has identity-link candidates, confirm the review card renders and action errors stay inline.
+| Step | Status | Notes |
+|---|---|---|
+| Confirm `https://www.playerhoods.com/login` serves the new login page | Passed | HTML included `login-playerhoods-hero.png`, new Google/OR/email/password form copy, and `Sign In` CTA |
+| Log in with production test account | Passed | Browser automation submitted the test account credentials |
+| Confirm authenticated dashboard loads | Passed | Browser reached `https://www.playerhoods.com/dashboard`; dashboard nav and `OldChai` profile marker rendered |
+| Confirm identity-link candidate action behavior | Not applicable in this smoke | The production test account did not show identity-link candidates in the dashboard smoke path |
 
 ### Rollback
 
