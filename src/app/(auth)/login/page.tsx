@@ -747,10 +747,10 @@ const backdropStyle: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
   backgroundImage:
-    'linear-gradient(90deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 42%, rgba(255,255,255,0.02) 100%), url("/login-playerhoods-hero.png")',
-  backgroundSize: 'cover',
-  backgroundPosition: 'center',
-  transform: 'scale(1.01)',
+    'linear-gradient(90deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 42%, rgba(255,255,255,0.02) 100%), url("/login-playerhoods-hero-final.png")',
+  backgroundSize: 'auto 98%',
+  backgroundPosition: 'left center',
+  backgroundRepeat: 'no-repeat',
 }
 
 const heroCopyStyle: React.CSSProperties = {
@@ -1124,3 +1124,4 @@ const infoStyle: React.CSSProperties = {
   borderRadius: '16px',
   border: '1px solid #bbf7d0',
 }
+

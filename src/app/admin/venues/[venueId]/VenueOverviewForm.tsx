@@ -10,21 +10,6 @@ import type {
   VenueKind,
 } from '@/lib/types/database'
 
-const TIMEZONES = [
-  'America/Toronto',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Vancouver',
-  'Europe/London',
-  'Europe/Paris',
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-  'Asia/Hong_Kong',
-  'Australia/Sydney',
-]
-
 const VENUE_KIND_OPTIONS: { value: VenueKind; label: string }[] = [
   { value: 'club', label: 'Club' },
   { value: 'park', label: 'Park' },
@@ -124,6 +109,21 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
             placeholder="ORTC"
             style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
           />
+        </div>
+        <div>
+          <div
+            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.35rem' }}
+          >
+            Sports available
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.84rem', marginBottom: '0.3rem' }}>
+            <input name="supports_tennis" type="checkbox" defaultChecked={venue.supports_tennis} />
+            Tennis
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.84rem' }}>
+            <input name="supports_pickleball" type="checkbox" defaultChecked={venue.supports_pickleball} />
+            Pickleball
+          </label>
         </div>
         <div>
           <label
@@ -273,24 +273,6 @@ export function VenueOverviewForm({ venue, onSubmit }: Props) {
             style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
           />
         </div>
-        <div>
-          <label
-            style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}
-          >
-            Timezone
-          </label>
-          <select
-            name="timezone"
-            defaultValue={venue.timezone}
-            style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
-          >
-            {TIMEZONES.map(tz => (
-              <option key={tz} value={tz}>
-                {tz}
-              </option>
-            ))}
-            </select>
-          </div>
         <div>
           <label
             style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginBottom: '0.2rem' }}

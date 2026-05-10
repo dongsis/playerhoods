@@ -12,6 +12,8 @@ interface GroupResult {
   primary_sport_id: number | null
   venue_id: string | null
   icon_key: string
+  recommended_level_min: number | null
+  recommended_level_max: number | null
 }
 
 export async function createGroupAction(input: {
@@ -20,6 +22,8 @@ export async function createGroupAction(input: {
   primary_sport_id?: number | null
   venue_id?: string | null
   icon_key?: string | null
+  recommended_level_min?: number | null
+  recommended_level_max?: number | null
 }): Promise<GroupResult> {
   const supabase = await createSupabaseServerClient()
 
@@ -34,6 +38,8 @@ export async function createGroupAction(input: {
     p_primary_sport_id: input.primary_sport_id ?? null,
     p_venue_id: input.venue_id ?? null,
     p_icon_key: input.icon_key ?? null,
+    p_recommended_level_min: input.recommended_level_min ?? null,
+    p_recommended_level_max: input.recommended_level_max ?? null,
   })
 
   if (error) throw error

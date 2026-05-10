@@ -443,6 +443,9 @@ function ResourceBlock({
             const href = resource.resource_type === 'link' ? resource.link_url : resource.public_url
             const isImage = resource.mime_type?.startsWith('image/') && resource.public_url
             const isBusy = isPending && pendingResourceId === resource.id
+            const ownerName = resource.owner_name?.trim() || 'Group member'
+            const createdDate = resource.created_at ? formatDate(resource.created_at) : null
+            const fileSize = formatBytes(resource.byte_size)
 
             return (
               <div
@@ -490,11 +493,39 @@ function ResourceBlock({
                       ) : null}
                     </div>
                     <div style={{ marginTop: '0.18rem', color: '#94a3b8', fontSize: '0.72rem' }}>
-                      {resource.resource_type === 'link' ? 'Link' : (formatBytes(resource.byte_size) ?? 'File')}
-                      {resource.created_at ? ` · ${formatDate(resource.created_at)}` : ''}
+                      Shared by {ownerName}
+                      {createdDate ? ` · ${createdDate}` : ''}
                     </div>
                   </div>
                 </div>
+
+                <details style={{ borderTop: '1px solid #edf2f7', paddingTop: '0.55rem' }}>
+                  <summary style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer' }}>
+                    Resource Details
+                  </summary>
+                  <div style={{ marginTop: '0.55rem', display: 'grid', gap: '0.55rem' }}>
+                    {isImage ? (
+                      <a href={href ?? '#'} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                        <img
+                          src={resource.public_url ?? undefined}
+                          alt={resource.title}
+                          style={{ display: 'block', width: '100%', maxHeight: '180px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #e2e8f0', background: '#f8fafc' }}
+                        />
+                      </a>
+                    ) : null}
+                    <div style={{ display: 'grid', gap: '0.28rem', color: '#475569', fontSize: '0.76rem', lineHeight: 1.45 }}>
+                      <div><strong style={{ color: '#94a3b8' }}>Type:</strong> {resource.resource_type === 'link' ? 'Link' : (resource.mime_type ?? 'File')}</div>
+                      <div><strong style={{ color: '#94a3b8' }}>Shared By:</strong> {ownerName}</div>
+                      {createdDate ? <div><strong style={{ color: '#94a3b8' }}>Date:</strong> {createdDate}</div> : null}
+                      {fileSize ? <div><strong style={{ color: '#94a3b8' }}>Size:</strong> {fileSize}</div> : null}
+                    </div>
+                    {href ? (
+                      <a href={href} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', justifyContent: 'center', borderRadius: '999px', border: '1px solid #dbe4ee', background: '#fff', color: '#0f172a', padding: '0.42rem 0.75rem', fontSize: '0.74rem', fontWeight: 800, textDecoration: 'none' }}>
+                        Open Resource
+                      </a>
+                    ) : null}
+                  </div>
+                </details>
 
                 {canManage ? (
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>

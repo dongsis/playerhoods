@@ -38,10 +38,12 @@ export type DashboardPageViewModel = {
   myIdentities: DashboardLoaderData['myIdentities']
   myVenuePrefs: DashboardLoaderData['myVenuePrefs']
   joinableVenues: DashboardLoaderData['joinableVenues']
+  venueSports: DashboardLoaderData['venueSports']
   sports: DashboardLoaderData['sports']
   mySports: DashboardLoaderData['mySports']
   mySportProfiles: DashboardLoaderData['mySportProfiles']
   myPlayCities: DashboardLoaderData['myPlayCities']
+  availablePlayCities: DashboardLoaderData['availablePlayCities']
   gearItems: DashboardLoaderData['gearItems']
   gearImages: DashboardLoaderData['gearImages']
   gearStringJobs: DashboardLoaderData['gearStringJobs']
@@ -68,7 +70,7 @@ const EMPTY_PROFILE: DashboardProfile = {
   visible_in_city_discovery: false,
   searchable_by_contact_info: false,
   allow_non_group_invites: true,
-  shared_group_join_preference: 'approval_required_all',
+  shared_group_join_preference: 'auto_join_saved_players',
   looking_to_play: null,
   preferred_play_times: [],
 }
@@ -90,10 +92,12 @@ export function buildDashboardPageViewModel(loaderData: DashboardLoaderData): Da
     myIdentities: loaderData.myIdentities,
     myVenuePrefs: loaderData.myVenuePrefs,
     joinableVenues: loaderData.joinableVenues,
+    venueSports: loaderData.venueSports,
     sports: loaderData.sports,
     mySports: loaderData.mySports,
     mySportProfiles: loaderData.mySportProfiles,
     myPlayCities: loaderData.myPlayCities,
+    availablePlayCities: loaderData.availablePlayCities,
     gearItems: loaderData.gearItems,
     gearImages: loaderData.gearImages,
     gearStringJobs: loaderData.gearStringJobs,

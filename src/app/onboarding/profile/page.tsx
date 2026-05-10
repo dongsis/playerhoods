@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { listSports } from '@/lib/api/sports'
+import { listLocationCityOptions } from '@/lib/api/location-municipalities'
 import type { Profile, Venue } from '@/lib/types/database'
 import { ProfileForm } from './ProfileForm'
 
@@ -15,7 +16,7 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
   const { next, notice } = await searchParams
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: profile }, sportsResult, venuesResult] = await Promise.all([
+  const [{ data: profile }, sportsResult, venuesResult, cityOptions] = await Promise.all([
     supabase
       .from('profiles')
       .select('*')
@@ -27,6 +28,7 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
       .select('id, name, abbreviation, city, province, country, location_text, venue_kind')
       .not('city', 'is', null)
       .order('name', { ascending: true }),
+    listLocationCityOptions(supabase, { countryCode: 'CA', provinceCode: 'ON' }),
   ])
 
   if (profile?.onboarding_completed) {
@@ -63,6 +65,7 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
             next={next || '/dashboard'}
             sports={sportsResult.filter((sport) => sport.is_active)}
             venues={((venuesResult.data ?? []) as Pick<Venue, 'id' | 'name' | 'abbreviation' | 'city' | 'province' | 'country' | 'location_text' | 'venue_kind'>[])}
+            cityOptions={cityOptions}
           />
         </div>
       </section>

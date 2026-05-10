@@ -7,12 +7,13 @@ import { getAllPlayersGroupedByVenue, type PlayersData } from '@/lib/api/players
 import { getMyPlayCities } from '@/lib/api/discovery'
 import { getIdentityLinkCandidates, reconcileIdentityGuestParticipants } from '@/lib/api/identity-links'
 import { getMyVenueIdentities, getJoinableVenues, getMyVenuePreferences } from '@/lib/api/identities'
-import { isSuperAdmin, getMyAdminVenues } from '@/lib/api/venues'
+import { isSuperAdmin, getMyAdminVenues, listVenueSports } from '@/lib/api/venues'
 import { listSports, getMySports } from '@/lib/api/sports'
 import { getInviteCircleList, type InviteCircleRow } from '@/lib/api/play-network'
+import { listLocationCityOptions, type LocationCityOption } from '@/lib/api/location-municipalities'
 import { getMySportProfiles } from '@/lib/api/player-profiles'
 import { listMyGearImages, listMyGearItems, listMyGearShowcaseEntries, listMyGearStringJobs } from '@/lib/api/gear'
-import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
 
 type DashboardUser = NonNullable<Awaited<ReturnType<typeof getUser>>>
 
@@ -26,10 +27,12 @@ export type DashboardLoaderData = {
   identityLinkCandidates: IdentityLinkCandidate[]
   myIdentities: (VenueIdentity & { venue: Venue })[]
   joinableVenues: Venue[]
+  venueSports: VenueSport[]
   sports: Sport[]
   mySports: UserSport[]
   mySportProfiles: UserSportProfile[]
   myPlayCities: UserPlayCity[]
+  availablePlayCities: LocationCityOption[]
   gearItems: GearItem[]
   gearImages: GearImage[]
   gearStringJobs: GearStringJob[]
@@ -84,10 +87,12 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     identityLinkCandidates,
     myIdentities,
     joinableVenues,
+    venueSports,
     sports,
     mySports,
     mySportProfiles,
     myPlayCities,
+    availablePlayCities,
     gearItems,
     gearImages,
     gearStringJobs,
@@ -114,10 +119,12 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     getIdentityLinkCandidates(supabase).catch(() => [] as IdentityLinkCandidate[]),
     getMyVenueIdentities(supabase, user.id).catch(() => [] as (VenueIdentity & { venue: Venue })[]),
     getJoinableVenues(supabase, user.id).catch(() => [] as Venue[]),
+    listVenueSports(supabase).catch(() => [] as VenueSport[]),
     listSports(supabase).catch(() => [] as Sport[]),
     getMySports(supabase).catch(() => [] as UserSport[]),
     getMySportProfiles(supabase, user.id).catch(() => [] as UserSportProfile[]),
     getMyPlayCities(supabase, user.id).catch(() => [] as UserPlayCity[]),
+    listLocationCityOptions(supabase, { countryCode: 'CA', provinceCode: 'ON' }).catch(() => [] as LocationCityOption[]),
     listMyGearItems(supabase, user.id).catch(() => [] as GearItem[]),
     listMyGearImages(supabase, user.id).catch(() => [] as GearImage[]),
     listMyGearStringJobs(supabase, user.id).catch(() => [] as GearStringJob[]),
@@ -138,10 +145,12 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     identityLinkCandidates,
     myIdentities,
     joinableVenues,
+    venueSports,
     sports,
     mySports,
     mySportProfiles,
     myPlayCities,
+    availablePlayCities,
     gearItems,
     gearImages,
     gearStringJobs,

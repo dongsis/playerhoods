@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { InviteCircleRow } from '@/lib/api/play-network'
-import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
 import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { LeftNav, NavIcon, type DashTab } from './LeftNav'
 import { InboxPanel } from './InboxPanel'
@@ -20,6 +20,7 @@ import type { GearImageInput, GearItemInput, GearShowcaseEntryInput, GearStringJ
 import type { GearLinkImportDraft } from '@/lib/gear-link-import'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
+import type { LocationCityOption } from '@/lib/api/location-municipalities'
 
 interface Props {
   userId: string
@@ -56,10 +57,12 @@ interface Props {
   myIdentities: (VenueIdentity & { venue: Venue })[]
   myVenuePrefs: Venue[]
   joinableVenues: Venue[]
+  venueSports: VenueSport[]
   sports: Sport[]
   mySports: UserSport[]
   mySportProfiles: UserSportProfile[]
   myPlayCities: UserPlayCity[]
+  availablePlayCities: LocationCityOption[]
   gearItems: GearItem[]
   gearImages: GearImage[]
   gearStringJobs: GearStringJob[]
@@ -81,7 +84,7 @@ interface Props {
     searchable_by_email_or_phone?: boolean
     play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
-    shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
+    shared_group_join_preference?: 'auto_join_saved_players' | 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
   }) => Promise<DashboardPreferenceSaveResult>
   onSetVenueMemberDiscovery: (venueId: string, visibleInVenueMemberDiscovery: boolean) => Promise<DashboardPreferenceSaveResult>
   onSetSports: (codes: string[]) => Promise<void>
@@ -205,10 +208,12 @@ export function DashboardShell({
   myIdentities,
   myVenuePrefs,
   joinableVenues,
+  venueSports,
   sports,
   mySports,
   mySportProfiles,
   myPlayCities,
+  availablePlayCities,
   gearItems,
   gearImages,
   gearStringJobs,
@@ -511,10 +516,12 @@ export function DashboardShell({
             myIdentities={myIdentities}
             myVenuePrefs={myVenuePrefs}
             joinableVenues={joinableVenues}
+            venueSports={venueSports}
             sports={sports}
             mySportIds={mySports.map(s => s.sport_id)}
             mySportProfiles={mySportProfiles}
             myPlayCities={myPlayCities}
+            availablePlayCities={availablePlayCities}
             onUpdateProfile={onUpdateProfile}
             onAcceptIdentityLink={onAcceptIdentityLink}
             onKeepSeparateIdentityLink={onKeepSeparateIdentityLink}

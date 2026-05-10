@@ -14,6 +14,8 @@ import type {
   ProfileDisplay,
   AdminUserSearchResult,
 } from '@/lib/types/database'
+import { inferVenueTimezone } from '@/lib/venues/timezone'
+import { getVenueSlug, slugifyVenueSegment } from '@/lib/venues/slug'
 
 type Client = SupabaseClient<Database>
 
@@ -59,6 +61,25 @@ export async function getVenue(supabase: Client, venueId: string): Promise<Venue
   return data as Venue
 }
 
+export async function getVenueByCanonicalPath(
+  supabase: Client,
+  params: { country: string; province: string; city: string; slug: string },
+): Promise<Venue | null> {
+  const { data, error } = await supabase
+    .from('venues')
+    .select('*')
+    .order('name', { ascending: true })
+  if (error) throw error
+
+  const venues = (data ?? []) as Venue[]
+  return venues.find((venue) => (
+    slugifyVenueSegment(venue.country === 'Canada' ? 'ca' : venue.country) === params.country
+    && slugifyVenueSegment(venue.province === 'Ontario' ? 'on' : venue.province) === params.province
+    && slugifyVenueSegment(venue.city) === params.city
+    && getVenueSlug(venue) === params.slug
+  )) ?? null
+}
+
 export async function getVenueCourts(supabase: Client, venueId: string): Promise<Court[]> {
   const { data, error } = await supabase
     .from('courts')
@@ -75,6 +96,16 @@ export async function getVenueSports(supabase: Client, venueId: string): Promise
     .from('venue_sports')
     .select('*')
     .eq('venue_id', venueId)
+    .order('sport_id', { ascending: true })
+  if (error) throw error
+  return data as VenueSport[]
+}
+
+export async function listVenueSports(supabase: Client): Promise<VenueSport[]> {
+  const { data, error } = await supabase
+    .from('venue_sports')
+    .select('*')
+    .order('venue_id', { ascending: true })
     .order('sport_id', { ascending: true })
   if (error) throw error
   return data as VenueSport[]
@@ -179,6 +210,8 @@ export async function createVenue(
     facility_type?: VenueFacilityType | null
     booking_required?: boolean | null
     cost_type?: VenueCostType | null
+    supports_tennis?: boolean
+    supports_pickleball?: boolean
     timezone?: string
     notes?: string
     venue_kind?: VenueKind
@@ -205,7 +238,9 @@ export async function createVenue(
     p_facility_type: data.facility_type ?? null,
     p_booking_required: data.booking_required ?? null,
     p_cost_type: data.cost_type ?? null,
-    p_timezone: data.timezone ?? 'America/Toronto',
+    p_supports_tennis: data.supports_tennis ?? false,
+    p_supports_pickleball: data.supports_pickleball ?? false,
+    p_timezone: data.timezone ?? inferVenueTimezone(data),
     p_notes: data.notes ?? null,
     p_venue_kind: data.venue_kind ?? 'club',
     p_access_type: data.access_type ?? 'members',
@@ -241,6 +276,8 @@ export async function updateVenue(
     facility_type?: VenueFacilityType | null
     booking_required?: boolean | null
     cost_type?: VenueCostType | null
+    supports_tennis?: boolean
+    supports_pickleball?: boolean
     timezone?: string
     notes?: string
     venue_kind?: VenueKind
@@ -268,7 +305,13 @@ export async function updateVenue(
     p_facility_type: data.facility_type ?? null,
     p_booking_required: data.booking_required ?? null,
     p_cost_type: data.cost_type ?? null,
-    p_timezone: data.timezone ?? null,
+    p_supports_tennis: data.supports_tennis ?? null,
+    p_supports_pickleball: data.supports_pickleball ?? null,
+    p_timezone: data.timezone ?? (
+      data.country !== undefined || data.province !== undefined || data.city !== undefined
+        ? inferVenueTimezone(data)
+        : null
+    ),
     p_notes: data.notes ?? null,
     p_venue_kind: data.venue_kind ?? null,
     p_access_type: data.access_type ?? null,

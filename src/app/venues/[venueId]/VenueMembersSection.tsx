@@ -71,16 +71,16 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
   }
 
   if (loading && members.length === 0) {
-    return <p className="text-sm text-gray-400">Loading venue members...</p>
+    return <p className="text-sm text-gray-400">Loading discoverable players...</p>
   }
 
   return (
-    <section className="mb-6">
+    <section className="mt-6">
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-        Venue Members
+        Discoverable Players
       </h2>
       <p className="mb-3 text-sm text-gray-500">
-        Discover registered people at this venue and save them into your Hood before using them as Direct Invite Users or Request Scope Users.
+        Players who are open to being discovered at this venue.
       </p>
       <input
         type="text"
@@ -91,7 +91,7 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
       />
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       {members.length === 0 ? (
-        <p className="text-sm italic text-gray-400">No members found.</p>
+        <p className="text-sm italic text-gray-400">No discoverable players found.</p>
       ) : (
         <div className="space-y-2">
           {members.map((member) => (

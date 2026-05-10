@@ -54,7 +54,6 @@ export default async function AdminVenuesPage() {
                 venue.location_text,
                 venue.city,
                 venue.country,
-                venue.timezone,
               ].filter(Boolean)
 
               return (

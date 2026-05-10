@@ -48,9 +48,7 @@ export function VenueManagementPanel({ myAdminVenues, isSuperAdmin }: Props) {
                 <div>
                   <div className="text-sm font-medium text-gray-800">{getVenueDisplayName(venue)}</div>
                   {venue.location_text && (
-                    <div className="text-xs text-gray-400">
-                      {venue.location_text} · {venue.timezone}
-                    </div>
+                    <div className="text-xs text-gray-400">{venue.location_text}</div>
                   )}
                 </div>
                 <Link
@@ -87,3 +85,4 @@ export function VenueManagementPanel({ myAdminVenues, isSuperAdmin }: Props) {
     </div>
   )
 }
+

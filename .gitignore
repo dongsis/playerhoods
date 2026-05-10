@@ -60,6 +60,12 @@ db_schema.sql
 # -----------------------------
 logs
 *.log
+.next-start.*
+.next-dev.*
+.codex-*.log
+.npm-version*.log
+.start-*.log
+build-check.log
 
 # -----------------------------
 # OS files

@@ -5,6 +5,7 @@ import { getVenueDisplayName } from '@/lib/venues/display'
 import { completeFirstOnboardingAction } from './actions'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
 import type { Profile, Sport, Venue } from '@/lib/types/database'
+import type { LocationCityOption } from '@/lib/api/location-municipalities'
 
 type PlayCityRecord = {
   city_name: string
@@ -19,6 +20,7 @@ interface Props {
   next: string
   sports: Sport[]
   venues: VenueOption[]
+  cityOptions: LocationCityOption[]
 }
 
 function normalizeQuery(value: string) {
@@ -114,7 +116,7 @@ const CloseIcon = ({ className }: { className?: string }) => (
   </Icon>
 )
 
-export function ProfileForm({ existing, next, sports, venues }: Props) {
+export function ProfileForm({ existing, next, sports, venues, cityOptions }: Props) {
   const initialDisplayName = useMemo(
     () => existing?.display_name?.trim() ?? '',
     [existing],
@@ -124,26 +126,26 @@ export function ProfileForm({ existing, next, sports, venues }: Props) {
     () =>
       Array.from(
         new Set(
-          venues
-            .map((venue) => normalizeCityName(venue.city ?? ''))
+          cityOptions
+            .map((city) => normalizeCityName(city.city_name))
             .filter(Boolean),
         ),
       ).sort((left, right) => left.localeCompare(right)),
-    [venues],
+    [cityOptions],
   )
 
   const cityMetaMap = useMemo(() => {
     const map = new Map<string, { region: string | null; country: string | null }>()
-    for (const venue of venues) {
-      const cityName = normalizeCityName(venue.city ?? '')
+    for (const city of cityOptions) {
+      const cityName = normalizeCityName(city.city_name)
       if (!cityName || map.has(cityName.toLowerCase())) continue
       map.set(cityName.toLowerCase(), {
-        region: venue.province ?? DEFAULT_PLAY_REGION,
-        country: venue.country ?? DEFAULT_PLAY_COUNTRY,
+        region: city.region ?? DEFAULT_PLAY_REGION,
+        country: city.country ?? DEFAULT_PLAY_COUNTRY,
       })
     }
     return map
-  }, [venues])
+  }, [cityOptions])
 
   const [displayName, setDisplayName] = useState(initialDisplayName)
   const [selectedSportIds, setSelectedSportIds] = useState<number[]>([])
@@ -218,6 +220,13 @@ export function ProfileForm({ existing, next, sports, venues }: Props) {
   const addCity = (cityName: string) => {
     const normalized = normalizeCityName(cityName)
     if (!normalized) return
+    if (!cityMetaMap.has(normalized.toLowerCase())) {
+      setErrorMessages((current) => ({
+        ...current,
+        cities: 'Choose a city from the approved city list.',
+      }))
+      return
+    }
     if (selectedCities.some((city) => city.city_name === normalized)) return
 
     if (selectedCities.length >= 8) {

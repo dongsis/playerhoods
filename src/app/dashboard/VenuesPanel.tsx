@@ -47,7 +47,7 @@ export function VenuesPanel({ myIdentities, myVenuePrefs, isAdmin, myAdminVenues
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-[#1E293B]">{getVenueDisplayName(venue)}</div>
                   <div className="mt-0.5 text-xs text-[#64748B]">
-                    {venue.location_text || venue.timezone || 'Manage this venue'}
+                    {venue.location_text || venue.city || 'Manage this venue'}
                   </div>
                 </div>
                 <span className="rounded-full bg-[#1E293B] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
@@ -72,7 +72,7 @@ export function VenuesPanel({ myIdentities, myVenuePrefs, isAdmin, myAdminVenues
             {joinedVenues.map((venue) => (
               <Link
                 key={venue.id}
-                href={`/venues/${venue.id}`}
+                href={`/app/venues/${venue.id}`}
                 className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-3 transition-colors hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
               >
                 <div className="min-w-0">
@@ -107,7 +107,7 @@ export function VenuesPanel({ myIdentities, myVenuePrefs, isAdmin, myAdminVenues
             {savedOnly.map((venue) => (
               <Link
                 key={venue.id}
-                href={`/venues/${venue.id}`}
+                href={`/app/venues/${venue.id}`}
                 className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-3 transition-colors hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
               >
                 <div>

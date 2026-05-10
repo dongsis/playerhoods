@@ -8,21 +8,6 @@ interface Props {
   onSubmit: (formData: FormData) => Promise<void>
 }
 
-const TIMEZONES = [
-  'America/Toronto',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Vancouver',
-  'Europe/London',
-  'Europe/Paris',
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-  'Asia/Hong_Kong',
-  'Australia/Sydney',
-]
-
 export function VenueEditForm({ venue, onSubmit }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -88,12 +73,6 @@ export function VenueEditForm({ venue, onSubmit }: Props) {
       <div>
         <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Venue email</label>
         <input name="venue_email" defaultValue={venue.venue_email ?? ''} style={{ padding: '0.4rem', width: '220px' }} />
-      </div>
-      <div>
-        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Timezone</label>
-        <select name="timezone" defaultValue={venue.timezone} style={{ padding: '0.4rem' }}>
-          {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
-        </select>
       </div>
       <div>
         <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Website</label>

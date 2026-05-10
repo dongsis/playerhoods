@@ -2,33 +2,41 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { UserPlayCity, VenueIdentity, Venue } from '@/lib/types/database'
+import type { SharedGroupJoinPreference, UserPlayCity, VenueIdentity, Venue } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
-import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
+import { SHARED_GROUP_JOIN_PREFERENCE_OPTIONS } from '@/lib/profile-options'
 import type { DashboardPreferenceSaveResult } from '@/app/dashboard/dashboard.actions'
+
+const TRUSTED_INVITATION_REASONS = [
+  "Players I've saved",
+  'Members from my clubs / venues',
+  'Invitations matching my sports and play locations',
+] as const
+
+function normalizeGroupJoinPreference(value: SharedGroupJoinPreference): SharedGroupJoinPreference {
+  return value === 'auto_join_enabled_sports' ? 'auto_join_saved_players' : value
+}
 
 interface Props {
   showTitle?: boolean
   visibleInCityDiscovery: boolean
   searchableByEmailOrPhone: boolean
+  sharedGroupJoinPreference: SharedGroupJoinPreference
   playCities: UserPlayCity[]
   identities: (VenueIdentity & { venue: Venue })[]
   onSaveGlobal: (params: {
     visible_in_city_discovery?: boolean
     searchable_by_email_or_phone?: boolean
-    play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
+    shared_group_join_preference?: SharedGroupJoinPreference
   }) => Promise<DashboardPreferenceSaveResult>
   onSetVenueMemberDiscovery: (venueId: string, visibleInVenueMemberDiscovery: boolean) => Promise<DashboardPreferenceSaveResult>
-}
-
-function normalizeCityName(value: string): string {
-  return value.trim().replace(/\s+/g, ' ')
 }
 
 export function DiscoveryAndInvitesSection({
   showTitle = true,
   visibleInCityDiscovery,
   searchableByEmailOrPhone,
+  sharedGroupJoinPreference,
   playCities,
   identities,
   onSaveGlobal,
@@ -37,19 +45,14 @@ export function DiscoveryAndInvitesSection({
   const router = useRouter()
   const [cityDiscovery, setCityDiscovery] = useState(visibleInCityDiscovery)
   const [emailOrPhoneLookup, setEmailOrPhoneLookup] = useState(searchableByEmailOrPhone)
-  const [cityInput, setCityInput] = useState('')
-  const [localPlayCities, setLocalPlayCities] = useState(
-    playCities.map((city) => ({
-      city_name: city.city_name,
-      region: city.region ?? DEFAULT_PLAY_REGION,
-      country: city.country ?? DEFAULT_PLAY_COUNTRY,
-    })),
+  const [groupJoinPreference, setGroupJoinPreference] = useState<SharedGroupJoinPreference>(
+    normalizeGroupJoinPreference(sharedGroupJoinPreference),
   )
   const [venueVisibility, setVenueVisibility] = useState<Record<string, boolean>>({})
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [venuePending, setVenuePending] = useState<string | null>(null)
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const mountedRef = useRef(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedSnapshotRef = useRef('')
@@ -65,14 +68,11 @@ export function DiscoveryAndInvitesSection({
   }
 
   useEffect(() => {
-    const nextCities = playCities.map((city) => ({
-      city_name: city.city_name,
-      region: city.region ?? DEFAULT_PLAY_REGION,
-      country: city.country ?? DEFAULT_PLAY_COUNTRY,
-    }))
+    const normalizedGroupJoinPreference = normalizeGroupJoinPreference(sharedGroupJoinPreference)
+
     setCityDiscovery(visibleInCityDiscovery)
     setEmailOrPhoneLookup(searchableByEmailOrPhone)
-    setLocalPlayCities(nextCities)
+    setGroupJoinPreference(normalizedGroupJoinPreference)
 
     const nextVisibility = Object.fromEntries(
       identities.map((identity) => [
@@ -85,10 +85,10 @@ export function DiscoveryAndInvitesSection({
     lastSavedSnapshotRef.current = JSON.stringify({
       visible_in_city_discovery: visibleInCityDiscovery,
       searchable_by_email_or_phone: searchableByEmailOrPhone,
-      play_cities: nextCities,
+      shared_group_join_preference: normalizedGroupJoinPreference,
     })
     setSaveState('idle')
-  }, [identities, playCities, searchableByEmailOrPhone, visibleInCityDiscovery])
+  }, [identities, searchableByEmailOrPhone, sharedGroupJoinPreference, visibleInCityDiscovery])
 
   const sortedIdentities = useMemo(
     () =>
@@ -101,7 +101,7 @@ export function DiscoveryAndInvitesSection({
   const currentSnapshot = JSON.stringify({
     visible_in_city_discovery: cityDiscovery,
     searchable_by_email_or_phone: emailOrPhoneLookup,
-    play_cities: localPlayCities,
+    shared_group_join_preference: groupJoinPreference,
   })
 
   useEffect(() => {
@@ -122,7 +122,7 @@ export function DiscoveryAndInvitesSection({
           const result = await onSaveGlobal({
             visible_in_city_discovery: cityDiscovery,
             searchable_by_email_or_phone: emailOrPhoneLookup,
-            play_cities: localPlayCities,
+            shared_group_join_preference: groupJoinPreference,
           })
           if (!result.ok) {
             setError(result.error)
@@ -145,49 +145,12 @@ export function DiscoveryAndInvitesSection({
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [cityDiscovery, currentSnapshot, emailOrPhoneLookup, localPlayCities, onSaveGlobal, router, startTransition])
-
-  const statusLabel =
-    saveState === 'saving' || isPending
-      ? 'Saving changes...'
-      : saveState === 'saved'
-        ? 'Saved'
-        : saveState === 'error'
-          ? 'Could not save'
-          : 'Auto-save on'
+  }, [cityDiscovery, currentSnapshot, emailOrPhoneLookup, groupJoinPreference, onSaveGlobal, router, startTransition])
 
   const clubDiscoveryEnabled =
     sortedIdentities.length > 0
       ? sortedIdentities.every((identity) => venueVisibility[identity.venue_id] ?? true)
       : false
-
-  const addCity = () => {
-    const nextCity = normalizeCityName(cityInput)
-    if (!nextCity) return
-    if (localPlayCities.some((city) => city.city_name.toLowerCase() === nextCity.toLowerCase())) {
-      setError('That city is already listed.')
-      return
-    }
-    if (localPlayCities.length >= 8) {
-      setError('You can add up to 8 play cities.')
-      return
-    }
-    setError(null)
-    setLocalPlayCities((current) => [
-      ...current,
-      {
-        city_name: nextCity,
-        region: DEFAULT_PLAY_REGION,
-        country: DEFAULT_PLAY_COUNTRY,
-      },
-    ])
-    setCityInput('')
-  }
-
-  const removeCity = (cityName: string) => {
-    setError(null)
-    setLocalPlayCities((current) => current.filter((city) => city.city_name !== cityName))
-  }
 
   const handleSetVisible = (venueId: string, value: boolean) => {
     setVenueVisibility((current) => ({ ...current, [venueId]: value }))
@@ -248,75 +211,11 @@ export function DiscoveryAndInvitesSection({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {showTitle ? <h2 className="text-h2 text-[#1E293B]">Discovery Settings</h2> : null}
 
-      <div className="rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-3 text-sm text-[#475569]">
-        Discover players. Save them to your Hood. Invite them to play.
-      </div>
-
-      <section className="space-y-3">
-        <div>
-          <h3 className="text-h2 text-[#1E293B]">Cities where I play</h3>
-          <p className="mt-1 text-body-sub text-[#64748B]">
-            Add up to 8 cities where you usually play.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {localPlayCities.map((city) => (
-            <span
-              key={`${city.country}:${city.region}:${city.city_name}`}
-              className="inline-flex items-center gap-2 rounded-full border border-[#D7E0EC] bg-white px-3 py-1.5 text-sm font-medium text-[#334155]"
-            >
-              {city.city_name}
-              <button
-                type="button"
-                onClick={() => removeCity(city.city_name)}
-                className="text-[#94A3B8] transition hover:text-[#475569]"
-                aria-label={`Remove ${city.city_name}`}
-              >
-                x
-              </button>
-            </span>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="text"
-            value={cityInput}
-            onChange={(event) => setCityInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                addCity()
-              }
-            }}
-            placeholder="Add a city"
-            className="min-w-[220px] flex-1 rounded-2xl border border-[#D7E0EC] bg-white px-4 py-2.5 text-sm text-[#1E293B] outline-none transition focus:border-[#C25E46]"
-          />
-          <button
-            type="button"
-            onClick={addCity}
-            className="rounded-full bg-[#1E293B] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0F172A]"
-          >
-            Add city
-          </button>
-        </div>
-
-        <p className="text-xs text-[#94A3B8]">
-          {localPlayCities.length}/8 cities
-        </p>
-      </section>
-
       <section className="space-y-4">
-        <div>
-          <h3 className="text-h2 text-[#1E293B]">Who can find me?</h3>
-          <p className="mt-1 text-body-sub text-[#64748B]">
-            Choose whether other registered players can discover and save you.
-          </p>
-        </div>
+        <h3 className="text-h2 text-[#1E293B]">Who can find me?</h3>
 
         <div className="space-y-4 rounded-[24px] border border-[#E2E8F0] bg-white p-4">
           <label className="flex items-start gap-3">
@@ -329,9 +228,6 @@ export function DiscoveryAndInvitesSection({
             />
             <div>
               <div className="text-body-main font-semibold text-[#1E293B]">Let members of my clubs find me</div>
-              <p className="mt-1 text-body-sub text-[#64748B]">
-                Members of the same club or venue can find and save you.
-              </p>
               {sortedIdentities.length === 0 ? (
                 <p className="mt-2 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
                   Add clubs or venues to control where club discovery is active.
@@ -371,9 +267,6 @@ export function DiscoveryAndInvitesSection({
             />
               <div>
                 <div className="text-body-main font-semibold text-[#1E293B]">Let players in my play cities find me</div>
-                <p className="mt-1 text-body-sub text-[#64748B]">
-                  Players searching in your selected cities can find and save you.
-                </p>
             </div>
           </label>
 
@@ -386,18 +279,61 @@ export function DiscoveryAndInvitesSection({
             />
             <div>
               <div className="text-body-main font-semibold text-[#1E293B]">Let people who know my email or phone find me</div>
-              <p className="mt-1 text-body-sub text-[#64748B]">
-                Search People uses exact email or phone only. Your email and phone are never shown in search results.
-              </p>
             </div>
           </label>
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-[#E2E8F0] bg-white px-4 py-3">
-        <span className="text-sm font-medium text-[#64748B]">{statusLabel}</span>
-        {error ? <span className="text-sm font-medium text-rose-600">{error}</span> : null}
-      </div>
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h3 className="text-h2 text-[#1E293B]">Group Invite Settings</h3>
+          <p className="text-body-sub text-[#64748B]">Control which invitations are automatically accepted.</p>
+        </div>
+
+        <div className="space-y-2 rounded-[24px] border border-[#E2E8F0] bg-white p-4">
+          {SHARED_GROUP_JOIN_PREFERENCE_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className="flex items-start gap-3 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-3"
+            >
+              <input
+                type="radio"
+                name="shared_group_join_preference"
+                value={option.value}
+                checked={groupJoinPreference === option.value}
+                onChange={() => setGroupJoinPreference(option.value)}
+                className="mt-1 h-4 w-4 border-slate-300"
+              />
+              <span>
+                <span className="block text-body-main font-semibold text-[#1E293B]">{option.label}</span>
+                {option.value === 'auto_join_saved_players' ? (
+                  <span className="mt-3 block space-y-2 text-body-sub text-[#475569]">
+                    <span className="block font-semibold text-[#334155]">Trusted invitations include:</span>
+                    {TRUSTED_INVITATION_REASONS.map((reason) => (
+                      <span key={reason} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked
+                          readOnly
+                          aria-label={reason}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        <span>{reason}</span>
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
+
+      {error ? (
+        <p className="rounded-[20px] border border-rose-200 bg-white px-4 py-3 text-sm font-medium text-rose-600">
+          {error}
+        </p>
+      ) : null}
     </div>
   )
 }

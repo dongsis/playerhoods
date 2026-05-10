@@ -8,9 +8,12 @@ import {
   getInvitableUsers,
   getMyGroupMembership,
   type GroupContactWithDisplay,
+  listGroupLocations,
   listGroupMessages,
   listGroupResources,
+  type GroupLocationWithVenue,
 } from '@/lib/api/groups'
+import { listLocationCityOptions } from '@/lib/api/location-municipalities'
 import { listSports } from '@/lib/api/sports'
 import { AcceptInviteButton } from './AcceptInviteButton'
 import { LeaveGroupButton } from './LeaveGroupButton'
@@ -18,18 +21,22 @@ import { Avatar } from '@/app/components/Avatar'
 import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
 import { getContactPlayerResolution } from '@/lib/api/roster'
 import { getMyVenueIdentities } from '@/lib/api/identities'
+import { getAllVenues } from '@/lib/api/venues'
 import { GroupCommunicationSection } from './GroupCommunicationSection'
 import { GroupResourcesSection } from './GroupResourcesSection'
 import { AddGroupMemberPanel } from './AddGroupMemberPanel'
 import { GroupSettingsPanel } from './GroupSettingsPanel'
 import { GroupDetailPageShell } from './GroupDetailPageShell'
+import { GroupSidebarTabs } from './GroupSidebarTabs'
 import { getGroupIconMeta } from '@/lib/group-icons'
+import { formatRecommendedLevelRange } from '@/lib/profile-options'
 import {
   createGroupDiscussionPhotoResourceAction,
   createGroupFileResourceAction,
   createGroupLinkResourceAction,
   deleteGroupResourceAction,
   postGroupMessageAction,
+  replaceGroupLocationsAction,
   setGroupResourceArchivedAction,
   setGroupResourcePinnedAction,
   updateGroupSettingsAction,
@@ -232,6 +239,90 @@ function ContactListItem({
   )
 }
 
+function formatGroupLocation(location: GroupLocationWithVenue) {
+  if (location.location_kind === 'venue' && location.venue) {
+    const place = [location.venue.city, location.venue.province].filter(Boolean).join(', ')
+    return {
+      label: location.venue.abbreviation || location.venue.name,
+      meta: place || location.venue.country || null,
+    }
+  }
+
+  const label = [location.city_name, location.region].filter(Boolean).join(', ')
+  return {
+    label: label || 'Location to be assigned',
+    meta: location.country || null,
+  }
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'grid', gap: '0.2rem' }}>
+      <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      <div style={{ color: '#0f172a', fontSize: '0.9rem', fontWeight: 650, lineHeight: 1.45 }}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function GroupInfoSummary({
+  note,
+  sportName,
+  groupVenueName,
+  groupLocations,
+  openToClubMembers,
+  recommendedLevelMin,
+  recommendedLevelMax,
+}: {
+  note: string | null
+  sportName: string | null
+  groupVenueName: string | null
+  groupLocations: GroupLocationWithVenue[]
+  openToClubMembers: boolean
+  recommendedLevelMin: number | null
+  recommendedLevelMax: number | null
+}) {
+  const locations = groupLocations.map(formatGroupLocation)
+  const cityNames = groupLocations
+    .filter((location) => location.location_kind === 'city')
+    .map((location) => [location.city_name, location.region].filter(Boolean).join(', '))
+    .filter(Boolean)
+  const venueNames = groupLocations
+    .filter((location) => location.location_kind === 'venue')
+    .map((location) => location.venue?.name)
+    .filter((value): value is string => Boolean(value))
+  const fallbackVenueNames = venueNames.length > 0 ? venueNames : (groupVenueName ? [groupVenueName] : [])
+
+  return (
+    <section style={{ borderRadius: '18px', border: '1px solid #e2e8f0', background: '#f8fafc', padding: '0.9rem', display: 'grid', gap: '0.85rem' }}>
+      <InfoRow label="Sport" value={sportName ?? 'Sport To Be Assigned'} />
+      <InfoRow label="Level" value={formatRecommendedLevelRange(recommendedLevelMin, recommendedLevelMax)} />
+      <InfoRow label="Note" value={note?.trim() || 'No Group Note Yet.'} />
+      <InfoRow label="Cities" value={cityNames.length > 0 ? cityNames.join(', ') : 'No Cities Added.'} />
+      <InfoRow label="Venue" value={fallbackVenueNames.length > 0 ? fallbackVenueNames.join(', ') : 'No Venue Added.'} />
+      <InfoRow label="Access" value={openToClubMembers ? 'Open To Club Members' : 'Invite Only'} />
+      {locations.length > 0 ? (
+        <div style={{ display: 'grid', gap: '0.45rem' }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            Locations
+          </div>
+          <div style={{ display: 'grid', gap: '0.4rem' }}>
+            {locations.map((location, index) => (
+              <div key={`${location.label}-${index}`} style={{ borderRadius: '12px', border: '1px solid #dbe4ee', background: '#fff', padding: '0.55rem 0.65rem' }}>
+                <div style={{ color: '#0f172a', fontSize: '0.84rem', fontWeight: 800 }}>{location.label}</div>
+                {location.meta ? <div style={{ marginTop: '0.1rem', color: '#94a3b8', fontSize: '0.72rem' }}>{location.meta}</div> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
 export default async function GroupDetailPage({ params }: Props) {
   const { groupId } = await params
   const user = await getUser()
@@ -244,15 +335,18 @@ export default async function GroupDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [membership, members, groupContacts, sportRow, sports, myIdentities, groupVenueRow, mePersonRow] = await Promise.all([
+  const [membership, members, groupContacts, groupLocations, locationCityOptions, sportRow, sports, myIdentities, allVenues, groupVenueRow, mePersonRow] = await Promise.all([
     user ? getMyGroupMembership(supabase, groupId, user.id) : Promise.resolve(null),
     getGroupMembers(supabase, groupId),
     getGroupContacts(supabase, groupId),
+    listGroupLocations(supabase, groupId),
+    listLocationCityOptions(supabase, { countryCode: 'CA', provinceCode: 'ON' }),
     group.primary_sport_id
       ? supabase.from('sports').select('display_name').eq('id', group.primary_sport_id).single()
       : Promise.resolve({ data: null, error: null }),
     listSports(supabase),
     user ? getMyVenueIdentities(supabase, user.id) : Promise.resolve([]),
+    getAllVenues(supabase),
     group.venue_id
       ? supabase.from('venues').select('id, name').eq('id', group.venue_id).single()
       : Promise.resolve({ data: null, error: null }),
@@ -394,28 +488,49 @@ export default async function GroupDetailPage({ params }: Props) {
             </div>
           ) : null}
 
-          {isBoundaryKeeper ? (
-            <GroupSettingsPanel
-              groupName={group.name}
-              description={group.description}
-              primarySportId={group.primary_sport_id}
-              venueId={group.venue_id}
-              openToClubMembers={group.open_to_club_members}
-              sports={sports}
-              venues={myIdentities.map((identity) => identity.venue)}
-              onSave={updateGroupSettingsAction.bind(null, groupId)}
-            />
-          ) : null}
+          <GroupSidebarTabs
+            info={
+              <div style={{ display: 'grid', gap: '0.85rem' }}>
+                <GroupInfoSummary
+                  note={group.description}
+                  sportName={sportName}
+                  groupVenueName={groupVenueName}
+                  groupLocations={groupLocations}
+                  openToClubMembers={group.open_to_club_members}
+                  recommendedLevelMin={group.recommended_level_min}
+                  recommendedLevelMax={group.recommended_level_max}
+                />
+                {isBoundaryKeeper ? (
+                  <GroupSettingsPanel
+                    groupName={group.name}
+                    description={group.description}
+                    primarySportId={group.primary_sport_id}
+                    recommendedLevelMin={group.recommended_level_min}
+                    recommendedLevelMax={group.recommended_level_max}
+                    venueId={group.venue_id}
+                    openToClubMembers={group.open_to_club_members}
+                    sports={sports}
+                    venues={myIdentities.map((identity) => identity.venue)}
+                    allVenues={allVenues}
+                    groupLocations={groupLocations}
+                    cityOptions={locationCityOptions}
+                    onSave={updateGroupSettingsAction.bind(null, groupId)}
+                    onSaveLocations={replaceGroupLocationsAction.bind(null, groupId)}
+                  />
+                ) : null}
+              </div>
+            }
+            members={
+              <div style={{ display: 'grid', gap: '0.85rem' }}>
+                {canManageMembership ? (
+                  <AddGroupMemberPanel
+                    groupId={groupId}
+                    invitableUsers={invitableUsers}
+                    contacts={addableContactPlayers}
+                  />
+                ) : null}
 
-          {canManageMembership ? (
-            <AddGroupMemberPanel
-              groupId={groupId}
-              invitableUsers={invitableUsers}
-              contacts={addableContactPlayers}
-            />
-          ) : null}
-
-          <section>
+                <section>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
               <div
                 style={{
@@ -429,7 +544,7 @@ export default async function GroupDetailPage({ params }: Props) {
                 Members
               </div>
               <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
-                {totalListedPeople} TOTAL
+                {totalListedPeople} Total
               </div>
             </div>
             <div style={{ display: 'grid', gap: '0.3rem' }}>
@@ -457,24 +572,28 @@ export default async function GroupDetailPage({ params }: Props) {
                 </>
               )}
             </div>
-          </section>
+                </section>
 
-          <GroupResourcesSection
-            groupId={groupId}
-            resources={groupResources}
-            canManage={isBoundaryKeeper}
-            onCreateLink={createGroupLinkResourceAction.bind(null, groupId)}
-            onCreateFile={createGroupFileResourceAction.bind(null, groupId)}
-            onSetPinned={setGroupResourcePinnedAction.bind(null, groupId)}
-            onSetArchived={setGroupResourceArchivedAction.bind(null, groupId)}
-            onDelete={deleteGroupResourceAction.bind(null, groupId)}
+                {isActive && !isBoundaryKeeper ? (
+                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.8rem' }}>
+                    <LeaveGroupButton groupId={groupId} />
+                  </div>
+                ) : null}
+              </div>
+            }
+            resources={
+              <GroupResourcesSection
+                groupId={groupId}
+                resources={groupResources}
+                canManage={isBoundaryKeeper}
+                onCreateLink={createGroupLinkResourceAction.bind(null, groupId)}
+                onCreateFile={createGroupFileResourceAction.bind(null, groupId)}
+                onSetPinned={setGroupResourcePinnedAction.bind(null, groupId)}
+                onSetArchived={setGroupResourceArchivedAction.bind(null, groupId)}
+                onDelete={deleteGroupResourceAction.bind(null, groupId)}
+              />
+            }
           />
-
-          {isActive && !isBoundaryKeeper ? (
-            <div style={{ paddingTop: '0.4rem' }}>
-              <LeaveGroupButton groupId={groupId} />
-            </div>
-          ) : null}
         </aside>
 
         <main style={{ background: '#fff' }}>

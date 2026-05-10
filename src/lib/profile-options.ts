@@ -48,18 +48,28 @@ export const LEVEL_OPTIONS = [
   { value: 'Club Elite', label: 'Club Elite (4.5-5.0+)' },
 ] as const
 
+export const GROUP_LEVEL_RATING_OPTIONS = [
+  '2.0',
+  '2.5',
+  '3.0',
+  '3.5',
+  '4.0',
+  '4.5',
+  '5.0',
+] as const
+
 export const SHARED_GROUP_JOIN_PREFERENCE_OPTIONS = [
   {
     value: 'approval_required_all',
-    label: 'Approval required',
+    label: 'Require approval for all invites',
   },
   {
-    value: 'auto_join_enabled_sports',
-    label: 'Auto-join my sports',
+    value: 'auto_join_saved_players',
+    label: 'Auto-join trusted invitations',
   },
   {
     value: 'auto_join_all',
-    label: 'Auto-join all sports',
+    label: 'Auto-join all invitations',
   },
 ] as const
 
@@ -84,6 +94,16 @@ export function getCurrentFrequencyLabel(value: string | null | undefined): stri
 
 export function getLevelLabel(value: string | null | undefined): string | null {
   return LEVEL_OPTIONS.find((option) => option.value === value)?.label ?? null
+}
+
+export function formatRecommendedLevelRange(
+  min: number | null | undefined,
+  max: number | null | undefined,
+): string {
+  if (min == null && max == null) return 'No Level Range Set.'
+  if (min != null && max != null) return `${min.toFixed(1)}-${max.toFixed(1)}`
+  if (min != null) return `${min.toFixed(1)}+`
+  return `Up To ${max!.toFixed(1)}`
 }
 
 export function getAvailabilityStatusDotClass(value: string | null | undefined): string | null {
@@ -112,7 +132,8 @@ export function getAvailabilityStatusDotClass(value: string | null | undefined):
 }
 
 export function getSharedGroupJoinPreferenceLabel(value: string | null | undefined): string | null {
-  return SHARED_GROUP_JOIN_PREFERENCE_OPTIONS.find((option) => option.value === value)?.label ?? null
+  const normalizedValue = value === 'auto_join_enabled_sports' ? 'auto_join_saved_players' : value
+  return SHARED_GROUP_JOIN_PREFERENCE_OPTIONS.find((option) => option.value === normalizedValue)?.label ?? null
 }
 
 export function getAvailabilityStatusLabel(value: string | null | undefined): string | null {

@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'
 
 export async function createSupabaseServerClient(): Promise<SupabaseClient<Database>> {
@@ -29,6 +29,22 @@ export async function createSupabaseServerClient(): Promise<SupabaseClient<Datab
   )
   // Cast needed: @supabase/ssr@0.5.x generic params behind @supabase/supabase-js@2.94.x
   return client as unknown as SupabaseClient<Database>
+}
+
+export function createSupabasePublicServerClient(): SupabaseClient<Database> {
+  const serverUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+
+  return createClient<Database>(
+    serverUrl!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    },
+  )
 }
 
 export async function getUser() {

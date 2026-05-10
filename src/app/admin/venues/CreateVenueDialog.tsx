@@ -12,21 +12,6 @@ import type {
   VenueKind,
 } from '@/lib/types/database'
 
-const TIMEZONES = [
-  'America/Toronto',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Vancouver',
-  'Europe/London',
-  'Europe/Paris',
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-  'Asia/Hong_Kong',
-  'Australia/Sydney',
-]
-
 const VENUE_KIND_OPTIONS: { value: VenueKind; label: string }[] = [
   { value: 'club', label: 'Club' },
   { value: 'park', label: 'Park' },
@@ -93,7 +78,8 @@ export function CreateVenueDialog() {
           facility_type: ((formData.get('facility_type') as string) || undefined) as VenueFacilityType | undefined,
           booking_required: formData.get('booking_required') === '' ? null : formData.get('booking_required') === 'true',
           cost_type: ((formData.get('cost_type') as string) || undefined) as VenueCostType | undefined,
-          timezone: (formData.get('timezone') as string) || 'America/Toronto',
+          supports_tennis: formData.get('supports_tennis') === 'on',
+          supports_pickleball: formData.get('supports_pickleball') === 'on',
           notes: (formData.get('notes') as string)?.trim() || undefined,
           venue_kind: ((formData.get('venue_kind') as string) || 'club') as VenueKind,
           access_type: ((formData.get('access_type') as string) || 'members') as VenueAccessType,
@@ -180,6 +166,19 @@ export function CreateVenueDialog() {
                   placeholder="ORTC"
                   style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
                 />
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.35rem', fontWeight: 500 }}>
+                  Sports available
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.84rem', marginBottom: '0.3rem' }}>
+                  <input name="supports_tennis" type="checkbox" />
+                  Tennis
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.84rem' }}>
+                  <input name="supports_pickleball" type="checkbox" />
+                  Pickleball
+                </label>
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
                 <label
@@ -350,24 +349,6 @@ export function CreateVenueDialog() {
                   {ACCESS_TYPE_OPTIONS.map(option => (
                     <option key={option.value} value={option.value}>
                       {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label
-                  style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.2rem', fontWeight: 500 }}
-                >
-                  Timezone
-                </label>
-                <select
-                  name="timezone"
-                  defaultValue="America/Toronto"
-                  style={{ width: '100%', padding: '0.4rem', boxSizing: 'border-box' }}
-                >
-                  {TIMEZONES.map(tz => (
-                    <option key={tz} value={tz}>
-                      {tz}
                     </option>
                   ))}
                 </select>

@@ -54,12 +54,22 @@ export async function middleware(request: NextRequest) {
   }
   const isInvitationPage = pathname.startsWith('/invitations/')
   const isOnboarding = pathname.startsWith('/onboarding')
+  const isPublicVenueProfile = pathname.startsWith('/venue/')
+  const isPublicVenueDirectory = pathname === '/venues'
   const isPublicRoute = pathname === '/'
     || isLoginRoute
     || isAuthCallback
     || isResetPasswordRoute
     || isInvitationPage
+    || isPublicVenueProfile
+    || isPublicVenueDirectory
   const isProtectedRoute = !isPublicRoute && !isOnboarding
+
+  if (isPublicVenueProfile || isPublicVenueDirectory) {
+    response.headers.set('x-ph-middleware', 'public-venue')
+    return response
+  }
+
   const serverUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
 
   const supabase = createServerClient(
@@ -114,14 +124,24 @@ export async function middleware(request: NextRequest) {
   if (user && (isProtectedRoute || isOnboarding) && !isInvitationPage) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('onboarding_completed, onboarding_profile_completed')
+      .select(
+        'onboarding_completed, onboarding_profile_completed, age_confirmed_at, terms_accepted_at, privacy_accepted_at, responsible_use_accepted_at',
+      )
       .eq('id', user.id)
       .single()
+
+    const hasLegalAgreement = Boolean(
+      profile?.age_confirmed_at &&
+        profile?.terms_accepted_at &&
+        profile?.privacy_accepted_at &&
+        profile?.responsible_use_accepted_at,
+    )
+    const onboardingFullyComplete = Boolean(profile?.onboarding_completed && hasLegalAgreement)
 
     if (isOnboarding) {
       const safeNext = sanitizeNextPath(request.nextUrl.searchParams.get('next'), '/dashboard')
 
-      if (profile?.onboarding_completed) {
+      if (onboardingFullyComplete) {
         const redirectResponse = NextResponse.redirect(new URL(safeNext, request.url))
         redirectResponse.headers.set('x-ph-middleware', 'onboarding-already-complete')
         return applyNoStoreHeaders(redirectResponse)
@@ -142,7 +162,7 @@ export async function middleware(request: NextRequest) {
         redirectResponse.headers.set('x-ph-middleware', 'onboarding-profile-step')
         return applyNoStoreHeaders(redirectResponse)
       }
-    } else if (!profile?.onboarding_completed) {
+    } else if (!onboardingFullyComplete) {
       const next = sanitizeNextPath(
         `${pathname}${request.nextUrl.search || ''}`,
         '/dashboard',

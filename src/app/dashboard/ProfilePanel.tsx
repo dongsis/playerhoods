@@ -3,8 +3,8 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
-import type { IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueKind, Sport, UserSportProfile } from '@/lib/types/database'
+import { useRouter, useSearchParams } from 'next/navigation'
+import type { IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueKind, VenueSport, Sport, UserSportProfile } from '@/lib/types/database'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   approveMatchProxyBinding,
@@ -21,6 +21,7 @@ import { DiscoveryAndInvitesSection } from '@/app/profile/DiscoveryAndInvitesSec
 import { SportProfilesEditor } from '@/app/profile/SportProfilesEditor'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
 import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
+import type { LocationCityOption } from '@/lib/api/location-municipalities'
 import {
   PREFERRED_PLAY_TIME_OPTIONS,
   getAvailabilityStatusDotClass,
@@ -61,10 +62,12 @@ interface Props {
   myIdentities: (VenueIdentity & { venue: Venue })[]
   myVenuePrefs: Venue[]
   joinableVenues: Venue[]
+  venueSports: VenueSport[]
   sports: Sport[]
   mySportIds: number[]
   mySportProfiles: UserSportProfile[]
   myPlayCities: UserPlayCity[]
+  availablePlayCities: LocationCityOption[]
   onUpdateProfile: (formData: FormData) => Promise<void>
   onAcceptIdentityLink: (guestId: string) => Promise<IdentityLinkActionResult>
   onKeepSeparateIdentityLink: (guestId: string) => Promise<IdentityLinkActionResult>
@@ -80,7 +83,7 @@ interface Props {
     searchable_by_email_or_phone?: boolean
     play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
-    shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
+    shared_group_join_preference?: 'auto_join_saved_players' | 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
   }) => Promise<DashboardPreferenceSaveResult>
   onSetVenueMemberDiscovery: (venueId: string, visibleInVenueMemberDiscovery: boolean) => Promise<DashboardPreferenceSaveResult>
   onSetSports: (codes: string[]) => Promise<void>
@@ -447,13 +450,22 @@ function CompactLocationEditor({
 }
 
 const VENUE_KIND_FILTER_OPTIONS: Array<{ value: 'all' | VenueKind; label: string }> = [
-  { value: 'all', label: 'All types' },
+  { value: 'all', label: 'All Types' },
   { value: 'club', label: 'Club' },
   { value: 'park', label: 'Park' },
   { value: 'community_centre', label: 'Community Centre' },
   { value: 'condo', label: 'Condo' },
   { value: 'school', label: 'School' },
   { value: 'private_facility', label: 'Private Facility' },
+]
+
+type VenueSportFilter = 'all' | 'tennis' | 'pickleball' | 'both'
+
+const VENUE_SPORT_FILTER_OPTIONS: Array<{ value: VenueSportFilter; label: string }> = [
+  { value: 'all', label: 'All Sports' },
+  { value: 'tennis', label: 'Tennis' },
+  { value: 'pickleball', label: 'Pickleball' },
+  { value: 'both', label: 'Tennis + Pickleball' },
 ]
 
 function getVenueKindLabel(kind: Venue['venue_kind'] | null | undefined): string {
@@ -512,18 +524,264 @@ function VenueBadge({
 }) {
   const toneClass =
     tone === 'type'
-      ? 'bg-slate-900 text-white'
+      ? 'bg-[#071A44] text-white'
       : tone === 'member'
         ? 'border border-emerald-100 bg-emerald-50 text-emerald-700'
-        : tone === 'starred'
-          ? 'border border-amber-100 bg-amber-50 text-amber-700'
-          : tone === 'primary'
-            ? 'bg-slate-900 text-white'
+      : tone === 'starred'
+          ? 'border border-sky-100 bg-sky-50 text-sky-700'
+      : tone === 'primary'
+            ? 'border border-blue-100 bg-blue-50 text-blue-700'
             : 'bg-slate-100 text-slate-500'
 
   return (
     <span className={`text-label inline-flex items-center rounded-md px-2 py-0.5 uppercase tracking-[0.12em] ${toneClass}`}>
       {children}
+    </span>
+  )
+}
+
+function BasicLocationEditor({
+  country,
+  region,
+  playCities,
+  availableCities,
+  onSave,
+}: {
+  country: string
+  region: string
+  playCities: UserPlayCity[]
+  availableCities: Array<{ city_name: string; region?: string | null; country?: string | null }>
+  onSave: (params: {
+    play_cities: Array<{ city_name: string; region?: string | null; country?: string | null }>
+  }) => Promise<DashboardPreferenceSaveResult>
+}) {
+  const [cityInput, setCityInput] = useState('')
+  const [draftCities, setDraftCities] = useState(
+    playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean),
+  )
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setDraftCities(playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean))
+  }, [playCities])
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setIsDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [])
+
+  const cityMetaMap = useMemo(() => {
+    const map = new Map<string, { region: string | null; country: string | null }>()
+    for (const city of availableCities) {
+      const normalized = normalizeCityName(city.city_name ?? '')
+      if (!normalized || map.has(normalized.toLowerCase())) continue
+      map.set(normalized.toLowerCase(), {
+        region: city.region ?? region,
+        country: city.country ?? country,
+      })
+    }
+    for (const city of playCities) {
+      const normalized = normalizeCityName(city.city_name ?? '')
+      if (!normalized || map.has(normalized.toLowerCase())) continue
+      map.set(normalized.toLowerCase(), {
+        region: city.region ?? region,
+        country: city.country ?? country,
+      })
+    }
+    return map
+  }, [availableCities, country, playCities, region])
+
+  const cityOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...availableCities.map((city) => normalizeCityName(city.city_name ?? '')),
+          ...playCities.map((city) => normalizeCityName(city.city_name ?? '')),
+        ].filter(Boolean)),
+      ).sort((left, right) => left.localeCompare(right)),
+    [availableCities, playCities],
+  )
+
+  const filteredCities = useMemo(() => {
+    const query = normalizeCityName(cityInput).toLowerCase()
+    return cityOptions.filter((city) => {
+      if (draftCities.some((entry) => entry.toLowerCase() === city.toLowerCase())) return false
+      return !query || city.toLowerCase().includes(query)
+    })
+  }, [cityInput, cityOptions, draftCities])
+
+  const saveCities = (nextCities: string[]) => {
+    setError(null)
+    startTransition(async () => {
+      try {
+        const result = await onSave({
+          play_cities: nextCities.map((city_name) => ({
+            city_name,
+            region: cityMetaMap.get(city_name.toLowerCase())?.region ?? region,
+            country: cityMetaMap.get(city_name.toLowerCase())?.country ?? country,
+          })),
+        })
+        if (!result.ok) {
+          setError(result.error)
+        }
+      } catch (saveError) {
+        const message =
+          saveError && typeof saveError === 'object' && 'message' in saveError && typeof (saveError as { message?: unknown }).message === 'string'
+            ? (saveError as { message: string }).message
+            : 'Could not save cities.'
+        setError(message)
+      }
+    })
+  }
+
+  const addCity = (value: string) => {
+    const nextCity = normalizeCityName(value)
+    if (!nextCity) return
+    if (draftCities.some((city) => city.toLowerCase() === nextCity.toLowerCase())) return
+    const nextCities = [...draftCities, nextCity]
+    setDraftCities(nextCities)
+    setCityInput('')
+    setIsDropdownOpen(false)
+    saveCities(nextCities)
+  }
+
+  const removeCity = (cityName: string) => {
+    const nextCities = draftCities.filter((city) => city !== cityName)
+    setDraftCities(nextCities)
+    saveCities(nextCities)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h4 className="text-[11px] font-bold text-[#071A44]">Location</h4>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-[10px] font-medium text-[#071A44]">Country</label>
+          <div className="flex h-8 items-center gap-2.5 rounded-md border border-[#CBD5E1] bg-white px-3 text-[10px] text-[#071A44]">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M3 12h18M12 3c2.4 2.4 3.6 5.4 3.6 9S14.4 18.6 12 21M12 3c-2.4 2.4-3.6 5.4-3.6 9S9.6 18.6 12 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            <span className="min-w-0 flex-1 truncate">{country}</span>
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[10px] font-medium text-[#071A44]">Province / State</label>
+          <div className="flex h-8 items-center gap-2.5 rounded-md border border-[#CBD5E1] bg-white px-3 text-[10px] text-[#071A44]">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden="true">
+              <path d="M12 2.8a7 7 0 0 0-7 7c0 5.2 7 11.4 7 11.4s7-6.2 7-11.4a7 7 0 0 0-7-7Zm0 9.7a2.7 2.7 0 1 1 0-5.4 2.7 2.7 0 0 1 0 5.4Z" />
+            </svg>
+            <span className="min-w-0 flex-1 truncate">{region}</span>
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div ref={dropdownRef} className="relative">
+        <label className="mb-1.5 block text-[10px] font-medium text-[#071A44]">City</label>
+        <div className="flex min-h-8 items-center rounded-md border border-[#CBD5E1] bg-white px-2">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            {draftCities.length > 0 ? draftCities.map((city) => (
+              <span key={city} className="inline-flex h-6 items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2 text-[10px] text-[#071A44] shadow-sm">
+                {city}
+                <button type="button" onClick={() => removeCity(city)} className="text-[#071A44]" aria-label={`Remove ${city}`}>
+                  x
+                </button>
+              </span>
+            )) : null}
+            <input
+              value={cityInput}
+              onChange={(event) => {
+                setCityInput(event.target.value)
+                setIsDropdownOpen(true)
+              }}
+              onFocus={() => setIsDropdownOpen(true)}
+              placeholder={draftCities.length === 0 ? 'Add City' : ''}
+              className="h-6 min-w-[72px] flex-1 bg-transparent px-1.5 text-[10px] text-[#071A44] outline-none"
+            />
+          </div>
+          <div className="ml-2 h-6 w-px bg-slate-200" />
+          <button type="button" onClick={() => setIsDropdownOpen((current) => !current)} disabled={isPending} className="ml-2 inline-flex h-6 w-6 items-center justify-center text-[#071A44] disabled:opacity-50" aria-label="Choose city">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+
+        {isDropdownOpen ? (
+          <div className="absolute z-20 mt-1.5 max-h-48 w-full overflow-auto rounded-lg border border-[#CBD5E1] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
+            {filteredCities.length > 0 ? filteredCities.map((city) => (
+              <button
+                key={city}
+                type="button"
+                onClick={() => addCity(city)}
+                className="flex w-full items-center justify-between border-b border-slate-100 px-2.5 py-2 text-left text-[10px] text-[#071A44] transition hover:bg-[#F5F8FC] last:border-b-0"
+              >
+                <span>{city}</span>
+                <span className="text-[9px] font-bold uppercase text-[#64748B]">Add</span>
+              </button>
+            )) : (
+              <div className="px-2.5 py-2 text-[10px] text-[#64748B]">No cities found.</div>
+            )}
+          </div>
+        ) : null}
+        <p className="mt-2 text-[10px] text-[#64748B]">Add multiple cities. You can add more.</p>
+        {error ? <p className="mt-1.5 text-[10px] text-rose-600">{error}</p> : null}
+      </div>
+    </div>
+  )
+}
+
+function getSportLookupId(sports: Sport[], key: 'tennis' | 'pickleball'): number | null {
+  const sport = sports.find((entry) => {
+    const haystack = `${entry.code} ${entry.display_name}`.toLowerCase()
+    return haystack.includes(key)
+  })
+  if (sport) return sport.id
+  return key === 'tennis' ? 1 : 2
+}
+
+function SportBadge({
+  sport,
+}: {
+  sport: 'tennis' | 'pickleball' | 'unknown'
+}) {
+  if (sport === 'unknown') {
+    return (
+      <span className="text-body-sub inline-flex h-7 items-center rounded-lg border border-slate-200 bg-white/80 px-2.5 text-slate-500">
+        Sport Unknown
+      </span>
+    )
+  }
+
+  const isTennis = sport === 'tennis'
+
+  return (
+    <span className="text-body-sub inline-flex h-7 items-center gap-1.5 rounded-lg border border-[#D8E3F0] bg-white/80 px-2.5 font-medium text-[#0B1F4D]">
+      <img
+        src={isTennis ? '/match-tennis-racket-icon.png' : '/match-pickleball-paddle-icon.png'}
+        alt=""
+        aria-hidden="true"
+        className="h-4 w-4 shrink-0 object-contain"
+      />
+      {isTennis ? 'Tennis' : 'Pickleball'}
     </span>
   )
 }
@@ -1045,10 +1303,12 @@ export function ProfilePanel({
   myIdentities,
   myVenuePrefs,
   joinableVenues,
+  venueSports,
   sports,
   mySportIds,
   mySportProfiles,
   myPlayCities,
+  availablePlayCities,
   onUpdateProfile,
   onAcceptIdentityLink,
   onKeepSeparateIdentityLink,
@@ -1065,8 +1325,11 @@ export function ProfilePanel({
   onSaveSportProfile,
 }: Props) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
-  const [activeSection, setActiveSection] = useState('basic')
+  const [activeSection, setActiveSection] = useState(() => (
+    searchParams.get('section') === 'venues' ? 'venues' : 'basic'
+  ))
   const [selectedJoinVenueId, setSelectedJoinVenueId] = useState('')
   const [joinError, setJoinError] = useState<string | null>(null)
   const [isJoiningVenue, startJoiningVenue] = useTransition()
@@ -1074,12 +1337,14 @@ export function ProfilePanel({
   const [venueCitySearch, setVenueCitySearch] = useState('')
   const [venueNameSearch, setVenueNameSearch] = useState('')
   const [venueTypeFilter, setVenueTypeFilter] = useState<'all' | VenueKind>('all')
+  const [venueSportFilter, setVenueSportFilter] = useState<VenueSportFilter>('all')
   const [openVenueMenuId, setOpenVenueMenuId] = useState<string | null>(null)
   const [venueActionError, setVenueActionError] = useState<string | null>(null)
   const [pendingVenueAction, setPendingVenueAction] = useState<{ id: string; kind: 'primary' | 'delete' | 'remove_saved' } | null>(null)
   const [isVenueActionPending, startVenueAction] = useTransition()
   const [firstName, setFirstName] = useState(profile.first_name ?? '')
   const [lastName, setLastName] = useState(profile.last_name ?? '')
+  const [displayNameDraft, setDisplayNameDraft] = useState(profile.display_name ?? '')
   const [gender, setGender] = useState<Profile['gender']>(profile.gender ?? 'unspecified')
   const [availabilityStatus, setAvailabilityStatus] = useState<Profile['availability_status']>(profile.availability_status ?? 'available')
   const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>(
@@ -1137,6 +1402,34 @@ export function ProfilePanel({
     () => [...publicVenuePrefs].sort((a, b) => getVenueDisplayName(a).localeCompare(getVenueDisplayName(b))),
     [publicVenuePrefs],
   )
+  const tennisSportId = useMemo(() => getSportLookupId(sports, 'tennis'), [sports])
+  const pickleballSportId = useMemo(() => getSportLookupId(sports, 'pickleball'), [sports])
+  const venueSportIdsByVenueId = useMemo(() => {
+    const map = new Map<string, Set<number>>()
+    venueSports.forEach((entry) => {
+      const current = map.get(entry.venue_id) ?? new Set<number>()
+      current.add(entry.sport_id)
+      map.set(entry.venue_id, current)
+    })
+    return map
+  }, [venueSports])
+  const getVenueSportIds = (venueId: string) => venueSportIdsByVenueId.get(venueId) ?? new Set<number>()
+  const renderVenueSportBadges = (venueId: string) => {
+    const sportIds = getVenueSportIds(venueId)
+    const hasTennis = tennisSportId != null && sportIds.has(tennisSportId)
+    const hasPickleball = pickleballSportId != null && sportIds.has(pickleballSportId)
+
+    if (!hasTennis && !hasPickleball) {
+      return <SportBadge sport="unknown" />
+    }
+
+    return (
+      <>
+        {hasTennis ? <SportBadge sport="tennis" /> : null}
+        {hasPickleball ? <SportBadge sport="pickleball" /> : null}
+      </>
+    )
+  }
   const filteredJoinableVenues = useMemo(() => {
     const cityQuery = venueCitySearch.trim().toLowerCase()
     const nameQuery = venueNameSearch.trim().toLowerCase()
@@ -1163,9 +1456,17 @@ export function ProfilePanel({
         .toLowerCase()
       const matchesName = !nameQuery || venueName.includes(nameQuery)
       const matchesCity = !cityQuery || venueLocation.includes(cityQuery)
-      return matchesType && matchesName && matchesCity
+      const venueSportIds = venueSportIdsByVenueId.get(venue.id) ?? new Set<number>()
+      const hasTennis = tennisSportId != null && venueSportIds.has(tennisSportId)
+      const hasPickleball = pickleballSportId != null && venueSportIds.has(pickleballSportId)
+      const matchesSport =
+        venueSportFilter === 'all'
+        || (venueSportFilter === 'tennis' && hasTennis)
+        || (venueSportFilter === 'pickleball' && hasPickleball)
+        || (venueSportFilter === 'both' && hasTennis && hasPickleball)
+      return matchesType && matchesName && matchesCity && matchesSport
     })
-  }, [joinableVenues, publicVenuePrefs, venueCitySearch, venueNameSearch, venueTypeFilter])
+  }, [joinableVenues, pickleballSportId, publicVenuePrefs, tennisSportId, venueCitySearch, venueNameSearch, venueSportFilter, venueSportIdsByVenueId, venueTypeFilter])
 
   useEffect(() => {
     setSelectedJoinVenueId(defaultJoinVenueId)
@@ -1234,6 +1535,7 @@ export function ProfilePanel({
 
     setFirstName(nextFirstName)
     setLastName(nextLastName)
+    setDisplayNameDraft(profile.display_name ?? '')
     setGender(nextGender)
     setAvailabilityStatus(nextAvailabilityStatus)
     setAvailabilityMode(deriveAvailabilityMode(nextAvailabilityStatus, nextLookingToPlay))
@@ -1331,26 +1633,31 @@ export function ProfilePanel({
         .filter(Boolean)
         .join(', ')
     : 'Not set yet'
-  const availablePlayCities = useMemo(() => {
+  const availablePlayCityChoices = useMemo(() => {
     const cityMap = new Map<string, { city_name: string; region?: string | null; country?: string | null }>()
 
-    const addCity = (cityName: string | null | undefined, nextRegion?: string | null, nextCountry?: string | null) => {
-      const normalized = normalizeCityName(cityName ?? '')
-      if (!normalized || cityMap.has(normalized.toLowerCase())) return
+    for (const city of availablePlayCities) {
+      const normalized = normalizeCityName(city.city_name)
+      if (!normalized || cityMap.has(normalized.toLowerCase())) continue
       cityMap.set(normalized.toLowerCase(), {
         city_name: normalized,
-        region: nextRegion ?? DEFAULT_PLAY_REGION,
-        country: nextCountry ?? DEFAULT_PLAY_COUNTRY,
+        region: city.region,
+        country: city.country,
       })
     }
 
-    myPlayCities.forEach((city) => addCity(city.city_name, city.region, city.country))
-    joinableVenues.forEach((venue) => addCity(venue.city, venue.province, venue.country))
-    myVenuePrefs.forEach((venue) => addCity(venue.city, venue.province, venue.country))
-    myIdentities.forEach((identity) => addCity(identity.venue.city, identity.venue.province, identity.venue.country))
+    for (const city of myPlayCities) {
+      const normalized = normalizeCityName(city.city_name ?? '')
+      if (!normalized || cityMap.has(normalized.toLowerCase())) continue
+      cityMap.set(normalized.toLowerCase(), {
+        city_name: normalized,
+        region: city.region ?? DEFAULT_PLAY_REGION,
+        country: city.country ?? DEFAULT_PLAY_COUNTRY,
+      })
+    }
 
     return Array.from(cityMap.values()).sort((left, right) => left.city_name.localeCompare(right.city_name))
-  }, [joinableVenues, myIdentities, myPlayCities, myVenuePrefs])
+  }, [availablePlayCities, myPlayCities])
 
   const handleAvailabilityModeChange = (mode: AvailabilityMode) => {
     const next = AVAILABILITY_MODE_OPTIONS.find((option) => option.value === mode)
@@ -1364,217 +1671,213 @@ export function ProfilePanel({
     setActiveSection((previous) => (previous === sectionId ? '' : sectionId))
   }
 
+  useEffect(() => {
+    if (searchParams.get('section') === 'venues') {
+      setActiveSection('venues')
+    }
+  }, [searchParams])
+
   const basicInfoSection = () => (
     <AccordionSection
       title="Basic Info"
-      description="Identity, contact, and player context."
+      description="Identity, contact, and playing context."
       eyebrow="Profile"
       isOpen={activeSection === 'basic'}
       onToggle={() => toggleSection('basic')}
     >
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] p-5">
-          <div className="space-y-3.5">
-              <div className="grid gap-3 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
-                <div className="pt-1">
-                  <span className="text-label">Identity</span>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="shrink-0">
-                    <AvatarUpload
-                      userId={userId}
-                      currentAvatarUrl={profile.avatar_url ?? null}
-                      onSaved={handleAvatarSaved}
-                      compact
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <FieldLabel>Display name</FieldLabel>
-                    {profile.display_name ? (
-                      <DisplayNameEditForm displayName={profile.display_name} onSave={onSetDisplayName} />
-                    ) : (
-                      <p className="text-body-sub text-slate-500">Set your display name to control how you appear.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
+      <div className="rounded-lg border border-[#D7E0EC] bg-white px-4 py-4 shadow-[0_22px_45px_-36px_rgba(15,23,42,0.38)] sm:px-5 md:px-5 md:py-5">
+      <div className="mb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={handleBasicSave}
+          disabled={isPending || autoSaveState === 'saving'}
+          className="inline-flex h-8 min-w-[58px] items-center justify-center rounded-md bg-[#071A44] px-5 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#0B255D] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isPending || autoSaveState === 'saving' ? 'Saving' : 'Save'}
+        </button>
+      </div>
 
-              <ProfileInfoRow label="Gender">
-                <div className="flex flex-wrap gap-2.5">
-                  {[
-                    { value: 'male', label: 'Male' },
-                    { value: 'female', label: 'Female' },
-                    { value: 'unspecified', label: 'Another gender' },
-                  ].map((option) => {
-                    const selected = (gender ?? 'unspecified') === option.value
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] lg:gap-5">
+        <div className="space-y-7 lg:pb-5">
+          <div className="grid gap-4 sm:grid-cols-[86px_minmax(0,1fr)] sm:items-center">
+            <AvatarUpload
+              userId={userId}
+              currentAvatarUrl={profile.avatar_url ?? null}
+              onSaved={handleAvatarSaved}
+              compact
+            />
+            <div>
+              <label className="mb-2 block text-[11px] font-bold text-[#071A44]">Display Name</label>
+              <input
+                value={displayNameDraft}
+                onChange={(event) => setDisplayNameDraft(event.target.value)}
+                placeholder="Display Name"
+                maxLength={50}
+                className="h-[35px] w-full rounded-md border border-[#CBD5E1] bg-white px-4 text-[11px] text-[#071A44] outline-none transition focus:border-[#94A3B8] focus:ring-2 focus:ring-slate-100"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2.5 flex flex-wrap items-center gap-4">
+              <h3 className="text-[11px] font-bold text-[#071A44]">Your Name</h3>
+              <span className="text-[10px] font-medium text-[#64748B]">Not Shown On This Website</span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                name="first_name"
+                value={firstName}
+                onChange={e => setFirstName(e.target.value)}
+                className="h-8 rounded-md border border-[#CBD5E1] bg-white px-3 text-[10px] text-[#071A44] outline-none transition placeholder:text-[#64748B] focus:border-[#94A3B8] focus:ring-2 focus:ring-slate-100"
+                placeholder="First Name"
+              />
+              <input
+                name="last_name"
+                value={lastName}
+                onChange={e => setLastName(e.target.value)}
+                className="h-8 rounded-md border border-[#CBD5E1] bg-white px-3 text-[10px] text-[#071A44] outline-none transition placeholder:text-[#64748B] focus:border-[#94A3B8] focus:ring-2 focus:ring-slate-100"
+                placeholder="Last Name"
+              />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-2.5 text-[11px] font-bold text-[#071A44]">Gender</h3>
+            <div className="grid grid-cols-3 overflow-hidden rounded-md border border-[#CBD5E1] bg-white">
+              {[
+                { value: 'male', label: 'Male' },
+                { value: 'female', label: 'Female' },
+                { value: 'unspecified', label: 'Another Gender' },
+              ].map((option) => {
+                const selected = (gender ?? 'unspecified') === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setGender(option.value as Profile['gender'])}
+                    className={`h-8 border-r border-[#CBD5E1] px-2 text-[10px] transition last:border-r-0 ${
+                      selected ? 'bg-[#071A44] font-medium text-white' : 'bg-white text-[#071A44] hover:bg-[#F8FBFF]'
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {sports.length > 0 ? (
+            <div>
+              <h3 className="mb-2.5 text-[11px] font-bold text-[#071A44]">Sports</h3>
+              <div className="flex flex-wrap gap-2">
+                {sports
+                  .filter((sport) => {
+                    const label = `${sport.code} ${sport.display_name}`.toLowerCase()
+                    return label.includes('tennis') || label.includes('pickleball')
+                  })
+                  .map((sport) => {
+                    const selected = selectedSportIds.includes(sport.id)
                     return (
                       <button
-                        key={option.value}
+                        key={sport.id}
                         type="button"
-                        onClick={() => setGender(option.value as Profile['gender'])}
-                        className={`text-body-main inline-flex items-center rounded-full border px-3.5 py-2 transition ${
+                        onClick={() => {
+                          const nextIds = selected
+                            ? selectedSportIds.filter((id) => id !== sport.id)
+                            : [...selectedSportIds, sport.id]
+                          setSelectedSportIds(nextIds)
+                          void handleSetSports(sports.filter((entry) => nextIds.includes(entry.id)).map((entry) => entry.code))
+                        }}
+                        className={`h-8 min-w-[72px] rounded-md border px-5 text-[10px] transition ${
                           selected
-                            ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900'
+                            ? 'border-[#071A44] bg-[#071A44] font-medium text-white shadow-sm'
+                            : 'border-[#CBD5E1] bg-white text-[#071A44] hover:bg-[#F8FBFF]'
                         }`}
                         aria-pressed={selected}
                       >
-                        {option.label}
+                        {sport.display_name}
                       </button>
                     )
                   })}
-                </div>
-              </ProfileInfoRow>
+              </div>
+            </div>
+          ) : null}
+        </div>
 
-              {sports.length > 0 && (
-                <ProfileInfoRow label="Engaged sports" alignStart>
-                  <SportsPreferenceForm
-                    sports={sports}
-                    initialSportIds={mySportIds}
-                    onSave={handleSetSports}
-                  />
-                </ProfileInfoRow>
-              )}
+        <div className="hidden bg-[#D7E0EC] lg:block" />
 
-              <ProfileInfoRow label="Location" alignStart>
-                <CompactLocationEditor
-                  country={playLocationCountry}
-                  region={playLocationRegion}
-                  playCities={myPlayCities}
-                  availableCities={availablePlayCities}
-                  onSave={(params) => onSaveGlobalPreferences(params)}
+        <div className="space-y-5 lg:pb-5">
+          <div>
+            <label className="mb-2.5 block text-[11px] font-bold text-[#071A44]">Login Email</label>
+            <div className="flex h-[37px] items-center gap-3 rounded-md border border-[#CBD5E1] bg-white px-3 text-[11px] text-[#071A44]">
+              <span className="text-[15px] font-black leading-none text-[#4285F4]">G</span>
+              <span className="min-w-0 flex-1 truncate">{userEmail?.trim() || 'No login email available'}</span>
+              <span className="shrink-0 text-[10px] font-medium text-[#64748B]">Google Sign-In</span>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-2.5 text-[11px] font-bold text-[#071A44]">Receive Notice Via</h3>
+            <div className="grid grid-cols-2 overflow-hidden rounded-md border border-[#CBD5E1] bg-white">
+              <button
+                type="button"
+                onClick={() => setContactChannel('email')}
+                className={`h-8 text-[10px] transition ${emailSelected ? 'bg-[#071A44] font-medium text-white' : 'bg-white text-[#071A44] hover:bg-[#F8FBFF]'}`}
+                aria-pressed={emailSelected}
+              >
+                Email
+              </button>
+              <button
+                type="button"
+                onClick={() => setContactChannel('sms')}
+                className={`h-8 border-l border-[#CBD5E1] text-[10px] transition ${smsSelected ? 'bg-[#071A44] font-medium text-white' : 'bg-white text-[#071A44] hover:bg-[#F8FBFF]'}`}
+                aria-pressed={smsSelected}
+              >
+                SMS
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3.5 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)]">
+            <div>
+              <label className="mb-2 block text-[11px] font-bold text-[#071A44]">Contact Email</label>
+              <input
+                type="email"
+                name="contact_email"
+                placeholder={userEmail ?? 'Add a contact email'}
+                value={contactEmail}
+                onChange={e => setContactEmail(e.target.value)}
+                className="h-[34px] w-full rounded-md border border-[#CBD5E1] bg-white px-4 text-[10px] text-[#071A44] outline-none transition placeholder:text-[#64748B] focus:border-[#94A3B8] focus:ring-2 focus:ring-slate-100"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-[11px] font-bold text-[#071A44]">Phone</label>
+              <div className="flex h-[34px] items-center gap-2.5 rounded-md border border-[#CBD5E1] bg-white px-3 text-[10px] text-[#071A44]">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden="true">
+                  <path d="M7.2 3.2 10 6c.6.6.7 1.5.3 2.2l-1.1 1.9a12.9 12.9 0 0 0 4.7 4.7l1.9-1.1c.7-.4 1.6-.3 2.2.3l2.8 2.8c.5.5.6 1.3.2 2a4.1 4.1 0 0 1-3.6 2.2C9.5 21 3 14.5 3 6.6c0-1.5.9-2.9 2.2-3.6.7-.4 1.5-.3 2 .2Z" />
+                </svg>
+                <input
+                  type="tel"
+                  name="contact_phone"
+                  placeholder="+1 234 567 8900"
+                  value={contactPhone}
+                  onChange={e => setContactPhone(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#64748B]"
                 />
-              </ProfileInfoRow>
+              </div>
+            </div>
           </div>
+
+          <BasicLocationEditor
+            country={playLocationCountry}
+            region={playLocationRegion}
+            playCities={myPlayCities}
+            availableCities={availablePlayCityChoices}
+            onSave={(params) => onSaveGlobalPreferences(params)}
+          />
         </div>
-
-        <div className="rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] p-5">
-          <div className="space-y-3.5">
-              <div>
-                <h4 className="text-label px-1 text-slate-400">Contact & official</h4>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3 px-1">
-                  <label className="text-label text-slate-800">Receive via</label>
-                  <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setContactChannel('email')}
-                      className={`text-label rounded-md px-3 py-1 transition ${
-                        emailSelected ? 'bg-slate-900 text-white' : 'text-slate-400'
-                      }`}
-                    >
-                      Email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setContactChannel('sms')}
-                      className={`text-label rounded-md px-3 py-1 transition ${
-                        smsSelected ? 'bg-slate-900 text-white' : 'text-slate-400'
-                      }`}
-                    >
-                      SMS
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid gap-3">
-                  <div>
-                    <FieldLabel>Login email</FieldLabel>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <div className="text-body-main text-slate-800">
-                        {userEmail?.trim() || 'No login email available'}
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className={`text-label inline-flex items-center rounded-full px-2.5 py-1 ${
-                          verifiedAuthEmailEntry
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          {verifiedAuthEmailEntry ? 'Verified auth email' : 'No verified auth email'}
-                        </span>
-                        <span className="text-body-sub text-slate-400">
-                          Used for sign-in, account recovery, and identity linking. Never shown publicly.
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <FieldLabel>Profile contact email</FieldLabel>
-                    <input
-                      type="email"
-                      name="contact_email"
-                      placeholder={userEmail ?? 'Add a contact email'}
-                      value={contactEmail}
-                      onChange={e => setContactEmail(e.target.value)}
-                      className={`${inputClass} ${emailSelected ? 'border-slate-300 bg-white shadow-sm' : ''}`}
-                    />
-                    <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
-                      {contactEmail.trim() ? (
-                        <span className={`text-label inline-flex items-center rounded-full px-2.5 py-1 ${
-                          verifiedContactEmailEntry
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          {verifiedContactEmailEntry
-                            ? verifiedContactEmailEntry.email_type === 'auth'
-                              ? 'Verified via login email'
-                              : 'Verified for identity linking'
-                            : 'Not verified for identity linking yet'}
-                        </span>
-                      ) : (
-                        <span className="text-body-sub text-slate-400">
-                          Add a contact email for match notifications and exact identity lookup.
-                        </span>
-                      )}
-                      {contactEmail.trim() ? (
-                        <span className="text-body-sub text-slate-400">
-                          Used for player communication and exact email or phone search. Never shown publicly.
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div>
-                    <FieldLabel>Contact phone</FieldLabel>
-                    <input
-                      type="tel"
-                      name="contact_phone"
-                      placeholder="+1 234 567 8900"
-                      value={contactPhone}
-                      onChange={e => setContactPhone(e.target.value)}
-                      className={`${inputClass} ${smsSelected ? 'border-slate-300 bg-white shadow-sm' : ''}`}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-slate-200 pt-3.5">
-                <FieldLabel>Court booking name</FieldLabel>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input
-                    name="first_name"
-                    value={firstName}
-                    onChange={e => setFirstName(e.target.value)}
-                    className={inputClass}
-                    placeholder="First name"
-                  />
-                  <input
-                    name="last_name"
-                    value={lastName}
-                    onChange={e => setLastName(e.target.value)}
-                    className={inputClass}
-                    placeholder="Last name"
-                  />
-                </div>
-                <p className="text-body-sub mt-2 px-1 italic text-slate-400">
-                  Your real name will be shared with other players in the same match to make court booking easier.
-                </p>
-              </div>
-          </div>
-        </div>
+      </div>
       </div>
     </AccordionSection>
   )
@@ -1687,6 +1990,7 @@ export function ProfilePanel({
             showTitle={false}
             visibleInCityDiscovery={profile.visible_in_city_discovery ?? false}
             searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
+            sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'auto_join_saved_players'}
             playCities={myPlayCities}
             identities={myIdentities}
             onSaveGlobal={onSaveGlobalPreferences}
@@ -1716,12 +2020,12 @@ export function ProfilePanel({
       isOpen={activeSection === 'venues'}
       onToggle={() => toggleSection('venues')}
     >
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div>
-          <div className="mb-5 flex items-center justify-between gap-4">
-            <h3 className="text-h2 text-slate-900">Your venues</h3>
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <h3 className="text-h2 text-slate-900">Your Venues</h3>
             <span className="text-label text-slate-400">
-              {sortedJoinedIdentities.length + sortedPublicVenuePrefs.length} saved
+              {sortedJoinedIdentities.length + sortedPublicVenuePrefs.length} Saved
             </span>
           </div>
 
@@ -1745,15 +2049,18 @@ export function ProfilePanel({
                           <h4 className="text-title-main truncate text-slate-900">{venueName}</h4>
                           <div className="flex flex-wrap items-center gap-1.5">
                             <VenueBadge tone="type">{getVenueKindLabel(identity.venue.venue_kind)}</VenueBadge>
-                            <VenueBadge tone="member">member</VenueBadge>
+                            <VenueBadge tone="member">Member</VenueBadge>
                             {profile.primary_venue_id === identity.venue_id ? (
-                              <VenueBadge tone="primary">primary</VenueBadge>
+                              <VenueBadge tone="primary">Primary</VenueBadge>
                             ) : null}
                           </div>
                         </div>
                         <p className="text-body-sub mt-1 truncate text-slate-400">
                           {getVenueMetaLine(identity.venue)}
                         </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {renderVenueSportBadges(identity.venue_id)}
+                        </div>
                       </div>
 
                       <div className="relative shrink-0" data-venue-menu-root={menuKey}>
@@ -1820,12 +2127,15 @@ export function ProfilePanel({
                           <h4 className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</h4>
                           <div className="flex flex-wrap items-center gap-1.5">
                             <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
-                            <VenueBadge tone="starred">saved</VenueBadge>
+                            <VenueBadge tone="starred">Saved</VenueBadge>
                           </div>
                         </div>
                         <p className="text-body-sub mt-1 truncate text-slate-400">
                           {getVenueMetaLine(venue)}
                         </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {renderVenueSportBadges(venue.id)}
+                        </div>
                       </div>
 
                       <div className="relative shrink-0" data-venue-menu-root={menuKey}>
@@ -1868,10 +2178,10 @@ export function ProfilePanel({
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-slate-200/70 bg-white p-6 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.16)]">
-          <div className="mb-6">
-            <h3 className="text-h2 text-slate-900">Find a venue</h3>
-            <p className="text-body-sub mt-1 text-slate-500">Search by city, venue name, or type.</p>
+        <div className="rounded-[24px] border border-[#DCE7F3] bg-[#F5F8FC] p-4 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.12)] md:p-5">
+          <div className="mb-4">
+            <h3 className="text-h2 text-slate-900">Discover Venues</h3>
+            <p className="text-body-sub mt-1 text-slate-500">Search and save clubs, parks, and courts near you.</p>
           </div>
 
           {!normalizedDisplayName && joinableVenues.length > 0 ? (
@@ -1880,39 +2190,55 @@ export function ProfilePanel({
             </div>
           ) : null}
 
-          <div className="grid gap-3 md:grid-cols-12">
-            <div className="md:col-span-4">
+          <div className="grid gap-2.5 xl:grid-cols-12">
+            <div className="xl:col-span-2">
               <input
                 type="text"
                 value={venueCitySearch}
                 onChange={(event) => setVenueCitySearch(event.target.value)}
                 placeholder="City or area"
-                className={`${inputClass} bg-slate-50`}
+                className={`${inputClass} bg-white`}
               />
             </div>
-            <div className="md:col-span-5">
+            <div className="xl:col-span-4">
               <input
                 type="text"
                 value={venueNameSearch}
                 onChange={(event) => setVenueNameSearch(event.target.value)}
                 placeholder="Club, park, or court name"
-                className={`${inputClass} bg-slate-50`}
+                className={`${inputClass} bg-white`}
               />
             </div>
-            <div className="md:col-span-3">
+            <div className="xl:col-span-2">
               <select
                 value={venueTypeFilter}
                 onChange={(event) => setVenueTypeFilter(event.target.value as 'all' | VenueKind)}
-                className={`${inputClass} bg-slate-50`}
+                className={`${inputClass} bg-white`}
               >
                 {VENUE_KIND_FILTER_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </div>
+            <div className="flex rounded-2xl border border-slate-200 bg-white p-1 xl:col-span-4">
+              {VENUE_SPORT_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setVenueSportFilter(option.value)}
+                  className={`min-h-10 flex-1 rounded-xl px-2 text-center text-[12px] font-semibold leading-tight transition ${
+                    venueSportFilter === option.value
+                      ? 'bg-[#071A44] text-white shadow-sm'
+                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
             {filteredJoinableVenues.map((venue) => renderJoinableVenueCard(venue))}
           </div>
 
@@ -1934,10 +2260,10 @@ export function ProfilePanel({
   )
 
   const renderedProfile = () => (
-    <div className="mx-auto max-w-4xl space-y-3">
-      <div className="px-1 py-1">
+    <div className="mx-auto max-w-[1140px] space-y-5">
+      <div className="px-1 pt-2">
         <div>
-          <h1 className="text-h1 text-slate-900">Profile Settings</h1>
+          <h1 className="text-h1 text-[#071A44]">Profile Settings</h1>
         </div>
       </div>
 
@@ -1953,9 +2279,9 @@ export function ProfilePanel({
 
       {basicInfoSection()}
       {venuesSection()}
-      {availabilitySection()}
       {sportProfilesSection()}
       {privacySection()}
+      {availabilitySection()}
     </div>
   )
 
@@ -1985,6 +2311,40 @@ export function ProfilePanel({
     setSelectedSportIds(
       sports.filter((sport) => codes.includes(sport.code)).map((sport) => sport.id),
     )
+  }
+
+  const handleBasicSave = () => {
+    const trimmedDisplayName = displayNameDraft.trim()
+    startTransition(async () => {
+      try {
+        if (trimmedDisplayName && trimmedDisplayName !== (profile.display_name ?? '').trim()) {
+          await onSetDisplayName(trimmedDisplayName)
+        }
+
+        const formData = new FormData()
+        formData.set('first_name', firstName)
+        formData.set('last_name', lastName)
+        formData.set('gender', gender ?? 'unspecified')
+        formData.set('availability_status', availabilityStatus ?? 'available')
+        formData.set('availability_note', availabilityNote)
+        formData.set('availability_until', availabilityUntil)
+        formData.set('contact_email', contactEmail)
+        formData.set('contact_phone', contactPhone)
+        formData.set('contact_channel', contactChannel)
+        formData.set('looking_to_play', lookingToPlay)
+        formData.set('preferred_play_times_present', '1')
+        preferredPlayTimes.forEach((value) => formData.append('preferred_play_times', value))
+        await onUpdateProfile(formData)
+        lastSavedSnapshotRef.current = currentSnapshot
+        setAutoSaveState('saved')
+        setTimeout(() => {
+          setAutoSaveState(prev => (prev === 'saved' ? 'idle' : prev))
+        }, 1200)
+        router.refresh()
+      } catch {
+        setAutoSaveState('error')
+      }
+    })
   }
 
   const handleAvatarSaved = async () => {
@@ -2073,15 +2433,18 @@ export function ProfilePanel({
     return (
       <div
         key={venue.id}
-        className="flex items-center justify-between gap-4 rounded-[22px] border border-slate-100 bg-slate-50/60 p-4 transition hover:border-slate-200 hover:bg-white"
+        className="flex items-center justify-between gap-4 rounded-[18px] border border-[#DCE7F3] bg-white/70 p-3.5 transition hover:border-[#C8D7EA] hover:bg-white"
       >
         <Link
-          href={`/venues/${venue.id}`}
+          href={`/app/venues/${venue.id}`}
           className="min-w-0 flex-1 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
         >
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
             <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {renderVenueSportBadges(venue.id)}
           </div>
           <p className="text-label mt-1 truncate text-slate-400">
             {getVenueMetaLine(venue)}
@@ -2293,7 +2656,7 @@ export function ProfilePanel({
                       country={playLocationCountry}
                       region={playLocationRegion}
                       playCities={myPlayCities}
-                      availableCities={availablePlayCities}
+                      availableCities={availablePlayCityChoices}
                       onSave={(params) => onSaveGlobalPreferences(params)}
                     />
                   </ProfileInfoRow>
@@ -2481,11 +2844,11 @@ export function ProfilePanel({
       </section>
       <div className="space-y-6">
         <SectionCard title="Venues & Membership">
-          <div className="space-y-10">
+          <div className="space-y-5">
             <div>
-              <div className="mb-5 flex items-center justify-between gap-4">
-                <h3 className="text-h2 text-slate-900">Your venues</h3>
-                <span className="text-label text-slate-400">{sortedJoinedIdentities.length + sortedPublicVenuePrefs.length} saved</span>
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <h3 className="text-h2 text-slate-900">Your Venues</h3>
+                <span className="text-label text-slate-400">{sortedJoinedIdentities.length + sortedPublicVenuePrefs.length} Saved</span>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
@@ -2508,14 +2871,17 @@ export function ProfilePanel({
                               <h4 className="text-title-main truncate text-slate-900">{venueName}</h4>
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <VenueBadge tone="type">{getVenueKindLabel(identity.venue.venue_kind)}</VenueBadge>
-                                <VenueBadge tone="member">member</VenueBadge>
+                                <VenueBadge tone="member">Member</VenueBadge>
                                 {profile.primary_venue_id === identity.venue_id ? (
-                                  <VenueBadge tone="primary">primary</VenueBadge>
+                                  <VenueBadge tone="primary">Primary</VenueBadge>
                                 ) : null}
                               </div>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-body-sub text-slate-400">
                               <span>{getVenueMetaLine(identity.venue)}</span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              {renderVenueSportBadges(identity.venue_id)}
                             </div>
                           </div>
 
@@ -2583,11 +2949,14 @@ export function ProfilePanel({
                               <h4 className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</h4>
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
-                                <VenueBadge tone="starred">saved</VenueBadge>
+                                <VenueBadge tone="starred">Saved</VenueBadge>
                               </div>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-body-sub text-slate-400">
                               <span>{getVenueMetaLine(venue)}</span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              {renderVenueSportBadges(venue.id)}
                             </div>
                           </div>
 
@@ -2631,10 +3000,10 @@ export function ProfilePanel({
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-slate-200/70 bg-white p-6 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.16)]">
-              <div className="mb-6">
-                <h3 className="text-h2 text-slate-900">Find a venue</h3>
-                <p className="text-body-sub mt-1 text-slate-500">Search by city, venue name, or type.</p>
+            <div className="rounded-[24px] border border-[#DCE7F3] bg-[#F5F8FC] p-4 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.12)] md:p-5">
+              <div className="mb-4">
+                <h3 className="text-h2 text-slate-900">Discover Venues</h3>
+                <p className="text-body-sub mt-1 text-slate-500">Search and save clubs, parks, and courts near you.</p>
               </div>
 
               {!normalizedDisplayName && joinableVenues.length > 0 ? (
@@ -2643,48 +3012,67 @@ export function ProfilePanel({
                 </div>
               ) : null}
 
-              <div className="grid gap-3 md:grid-cols-12">
-                <div className="md:col-span-4">
+              <div className="grid gap-2.5 xl:grid-cols-12">
+                <div className="xl:col-span-2">
                   <input
                     type="text"
                     value={venueCitySearch}
                     onChange={(event) => setVenueCitySearch(event.target.value)}
                     placeholder="City or area"
-                    className={`${inputClass} bg-slate-50`}
+                    className={`${inputClass} bg-white`}
                   />
                 </div>
-                <div className="md:col-span-5">
+                <div className="xl:col-span-4">
                   <input
                     type="text"
                     value={venueNameSearch}
                     onChange={(event) => setVenueNameSearch(event.target.value)}
                     placeholder="Club, park, or court name"
-                    className={`${inputClass} bg-slate-50`}
+                    className={`${inputClass} bg-white`}
                   />
                 </div>
-                <div className="md:col-span-3">
+                <div className="xl:col-span-2">
                   <select
                     value={venueTypeFilter}
                     onChange={(event) => setVenueTypeFilter(event.target.value as 'all' | VenueKind)}
-                    className={`${inputClass} bg-slate-50`}
+                    className={`${inputClass} bg-white`}
                   >
                     {VENUE_KIND_FILTER_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </div>
+                <div className="flex rounded-2xl border border-slate-200 bg-white p-1 xl:col-span-4">
+                  {VENUE_SPORT_FILTER_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setVenueSportFilter(option.value)}
+                      className={`min-h-10 flex-1 rounded-xl px-2 text-center text-[12px] font-semibold leading-tight transition ${
+                        venueSportFilter === option.value
+                          ? 'bg-[#071A44] text-white shadow-sm'
+                          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="mt-6 grid gap-3 md:grid-cols-2">
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {filteredJoinableVenues.map((venue) => (
                   <div
                     key={venue.id}
-                    className="flex items-center justify-between gap-4 rounded-[22px] border border-slate-100 bg-slate-50/60 p-4 transition hover:border-slate-200 hover:bg-white"
+                    className="flex items-center justify-between gap-4 rounded-[18px] border border-[#DCE7F3] bg-white/70 p-3.5 transition hover:border-[#C8D7EA] hover:bg-white"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
                         <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {renderVenueSportBadges(venue.id)}
                       </div>
                       <p className="text-label mt-1 truncate text-slate-400">
                         {getVenueMetaLine(venue)}
@@ -2729,6 +3117,7 @@ export function ProfilePanel({
             showTitle={false}
             visibleInCityDiscovery={profile.visible_in_city_discovery ?? false}
             searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
+            sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'auto_join_saved_players'}
             playCities={myPlayCities}
             identities={myIdentities}
             onSaveGlobal={onSaveGlobalPreferences}

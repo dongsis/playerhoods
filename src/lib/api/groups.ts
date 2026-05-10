@@ -4,6 +4,7 @@ import type {
   Group,
   GroupContact,
   GroupJoinRequest,
+  GroupLocation,
   GroupMessage,
   GroupResource,
   GroupResourceTag,
@@ -35,6 +36,72 @@ export async function getGroup(supabase: Client, groupId: string) {
 
   if (error) throw error
   return data as Group
+}
+
+export type GroupLocationInput =
+  | {
+      kind: 'city'
+      city_name: string
+      region?: string | null
+      country: string
+      is_primary?: boolean
+    }
+  | {
+      kind: 'venue'
+      venue_id: string
+      is_primary?: boolean
+    }
+
+export type GroupLocationWithVenue = GroupLocation & {
+  venue: {
+    id: string
+    name: string
+    abbreviation: string | null
+    city: string | null
+    province: string | null
+    country: string | null
+  } | null
+}
+
+function isMissingGroupLocationsSchemaError(error: { code?: string; message?: string; details?: string | null }) {
+  const text = `${error.message ?? ''} ${error.details ?? ''}`.toLowerCase()
+  return (
+    error.code === '42P01'
+    || error.code === 'PGRST200'
+    || error.code === 'PGRST205'
+    || text.includes('group_locations')
+  )
+}
+
+export async function listGroupLocations(
+  supabase: Client,
+  groupId: string,
+): Promise<GroupLocationWithVenue[]> {
+  const { data, error } = await supabase
+    .from('group_locations')
+    .select('*, venue:venues(id, name, abbreviation, city, province, country)')
+    .eq('group_id', groupId)
+    .order('is_primary', { ascending: false })
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    if (isMissingGroupLocationsSchemaError(error)) return []
+    throw error
+  }
+  return (data ?? []) as unknown as GroupLocationWithVenue[]
+}
+
+export async function replaceGroupLocations(
+  supabase: Client,
+  groupId: string,
+  locations: GroupLocationInput[],
+): Promise<GroupLocation[]> {
+  const { data, error } = await supabase.rpc('rpc_group_locations_replace', {
+    p_group_id: groupId,
+    p_locations: locations,
+  })
+  if (error) throw error
+  return (data ?? []) as GroupLocation[]
 }
 
 export async function getGroupMembers(supabase: Client, groupId: string): Promise<GroupMemberWithProfile[]> {
@@ -254,6 +321,8 @@ export async function updateGroup(
     venue_id?: string | null
     open_to_club_members?: boolean
     icon_key?: string | null
+    recommended_level_min?: number | null
+    recommended_level_max?: number | null
   }
 ) {
   const { error } = await supabase.rpc('rpc_group_update', {
@@ -264,6 +333,8 @@ export async function updateGroup(
     p_venue_id: data.venue_id ?? null,
     p_open_to_club_members: data.open_to_club_members ?? null,
     p_icon_key: data.icon_key ?? null,
+    p_recommended_level_min: data.recommended_level_min ?? null,
+    p_recommended_level_max: data.recommended_level_max ?? null,
   })
   if (error) throw error
 }
@@ -273,7 +344,15 @@ export async function updateGroup(
 // on the RETURNING clause before any group_members row exists.
 export async function createGroup(
   supabase: Client,
-  data: { name: string; description?: string; primary_sport_id?: number | null; venue_id?: string | null; icon_key?: string | null }
+  data: {
+    name: string
+    description?: string
+    primary_sport_id?: number | null
+    venue_id?: string | null
+    icon_key?: string | null
+    recommended_level_min?: number | null
+    recommended_level_max?: number | null
+  }
 ) {
   const { data: group, error } = await supabase.rpc('rpc_group_create', {
     p_name: data.name.trim(),
@@ -281,6 +360,8 @@ export async function createGroup(
     p_primary_sport_id: data.primary_sport_id ?? null,
     p_venue_id: data.venue_id ?? null,
     p_icon_key: data.icon_key ?? null,
+    p_recommended_level_min: data.recommended_level_min ?? null,
+    p_recommended_level_max: data.recommended_level_max ?? null,
   })
 
   if (error) throw error

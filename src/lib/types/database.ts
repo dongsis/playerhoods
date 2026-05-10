@@ -15,6 +15,7 @@ export type IdentityLink = {
 export type GroupMemberStatus = 'pending' | 'active' | 'removed'
 export type GroupJoinRequestStatus = 'pending' | 'accepted' | 'declined' | 'revoked'
 export type SharedGroupJoinPreference =
+  | 'auto_join_saved_players'
   | 'approval_required_all'
   | 'auto_join_enabled_sports'
   | 'auto_join_all'
@@ -113,6 +114,19 @@ export type UserPlayCity = {
   created_at: string
 }
 
+export type LocationMunicipality = {
+  id: string
+  country_code: string
+  country_name: string
+  province_code: string
+  province_name: string
+  region_english: string
+  upper_tier_county_district: string
+  municipality_type: string
+  city_municipality: string
+  created_at: string
+}
+
 export type Venue = {
   id: string
   name: string
@@ -134,6 +148,17 @@ export type Venue = {
   facility_type: VenueFacilityType | null
   booking_required: boolean | null
   cost_type: VenueCostType | null
+  supports_tennis: boolean
+  supports_pickleball: boolean
+  google_rating: number | null
+  working_hours: Json | null
+  google_maps_url: string | null
+  google_place_id: string | null
+  season: string | null
+  has_lights: boolean | null
+  has_washroom: boolean | null
+  has_parking: boolean | null
+  accessibility: string | null
   notes: string | null
   timezone: string
   venue_kind: VenueKind
@@ -176,6 +201,22 @@ export type Group = {
   venue_id: string | null
   open_to_club_members: boolean
   icon_key: string
+  recommended_level_min: number | null
+  recommended_level_max: number | null
+}
+
+export type GroupLocationKind = 'city' | 'venue'
+
+export type GroupLocation = {
+  id: string
+  group_id: string
+  location_kind: GroupLocationKind
+  city_name: string | null
+  region: string | null
+  country: string | null
+  venue_id: string | null
+  is_primary: boolean
+  created_at: string
 }
 
 export type GroupMember = {
@@ -723,6 +764,21 @@ export interface Database {
         Update: Partial<UserPlayCity>
         Relationships: []
       }
+      location_municipalities: {
+        Row: LocationMunicipality
+        Insert: Partial<LocationMunicipality> & {
+          country_code: string
+          country_name: string
+          province_code: string
+          province_name: string
+          region_english: string
+          upper_tier_county_district: string
+          municipality_type: string
+          city_municipality: string
+        }
+        Update: Partial<LocationMunicipality>
+        Relationships: []
+      }
       venues: {
         Row: Venue
         Insert: Partial<Venue>
@@ -767,6 +823,12 @@ export interface Database {
         Row: Group
         Insert: Partial<Group> & { name: string; boundary_keeper_id: string }
         Update: Partial<Group>
+        Relationships: []
+      }
+      group_locations: {
+        Row: GroupLocation
+        Insert: Partial<GroupLocation> & { group_id: string; location_kind: GroupLocationKind }
+        Update: Partial<GroupLocation>
         Relationships: []
       }
       group_members: {
@@ -1026,6 +1088,14 @@ export interface Database {
         Args: { p_cities?: Json | null }
         Returns: void
       }
+      location_municipality_exists: {
+        Args: {
+          p_city_name: string
+          p_region?: string | null
+          p_country?: string | null
+        }
+        Returns: boolean
+      }
       rpc_complete_first_onboarding: {
         Args: {
           p_display_name: string
@@ -1218,6 +1288,8 @@ export interface Database {
           p_facility_type?: VenueFacilityType | null
           p_booking_required?: boolean | null
           p_cost_type?: VenueCostType | null
+          p_supports_tennis?: boolean | null
+          p_supports_pickleball?: boolean | null
           p_timezone?: string
           p_notes?: string | null
           p_venue_kind?: VenueKind
@@ -1247,6 +1319,8 @@ export interface Database {
           p_facility_type?: VenueFacilityType | null
           p_booking_required?: boolean | null
           p_cost_type?: VenueCostType | null
+          p_supports_tennis?: boolean | null
+          p_supports_pickleball?: boolean | null
           p_timezone?: string | null
           p_notes?: string | null
           p_venue_kind?: VenueKind | null
@@ -1281,6 +1355,9 @@ export interface Database {
           p_description?: string | null
           p_primary_sport_id?: number | null
           p_icon_key?: string | null
+          p_venue_id?: string | null
+          p_recommended_level_min?: number | null
+          p_recommended_level_max?: number | null
         }
         Returns: Group
       }
@@ -1304,8 +1381,25 @@ export interface Database {
           p_primary_sport_id?: number | null
           p_open_to_club_members?: boolean | null
           p_icon_key?: string | null
+          p_venue_id?: string | null
+          p_recommended_level_min?: number | null
+          p_recommended_level_max?: number | null
         }
         Returns: void
+      }
+      rpc_group_locations_replace: {
+        Args: {
+          p_group_id: string
+          p_locations: Json
+        }
+        Returns: GroupLocation[]
+      }
+      group_matches_user_play_locations: {
+        Args: {
+          p_group_id: string
+          p_user_id: string
+        }
+        Returns: boolean
       }
       rpc_recurring_match_series_create: {
         Args: {

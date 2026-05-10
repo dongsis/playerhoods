@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { addContactPlayerToGroup, addMemberToGroup, type GroupAddMemberResult } from '@/lib/api/groups'
+import { GROUP_LEVEL_RATING_OPTIONS } from '@/lib/profile-options'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Sport, Venue } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
@@ -44,6 +45,8 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
   const [description, setDescription] = useState('')
   const [sportId, setSportId] = useState('')
   const [venueId, setVenueId] = useState('')
+  const [levelMin, setLevelMin] = useState('')
+  const [levelMax, setLevelMax] = useState('')
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const [selectedGuestIds, setSelectedGuestIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -68,11 +71,19 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
     setLoading(true)
 
     try {
+      if (levelMin && levelMax && Number(levelMin) > Number(levelMax)) {
+        setError('Level minimum cannot be higher than level maximum.')
+        setLoading(false)
+        return
+      }
+
       const group = await createGroupAction({
         name,
         description,
         primary_sport_id: sportId ? Number(sportId) : null,
         venue_id: venueId || null,
+        recommended_level_min: levelMin ? Number(levelMin) : null,
+        recommended_level_max: levelMax ? Number(levelMax) : null,
       })
 
       const supabase = createSupabaseBrowserClient()
@@ -158,6 +169,44 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
                     </option>
                   ))}
                 </select>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="levelMin" className="ph-kicker mb-2 block">
+                      Level Min
+                    </label>
+                    <select
+                      id="levelMin"
+                      value={levelMin}
+                      onChange={(e) => setLevelMin(e.target.value)}
+                      className="ph-input"
+                    >
+                      <option value="">No minimum</option>
+                      {GROUP_LEVEL_RATING_OPTIONS.map((level) => (
+                        <option key={level} value={level}>
+                          {level}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="levelMax" className="ph-kicker mb-2 block">
+                      Level Max
+                    </label>
+                    <select
+                      id="levelMax"
+                      value={levelMax}
+                      onChange={(e) => setLevelMax(e.target.value)}
+                      className="ph-input"
+                    >
+                      <option value="">No maximum</option>
+                      {GROUP_LEVEL_RATING_OPTIONS.map((level) => (
+                        <option key={level} value={level}>
+                          {level}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <label htmlFor="venue" className="ph-kicker mb-2 mt-4 block">
                   Club / Venue
                 </label>

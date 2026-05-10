@@ -177,20 +177,23 @@ export function AvatarUpload({ userId, currentAvatarUrl, onSaved, compact = fals
 
   if (compact) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-2">
         {!src ? (
-          <div className="space-y-2">
-            <div className="relative h-16 w-16">
-              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[20px] border-2 border-white bg-slate-100 shadow-sm">
+          <div className="space-y-1.5">
+            <div className="relative h-[68px] w-[68px]">
+              <div className="flex h-[68px] w-[68px] items-center justify-center overflow-hidden rounded-full bg-gradient-to-b from-slate-100 to-slate-200">
                 {currentAvatarUrl ? (
                   <img src={currentAvatarUrl} alt="Profile photo" className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-2xl text-slate-300">?</span>
+                  <span className="relative mt-4 h-7 w-12 rounded-t-full bg-slate-300/80 before:absolute before:-top-6 before:left-1/2 before:h-6 before:w-6 before:-translate-x-1/2 before:rounded-full before:bg-slate-300/80" aria-hidden="true" />
                 )}
               </div>
-              <label className="absolute -bottom-1 -right-1 cursor-pointer">
-                <span className="inline-flex rounded-lg border-2 border-white bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-sm transition hover:bg-slate-800">
-                  Edit
+              <label className="absolute bottom-0 right-0 cursor-pointer">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[#CBD5E1] bg-white text-[#071A44] shadow-sm transition hover:border-[#94A3B8]">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+                    <path d="m5 19 3.9-.8L18.6 8.5a2 2 0 0 0 0-2.8l-.3-.3a2 2 0 0 0-2.8 0L5.8 15.1 5 19Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="m14.2 6.8 3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
                 </span>
                 <input
                   type="file"
@@ -205,7 +208,7 @@ export function AvatarUpload({ userId, currentAvatarUrl, onSaved, compact = fals
                 type="button"
                 onClick={handleRemove}
                 disabled={uploading}
-                className="text-[11px] font-semibold text-slate-500 transition hover:text-rose-600 disabled:opacity-50"
+                className="text-[9px] font-semibold text-slate-500 transition hover:text-rose-600 disabled:opacity-50"
               >
                 Remove photo
               </button>

@@ -24,7 +24,7 @@ type DashboardPageViewProps = {
     searchable_by_email_or_phone?: boolean
     play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
-    shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
+    shared_group_join_preference?: 'auto_join_saved_players' | 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
   }) => Promise<DashboardPreferenceSaveResult>
   onSetVenueMemberDiscovery: (venueId: string, visibleInVenueMemberDiscovery: boolean) => Promise<DashboardPreferenceSaveResult>
   onSetSports: (codes: string[]) => Promise<void>
@@ -115,10 +115,12 @@ export function DashboardPageView({
       myIdentities={viewModel.myIdentities}
       myVenuePrefs={viewModel.myVenuePrefs}
       joinableVenues={viewModel.joinableVenues}
+      venueSports={viewModel.venueSports}
       sports={viewModel.sports}
       mySports={viewModel.mySports}
       mySportProfiles={viewModel.mySportProfiles}
       myPlayCities={viewModel.myPlayCities}
+      availablePlayCities={viewModel.availablePlayCities}
       gearItems={viewModel.gearItems}
       gearImages={viewModel.gearImages}
       gearStringJobs={viewModel.gearStringJobs}

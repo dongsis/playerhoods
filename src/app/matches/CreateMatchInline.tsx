@@ -1937,8 +1937,9 @@ export function CreateMatchInline({
 
   const renderInviteCandidateButton = (candidate: InviteCandidate, compact = false) => {
     const isSelected = selectedDirectInviteKeys.has(candidate.key)
-    const availabilityWarning = getAvailabilityWarning(candidate)
-    const availabilityLabel = getAvailabilityStatusLabel(candidate.availabilityStatus)
+    const showAvailability = candidate.kind !== 'contact'
+    const availabilityWarning = showAvailability ? getAvailabilityWarning(candidate) : null
+    const availabilityLabel = showAvailability ? getAvailabilityStatusLabel(candidate.availabilityStatus) : null
     const availabilityClasses =
       availabilityWarning?.level === 'busy'
         ? 'border-amber-200 bg-amber-50 text-amber-700'
@@ -1985,11 +1986,13 @@ export function CreateMatchInline({
         >
           <span className="truncate">{candidate.name}</span>
         </ParticipantQuickPreviewTrigger>
-        <span
-          className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
-          aria-label={availabilityLabel ?? 'Available'}
-          title={availabilityLabel ?? 'Available'}
-        />
+        {showAvailability ? (
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+            aria-label={availabilityLabel ?? 'Available'}
+            title={availabilityLabel ?? 'Available'}
+          />
+        ) : null}
         {availabilityWarning ? (
           <span
             className="sr-only"

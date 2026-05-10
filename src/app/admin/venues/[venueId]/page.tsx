@@ -19,6 +19,7 @@ import {
 } from '@/lib/api/venues'
 import { listSports } from '@/lib/api/sports'
 import { getVenueDisplayName } from '@/lib/venues/display'
+import { getVenueCanonicalPath } from '@/lib/venues/slug'
 import { VenueDetailShell } from '../../venues/[venueId]/VenueDetailShell'
 
 interface Props {
@@ -44,6 +45,7 @@ export default async function VenueAdminDetailPage({ params }: Props) {
   } catch {
     notFound()
   }
+  const venueCanonicalPath = getVenueCanonicalPath(venue)
 
   const [courts, venueSports, admins, sports] = await Promise.all([
     getVenueCourts(supabase, venueId),
@@ -75,13 +77,15 @@ export default async function VenueAdminDetailPage({ params }: Props) {
       facility_type: ((formData.get('facility_type') as string | null)?.trim() || null) as never,
       booking_required: formData.get('booking_required') === '' ? null : formData.get('booking_required') === 'true',
       cost_type: ((formData.get('cost_type') as string | null)?.trim() || null) as never,
-      timezone: (formData.get('timezone') as string)?.trim() || undefined,
+      supports_tennis: formData.get('supports_tennis') === 'on',
+      supports_pickleball: formData.get('supports_pickleball') === 'on',
       notes: (formData.get('notes') as string)?.trim() || undefined,
       venue_kind: (formData.get('venue_kind') as string | null)?.trim() as never,
       access_type: (formData.get('access_type') as string | null)?.trim() as never,
     })
     revalidatePath(`/admin/venues/${venueId}`)
-    revalidatePath(`/venues/${venueId}`)
+    revalidatePath(`/app/venues/${venueId}`)
+    revalidatePath(venueCanonicalPath)
     revalidatePath('/admin/venues')
   }
 
@@ -95,7 +99,8 @@ export default async function VenueAdminDetailPage({ params }: Props) {
       notes: (formData.get('notes') as string)?.trim() || undefined,
     })
     revalidatePath(`/admin/venues/${venueId}`)
-    revalidatePath(`/venues/${venueId}`)
+    revalidatePath(`/app/venues/${venueId}`)
+    revalidatePath(venueCanonicalPath)
   }
 
   async function handleUpdateCourt(courtId: string, formData: FormData) {
@@ -108,7 +113,8 @@ export default async function VenueAdminDetailPage({ params }: Props) {
       notes: (formData.get('notes') as string)?.trim() || undefined,
     })
     revalidatePath(`/admin/venues/${venueId}`)
-    revalidatePath(`/venues/${venueId}`)
+    revalidatePath(`/app/venues/${venueId}`)
+    revalidatePath(venueCanonicalPath)
   }
 
   async function handleDeleteCourt(courtId: string) {
@@ -116,7 +122,8 @@ export default async function VenueAdminDetailPage({ params }: Props) {
     const nextSupabase = await createSupabaseServerClient()
     await deleteCourt(nextSupabase, courtId)
     revalidatePath(`/admin/venues/${venueId}`)
-    revalidatePath(`/venues/${venueId}`)
+    revalidatePath(`/app/venues/${venueId}`)
+    revalidatePath(venueCanonicalPath)
   }
 
   async function handleGrantAdmin(userId: string) {
@@ -145,7 +152,6 @@ export default async function VenueAdminDetailPage({ params }: Props) {
     venue.province,
     venue.postal_code,
     venue.country,
-    venue.timezone,
   ].filter(Boolean)
   const sportMap = new Map(sports.map((sport) => [sport.id, sport.display_name]))
   const venueSportsSummary = venueSports

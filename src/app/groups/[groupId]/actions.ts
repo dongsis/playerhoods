@@ -7,9 +7,11 @@ import {
   createGroupLinkResource,
   deleteGroupResource,
   postGroupMessage,
+  replaceGroupLocations,
   setGroupResourceArchived,
   setGroupResourcePinned,
   updateGroup,
+  type GroupLocationInput,
 } from '@/lib/api/groups'
 import type { GroupResourceTag } from '@/lib/types/database'
 
@@ -127,9 +129,20 @@ export async function updateGroupSettingsAction(
     venue_id?: string | null
     open_to_club_members?: boolean
     icon_key?: string | null
+    recommended_level_min?: number | null
+    recommended_level_max?: number | null
   },
 ) {
   const supabase = await createSupabaseServerClient()
   await updateGroup(supabase, groupId, data)
+  revalidateGroupSurfaces(groupId)
+}
+
+export async function replaceGroupLocationsAction(
+  groupId: string,
+  locations: GroupLocationInput[],
+) {
+  const supabase = await createSupabaseServerClient()
+  await replaceGroupLocations(supabase, groupId, locations)
   revalidateGroupSurfaces(groupId)
 }

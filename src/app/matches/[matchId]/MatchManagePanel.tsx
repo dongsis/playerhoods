@@ -221,7 +221,7 @@ function SummaryRosterRow({
                     <ContactPlayerMark className="h-[0.95rem] w-[0.95rem]" variant="badge" />
                   </span>
                 ) : null}
-                {item.kind !== 'group' ? (
+                {item.kind === 'user' ? (
                   (() => {
                     const availabilityDotClass = getAvailabilityStatusDotClass(
                       item.availabilityStatus ?? getLookupAvailabilityStatus(availabilityLookup, item),
@@ -435,7 +435,7 @@ function SelectableInviteChip({
     mode === 'request'
       ? 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4] hover:text-[#15803D]'
       : 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#FFF8F5] hover:text-[#C25E46]'
-  const availabilityDotClass = item.kind === 'group' ? null : getAvailabilityStatusDotClass(item.availabilityStatus)
+  const availabilityDotClass = item.kind === 'user' ? getAvailabilityStatusDotClass(item.availabilityStatus) : null
 
   return (
     <button
@@ -1120,11 +1120,12 @@ export function MatchManagePanel({
     key: `confirmed-${participant.id}`,
     label: participant.display_name,
     kind: participant.user_id ? ('user' as const) : ('contact' as const),
-    availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
-      kind: participant.user_id ? 'user' : 'contact',
-      userId: participant.user_id ?? null,
-      guestId: participant.guest_id ?? null,
-    }),
+    availabilityStatus: participant.user_id
+      ? getLookupAvailabilityStatus(availabilityLookup, {
+          kind: 'user',
+          userId: participant.user_id,
+        })
+      : null,
     userId: participant.user_id ?? null,
     guestId: participant.guest_id ?? null,
     avatarUrl: participant.avatar_url ?? null,
@@ -1134,11 +1135,12 @@ export function MatchManagePanel({
       key: `invite-user-${participant.id}`,
       label: participant.display_name,
       kind: participant.user_id ? ('user' as const) : ('contact' as const),
-      availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
-        kind: participant.user_id ? 'user' : 'contact',
-        userId: participant.user_id ?? null,
-        guestId: participant.guest_id ?? null,
-      }),
+      availabilityStatus: participant.user_id
+        ? getLookupAvailabilityStatus(availabilityLookup, {
+            kind: 'user',
+            userId: participant.user_id,
+          })
+        : null,
       userId: participant.user_id ?? null,
       guestId: participant.guest_id ?? null,
       avatarUrl: participant.avatar_url ?? null,

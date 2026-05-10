@@ -32,6 +32,8 @@ function mapOnboardingError(error: unknown) {
       return 'You can add up to 8 play cities.'
     case 'duplicate_play_city':
       return 'A play city is listed more than once.'
+    case 'invalid_play_city':
+      return 'Choose a city from the approved city list.'
     case 'invalid_club_or_venue':
       return 'One of the selected venues could not be found.'
     case 'club_city_mismatch':

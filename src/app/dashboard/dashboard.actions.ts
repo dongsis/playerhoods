@@ -58,7 +58,13 @@ export type IdentityLinkActionResult =
   | { ok: false; error: string }
 
 function getActionErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) return error.message
+  const normalize = (message: string) => {
+    if (message.includes('invalid_play_city') || message.includes('invalid_group_city')) {
+      return 'Choose a city from the approved city list.'
+    }
+    return message
+  }
+  if (error instanceof Error && error.message.trim()) return normalize(error.message)
   if (
     error &&
     typeof error === 'object' &&
@@ -66,7 +72,7 @@ function getActionErrorMessage(error: unknown, fallback: string): string {
     typeof (error as { message?: unknown }).message === 'string' &&
     (error as { message: string }).message.trim()
   ) {
-    return (error as { message: string }).message
+    return normalize((error as { message: string }).message)
   }
   return fallback
 }
@@ -210,7 +216,7 @@ export async function saveDashboardGlobalPreferencesAction(params: {
   searchable_by_email_or_phone?: boolean
   play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
   allow_non_group_invites?: boolean
-  shared_group_join_preference?: 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
+  shared_group_join_preference?: 'auto_join_saved_players' | 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
 }): Promise<DashboardPreferenceSaveResult> {
   try {
     const supabase = await createSupabaseServerClient()

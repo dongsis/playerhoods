@@ -170,7 +170,10 @@ export function ParticipantQuickPreview({
     ?? target.avatarUrl
     ?? null
 
-  const statusClassName = getAvailabilityStatusDotClass(contact?.availability_status ?? profile?.looking_to_play)
+  const isContactOnly = Boolean(target.guestId && !target.userId)
+  const statusClassName = isContactOnly
+    ? null
+    : getAvailabilityStatusDotClass(profile?.looking_to_play)
 
   const formatLabels = useMemo(() => {
     if (!primarySportProfile) return [] as string[]

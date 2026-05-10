@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import type { Venue } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
+import { getVenueCanonicalPath } from '@/lib/venues/slug'
 
 type Filter = 'all' | 'my-venues' | 'saved'
 
@@ -85,7 +86,7 @@ export function VenueSearch({ venues, myVenueIds, mySavedIds }: Props) {
             return (
               <Link
                 key={v.id}
-                href={`/venues/${v.id}`}
+                href={getVenueCanonicalPath(v)}
                 className="flex items-center justify-between px-4 py-3 bg-white rounded-2xl border border-gray-100 hover:border-gray-200 transition-colors group"
               >
                 <div>
@@ -98,9 +99,9 @@ export function VenueSearch({ venues, myVenueIds, mySavedIds }: Props) {
                   {isSaved && (
                     <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">★ saved</span>
                   )}
-                  {(v.location_text || v.timezone) && (
+                  {v.location_text && (
                     <div className="text-xs text-gray-400 mt-0.5">
-                      {[v.location_text, v.timezone].filter(Boolean).join(' · ')}
+                      {v.location_text}
                     </div>
                   )}
                 </div>
@@ -113,3 +114,4 @@ export function VenueSearch({ venues, myVenueIds, mySavedIds }: Props) {
     </div>
   )
 }
+
