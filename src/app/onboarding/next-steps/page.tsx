@@ -1,14 +1,17 @@
 import { redirect } from 'next/navigation'
 import { getUser, createSupabaseServerClient } from '@/lib/supabase/server'
 import { sanitizeNextPath } from '@/lib/auth-ui'
-import { getIdentityLinkCandidates } from '@/lib/api/identity-links'
+import { getContactClaimSuggestions, getIdentityLinkCandidates } from '@/lib/api/identity-links'
 import {
   acceptOnboardingIdentityLinkAction,
   completeOnboardingNextStepAction,
+  dismissPeopleYouMayKnowSuggestionsAction,
   keepSeparateOnboardingIdentityLinkAction,
+  savePeopleYouMayKnowSuggestionAction,
 } from './actions'
 import { LegalAgreementCard } from './LegalAgreementCard'
 import { OnboardingIdentityLinkStep } from './OnboardingIdentityLinkStep'
+import { PeopleYouMayKnowPanel } from './PeopleYouMayKnowPanel'
 
 interface Props {
   searchParams: Promise<{ next?: string; primarySportId?: string; notice?: string }>
@@ -63,6 +66,27 @@ export default async function OnboardingNextStepsPage({ searchParams }: Props) {
   const identityLinkCandidates = await getIdentityLinkCandidates(supabase).catch(() => [])
 
   if (identityLinkCandidates.length === 0) {
+    const peopleYouMayKnowSuggestions = await getContactClaimSuggestions(supabase).catch(() => [])
+
+    if (peopleYouMayKnowSuggestions.length > 0) {
+      return (
+        <div className="space-y-4">
+          {notice === 'email-verified' ? (
+            <div className="mx-auto max-w-[920px] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
+              Email verified. Welcome to PlayerHoods.
+            </div>
+          ) : null}
+          <PeopleYouMayKnowPanel
+            continueHref={continueHref}
+            suggestions={peopleYouMayKnowSuggestions}
+            onSave={savePeopleYouMayKnowSuggestionAction}
+            onDismiss={dismissPeopleYouMayKnowSuggestionsAction}
+            onComplete={completeOnboardingNextStepAction}
+          />
+        </div>
+      )
+    }
+
     const { error } = await supabase.rpc('rpc_complete_onboarding_next_step')
 
     if (!error) {

@@ -1,7 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
+import {
+  acceptIdentityLinkCandidate,
+  dismissContactClaimSuggestions,
+  keepSeparateIdentityLinkCandidate,
+  saveContactClaimSuggestion,
+} from '@/lib/api/identity-links'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { LEGAL_AGREEMENT_VERSION } from '@/lib/legal'
 
@@ -101,4 +106,34 @@ export async function completeOnboardingNextStepAction() {
   revalidatePath('/onboarding/profile')
   revalidatePath('/onboarding/next-steps')
   revalidatePath('/profile')
+}
+
+export async function savePeopleYouMayKnowSuggestionAction(suggestionId: string): Promise<IdentityLinkActionResult> {
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    await saveContactClaimSuggestion(supabase, suggestionId)
+    revalidatePath('/dashboard')
+    revalidatePath('/onboarding/next-steps')
+    revalidatePath('/play-network')
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Could not save this player. Please try again.' }
+  }
+}
+
+export async function dismissPeopleYouMayKnowSuggestionsAction(): Promise<IdentityLinkActionResult> {
+  const user = await getUser()
+  if (!user) return { ok: false, error: 'Please log in again.' }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    await dismissContactClaimSuggestions(supabase)
+    revalidatePath('/onboarding/next-steps')
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Could not dismiss these suggestions. Please try again.' }
+  }
 }

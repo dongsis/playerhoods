@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, IdentityLinkCandidate } from '@/lib/types/database'
+import type { ContactClaimSuggestionCard, Database, IdentityLinkCandidate } from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -52,5 +52,28 @@ export async function keepSeparateIdentityLinkCandidate(
   const { error } = await supabase.rpc('rpc_identity_link_keep_separate', {
     p_guest_id: guestId,
   })
+  if (error) throw error
+}
+
+export async function getContactClaimSuggestions(
+  supabase: Client,
+): Promise<ContactClaimSuggestionCard[]> {
+  const { data, error } = await supabase.rpc('rpc_contact_claim_suggestions_for_user')
+  if (error) throw error
+  return (data ?? []) as ContactClaimSuggestionCard[]
+}
+
+export async function saveContactClaimSuggestion(
+  supabase: Client,
+  suggestionId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('rpc_contact_claim_suggestion_save', {
+    p_suggestion_id: suggestionId,
+  })
+  if (error) throw error
+}
+
+export async function dismissContactClaimSuggestions(supabase: Client): Promise<void> {
+  const { error } = await supabase.rpc('rpc_contact_claim_suggestions_dismiss')
   if (error) throw error
 }

@@ -232,6 +232,10 @@ export type GroupMember = {
   removed_by: string | null
   // v1.5 Identity: group-scoped alias (priority: personal_remark > group_display_name > display_name)
   group_display_name: string | null
+  source_contact_id?: string | null
+  migrated_from_guest_id?: string | null
+  source_person_id?: string | null
+  contact_claim_id?: string | null
 }
 
 // v1.5 Identity: private remark the owner sets on a target user (owner-only via RLS)
@@ -342,6 +346,9 @@ export type Guest = {
   created_by: string
   created_at: string
   person_id?: string | null
+  claimed_by_user_id?: string | null
+  claimed_at?: string | null
+  contact_claim_id?: string | null
 }
 
 export type Person = {
@@ -417,6 +424,36 @@ export type GroupContact = {
   created_by: string
   created_at: string
   removed_at: string | null
+  migrated_to_user_id?: string | null
+  migrated_at?: string | null
+  contact_claim_id?: string | null
+}
+
+export type ContactClaim = {
+  id: string
+  guest_id: string | null
+  person_id: string | null
+  claimed_user_id: string
+  source_review_decision_id: string | null
+  old_display_name_snapshot: string | null
+  claimed_user_display_name_snapshot: string | null
+  claimed_at: string
+  created_at: string
+}
+
+export type ContactClaimSuggestion = {
+  id: string
+  claim_id: string
+  user_id: string
+  suggested_user_id: string
+  source_saved_contact: boolean
+  source_shared_match: boolean
+  saved_contact_at: string | null
+  last_shared_match_at: string | null
+  saved_at: string | null
+  dismissed_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type GroupJoinRequest = {
@@ -584,6 +621,12 @@ export type MatchParticipant = {
   participant_accepted_via: string | null  // 'in_app' | 'manual' | 'delegate_manual' | 'email_invitation' | 'proxy' | null
   manual_confirmed_by: string | null
   waiting_list_at: string | null
+  source_contact_id?: string | null
+  migrated_from_guest_id?: string | null
+  source_person_id?: string | null
+  contact_claim_id?: string | null
+  replaced_by_participant_id?: string | null
+  migrated_at?: string | null
 }
 
 // View types
@@ -614,6 +657,15 @@ export type IdentityLinkCandidate = {
   contact_owner_count: number
   group_contact_count: number
   last_match_at: string | null
+}
+
+export type ContactClaimSuggestionCard = {
+  suggestion_id: string
+  suggested_user_id: string
+  display_name: string | null
+  avatar_url: string | null
+  source_saved_contact: boolean
+  source_shared_match: boolean
 }
 
 export type MatchFormed = {
@@ -690,6 +742,7 @@ export type Notification = {
   note: string | null
   created_at: string
   read_at: string | null
+  dedupe_key?: string | null
 }
 
 // Joined types for UI convenience
@@ -901,6 +954,18 @@ export interface Database {
         Row: ContactRecord
         Insert: Partial<ContactRecord> & { owner_user_id: string; person_id: string }
         Update: Partial<ContactRecord>
+        Relationships: []
+      }
+      contact_claims: {
+        Row: ContactClaim
+        Insert: Partial<ContactClaim> & { claimed_user_id: string }
+        Update: Partial<ContactClaim>
+        Relationships: []
+      }
+      contact_claim_suggestions: {
+        Row: ContactClaimSuggestion
+        Insert: Partial<ContactClaimSuggestion> & { claim_id: string; user_id: string; suggested_user_id: string }
+        Update: Partial<ContactClaimSuggestion>
         Relationships: []
       }
       person_relationships: {
@@ -1690,6 +1755,18 @@ export interface Database {
       rpc_identity_link_keep_separate: {
         Args: { p_guest_id: string }
         Returns: void
+      }
+      rpc_contact_claim_suggestions_for_user: {
+        Args: Record<string, never>
+        Returns: ContactClaimSuggestionCard[]
+      }
+      rpc_contact_claim_suggestion_save: {
+        Args: { p_suggestion_id: string }
+        Returns: Json
+      }
+      rpc_contact_claim_suggestions_dismiss: {
+        Args: Record<string, never>
+        Returns: Json
       }
       rpc_complete_onboarding_legal_agreement: {
         Args: {

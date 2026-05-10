@@ -75,6 +75,10 @@ const suites = [
     file: 'tests/test_runner_participant_controls_template.sql',
     functionName: 'test_runner_participant_controls_template',
   },
+  {
+    file: 'tests/test_runner_contact_claimed_flow.sql',
+    functionName: 'test_runner_contact_claimed_flow',
+  },
 ]
 
 for (const suite of suites) {
