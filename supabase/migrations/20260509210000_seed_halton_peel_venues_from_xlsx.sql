@@ -419,13 +419,14 @@ with seed_rows (
    and lower(btrim(coalesce(i.city, ''))) = lower(btrim(coalesce(s.city, '')))
 )
 insert into public.venue_sports (venue_id, sport_id, court_count)
-select
+select distinct on (i.id, sp.id)
   i.id,
   sp.id,
   coalesce(i.court_count, 0)::integer
 from inserted_seed i
 cross join lateral unnest(i.sport_codes) as sport_code(code)
 join public.sports sp on sp.code = sport_code.code
+order by i.id, sp.id, i.court_count desc nulls last
 on conflict (venue_id, sport_id) do update
 set court_count = excluded.court_count;
 
@@ -523,12 +524,13 @@ with update_rows (
   returning v.id, u.sport_codes, u.court_count
 )
 insert into public.venue_sports (venue_id, sport_id, court_count)
-select
+select distinct on (u.id, sp.id)
   u.id,
   sp.id,
   coalesce(u.court_count, 0)::integer
 from updated u
 cross join lateral unnest(u.sport_codes) as sport_code(code)
 join public.sports sp on sp.code = sport_code.code
+order by u.id, sp.id, u.court_count desc nulls last
 on conflict (venue_id, sport_id) do update
 set court_count = excluded.court_count;
