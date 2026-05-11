@@ -1110,7 +1110,8 @@ export function MatchManagePanel({
       setSuccess('Changes applied.')
       router.refresh()
     } catch (applyError) {
-      setError((applyError as { message?: string })?.message ?? 'Failed to apply changes')
+      const message = (applyError as { message?: string })?.message ?? ''
+      setError(message.includes('contact_communication_opted_out') ? 'This contact has unsubscribed or has no reachable invitation channel.' : message || 'Failed to apply changes')
     } finally {
       setIsApplying(false)
     }

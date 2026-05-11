@@ -26,6 +26,7 @@ import { getGroups, getGroupMembers } from '@/lib/api/groups'
 import { listSports } from '@/lib/api/sports'
 import { getInviteCircleList, getInviteCircleSourceLabel } from '@/lib/api/play-network'
 import { getContactPlayerResolution } from '@/lib/api/roster'
+import { getContactInvitationDeliveryStatus } from '@/lib/contact-communication'
 import { getAvailabilityStatusLabel } from '@/lib/profile-options'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import type { AvailabilityStatus, Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
@@ -55,6 +56,9 @@ type InviteCandidate = {
   email?: string | null
   phone?: string | null
   notes?: string | null
+  emailOptedOut?: boolean
+  smsOptedOut?: boolean
+  hasReachableChannel?: boolean
 }
 
 type UserInviteCandidateSeed = {
@@ -734,11 +738,15 @@ function CandidatePreviewModal({
             <>
               <div>
                 <p style={{ margin: 0, fontSize: '0.74rem', color: '#6b7280' }}>Phone</p>
-                <p style={{ margin: '0.12rem 0 0', fontSize: '0.9rem', color: '#111827' }}>{candidate.phone || 'Not provided'}</p>
+                <p style={{ margin: '0.12rem 0 0', fontSize: '0.9rem', color: '#111827' }}>
+                  {candidate.phone ? `${candidate.phone}${candidate.smsOptedOut ? ' - unsubscribed' : ''}` : 'Not provided'}
+                </p>
               </div>
               <div>
                 <p style={{ margin: 0, fontSize: '0.74rem', color: '#6b7280' }}>Email</p>
-                <p style={{ margin: '0.12rem 0 0', fontSize: '0.9rem', color: '#111827' }}>{candidate.email || 'Not provided'}</p>
+                <p style={{ margin: '0.12rem 0 0', fontSize: '0.9rem', color: '#111827' }}>
+                  {candidate.email ? `${candidate.email}${candidate.emailOptedOut ? ' - unsubscribed' : ''}` : 'Not provided'}
+                </p>
               </div>
               {candidate.notes && (
                 <div>
@@ -1091,7 +1099,7 @@ export function CreateMatchInline({
 
   const selectedInvitePlayers = useMemo(() => {
     const selected = new Set(selectedDirectInviteKeys)
-    return availableInviteOptions.filter((member) => selected.has(member.key))
+    return availableInviteOptions.filter((member) => selected.has(member.key) && !(member.kind === 'contact' && member.hasReachableChannel === false))
   }, [availableInviteOptions, selectedDirectInviteKeys])
 
   const selectedInviteWarnings = useMemo(
@@ -1443,10 +1451,20 @@ export function CreateMatchInline({
             }),
         )
 
+        const contactOnlyRows = rows.filter((row) => row.resolution_state === 'contact_only' && !row.linked_user_id)
+        const deliveryStatus = await getContactInvitationDeliveryStatus(
+          supabase,
+          contactOnlyRows.map((row) => row.guest_id),
+        ).catch((statusError) => {
+          console.error('[CreateMatchInline] contact delivery status:', statusError)
+          return new Map()
+        })
+
         setContactPlayers(
-          rows
-            .filter((row) => row.resolution_state === 'contact_only' && !row.linked_user_id)
-            .map((row) => ({
+          contactOnlyRows
+            .map((row) => {
+              const status = deliveryStatus.get(row.guest_id)
+              return {
               key: `contact:${row.guest_id}`,
               kind: 'contact',
               name: row.display_name.trim() || 'Contact Player',
@@ -1461,7 +1479,11 @@ export function CreateMatchInline({
               email: row.email,
               phone: row.phone,
               notes: row.notes,
-            })),
+              emailOptedOut: status?.email_opted_out ?? false,
+              smsOptedOut: status?.sms_opted_out ?? false,
+              hasReachableChannel: status?.has_reachable_channel ?? Boolean(row.email || row.phone),
+            }
+            }),
         )
       })
       .catch((contactError) => {
@@ -1642,7 +1664,9 @@ export function CreateMatchInline({
         return
       }
 
-      const selectedCandidates = availableInviteOptions.filter((candidate) => selectedDirectInviteKeys.has(candidate.key))
+      const selectedCandidates = availableInviteOptions.filter(
+        (candidate) => selectedDirectInviteKeys.has(candidate.key) && !(candidate.kind === 'contact' && candidate.hasReachableChannel === false),
+      )
       const recurringInvites: RecurringDirectInviteInput[] = []
       selectedCandidates.forEach((candidate) => {
         if (candidate.kind === 'user' && candidate.userId) {
@@ -1905,7 +1929,8 @@ export function CreateMatchInline({
       setSelectedPostCreateInviteIds(new Set())
       return true
     } catch (err: unknown) {
-      setError((err as { message?: string })?.message || 'Failed to invite players')
+      const message = (err as { message?: string })?.message ?? ''
+      setError(message.includes('contact_communication_opted_out') ? 'This contact has unsubscribed or has no reachable invitation channel.' : message || 'Failed to invite players')
       return false
     } finally {
       setInviteLoading(false)
@@ -1927,6 +1952,8 @@ export function CreateMatchInline({
   }
 
   const toggleDirectInviteCandidate = (candidate: InviteCandidate) => {
+    if (candidate.kind === 'contact' && candidate.hasReachableChannel === false) return
+
     setSelectedDirectInviteKeys((prev) => {
       const next = new Set(prev)
       if (next.has(candidate.key)) next.delete(candidate.key)
@@ -1938,6 +1965,12 @@ export function CreateMatchInline({
   const renderInviteCandidateButton = (candidate: InviteCandidate, compact = false) => {
     const isSelected = selectedDirectInviteKeys.has(candidate.key)
     const showAvailability = candidate.kind !== 'contact'
+    const contactUnavailable = candidate.kind === 'contact' && candidate.hasReachableChannel === false
+    const contactStatusLabel = contactUnavailable
+      ? candidate.emailOptedOut || candidate.smsOptedOut
+        ? 'Unsubscribed'
+        : 'No email or phone'
+      : null
     const availabilityWarning = showAvailability ? getAvailabilityWarning(candidate) : null
     const availabilityLabel = showAvailability ? getAvailabilityStatusLabel(candidate.availabilityStatus) : null
     const availabilityClasses =
@@ -1952,7 +1985,9 @@ export function CreateMatchInline({
       ? availabilityWarning
         ? `${availabilityClasses} ring-2 ring-orange-200`
         : 'border-orange-200 bg-orange-50 text-orange-600 ring-2 ring-orange-100'
-      : availabilityClasses
+      : contactUnavailable
+        ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-75'
+        : availabilityClasses
 
     return (
       <button
@@ -1960,13 +1995,17 @@ export function CreateMatchInline({
         type="button"
         onClick={() => toggleDirectInviteCandidate(candidate)}
         aria-pressed={isSelected}
+        disabled={contactUnavailable}
         title={
-          availabilityWarning
+          contactStatusLabel
+            ? `${candidate.name}: ${contactStatusLabel}`
+            : availabilityWarning
             ? `${candidate.name}: ${candidate.sourceLabels.join(', ')} • ${availabilityWarning.label}. ${availabilityWarning.message}`
             : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`
         }
         className={[
           'relative inline-flex items-center gap-1.5 rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600',
+          contactUnavailable ? 'cursor-not-allowed hover:translate-y-0 hover:border-gray-200 hover:bg-gray-50 hover:text-gray-400' : '',
           compact ? 'px-3 py-2 text-[11px]' : 'px-3 py-2 text-[11px]',
           stateClasses,
         ].join(' ')}
@@ -1998,6 +2037,11 @@ export function CreateMatchInline({
             className="sr-only"
           >
             {availabilityWarning.label}
+          </span>
+        ) : null}
+        {contactStatusLabel ? (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">
+            {contactStatusLabel}
           </span>
         ) : null}
       </button>

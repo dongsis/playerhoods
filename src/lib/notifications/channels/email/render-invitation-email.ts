@@ -10,6 +10,7 @@ export type InvitationEmailData = {
     club_name: string | null
   } | null
   siteUrl: string
+  unsubscribeUrl?: string | null
 }
 
 function formatInvitationHeading(): string {
@@ -42,6 +43,7 @@ export function renderInvitationEmail(data: InvitationEmailData): string {
   const base = data.siteUrl && data.siteUrl !== 'undefined' ? data.siteUrl : 'http://localhost:3000'
   const viewUrl = `${base}/invitations/${data.invitationId}`
   const registerUrl = `${base}/login`
+  const unsubscribeUrl = data.unsubscribeUrl ?? `${base}/unsubscribe?invitation=${encodeURIComponent(data.invitationId)}&channel=email&scope=contact_invites`
   const formatLabel = formatMatchFormatLabel(data.matchSummary?.game_type)
   const dateLabel = formatMatchDateLabel(data.matchSummary?.match_date)
   const clubLabel = formatClubLabel(data.matchSummary?.club_name)
@@ -63,7 +65,7 @@ export function renderInvitationEmail(data: InvitationEmailData): string {
       "PlayerHoods helps players organize matches without scattered group chats. Respond quickly, keep your playing schedule in one place, and join the community whenever you're ready.",
     secondaryLinkLabel: 'Create an account for a smoother experience',
     secondaryLinkUrl: registerUrl,
-    footerNote: `This invitation was sent to ${data.targetEmail}.`,
+    footerNote: `This invitation was sent to ${data.targetEmail}. To stop contact invitation emails, unsubscribe here: ${unsubscribeUrl}`,
     siteUrl: data.siteUrl,
   })
 }

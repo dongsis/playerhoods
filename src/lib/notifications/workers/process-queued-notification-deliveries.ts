@@ -89,18 +89,21 @@ export async function processQueuedNotificationDeliveries(
         : null
       const inviterDisplayName = (payload.inviter_display_name as string) ?? 'Someone'
       subject = `${inviterDisplayName} invited you to a match`
+      const invitationId = (payload.invitation_id as string) ?? ''
       html = renderInvitationEmail({
         inviterDisplayName,
         targetEmail: (payload.target_email as string) ?? d.destination,
-        invitationId: (payload.invitation_id as string) ?? '',
+        invitationId,
         matchSummary,
         siteUrl: SITE_URL,
+        unsubscribeUrl: `${SITE_URL}/unsubscribe?invitation=${encodeURIComponent(invitationId)}&channel=email&scope=contact_invites`,
       })
       smsBody = renderInvitationSms({
         inviterDisplayName,
-        invitationId: (payload.invitation_id as string) ?? '',
+        invitationId,
         matchSummary,
         siteUrl: SITE_URL,
+        unsubscribeUrl: `${SITE_URL}/unsubscribe?invitation=${encodeURIComponent(invitationId)}&channel=sms&scope=contact_invites`,
       })
     } else if (templateType === 'guest_nominated') {
       const m = buildMatchInfo(payload)

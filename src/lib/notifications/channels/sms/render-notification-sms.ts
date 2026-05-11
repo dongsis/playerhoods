@@ -9,6 +9,7 @@ type InvitationSmsData = {
     club_name: string | null
   } | null
   siteUrl: string
+  unsubscribeUrl?: string | null
 }
 
 const FALLBACK_SITE_URL = 'http://localhost:3000'
@@ -37,9 +38,10 @@ export function renderInvitationSms(data: InvitationSmsData): string {
     data.matchSummary?.club_name,
   )
   const invitationUrl = `${normalizeBaseUrl(data.siteUrl)}/invitations/${data.invitationId}`
+  const unsubscribeUrl = data.unsubscribeUrl ?? `${normalizeBaseUrl(data.siteUrl)}/unsubscribe?invitation=${encodeURIComponent(data.invitationId)}&channel=sms&scope=contact_invites`
   return summary
-    ? `${data.inviterDisplayName} invited you to a PlayerHoods match (${summary}). Respond: ${invitationUrl}`
-    : `${data.inviterDisplayName} invited you to a PlayerHoods match. Respond: ${invitationUrl}`
+    ? `${data.inviterDisplayName} invited you to a PlayerHoods match (${summary}). Respond: ${invitationUrl} Stop: ${unsubscribeUrl}`
+    : `${data.inviterDisplayName} invited you to a PlayerHoods match. Respond: ${invitationUrl} Stop: ${unsubscribeUrl}`
 }
 
 export function renderGuestNominatedSms(match: MatchInfo, nominatorName: string): string {
