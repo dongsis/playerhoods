@@ -198,7 +198,7 @@ export default function HomePage() {
               <span className="text-[#0047AB]">10,000+</span> Active Players
             </div>
             <div className="rounded-lg border border-white/50 bg-white/90 px-4 py-2 shadow-sm backdrop-blur">
-              <span className="text-[#0047AB]">2,500+</span> Matches Monthly
+              <span className="text-[#0047AB]">3,000+</span> Tennis & Pickleball Places in Ontario to Play
             </div>
           </div>
         </div>
