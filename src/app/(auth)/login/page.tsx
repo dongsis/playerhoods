@@ -260,6 +260,12 @@ export default function LoginPage() {
         return
       }
 
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setInfo(null)
+        setError('This email is already verified with Google. Please continue with Google to sign in.')
+        return
+      }
+
       if (data.session) {
         window.location.assign('/onboarding/intro')
         return
