@@ -102,13 +102,25 @@ export async function getVenueSports(supabase: Client, venueId: string): Promise
 }
 
 export async function listVenueSports(supabase: Client): Promise<VenueSport[]> {
-  const { data, error } = await supabase
-    .from('venue_sports')
-    .select('*')
-    .order('venue_id', { ascending: true })
-    .order('sport_id', { ascending: true })
-  if (error) throw error
-  return data as VenueSport[]
+  const pageSize = 1000
+  const rows: VenueSport[] = []
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('venue_sports')
+      .select('*')
+      .order('venue_id', { ascending: true })
+      .order('sport_id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+
+    const page = (data ?? []) as VenueSport[]
+    rows.push(...page)
+
+    if (page.length < pageSize) break
+  }
+
+  return rows
 }
 
 // Returns venue_admins rows for a given venue, enriched with display names
