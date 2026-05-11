@@ -261,7 +261,7 @@ export default function LoginPage() {
       }
 
       if (data.session) {
-        window.location.assign('/onboarding/profile')
+        window.location.assign('/onboarding/intro')
         return
       }
 

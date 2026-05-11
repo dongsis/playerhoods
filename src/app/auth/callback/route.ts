@@ -51,7 +51,7 @@ function buildPostAuthRedirect({
       return nextStepsUrl
     }
 
-    const onboardingUrl = new URL('/onboarding/profile', requestUrl.origin)
+    const onboardingUrl = new URL('/onboarding/intro', requestUrl.origin)
     onboardingUrl.searchParams.set('next', next)
     if (notice) onboardingUrl.searchParams.set('notice', notice)
     return onboardingUrl
