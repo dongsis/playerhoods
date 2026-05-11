@@ -53,6 +53,24 @@ function buildMissingFields(draft: Pick<EditableDraft, 'display_name' | 'phone' 
   return missing
 }
 
+function getFriendlyImportError(error: unknown, fallback: string): string {
+  const message =
+    error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : ''
+
+  if (
+    !message
+    || message.includes('Server Components render')
+    || message.includes('digest')
+    || message === 'An error occurred'
+  ) {
+    return fallback
+  }
+
+  return message
+}
+
 function detectPossibleDuplicate(
   draft: Pick<EditableDraft, 'display_name' | 'phone' | 'email'>,
   existingContacts: ContactPlayerResolved[],
@@ -270,7 +288,7 @@ export function ContactScreenshotImportSection({
       if (uploaded.length > 0) {
         await supabase.storage.from('contact-imports').remove(uploaded.map((item) => item.storage_path))
       }
-      setError((err as { message?: string })?.message ?? 'Could not parse screenshot.')
+      setError(getFriendlyImportError(err, 'Could not parse screenshot. Please try again or add the contact manually.'))
     } finally {
       setParsing(false)
     }
@@ -306,7 +324,7 @@ export function ContactScreenshotImportSection({
       resetFlow()
       await onImported()
     } catch (err: unknown) {
-      setError((err as { message?: string })?.message ?? 'Could not import contacts.')
+      setError(getFriendlyImportError(err, 'Could not import contacts. Please review the selected contacts and try again.'))
     } finally {
       setImporting(false)
     }
@@ -323,7 +341,7 @@ export function ContactScreenshotImportSection({
 
       <div className="p-6">
         {step === 'upload' ? (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <input
               ref={fileInputRef}
               type="file"
@@ -333,8 +351,7 @@ export function ContactScreenshotImportSection({
               className="hidden"
             />
 
-            <button
-              type="button"
+            <div
               onDragOver={(event) => {
                 event.preventDefault()
                 setIsDragging(true)
@@ -345,38 +362,36 @@ export function ContactScreenshotImportSection({
                 setIsDragging(false)
                 handleFileSelection(Array.from(event.dataTransfer.files ?? []).filter((file) => file.type.startsWith('image/')))
               }}
-              onClick={() => fileInputRef.current?.click()}
               className={[
-                'flex w-full flex-col items-center justify-center rounded-[22px] border-2 border-dashed px-6 py-12 text-center transition',
+                'flex flex-wrap items-center justify-between gap-3 rounded-[18px] border px-4 py-4 transition',
                 isDragging
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50',
+                  ? 'border-blue-300 bg-blue-50'
+                  : 'border-slate-200 bg-slate-50',
               ].join(' ')}
             >
-              <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                <UploadIcon />
-              </span>
-              <div className="text-lg font-medium text-slate-800">Click or drag screenshot here</div>
-              <p className="mt-2 max-w-xs text-sm leading-6 text-slate-500">
-                Upload screenshots containing names, phones, or emails. We&apos;ll automatically extract them.
-              </p>
-              <span className="mt-6 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
-                Choose Files
-              </span>
-            </button>
-
-            {files.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {files.map((file) => (
-                  <span
-                    key={`${file.name}-${file.size}`}
-                    className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[12px] font-semibold text-blue-700"
-                  >
-                    {file.name}
-                  </span>
-                ))}
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                  <UploadIcon />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-800">
+                    {files.length > 0 ? `${files.length} screenshot${files.length === 1 ? '' : 's'} selected` : 'Choose screenshot files'}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-slate-500">
+                    {files.length > 0
+                      ? files.map((file) => file.name).join(', ')
+                      : 'PNG, JPG, or WebP. You can also drop files here.'}
+                  </div>
+                </div>
               </div>
-            ) : null}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="shrink-0 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                Choose Files
+              </button>
+            </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-amber-100 bg-amber-50 p-4">
               <div className="flex gap-3 text-amber-800">

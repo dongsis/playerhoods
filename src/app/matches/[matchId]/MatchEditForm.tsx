@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Court, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
 import type { MatchCourtPlanUpdateInput } from './match-detail.actions'
@@ -34,6 +34,8 @@ const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'self_book_later', label: 'Host will book it later' },
   { value: 'needs_help_booking', label: 'Players can help secure a court' },
 ]
+
+const DEFAULT_COURT_LABELS = Array.from({ length: 10 }, (_, index) => `crt ${index + 1}`)
 
 const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open doubles' },
@@ -101,6 +103,17 @@ export function MatchEditForm({
   const [courtLabel, setCourtLabel] = useState(finalCourtLabel ?? '')
   const [cancelReason, setCancelReason] = useState('')
 
+  const courtLabelOptions = useMemo(
+    () => (
+      venueCourts.length > 0
+        ? [...venueCourts]
+            .sort((left, right) => left.court_code.localeCompare(right.court_code))
+            .map((court) => court.court_code)
+        : DEFAULT_COURT_LABELS
+    ),
+    [venueCourts],
+  )
+
   useEffect(() => {
     if (!open) return
 
@@ -117,9 +130,8 @@ export function MatchEditForm({
   useEffect(() => {
     if (planMode !== 'secured') return
     if (courtLabel.trim()) return
-    if (venueCourts.length === 0) return
-    setCourtLabel(venueCourts[0].court_code)
-  }, [courtLabel, planMode, venueCourts])
+    setCourtLabel(courtLabelOptions[0] ?? '')
+  }, [courtLabel, courtLabelOptions, planMode])
 
   useEffect(() => {
     if (gameType === 'singles' && nextDoublesFormat === 'mixed_doubles') {
@@ -404,27 +416,19 @@ export function MatchEditForm({
               <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '0.2rem' }}>
                 Court Plan
               </label>
-              {venueCourts.length > 0 ? (
-                <select
-                  value={courtLabel}
-                  onChange={(e) => setCourtLabel(e.target.value)}
-                  style={{ width: '100%', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
-                >
-                  {venueCourts.map((court) => (
-                    <option key={court.id} value={court.court_code}>
-                      {court.court_code}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={courtLabel}
-                  onChange={(e) => setCourtLabel(e.target.value)}
-                  placeholder="Court 2"
-                  style={{ width: '100%', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
-                />
-              )}
+              <input
+                type="text"
+                value={courtLabel}
+                onChange={(e) => setCourtLabel(e.target.value)}
+                list="match-edit-court-options"
+                placeholder="crt 1"
+                style={{ width: '100%', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
+              />
+              <datalist id="match-edit-court-options">
+                {courtLabelOptions.map((option) => (
+                  <option key={option} value={option} />
+                ))}
+              </datalist>
             </div>
           )}
 

@@ -168,7 +168,8 @@ export default function HomePage() {
             <span className="block text-[#CDE11D]">Keep the game going.</span>
           </h1>
           <p className="mx-auto mt-7 max-w-2xl text-xl font-semibold leading-relaxed text-white/95 drop-shadow-sm md:text-2xl">
-            Find players, save them to your Hood, and organize matches with less back-and-forth.
+            Maintain your trusted playing circle, grow your hood safely, and organize every game
+            without the chaos.
           </p>
 
           <form action="/venues" className="mx-auto mt-10 flex max-w-3xl items-center rounded-full bg-white p-2 shadow-2xl">
@@ -195,10 +196,7 @@ export default function HomePage() {
 
           <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm font-black text-slate-800">
             <div className="rounded-lg border border-white/50 bg-white/90 px-4 py-2 shadow-sm backdrop-blur">
-              <span className="text-[#0047AB]">10,000+</span> Active Players
-            </div>
-            <div className="rounded-lg border border-white/50 bg-white/90 px-4 py-2 shadow-sm backdrop-blur">
-              <span className="text-[#0047AB]">3,000+</span> Tennis & Pickleball Places in Ontario to Play
+              <span className="text-[#0047AB]">3,000+</span> Ontario Tennis & Pickleball Places Listed
             </div>
           </div>
         </div>
@@ -309,12 +307,16 @@ function CoreAdvantagesCarousel() {
               label="Old Ways"
               tone="muted"
               items={['Email', 'WhatsApp', 'WeChat', 'Word of mouth']}
+              title="Scattered coordination"
+              description="Invites, replies, and player status get buried across separate chats, emails, and word of mouth."
             />
             <div className="hidden text-lg font-black text-slate-300 lg:block">to</div>
             <ComparisonPanel
               label="PlayerHoods"
               tone="brand"
               items={['Send invites', 'Player status', 'Group chat', 'Matches & groups']}
+              title="One clear game flow"
+              description="Bring match invites, confirmations, groups, and chat into one place built for organizing play."
             />
           </div>
 
@@ -405,10 +407,14 @@ function ComparisonPanel({
   label,
   items,
   tone,
+  title,
+  description,
 }: {
   label: string
   items: string[]
   tone: 'muted' | 'brand'
+  title: string
+  description: string
 }) {
   const isBrand = tone === 'brand'
 
@@ -425,7 +431,15 @@ function ComparisonPanel({
       >
         {label}
       </span>
-      <div className="grid grid-cols-2 gap-4 pt-3 sm:grid-cols-4">
+      <div className="pt-4 text-center">
+        <h3 className={`text-lg font-black ${isBrand ? 'text-[#0047AB]' : 'text-[#001845]'}`}>
+          {title}
+        </h3>
+        <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-relaxed text-slate-500">
+          {description}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-4 pt-5 sm:grid-cols-4">
         {items.map((item) => (
           <div key={item} className="flex flex-col items-center gap-2 text-center">
             <div

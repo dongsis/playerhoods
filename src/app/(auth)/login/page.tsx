@@ -375,7 +375,7 @@ export default function LoginPage() {
       <section className="ph-login-card-stage" style={cardStageStyle} aria-label={titles[mode]}>
         <div className="ph-login-card" style={cardStyle}>
           <img
-            src="/playerhoods-logo-transparent.png"
+            src="/playerhoods-logo-cutout.png"
             alt="PlayerHoods"
             width={1122}
             height={1402}
@@ -754,7 +754,7 @@ const backdropStyle: React.CSSProperties = {
   inset: 0,
   backgroundImage:
     'linear-gradient(90deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 42%, rgba(255,255,255,0.02) 100%), url("/login-playerhoods-hero-final.png")',
-  backgroundSize: 'auto 98%',
+  backgroundSize: 'auto 100%',
   backgroundPosition: 'left center',
   backgroundRepeat: 'no-repeat',
 }
@@ -888,10 +888,11 @@ const cardStageStyle: React.CSSProperties = {
 }
 
 const logoStyle: React.CSSProperties = {
-  width: '5.4rem',
-  height: '6.7rem',
+  width: '8.45rem',
+  height: '10.4rem',
   objectFit: 'contain',
   display: 'block',
+  background: 'transparent',
   margin: '0 auto 0.25rem',
 }
 
@@ -910,7 +911,7 @@ const cardStyle: React.CSSProperties = {
 const titleStyle: React.CSSProperties = {
   margin: 0,
   color: '#071D46',
-  fontSize: '2.28rem',
+  fontSize: '1.35rem',
   lineHeight: 1.08,
   fontWeight: 850,
   letterSpacing: 0,

@@ -666,6 +666,7 @@ export type ContactClaimSuggestionCard = {
   avatar_url: string | null
   source_saved_contact: boolean
   source_shared_match: boolean
+  venue_context: string | null
 }
 
 export type MatchFormed = {

@@ -31,6 +31,37 @@ function normalizeCityName(value: string) {
   return value.trim().replace(/\s+/g, ' ')
 }
 
+const QUICK_CITY_GROUPS = [
+  { label: 'Peel', cities: ['Mississauga', 'Brampton', 'Caledon'] },
+  { label: 'Halton', cities: ['Oakville', 'Burlington', 'Milton', 'Halton Hills', 'Acton', 'Georgetown'] },
+]
+
+function getQuickCityGroups(cityOptions: string[], selectedCities: string[]) {
+  const optionByLowerName = new Map(cityOptions.map((city) => [city.toLowerCase(), city]))
+  const selectedLowerNames = new Set(selectedCities.map((city) => city.toLowerCase()))
+
+  return QUICK_CITY_GROUPS
+    .map((group) => ({
+      ...group,
+      cities: group.cities
+        .map((city) => optionByLowerName.get(city.toLowerCase()))
+        .filter((city): city is string => typeof city === 'string' && !selectedLowerNames.has(city.toLowerCase())),
+    }))
+    .filter((group) => group.cities.length > 0)
+}
+
+function getVenueMetaLine(venue: VenueOption): string {
+  const cityRegion = [venue.city?.trim(), venue.province?.trim()]
+    .filter((value): value is string => Boolean(value))
+    .join(', ')
+  const parts = [
+    venue.location_text?.trim() || null,
+    cityRegion || venue.country?.trim() || null,
+  ].filter((value): value is string => Boolean(value))
+
+  return parts.join(' • ') || 'Location not set'
+}
+
 function buildErrorMessage(error: unknown): string {
   const message =
     error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
@@ -185,6 +216,10 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
       return !query || city.toLowerCase().includes(query)
     })
   }, [availableCities, cityInput, selectedCities])
+  const quickCityGroups = useMemo(
+    () => getQuickCityGroups(availableCities, selectedCities.map((city) => city.city_name)),
+    [availableCities, selectedCities],
+  )
 
   const availableFilteredVenues = useMemo(() => {
     const query = normalizeQuery(clubInput)
@@ -437,8 +472,28 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
             />
           </div>
 
+          {quickCityGroups.length > 0 ? (
+            <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+              {quickCityGroups.map((group) => (
+                <div key={group.label} className="flex shrink-0 items-center gap-1.5">
+                  {group.cities.map((city) => (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={() => addCity(city)}
+                      disabled={selectedCities.length >= 8 || loading}
+                      className="inline-flex h-8 shrink-0 items-center rounded-full border border-[#D7E0EC] bg-white px-3 text-body-sub font-semibold text-[#334155] transition hover:border-[#C25E46] hover:text-[#071A44] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {city}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           {isCityDropdownOpen && selectedCities.length < 8 ? (
-            <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
+            <div className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
               {filteredCities.length > 0 ? (
                 filteredCities.map((city) => (
                   <button
@@ -486,7 +541,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
                   </div>
                   <div>
                     <div className="text-title-main text-[#1E293B]">{getVenueDisplayName(venue as Venue)}</div>
-                    <div className="text-body-sub text-[#64748B]">{venue.city ?? 'Unknown city'}</div>
+                    <div className="text-body-sub text-[#64748B]">{getVenueMetaLine(venue)}</div>
                   </div>
                 </div>
                 <button
@@ -535,7 +590,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
                       >
                         <div className="min-w-0">
                           <div className="text-body-main truncate font-semibold text-[#1E293B]">{getVenueDisplayName(venue as Venue)}</div>
-                          <div className="text-body-sub text-[#64748B]">{venue.city ?? 'Unknown city'}</div>
+                          <div className="text-body-sub text-[#64748B]">{getVenueMetaLine(venue)}</div>
                         </div>
                         <button
                           type="button"

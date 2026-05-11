@@ -25,6 +25,8 @@ type Props = {
   showSelectAction?: boolean
 }
 
+const DEFAULT_COURT_LABELS = Array.from({ length: 10 }, (_, index) => `crt ${index + 1}`)
+
 function formatOfferTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -56,10 +58,13 @@ export function MatchCourtInfoButton({
   const [note, setNote] = useState('')
 
   const courtOptions = useMemo(
-    () =>
-      [...venueCourts]
-        .sort((left, right) => left.court_code.localeCompare(right.court_code))
-        .map((court) => court.court_code),
+    () => (
+      venueCourts.length > 0
+        ? [...venueCourts]
+            .sort((left, right) => left.court_code.localeCompare(right.court_code))
+            .map((court) => court.court_code)
+        : DEFAULT_COURT_LABELS
+    ),
     [venueCourts],
   )
 
@@ -236,44 +241,26 @@ export function MatchCourtInfoButton({
               <label style={{ display: 'block', fontSize: '0.78rem', color: '#667085', marginBottom: '0.3rem' }}>
                 Court
               </label>
-              {courtOptions.length > 0 ? (
-                <select
-                  value={courtLabel}
-                  onChange={(event) => setCourtLabel(event.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.7rem 0.8rem',
-                    fontSize: '0.84rem',
-                    borderRadius: '12px',
-                    border: '1px solid #d0d5dd',
-                    outline: 'none',
-                    background: '#fff',
-                    color: courtLabel ? '#111827' : '#98a2b3',
-                  }}
-                >
-                  <option value="">Select your booked court</option>
-                  {courtOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={courtLabel}
-                  onChange={(event) => setCourtLabel(event.target.value)}
-                  placeholder="Court 2"
-                  style={{
-                    width: '100%',
-                    padding: '0.7rem 0.8rem',
-                    fontSize: '0.84rem',
-                    borderRadius: '12px',
-                    border: '1px solid #d0d5dd',
-                    outline: 'none',
-                  }}
-                />
-              )}
+              <input
+                type="text"
+                value={courtLabel}
+                onChange={(event) => setCourtLabel(event.target.value)}
+                list="match-court-info-options"
+                placeholder="crt 1"
+                style={{
+                  width: '100%',
+                  padding: '0.7rem 0.8rem',
+                  fontSize: '0.84rem',
+                  borderRadius: '12px',
+                  border: '1px solid #d0d5dd',
+                  outline: 'none',
+                }}
+              />
+              <datalist id="match-court-info-options">
+                {courtOptions.map((option) => (
+                  <option key={option} value={option} />
+                ))}
+              </datalist>
             </div>
 
             <div>

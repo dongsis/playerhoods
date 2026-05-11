@@ -82,6 +82,7 @@ export function PeopleYouMayKnowPanel({
         <div className="grid gap-3 sm:grid-cols-2">
           {visibleCards.map((card) => {
             const displayName = card.display_name?.trim() || 'Player'
+            const venueContext = card.venue_context?.trim()
             const isSaving = savingId === card.suggestion_id
 
             return (
@@ -93,7 +94,9 @@ export function PeopleYouMayKnowPanel({
                   <Avatar src={card.avatar_url} displayName={displayName} size="md" />
                   <div className="min-w-0">
                     <div className="truncate text-[15px] font-bold text-[#0B1F3A]">{displayName}</div>
-                    <div className="text-[12px] font-semibold text-[#7A8AA0]">PlayerHoods player</div>
+                    {venueContext ? (
+                      <div className="truncate text-[12px] font-semibold text-[#7A8AA0]">{venueContext}</div>
+                    ) : null}
                   </div>
                 </div>
                 <button

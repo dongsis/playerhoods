@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { Court, Sport, Venue, VenueSport } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
+import { getPublicVenueNote } from '@/lib/venues/notes'
 
 interface Props {
   venue: Venue
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function PublicVenuePageContent({ venue, courts, sports, venueSports }: Props) {
+  const publicVenueNote = getPublicVenueNote(venue.notes)
   const sportMap = new Map(sports.map((sport) => [sport.id, sport.display_name]))
   const courtsBySport = sports
     .map((sport) => ({
@@ -104,16 +106,16 @@ export function PublicVenuePageContent({ venue, courts, sports, venueSports }: P
         ) : null}
       </header>
 
-      {venue.notes ? (
+      {publicVenueNote ? (
         <section className="mb-6 rounded-2xl bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-600">
-          {venue.notes}
+          {publicVenueNote}
         </section>
       ) : null}
 
       {venueSportsSummary.length > 0 ? (
         <section className="mb-6">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Supported Sports
+            Sports
           </h2>
           <div className="flex flex-wrap gap-2">
             {venueSportsSummary.map((entry) => (
@@ -122,20 +124,20 @@ export function PublicVenuePageContent({ venue, courts, sports, venueSports }: P
                 className="rounded-2xl border border-gray-100 bg-white px-4 py-2 text-sm text-gray-700"
               >
                 <span className="font-semibold text-gray-900">{entry.sportName}</span>
-                <span className="ml-2 text-gray-500">{entry.court_count} courts</span>
+                {entry.court_count && entry.court_count > 0 ? (
+                  <span className="ml-2 text-gray-500">{entry.court_count} courts</span>
+                ) : null}
               </span>
             ))}
           </div>
         </section>
       ) : null}
 
-      <section className="mb-6">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Courts ({courts.length})
-        </h2>
-        {courts.length === 0 ? (
-          <p className="text-sm italic text-gray-400">No courts listed.</p>
-        ) : (
+      {courts.length > 0 ? (
+        <section className="mb-6">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Courts
+          </h2>
           <div className="space-y-4">
             {courtsBySport.map(({ sport, courts: sportCourts }) => (
               <div key={sport.id}>
@@ -165,8 +167,8 @@ export function PublicVenuePageContent({ venue, courts, sports, venueSports }: P
               </div>
             ))}
           </div>
-        )}
-      </section>
+        </section>
+      ) : null}
     </main>
   )
 }

@@ -214,49 +214,56 @@ export function DiscoveryAndInvitesSection({
     <div className="space-y-5">
       {showTitle ? <h2 className="text-h2 text-[#1E293B]">Discovery Settings</h2> : null}
 
-      <section className="space-y-4">
-        <h3 className="text-h2 text-[#1E293B]">Who can find me?</h3>
+      <section className="space-y-4 px-1">
+        <div className="space-y-1">
+          <h3 className="text-h2 text-[#1E293B]">Who can find me?</h3>
+          <p className="text-body-sub text-[#64748B]">Control who can discover your player profile.</p>
+        </div>
 
-        <div className="space-y-4 rounded-[24px] border border-[#E2E8F0] bg-white p-4">
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={clubDiscoveryEnabled}
-              onChange={(event) => handleSetAllClubVisibility(event.target.checked)}
-              disabled={sortedIdentities.length === 0 || isPending}
-              className="mt-1 h-4 w-4 rounded border-slate-300"
-            />
-            <div>
-              <div className="text-body-main font-semibold text-[#1E293B]">Let members of my clubs find me</div>
-              {sortedIdentities.length === 0 ? (
-                <p className="mt-2 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
-                  Add clubs or venues to control where club discovery is active.
-                </p>
-              ) : null}
-            </div>
-          </label>
-
-          {sortedIdentities.length > 0 ? (
-            <div className="space-y-2 pl-7">
-              {sortedIdentities.map((identity) => (
-                <label
-                  key={identity.id}
-                  className="flex items-center gap-3 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-2 transition"
-                >
-                  <input
-                    type="checkbox"
-                    checked={venueVisibility[identity.venue_id] ?? true}
-                    onChange={(event) => handleSetVisible(identity.venue_id, event.target.checked)}
-                    disabled={venuePending === identity.venue_id || isPending}
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  <span className="text-sm font-medium text-[#334155]">
-                    Visible to members of {getVenueDisplayName(identity.venue)}
+        <div className="space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4">
+          <div>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={clubDiscoveryEnabled}
+                onChange={(event) => handleSetAllClubVisibility(event.target.checked)}
+                disabled={sortedIdentities.length === 0 || isPending}
+                className="mt-1 h-4 w-4 rounded border-slate-300"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-body-main font-semibold text-[#1E293B]">
+                  Let members of my clubs find me
+                </span>
+                {sortedIdentities.length === 0 ? (
+                  <span className="mt-2 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
+                    Add clubs or venues to control where club discovery is active.
                   </span>
-                </label>
-              ))}
-            </div>
-          ) : null}
+                ) : null}
+              </span>
+            </label>
+
+            {sortedIdentities.length > 0 ? (
+              <div className="mt-3 space-y-2 pl-7">
+                {sortedIdentities.map((identity) => (
+                  <label
+                    key={identity.id}
+                    className="flex items-center gap-3 px-3 py-1 transition"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={venueVisibility[identity.venue_id] ?? true}
+                      onChange={(event) => handleSetVisible(identity.venue_id, event.target.checked)}
+                      disabled={venuePending === identity.venue_id || isPending}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <span className="text-sm font-medium text-[#334155]">
+                      Visible to members of {getVenueDisplayName(identity.venue)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
 
           <label className="flex items-start gap-3">
             <input
@@ -265,9 +272,9 @@ export function DiscoveryAndInvitesSection({
               onChange={(event) => setCityDiscovery(event.target.checked)}
               className="mt-1 h-4 w-4 rounded border-slate-300"
             />
-              <div>
-                <div className="text-body-main font-semibold text-[#1E293B]">Let players in my play cities find me</div>
-            </div>
+            <span className="text-body-main font-semibold text-[#1E293B]">
+              Let players in my play cities find me
+            </span>
           </label>
 
           <label className="flex items-start gap-3">
@@ -277,24 +284,24 @@ export function DiscoveryAndInvitesSection({
               onChange={(event) => setEmailOrPhoneLookup(event.target.checked)}
               className="mt-1 h-4 w-4 rounded border-slate-300"
             />
-            <div>
-              <div className="text-body-main font-semibold text-[#1E293B]">Let people who know my email or phone find me</div>
-            </div>
+            <span className="text-body-main font-semibold text-[#1E293B]">
+              Let people who know my email or phone find me
+            </span>
           </label>
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section className="space-y-4 px-1">
         <div className="space-y-1">
           <h3 className="text-h2 text-[#1E293B]">Group Invite Settings</h3>
           <p className="text-body-sub text-[#64748B]">Control which invitations are automatically accepted.</p>
         </div>
 
-        <div className="space-y-2 rounded-[24px] border border-[#E2E8F0] bg-white p-4">
+        <div className="space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4">
           {SHARED_GROUP_JOIN_PREFERENCE_OPTIONS.map((option) => (
             <label
               key={option.value}
-              className="flex items-start gap-3 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-3"
+              className="flex items-start gap-3"
             >
               <input
                 type="radio"

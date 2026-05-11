@@ -82,6 +82,16 @@ type CourtSlotSelection = {
   manualLabel: string
 }
 
+type CourtOption = {
+  id: string
+  label: string
+}
+
+const DEFAULT_COURT_OPTIONS: CourtOption[] = Array.from({ length: 10 }, (_, index) => ({
+  id: `fallback-crt-${index + 1}`,
+  label: `crt ${index + 1}`,
+}))
+
 const INVITE_SOURCE_CONFIG: Array<{
   source: InviteCandidateSource
   label: string
@@ -1163,6 +1173,17 @@ export function CreateMatchInline({
     [courtCount, courtSlots],
   )
 
+  const courtOptions = useMemo<CourtOption[]>(
+    () => (
+      courts.length > 0
+        ? [...courts]
+            .sort((left, right) => left.court_code.localeCompare(right.court_code))
+            .map((court) => ({ id: court.id, label: court.court_code }))
+        : DEFAULT_COURT_OPTIONS
+    ),
+    [courts],
+  )
+
   const selectedCourtIds = useMemo(
     () =>
       visibleCourtSlots
@@ -1173,10 +1194,11 @@ export function CreateMatchInline({
 
   const selectedCourtLabels = useMemo(
     () =>
-      selectedCourtIds
-        .map((courtId) => courts.find((court) => court.id === courtId)?.court_code ?? '')
+      visibleCourtSlots
+        .filter((slot) => slot.enabled)
+        .map((slot) => slot.manualLabel.trim() || (courtOptions.find((option) => option.id === slot.courtId)?.label ?? ''))
         .filter((label) => label.length > 0),
-    [courts, selectedCourtIds],
+    [courtOptions, visibleCourtSlots],
   )
 
   const selectedSport = useMemo(
@@ -1287,7 +1309,7 @@ export function CreateMatchInline({
       return
     }
 
-    const availableCourtIds = new Set(courts.map((court) => court.id))
+    const availableCourtIds = new Set(courtOptions.map((court) => court.id))
     setCourtSlots((prev) =>
       Array.from({ length: normalizedCount }, (_, index) => {
         const existing = prev[index]
@@ -1301,7 +1323,7 @@ export function CreateMatchInline({
         }
       }),
     )
-  }, [courtCount, courts])
+  }, [courtCount, courtOptions])
 
   useEffect(() => {
     if (courtPlanMode !== 'secured') {
@@ -1638,10 +1660,7 @@ export function CreateMatchInline({
     const selectedCourtLabels = visibleCourtSlots
       .filter((slot) => slot.enabled)
       .map((slot) => {
-        if (courts.length > 0) {
-          return courts.find((court) => court.id === slot.courtId)?.court_code ?? ''
-        }
-        return slot.manualLabel.trim()
+        return slot.manualLabel.trim() || (courtOptions.find((court) => court.id === slot.courtId)?.label ?? '')
       })
       .filter((label) => label.length > 0)
     const securedCourtLabels = courtPlanMode === 'secured'
@@ -2408,7 +2427,7 @@ export function CreateMatchInline({
           {courtPlanMode === 'secured' ? (
             <div>
               <label className={DS_LABEL}>Court Booked</label>
-              {courts.length > 0 ? (
+              <div className="space-y-2">
                 <div ref={courtPlanMenuRef} className="relative">
                   <button
                     type="button"
@@ -2434,8 +2453,8 @@ export function CreateMatchInline({
                   </button>
                   {courtPlanMenuOpen ? (
                     <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-md border border-[#E2E8F0] bg-white shadow-lg">
-                      <div className="grid grid-cols-2 gap-x-1 gap-y-0 p-1.5">
-                        {courts.slice(0, 12).map((court) => {
+                      <div className="grid max-h-52 grid-cols-2 gap-x-1 gap-y-0 overflow-y-auto p-1.5">
+                        {courtOptions.map((court) => {
                           const checked = selectedCourtIds.includes(court.id)
                           return (
                             <label
@@ -2448,7 +2467,7 @@ export function CreateMatchInline({
                                 onChange={() => toggleCourtSelection(court.id)}
                                 className="h-3.5 w-3.5 rounded border-[#94A3B8] text-[#C25E46] focus:ring-[#C25E46]"
                               />
-                              <span className="whitespace-nowrap">{court.court_code}</span>
+                              <span className="whitespace-nowrap">{court.label}</span>
                             </label>
                           )
                         })}
@@ -2456,28 +2475,25 @@ export function CreateMatchInline({
                     </div>
                   ) : null}
                 </div>
-              ) : (
-                <div className="space-y-2 rounded-md border border-[#E2E8F0] bg-white p-2.5">
-                  {visibleCourtSlots.map((slot, index) => (
-                    <div key={`court-slot-${index}`} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={slot.enabled}
-                        onChange={(e) => updateCourtSlot(index, { enabled: e.target.checked })}
-                        className="h-3.5 w-3.5 rounded border-[#CBD5E1] text-[#C25E46] focus:ring-[#C25E46]"
-                      />
-                      <input
-                        type="text"
-                        value={slot.manualLabel}
-                        onChange={(e) => updateCourtSlot(index, { manualLabel: e.target.value })}
-                        disabled={!slot.enabled}
-                        placeholder={`CRT${index + 1}`}
-                        className="w-full rounded-md border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+                {visibleCourtSlots.some((slot) => slot.enabled && slot.courtId) ? (
+                  <div className="space-y-2 rounded-md border border-[#E2E8F0] bg-white p-2.5">
+                    {visibleCourtSlots.map((slot, index) => {
+                      if (!slot.enabled || !slot.courtId) return null
+                      const optionLabel = courtOptions.find((option) => option.id === slot.courtId)?.label ?? ''
+                      return (
+                        <input
+                          key={`court-slot-${index}`}
+                          type="text"
+                          value={slot.manualLabel || optionLabel}
+                          onChange={(e) => updateCourtSlot(index, { manualLabel: e.target.value })}
+                          placeholder={`crt ${index + 1}`}
+                          className="w-full rounded-md border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
+                        />
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>

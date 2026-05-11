@@ -183,6 +183,25 @@ function normalizeCityName(value: string) {
   return value.trim().replace(/\s+/g, ' ')
 }
 
+const QUICK_CITY_GROUPS = [
+  { label: 'Peel', cities: ['Mississauga', 'Brampton', 'Caledon'] },
+  { label: 'Halton', cities: ['Oakville', 'Burlington', 'Milton', 'Halton Hills', 'Acton', 'Georgetown'] },
+]
+
+function getQuickCityGroups(cityOptions: string[], selectedCities: string[]) {
+  const optionByLowerName = new Map(cityOptions.map((city) => [city.toLowerCase(), city]))
+  const selectedLowerNames = new Set(selectedCities.map((city) => city.toLowerCase()))
+
+  return QUICK_CITY_GROUPS
+    .map((group) => ({
+      ...group,
+      cities: group.cities
+        .map((city) => optionByLowerName.get(city.toLowerCase()))
+        .filter((city): city is string => typeof city === 'string' && !selectedLowerNames.has(city.toLowerCase())),
+    }))
+    .filter((group) => group.cities.length > 0)
+}
+
 function normalizeEmail(value: string | null | undefined) {
   const normalized = value?.trim().toLowerCase() ?? ''
   return normalized || null
@@ -289,6 +308,10 @@ function CompactLocationEditor({
       return !query || city.toLowerCase().includes(query)
     })
   }, [cityInput, cityOptions, draftCities])
+  const quickCityGroups = useMemo(
+    () => getQuickCityGroups(cityOptions, draftCities),
+    [cityOptions, draftCities],
+  )
 
   const addCity = (value: string) => {
     const nextCity = normalizeCityName(value)
@@ -390,8 +413,27 @@ function CompactLocationEditor({
               className="text-body-main h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-slate-900 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-slate-100"
             />
 
+            {quickCityGroups.length > 0 ? (
+              <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+                {quickCityGroups.map((group) => (
+                  <div key={group.label} className="flex shrink-0 items-center gap-1.5">
+                    {group.cities.map((city) => (
+                      <button
+                        key={city}
+                        type="button"
+                        onClick={() => addCity(city)}
+                        className="inline-flex h-8 shrink-0 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                      >
+                        {city}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
             {isDropdownOpen ? (
-              <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
+              <div className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
                 {filteredCities.length > 0 ? (
                   filteredCities.map((city) => (
                     <button
@@ -459,13 +501,11 @@ const VENUE_KIND_FILTER_OPTIONS: Array<{ value: 'all' | VenueKind; label: string
   { value: 'private_facility', label: 'Private Facility' },
 ]
 
-type VenueSportFilter = 'all' | 'tennis' | 'pickleball' | 'both'
+type VenueSportFilter = 'tennis' | 'pickleball'
 
 const VENUE_SPORT_FILTER_OPTIONS: Array<{ value: VenueSportFilter; label: string }> = [
-  { value: 'all', label: 'All Sports' },
   { value: 'tennis', label: 'Tennis' },
   { value: 'pickleball', label: 'Pickleball' },
-  { value: 'both', label: 'Tennis + Pickleball' },
 ]
 
 function getVenueKindLabel(kind: Venue['venue_kind'] | null | undefined): string {
@@ -619,6 +659,10 @@ function BasicLocationEditor({
       return !query || city.toLowerCase().includes(query)
     })
   }, [cityInput, cityOptions, draftCities])
+  const quickCityGroups = useMemo(
+    () => getQuickCityGroups(cityOptions, draftCities),
+    [cityOptions, draftCities],
+  )
 
   const saveCities = (nextCities: string[]) => {
     setError(null)
@@ -695,7 +739,7 @@ function BasicLocationEditor({
       </div>
 
       <div ref={dropdownRef} className="relative">
-        <label className="mb-1.5 block text-[10px] font-medium text-[#071A44]">City</label>
+        <label className="mb-1.5 block text-[10px] font-medium text-[#071A44]">Play in Cities</label>
         <div className="flex min-h-8 items-center rounded-md border border-[#CBD5E1] bg-white px-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
             {draftCities.length > 0 ? draftCities.map((city) => (
@@ -725,8 +769,28 @@ function BasicLocationEditor({
           </button>
         </div>
 
+        {quickCityGroups.length > 0 ? (
+          <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-1">
+            {quickCityGroups.map((group) => (
+              <div key={group.label} className="flex shrink-0 items-center gap-1">
+                {group.cities.map((city) => (
+                  <button
+                    key={city}
+                    type="button"
+                    onClick={() => addCity(city)}
+                    disabled={isPending}
+                    className="inline-flex h-6 shrink-0 items-center rounded-full border border-[#CBD5E1] bg-white px-2 text-[9px] font-semibold text-[#071A44] transition hover:border-[#94A3B8] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {city}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {isDropdownOpen ? (
-          <div className="absolute z-20 mt-1.5 max-h-48 w-full overflow-auto rounded-lg border border-[#CBD5E1] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
+          <div className="relative z-20 mt-1.5 max-h-40 w-full overflow-y-auto rounded-lg border border-[#CBD5E1] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
             {filteredCities.length > 0 ? filteredCities.map((city) => (
               <button
                 key={city}
@@ -742,7 +806,6 @@ function BasicLocationEditor({
             )}
           </div>
         ) : null}
-        <p className="mt-2 text-[10px] text-[#64748B]">Add multiple cities. You can add more.</p>
         {error ? <p className="mt-1.5 text-[10px] text-rose-600">{error}</p> : null}
       </div>
     </div>
@@ -1337,7 +1400,7 @@ export function ProfilePanel({
   const [venueCitySearch, setVenueCitySearch] = useState('')
   const [venueNameSearch, setVenueNameSearch] = useState('')
   const [venueTypeFilter, setVenueTypeFilter] = useState<'all' | VenueKind>('all')
-  const [venueSportFilter, setVenueSportFilter] = useState<VenueSportFilter>('all')
+  const [venueSportFilter, setVenueSportFilter] = useState<VenueSportFilter>('tennis')
   const [openVenueMenuId, setOpenVenueMenuId] = useState<string | null>(null)
   const [venueActionError, setVenueActionError] = useState<string | null>(null)
   const [pendingVenueAction, setPendingVenueAction] = useState<{ id: string; kind: 'primary' | 'delete' | 'remove_saved' } | null>(null)
@@ -1435,6 +1498,10 @@ export function ProfilePanel({
     const nameQuery = venueNameSearch.trim().toLowerCase()
     const savedVenueIds = new Set(publicVenuePrefs.map((venue) => venue.id))
 
+    if (!cityQuery && !nameQuery) {
+      return []
+    }
+
     return joinableVenues.filter((venue) => {
       if (savedVenueIds.has(venue.id)) return false
       const matchesType = venueTypeFilter === 'all' || venue.venue_kind === venueTypeFilter
@@ -1460,13 +1527,12 @@ export function ProfilePanel({
       const hasTennis = tennisSportId != null && venueSportIds.has(tennisSportId)
       const hasPickleball = pickleballSportId != null && venueSportIds.has(pickleballSportId)
       const matchesSport =
-        venueSportFilter === 'all'
-        || (venueSportFilter === 'tennis' && hasTennis)
+        (venueSportFilter === 'tennis' && hasTennis)
         || (venueSportFilter === 'pickleball' && hasPickleball)
-        || (venueSportFilter === 'both' && hasTennis && hasPickleball)
       return matchesType && matchesName && matchesCity && matchesSport
     })
   }, [joinableVenues, pickleballSportId, publicVenuePrefs, tennisSportId, venueCitySearch, venueNameSearch, venueSportFilter, venueSportIdsByVenueId, venueTypeFilter])
+  const hasVenueDiscoveryQuery = venueCitySearch.trim().length > 0 || venueNameSearch.trim().length > 0
 
   useEffect(() => {
     setSelectedJoinVenueId(defaultJoinVenueId)
@@ -1747,7 +1813,7 @@ export function ProfilePanel({
               {[
                 { value: 'male', label: 'Male' },
                 { value: 'female', label: 'Female' },
-                { value: 'unspecified', label: 'Another Gender' },
+                { value: 'unspecified', label: 'Another' },
               ].map((option) => {
                 const selected = (gender ?? 'unspecified') === option.value
                 return (
@@ -1857,14 +1923,13 @@ export function ProfilePanel({
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden="true">
                   <path d="M7.2 3.2 10 6c.6.6.7 1.5.3 2.2l-1.1 1.9a12.9 12.9 0 0 0 4.7 4.7l1.9-1.1c.7-.4 1.6-.3 2.2.3l2.8 2.8c.5.5.6 1.3.2 2a4.1 4.1 0 0 1-3.6 2.2C9.5 21 3 14.5 3 6.6c0-1.5.9-2.9 2.2-3.6.7-.4 1.5-.3 2 .2Z" />
                 </svg>
-                <input
-                  type="tel"
-                  name="contact_phone"
-                  placeholder="+1 234 567 8900"
-                  value={contactPhone}
-                  onChange={e => setContactPhone(e.target.value)}
-                  className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#64748B]"
-                />
+                  <input
+                    type="tel"
+                    name="contact_phone"
+                    value={contactPhone}
+                    onChange={e => setContactPhone(e.target.value)}
+                    className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#64748B]"
+                  />
               </div>
             </div>
           </div>
@@ -1985,18 +2050,16 @@ export function ProfilePanel({
       isOpen={activeSection === 'privacy'}
       onToggle={() => toggleSection('privacy')}
     >
-      <SubCard>
-        <DiscoveryAndInvitesSection
-            showTitle={false}
-            visibleInCityDiscovery={profile.visible_in_city_discovery ?? false}
-            searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
-            sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'auto_join_saved_players'}
-            playCities={myPlayCities}
-            identities={myIdentities}
-            onSaveGlobal={onSaveGlobalPreferences}
-          onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
-        />
-      </SubCard>
+      <DiscoveryAndInvitesSection
+        showTitle={false}
+        visibleInCityDiscovery={profile.visible_in_city_discovery ?? false}
+        searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
+        sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'auto_join_saved_players'}
+        playCities={myPlayCities}
+        identities={myIdentities}
+        onSaveGlobal={onSaveGlobalPreferences}
+        onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
+      />
     </AccordionSection>
   )
 
@@ -2053,14 +2116,12 @@ export function ProfilePanel({
                             {profile.primary_venue_id === identity.venue_id ? (
                               <VenueBadge tone="primary">Primary</VenueBadge>
                             ) : null}
+                            {renderVenueSportBadges(identity.venue_id)}
                           </div>
                         </div>
                         <p className="text-body-sub mt-1 truncate text-slate-400">
                           {getVenueMetaLine(identity.venue)}
                         </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {renderVenueSportBadges(identity.venue_id)}
-                        </div>
                       </div>
 
                       <div className="relative shrink-0" data-venue-menu-root={menuKey}>
@@ -2128,14 +2189,12 @@ export function ProfilePanel({
                           <div className="flex flex-wrap items-center gap-1.5">
                             <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
                             <VenueBadge tone="starred">Saved</VenueBadge>
+                            {renderVenueSportBadges(venue.id)}
                           </div>
                         </div>
                         <p className="text-body-sub mt-1 truncate text-slate-400">
                           {getVenueMetaLine(venue)}
                         </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {renderVenueSportBadges(venue.id)}
-                        </div>
                       </div>
 
                       <div className="relative shrink-0" data-venue-menu-root={menuKey}>
@@ -2245,6 +2304,10 @@ export function ProfilePanel({
           {joinableVenues.length === 0 ? (
             <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
               You have already joined all available venues.
+            </div>
+          ) : !hasVenueDiscoveryQuery ? (
+            <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
+              Start typing a city or venue name to search.
             </div>
           ) : filteredJoinableVenues.length === 0 ? (
             <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
@@ -2442,8 +2505,6 @@ export function ProfilePanel({
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
             <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {renderVenueSportBadges(venue.id)}
           </div>
           <p className="text-label mt-1 truncate text-slate-400">
@@ -2619,7 +2680,7 @@ export function ProfilePanel({
                       {[
                         { value: 'male', label: 'Male' },
                         { value: 'female', label: 'Female' },
-                        { value: 'unspecified', label: 'Another gender' },
+                        { value: 'unspecified', label: 'Another' },
                       ].map((option) => {
                         const selected = (gender ?? 'unspecified') === option.value
                         return (
@@ -2710,7 +2771,6 @@ export function ProfilePanel({
                         <input
                           type="tel"
                           name="contact_phone"
-                          placeholder="+1 234 567 8900"
                           value={contactPhone}
                           onChange={e => setContactPhone(e.target.value)}
                           className={inputClass}
@@ -2875,13 +2935,11 @@ export function ProfilePanel({
                                 {profile.primary_venue_id === identity.venue_id ? (
                                   <VenueBadge tone="primary">Primary</VenueBadge>
                                 ) : null}
+                                {renderVenueSportBadges(identity.venue_id)}
                               </div>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-body-sub text-slate-400">
                               <span>{getVenueMetaLine(identity.venue)}</span>
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                              {renderVenueSportBadges(identity.venue_id)}
                             </div>
                           </div>
 
@@ -2950,13 +3008,11 @@ export function ProfilePanel({
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
                                 <VenueBadge tone="starred">Saved</VenueBadge>
+                                {renderVenueSportBadges(venue.id)}
                               </div>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-body-sub text-slate-400">
                               <span>{getVenueMetaLine(venue)}</span>
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                              {renderVenueSportBadges(venue.id)}
                             </div>
                           </div>
 
@@ -3070,8 +3126,6 @@ export function ProfilePanel({
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
                         <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {renderVenueSportBadges(venue.id)}
                       </div>
                       <p className="text-label mt-1 truncate text-slate-400">
@@ -3095,6 +3149,10 @@ export function ProfilePanel({
               {joinableVenues.length === 0 ? (
                 <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
                   You have already joined all available venues.
+                </div>
+              ) : !hasVenueDiscoveryQuery ? (
+                <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
+                  Start typing a city or venue name to search.
                 </div>
               ) : filteredJoinableVenues.length === 0 ? (
                 <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">

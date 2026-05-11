@@ -144,7 +144,7 @@ const tabs: { key: DashTab; label: string }[] = [
 
 export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
   const visible = tabs.filter((tab) => {
-    if (tab.key === 'venues' || tab.key === 'admin') return isAdmin
+    if (tab.key === 'venues' || tab.key === 'admin' || tab.key === 'gear') return isAdmin
     return true
   })
   const router = useRouter()
@@ -181,7 +181,7 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
             key={tab.key}
             onClick={() => onTab(tab.key)}
             className={[
-              'text-body-main flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left font-medium transition-colors',
+              'text-[0.95rem] flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left font-semibold transition-colors',
               active === tab.key
                 ? 'bg-[#1E293B] text-white shadow-[0_12px_28px_rgba(30,41,59,0.18)]'
                 : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#1E293B]',
@@ -210,7 +210,7 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
       <div className="mt-auto border-t border-[#E2E8F0] pt-4">
         <button
           onClick={handleLogout}
-          className="text-body-main flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left font-medium text-[#94A3B8] transition-colors hover:bg-[#F8FAFC] hover:text-[#64748B]"
+          className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-[0.95rem] font-semibold text-[#94A3B8] transition-colors hover:bg-[#F8FAFC] hover:text-[#64748B]"
         >
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFC] text-[#94A3B8]">
             <LogOutIcon className="h-[18px] w-[18px]" />

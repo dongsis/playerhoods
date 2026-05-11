@@ -258,7 +258,7 @@ export function DashboardShell({
     const requestedTab = searchParams.get('tab')
     if (requestedTab === 'players') return 'hoods'
     if (requestedTab === 'contacts') return 'hoods'
-    if ((requestedTab === 'venues' || requestedTab === 'admin') && !isAdmin) return 'matches'
+    if ((requestedTab === 'venues' || requestedTab === 'admin' || requestedTab === 'gear') && !isAdmin) return 'matches'
     return isDashTab(requestedTab) ? requestedTab : 'matches'
   })
   const [viewedMatchIds, setViewedMatchIds] = useState<Set<string>>(new Set())
@@ -334,7 +334,7 @@ export function DashboardShell({
   )
 
   useEffect(() => {
-    if (!isAdmin && (activeTab === 'venues' || activeTab === 'admin')) {
+    if (!isAdmin && (activeTab === 'venues' || activeTab === 'admin' || activeTab === 'gear')) {
       setActiveTab('matches')
       return
     }
@@ -538,7 +538,7 @@ export function DashboardShell({
             onSaveSportProfile={onSaveSportProfile}
           />
         )}
-        {activeTab === 'gear' && (
+        {activeTab === 'gear' && isAdmin && (
           <GearPanel
             userId={userId}
             items={gearItems}

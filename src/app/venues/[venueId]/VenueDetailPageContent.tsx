@@ -13,6 +13,7 @@ import {
 } from '@/lib/api/identities'
 import { getInviteCircleList } from '@/lib/api/play-network'
 import { getVenueDisplayName } from '@/lib/venues/display'
+import { getPublicVenueNote } from '@/lib/venues/notes'
 import { getVenueCanonicalPath } from '@/lib/venues/slug'
 import { VenueMembersSection } from './VenueMembersSection'
 
@@ -132,6 +133,7 @@ export async function VenueDetailPageContent({
     venue.booking_required === true ? 'Booking required' : venue.booking_required === false ? 'No booking required' : null,
     venue.cost_type === 'paid' ? 'Paid' : venue.cost_type === 'free' ? 'Free' : null,
   ].filter(Boolean)
+  const publicVenueNote = getPublicVenueNote(venue.notes)
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-8">
@@ -192,16 +194,16 @@ export async function VenueDetailPageContent({
         </div>
       </header>
 
-      {venue.notes ? (
+      {publicVenueNote ? (
         <section className="mb-6 rounded-2xl bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-600">
-          {venue.notes}
+          {publicVenueNote}
         </section>
       ) : null}
 
       {venueSportsSummary.length > 0 ? (
         <section className="mb-6">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Supported Sports
+            Sports
           </h2>
           <div className="flex flex-wrap gap-2">
             {venueSportsSummary.map((entry) => (
@@ -210,20 +212,20 @@ export async function VenueDetailPageContent({
                 className="rounded-2xl border border-gray-100 bg-white px-4 py-2 text-sm text-gray-700"
               >
                 <span className="font-semibold text-gray-900">{entry.sportName}</span>
-                <span className="ml-2 text-gray-500">{entry.court_count} courts</span>
+                {entry.court_count && entry.court_count > 0 ? (
+                  <span className="ml-2 text-gray-500">{entry.court_count} courts</span>
+                ) : null}
               </span>
             ))}
           </div>
         </section>
       ) : null}
 
-      <section className="mb-6">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Courts ({courts.length})
-        </h2>
-        {courts.length === 0 ? (
-          <p className="text-sm italic text-gray-400">No courts listed.</p>
-        ) : (
+      {courts.length > 0 ? (
+        <section className="mb-6">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Courts
+          </h2>
           <div className="space-y-4">
             {courtsBySport.map(({ sport, courts: sportCourts }) => (
               <div key={sport.id}>
@@ -278,8 +280,8 @@ export async function VenueDetailPageContent({
               </div>
             ) : null}
           </div>
-        )}
-      </section>
+        </section>
+      ) : null}
 
       {user && !isMember ? (
         <section className="mt-2 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-white px-4 py-4">
