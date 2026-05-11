@@ -1741,6 +1741,7 @@ export function CreateMatchInline({
       for (const groupId of invitedGroupIds) {
         try {
           await inviteGroupToMatch(supabase, match.id, groupId)
+          shouldProcessQueuedDeliveries = true
         } catch (groupInviteError) {
           console.error(`[CreateMatchInline] group invite ${groupId}:`, groupInviteError)
         }

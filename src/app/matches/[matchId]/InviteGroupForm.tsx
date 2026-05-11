@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { inviteGroupToMatch, type MatchGroupInvite } from '@/lib/api/matches'
 import type { Group } from '@/lib/types/database'
+import { processDeliveriesAction } from './process-deliveries-action'
 
 interface Props {
   matchId: string
@@ -33,6 +34,7 @@ export function InviteGroupForm({ matchId, groups, invitedGroups }: Props) {
     const supabase = createSupabaseBrowserClient()
     try {
       const invite = await inviteGroupToMatch(supabase, matchId, groupId)
+      await processDeliveriesAction()
       setSuccess(invite?.group_name ?? 'Group invited.')
       setGroupId('')
       router.refresh()

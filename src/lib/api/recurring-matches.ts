@@ -149,6 +149,7 @@ export async function createRecurringMatchSeries(
     for (const groupId of input.invited_group_ids ?? []) {
       try {
         await inviteGroupToMatch(supabase, match.id, groupId)
+        hasQueuedGuestDeliveries = true
       } catch (groupInviteError) {
         console.error(`[RecurringMatchSeries] group invite ${match.id}/${groupId}:`, groupInviteError)
       }

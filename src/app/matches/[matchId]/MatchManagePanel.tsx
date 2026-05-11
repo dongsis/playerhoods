@@ -1093,6 +1093,7 @@ export function MatchManagePanel({
           }
         } else if (item.kind === 'group') {
           await inviteGroupToMatch(supabase, matchId, item.id)
+          shouldProcessQueuedDeliveries = true
         } else {
           await nominateGuest(supabase, matchId, item.id)
           shouldProcessQueuedDeliveries = true
