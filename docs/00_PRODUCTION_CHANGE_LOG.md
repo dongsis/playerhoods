@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-05-12 - SR-20260512-linked-contact-permission-boundary-p5
 
 **Type:** Structural Release
-**Commit:** Pending
+**Commit:** `7b338b1`
 **Migration:** `20260512173000_linked_contact_permission_boundary_p5.sql`
-**Status:** Supabase Remote applied; GitHub/Vercel pending at time of entry
+**Status:** GitHub, Supabase Remote, and Vercel Production deployed
 
 ### Summary
 
@@ -37,9 +37,9 @@ Phase 5 tightens linked Contact / registered-user permission boundaries:
 | Area | Status | Evidence |
 |---|---|---|
 | Local code | Modified | P5 migration and canonical docs updated locally |
-| GitHub main | Pending | Commit/push pending |
+| GitHub main | `7b338b1` | Pushed to `origin/main` |
 | Vercel Preview | Not deployed | Not used for this structural release |
-| Vercel Production | Pending | Deployment pending GitHub push |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-5gklzgyap-nancys-projects-128e326c.vercel.app` reported Ready |
 | Supabase Local | Not applied | Local Supabase was not run for this phase |
 | Supabase Remote | Applied | Migration `20260512173000` appears in both Local and Remote migration list |
 
