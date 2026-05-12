@@ -2975,9 +2975,10 @@ export function HoodsPanel({
           <div className="relative max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-[32px] bg-white p-4 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)]">
             <div className="mb-4 flex items-start justify-between gap-4 px-2 pt-2">
               <div>
-                <h3 className="text-h2 text-[#1E293B]">Smart Scan Import</h3>
+                <h3 className="text-h2 text-[#1E293B]">Smart Import</h3>
                 <p className="text-body-sub mt-1 max-w-xl text-[#64748B]">
-                  Upload a screenshot of a chat group, email header, or contact list. We'll find names, emails, and phones for you.
+                  Upload a screenshot of a chat group, email header, or contact list. We'll extract names, emails, and phones for you.
+                  This information is securely saved in PlayerHoods and will never be shown to other users under any circumstances.
                 </p>
               </div>
               <button

@@ -464,16 +464,7 @@ export function ContactScreenshotImportSection({
                   {parsing ? 'Analyzing...' : 'Parse Screenshot'}
                 </button>
               </div>
-            ) : (
-              <div className="flex items-center gap-3 rounded-[18px] border border-[#E2E8F0] bg-[#F8FBFF] p-4 text-[#64748B]">
-                <span className="shrink-0 text-[#075BD7]">
-                  <InfoIcon />
-                </span>
-                <p className="text-xs leading-5">
-                  Clear screenshots work best. Names, emails, and phones can come from chat groups, email headers, sheets, or contact lists.
-                </p>
-              </div>
-            )}
+            ) : null}
           </div>
         ) : (
           <div className="space-y-6">
