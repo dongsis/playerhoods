@@ -409,16 +409,17 @@ Even after joining a match, Contact Player may not:
 
 ### 9.1 Allowed
 
-Contact Player may be added to a group.
+Contact Player may be added to a group as a Shared Contact.
 
 ### 9.2 Membership Type
 
-Contact Player joins as:
+Contact Player group inclusion is represented by `group_contacts`.
 
-- `Limited Group Member`, or
-- `Group Contact`
+It is rendered in product as:
 
-not as a full registered group member.
+- `Shared Contact`
+
+It must not create a `group_members` row. `group_members` is reserved for registered users who know they belong to the group.
 
 ### 9.3 Effects
 
@@ -430,10 +431,12 @@ When a Contact Player is added to a group, group members may:
 
 ### 9.4 Non-effects
 
-Group contact membership does **not** grant:
+Group contact inclusion does **not** grant:
 
 - full registered membership
+- a `group_members` row
 - full ShareGroup privilege semantics
+- group announcements / discussion / files access as a full member
 - ad-hoc delegate or proxy power
 - nominate / invite-others power
 - public discovery

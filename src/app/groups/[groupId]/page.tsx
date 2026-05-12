@@ -175,12 +175,22 @@ function ContactListItem({
   currentPersonId,
 }: {
   groupId: string
-  contact: Pick<GroupContactWithDisplay, 'group_contact_id' | 'guest_id' | 'display_name' | 'person_id' | 'linked_user_id'>
+  contact: Pick<
+    GroupContactWithDisplay,
+    | 'group_contact_id'
+    | 'guest_id'
+    | 'display_name'
+    | 'person_id'
+    | 'linked_user_id'
+    | 'created_by_name'
+    | 'saved_by_viewer'
+  >
   linkedProfile: { display_name: string | null; avatar_url: string | null } | null
   currentPersonId: string | null
 }) {
   const displayName = linkedProfile?.display_name || contact.display_name
   const isLinked = Boolean(contact.linked_user_id)
+  const sharedBy = contact.created_by_name?.trim() || null
 
   return (
     <div
@@ -219,11 +229,17 @@ function ContactListItem({
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
             <span style={{ color: '#0f172a', fontSize: '0.98rem', fontWeight: 600 }}>{displayName}</span>
+            <span style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+              Shared Contact
+            </span>
             {isLinked ? (
               <span style={{ color: '#0284c7', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                 PlayerHoods profile
               </span>
             ) : null}
+          </div>
+          <div style={{ marginTop: '0.12rem', color: '#64748b', fontSize: '0.74rem', lineHeight: 1.35 }}>
+            {sharedBy ? `Shared by ${sharedBy}. ` : ''}Contact details stay private.
           </div>
         </div>
       </div>
@@ -231,9 +247,9 @@ function ContactListItem({
         guestId={contact.guest_id}
         source="group_contact"
         groupId={groupId}
-        hidden={Boolean(isLinked || (currentPersonId && contact.person_id === currentPersonId))}
+        hidden={Boolean(contact.saved_by_viewer || (currentPersonId && contact.person_id === currentPersonId))}
         compact
-        saveLabel="Save player"
+        saveLabel="Save to Hood"
       />
     </div>
   )
@@ -385,7 +401,6 @@ export default async function GroupDetailPage({ params }: Props) {
     ((linkedGroupContactProfilesRes.data ?? []) as { id: string; display_name: string | null; avatar_url: string | null }[])
       .map((profile) => [profile.id, { display_name: profile.display_name, avatar_url: profile.avatar_url }]),
   )
-  const totalListedPeople = activeMembers.length + groupContacts.length
   const groupIcon = getGroupIconMeta(group.icon_key)
 
   const announcementText = group.description?.trim() || null
@@ -465,7 +480,7 @@ export default async function GroupDetailPage({ params }: Props) {
                   {group.name}
                 </h1>
                 <p style={{ margin: '0.5rem 0 0', color: '#94a3b8', fontSize: '0.92rem' }}>
-                  {activeMembers.length} members · {sportName ?? 'Sport to be assigned'}
+                  {activeMembers.length} members · {groupContacts.length} shared contacts · {sportName ?? 'Sport to be assigned'}
                 </p>
                 </div>
               </div>
@@ -531,47 +546,75 @@ export default async function GroupDetailPage({ params }: Props) {
                 ) : null}
 
                 <section>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
-              <div
-                style={{
-                  color: '#94a3b8',
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  letterSpacing: '0.16em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Members
-              </div>
-              <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
-                {totalListedPeople} Total
-              </div>
-            </div>
-            <div style={{ display: 'grid', gap: '0.3rem' }}>
-              {totalListedPeople === 0 ? (
-                <div style={{ color: '#98a2b3', fontSize: '0.88rem' }}>No players yet.</div>
-              ) : (
-                <>
-                  {activeMembers.map((member) => (
-                    <MemberListItem
-                      key={member.id}
-                      member={member}
-                      group={group}
-                      currentUserId={user?.id ?? null}
-                    />
-                  ))}
-                  {groupContacts.map((contact) => (
-                    <ContactListItem
-                      key={contact.group_contact_id}
-                      groupId={groupId}
-                      contact={contact}
-                      linkedProfile={contact.linked_user_id ? linkedGroupContactProfileMap.get(contact.linked_user_id) ?? null : null}
-                      currentPersonId={myPersonId}
-                    />
-                  ))}
-                </>
-              )}
-            </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.16em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Members
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
+                      {activeMembers.length} Total
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gap: '0.3rem' }}>
+                    {activeMembers.length === 0 ? (
+                      <div style={{ color: '#98a2b3', fontSize: '0.88rem' }}>No members yet.</div>
+                    ) : (
+                      activeMembers.map((member) => (
+                        <MemberListItem
+                          key={member.id}
+                          member={member}
+                          group={group}
+                          currentUserId={user?.id ?? null}
+                        />
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <section style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.85rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.16em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Shared Contacts
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
+                      {groupContacts.length} Total
+                    </div>
+                  </div>
+                  <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                    Shared Contacts can be saved and invited where available. They are not group members, and private contact details stay hidden.
+                  </p>
+                  <div style={{ display: 'grid', gap: '0.3rem' }}>
+                    {groupContacts.length === 0 ? (
+                      <div style={{ color: '#98a2b3', fontSize: '0.88rem' }}>
+                        No shared contacts yet. Share people your group often plays with so everyone can save and invite them.
+                      </div>
+                    ) : (
+                      groupContacts.map((contact) => (
+                        <ContactListItem
+                          key={contact.group_contact_id}
+                          groupId={groupId}
+                          contact={contact}
+                          linkedProfile={contact.linked_user_id ? linkedGroupContactProfileMap.get(contact.linked_user_id) ?? null : null}
+                          currentPersonId={myPersonId}
+                        />
+                      ))
+                    )}
+                  </div>
                 </section>
 
                 {isActive && !isBoundaryKeeper ? (

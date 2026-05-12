@@ -40,8 +40,8 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
 
   const normalizeContactError = (message?: string) => {
     if (message === 'not_authorized') return 'You need to be an active member of this Shared Group.'
-    if (message === 'guest_not_accessible') return 'You can only add contact players you can already view.'
-    return message ?? 'Failed to add contact.'
+    if (message === 'guest_not_accessible') return 'You can only add people you can already view.'
+    return message ?? 'Failed to add shared contact.'
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -61,7 +61,7 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
         setUserId('')
       } else {
         await addContactPlayerToGroup(supabase, groupId, guestId)
-        setFeedback('Added to group.')
+        setFeedback('Added to Shared Contacts.')
         setGuestId('')
       }
       router.refresh()
@@ -137,13 +137,13 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
         }}
       >
         <span style={{ fontSize: '1rem', lineHeight: 1 }}>+</span>
-        Add member
+        Add people
       </button>
 
       {isOpen ? (
         nothingToAdd ? (
           <div style={{ color: '#94a3b8', fontSize: '0.82rem', lineHeight: 1.5 }}>
-            No more players or contacts available to add right now.
+            No more players or shared contacts available to add right now.
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '0.65rem' }}>
@@ -167,7 +167,7 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
                   cursor: 'pointer',
                 }}
               >
-                Saved player
+                Member
               </button>
               <button
                 type="button"
@@ -188,7 +188,7 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
                   cursor: 'pointer',
                 }}
               >
-                Contact
+                Shared Contact
               </button>
             </div>
 
@@ -227,7 +227,7 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
                   background: '#fff',
                 }}
               >
-                <option value="">Select a contact</option>
+                <option value="">Select a shared contact</option>
                 {contacts.map((contact) => (
                   <option key={contact.guest_id} value={contact.guest_id}>{contact.display_name}</option>
                 ))}
