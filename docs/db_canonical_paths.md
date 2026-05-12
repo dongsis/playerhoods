@@ -111,6 +111,21 @@ Notes:
 - Contact Player is a separate module and should not be mixed into registered-user discovery naming.
 - Legacy database field / RPC names may still retain older wording internally for compatibility, but new product-facing code and docs should prefer email/phone wording.
 
+## Contact Player Intro Sharing
+
+Use:
+- `people`
+- `contact_records`
+- `person_relationships`
+- `contact_intro_shares`
+
+Rules:
+- A Contact Intro Share shares a person node, not a private contact record.
+- The recipient may save the person to Hood through `person_relationships.relationship_type = 'saved'`.
+- The recipient must not receive raw phone, raw email, owner notes, private tags, or another user's `contact_record_id`.
+- Direct Intro Share is a save eligibility source only. It does not create group membership, Match Proxy authority, recruit eligibility, or public discovery.
+- Keep existing `guest_id` compatibility paths internally, but prefer `person_id`-first wrappers for new user-facing APIs.
+
 ## Prelaunch Legacy Handling
 
 - Remove active business references first.

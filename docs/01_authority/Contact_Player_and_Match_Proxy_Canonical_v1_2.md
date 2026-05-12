@@ -166,6 +166,8 @@ Representative relationship types:
 - `linked`
 - `imported_by`
 
+Direct Intro Share is a trusted-exposure source for saving, but it is not a separate authority layer. It may be represented by a `contact_intro_shares` provenance record and, when accepted, a `person_relationships.relationship_type = 'saved'` row for the recipient.
+
 ### 4.4 Proxy Binding Layer
 
 Suggested table: `person_match_proxies`.
@@ -224,6 +226,7 @@ Allowed visibility:
 - avatar
 - non-sensitive sport info
 - relevant shared match / shared group context
+- direct Intro context such as "Intro from Nancy"
 - whether direct invite is allowed
 - whether the person is already saved by the viewer
 
@@ -235,6 +238,7 @@ Forbidden visibility:
 - owner notes
 - owner-private tags
 - raw contact-record contents
+- another user's `contact_record_id` as a UI/API handle
 
 ### 5.3 Proxy Visibility
 
@@ -303,6 +307,7 @@ A user may save a Contact Player only when at least one of these is true:
 - they are the owner of a contact record for that person
 - they have a valid shared match relationship with that person
 - they share a group that explicitly includes that person as a group contact / limited member
+- they received a direct Contact Intro Share for that person
 
 ### 7.3 Save Effects
 
@@ -326,6 +331,32 @@ Save is a light relationship.
 Proxy binding is explicit authority.
 
 Save never equals proxy binding.
+
+### 7.5 Direct Contact Intro Share
+
+Contact Intro Share is a direct registered-user-to-registered-user exposure mechanism.
+
+Product wording:
+
+- "Share Linda's Intro"
+- "Nancy shared Linda's Intro with you."
+- "Save Linda to your Hood."
+- "Contact details stay private."
+
+The sender shares the person node / Intro. The sender does not share the private contact record.
+
+The recipient may see only minimum necessary person-card data and may save the person to their Hood. The recipient must not receive:
+
+- phone
+- email
+- external handles
+- owner notes
+- owner-private tags
+- source `contact_record_id`
+- Match Proxy authority
+- group membership
+
+Direct Intro Share grants trusted exposure sufficient for Save to Hood. It does not grant contact-detail visibility, Match Proxy authority, group member rights, group admin rights, or public discovery.
 
 ---
 

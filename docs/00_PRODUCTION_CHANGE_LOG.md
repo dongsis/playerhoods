@@ -14,6 +14,71 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-12 - SR-20260512-contact-intro-share-phase1
+
+**Type:** Structural Release
+**Commit:** Pending
+**Migration:** `20260512123000_contact_intro_shares_phase1.sql`
+**Status:** Draft, local only
+
+### Summary
+
+Phase 1 of the Contact Player / Intro Share structural release adds the database foundation for direct user-to-user Intro sharing:
+
+- Adds `contact_intro_shares` as the canonical Direct Intro Share audit/exposure table.
+- Adds RLS so only sender and recipient can select share records.
+- Adds RPCs to create, list, save/accept, dismiss, and revoke Intro shares.
+- Adds `person_relationships.source_intro_share_id` as optional provenance for saved relationships created from Intro shares.
+- Adds direct Intro Share as a save eligibility source without exposing private contact record data.
+- Keeps existing `guest_id` compatibility paths intact and does not change match invite behavior in this phase.
+
+### Product Decisions Captured
+
+- Contact Player remains a system-level limited person node.
+- Sharing means sharing a person's Intro / `person_id`, not private `contact_records`.
+- Direct Intro Share grants trusted exposure sufficient for Save to Hood only.
+- Group Contacts remain separate from Group Members.
+- Linked Contact / linked user state remains identity bridge only, not a permission upgrade.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local code | Modified | New append-only migration and canonical docs updated locally |
+| GitHub main | Not committed | Pending |
+| Vercel Preview | Not deployed | Pending |
+| Vercel Production | Not deployed | Pending |
+| Supabase Local | Not applied | Pending validation |
+| Supabase Remote | Not applied | Pending production approval/deploy |
+
+### Migration Details
+
+The migration is append-only. It creates `contact_intro_shares`, adds a nullable provenance column to `person_relationships`, and defines RPCs for Phase 1. It does not rewrite historical migrations, does not delete legacy objects, and does not remove or globally replace existing `guest_id` paths.
+
+### Validation Plan
+
+- Run SQL/static migration validation locally.
+- Apply to Local Supabase before remote promotion.
+- Execute `rpc_validate_contact_intro_shares()` and confirm:
+  - no duplicate pending Intro shares
+  - saving an Intro does not copy private contact records
+  - Intro share notifications remain deduped
+- Add Phase 2 UI tests when Inbox card work begins.
+
+### Rollback
+
+Database rollback must be append-only:
+
+- Add a follow-up migration that revokes/grants blocks as needed, drops or disables the new RPCs, and prevents new writes to `contact_intro_shares`.
+- Do not drop the table until data audit confirms no production dependency.
+- Code rollback is not required for Phase 1 unless application code starts calling these RPCs.
+
+### Known Risks
+
+- Phase 1 creates backend capability before the Inbox UI is aligned.
+- Existing notification UI will render unknown `contact_intro_share` kind generically until Phase 2.
+- Full person-id invite wrappers are intentionally deferred to Phase 4.
+
 ## Status Definitions
 
 - Draft: local changes only, not committed.

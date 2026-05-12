@@ -115,6 +115,22 @@ Canonical table:
 
 This is where saved, shared-match, group-contact, and linked relationship context should live.
 
+### Direct Intro Share Layer
+
+Canonical table:
+
+- `contact_intro_shares`
+
+This records direct user-to-user Intro sharing for a person node.
+
+Rules:
+
+- sharing means sharing the `people.person_id` / Intro, not sharing a private `contact_records` row
+- sender and recipient may see the share record, but the recipient must not see raw phone, raw email, owner notes, private tags, or source contact record details
+- accepting an Intro creates or reuses a `person_relationships` row with `relationship_type = 'saved'`
+- Intro sharing is not a Match Proxy grant, group membership grant, group admin grant, or public discovery grant
+- existing `guest_id` compatibility paths may remain internally, but new user-facing APIs should prefer person-node wrappers
+
 ## User Email Identity
 
 PlayerHoods currently mainly uses Google OAuth, but Google is only the current authentication provider.
