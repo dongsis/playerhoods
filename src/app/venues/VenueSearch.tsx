@@ -358,14 +358,14 @@ export function VenueSearch({
                   <Link
                     key={venue.id}
                     href={getVenueCanonicalPath(venue)}
-                    className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-4 border-b border-[#e7eef8] px-5 py-3.5 transition last:border-b-0 hover:bg-[#f8fbff]"
+                    className="grid grid-cols-[minmax(0,1fr)_24px] items-center gap-2 border-b border-[#e7eef8] px-4 py-4 transition last:border-b-0 hover:bg-[#f8fbff] sm:grid-cols-[36px_minmax(0,1fr)_auto] sm:gap-4 sm:px-5 sm:py-3.5"
                   >
-                    <span className="text-center text-sm font-bold text-[#5d6e8d]">
+                    <span className="hidden text-center text-sm font-bold text-[#5d6e8d] sm:block">
                       {startIndex + index + 1}
                     </span>
                     <span className="min-w-0">
                       <span className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className="truncate text-base font-black text-[#10244d]">
+                        <span className="min-w-0 basis-full text-base font-black leading-snug text-[#10244d] sm:basis-auto sm:truncate">
                           {getVenueDisplayName(venue)}
                         </span>
                         <span className="rounded-md bg-[#eef3fb] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#4d617f]">
@@ -378,11 +378,11 @@ export function VenueSearch({
                           <span className="rounded-full bg-[#fff5db] px-2 py-0.5 text-[10px] font-black uppercase text-[#986c00]">Saved</span>
                         ) : null}
                       </span>
-                      <span className="mt-1 block truncate text-sm font-semibold text-[#667692]">
+                      <span className="mt-1 block break-words text-sm font-semibold leading-snug text-[#667692] sm:truncate">
                         {getVenueAddress(venue) || 'Address not listed'}
                       </span>
                     </span>
-                    <span className="flex items-center gap-3">
+                    <span className="flex shrink-0 items-center justify-end gap-3">
                       <span className="hidden flex-wrap justify-end gap-2 sm:flex">
                         {badges.map((badge) => (
                           <span
