@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-05-12 - SR-20260512-contact-intro-share-phase1
 
 **Type:** Structural Release
-**Commit:** Pending
+**Commit:** `7d2313a1b817cff8c731bde0b65c1e25421578c2`
 **Migration:** `20260512123000_contact_intro_shares_phase1.sql`
-**Status:** Draft, local only
+**Status:** GitHub and Vercel Production deployed for code/docs; Supabase Remote not applied
 
 ### Summary
 
@@ -45,11 +45,11 @@ Phase 1 of the Contact Player / Intro Share structural release adds the database
 | Area | Status | Evidence |
 |---|---|---|
 | Local code | Modified | New append-only migration and canonical docs updated locally |
-| GitHub main | Not committed | Pending |
+| GitHub main | `7d2313a1b817cff8c731bde0b65c1e25421578c2` | Pushed to `origin/main` |
 | Vercel Preview | Not deployed | Pending |
-| Vercel Production | Not deployed | Pending |
-| Supabase Local | Not applied | Pending validation |
-| Supabase Remote | Not applied | Pending production approval/deploy |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-qxuorg1dq-nancys-projects-128e326c.vercel.app` reported Ready |
+| Supabase Local | Not applied | Docker Desktop / local Supabase unavailable; local lint/apply blocked |
+| Supabase Remote | Not applied | `supabase db push --dry-run --linked` showed only this migration would be pushed |
 
 ### Migration Details
 
@@ -57,8 +57,8 @@ The migration is append-only. It creates `contact_intro_shares`, adds a nullable
 
 ### Validation Plan
 
-- Run SQL/static migration validation locally.
-- Apply to Local Supabase before remote promotion.
+- Run SQL/static migration validation locally when Docker Desktop / local Supabase is available.
+- Apply to Local Supabase before remote promotion when feasible.
 - Execute `rpc_validate_contact_intro_shares()` and confirm:
   - no duplicate pending Intro shares
   - saving an Intro does not copy private contact records
