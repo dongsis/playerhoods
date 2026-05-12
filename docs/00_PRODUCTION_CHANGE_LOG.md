@@ -19,7 +19,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 **Type:** Structural Release
 **Commit:** `7d2313a1b817cff8c731bde0b65c1e25421578c2`
 **Migration:** `20260512123000_contact_intro_shares_phase1.sql`
-**Status:** GitHub and Vercel Production deployed for code/docs; Supabase Remote not applied
+**Status:** GitHub, Vercel Production, and Supabase Remote applied for Phase 1 backend foundation
 
 ### Summary
 
@@ -47,9 +47,9 @@ Phase 1 of the Contact Player / Intro Share structural release adds the database
 | Local code | Modified | New append-only migration and canonical docs updated locally |
 | GitHub main | `7d2313a1b817cff8c731bde0b65c1e25421578c2` | Pushed to `origin/main` |
 | Vercel Preview | Not deployed | Pending |
-| Vercel Production | Ready | Deployment `https://playerhoods-codex-qxuorg1dq-nancys-projects-128e326c.vercel.app` reported Ready |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-ch845ydcf-nancys-projects-128e326c.vercel.app` reported Ready |
 | Supabase Local | Not applied | Docker Desktop / local Supabase unavailable; local lint/apply blocked |
-| Supabase Remote | Not applied | `supabase db push --dry-run --linked` showed only this migration would be pushed |
+| Supabase Remote | Applied | `supabase db push --linked --yes`; migration list shows `20260512123000` on Remote |
 
 ### Migration Details
 
@@ -64,6 +64,16 @@ The migration is append-only. It creates `contact_intro_shares`, adds a nullable
   - saving an Intro does not copy private contact records
   - Intro share notifications remain deduped
 - Add Phase 2 UI tests when Inbox card work begins.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Passed | `npm.cmd run build` |
+| Static diff check | Passed | `git diff --check` on migration/docs |
+| Remote migration dry-run | Passed | Only `20260512123000_contact_intro_shares_phase1.sql` would be pushed |
+| Remote migration apply | Passed | `supabase db push --linked --yes` applied migration |
+| Remote validation RPC | Passed | `rpc_validate_contact_intro_shares()` returned all `ok = true` |
 
 ### Rollback
 
