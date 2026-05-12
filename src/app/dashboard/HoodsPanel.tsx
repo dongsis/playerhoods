@@ -1409,6 +1409,42 @@ function HoodCard({
   )
 }
 
+function ContactToolIcon({ kind }: { kind: 'quick' | 'sync' | 'link' | 'spark' | 'close' }) {
+  if (kind === 'quick') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M11.5 1.8 4.4 10.7h5.1l-1 7.5 7.1-8.9h-5.1l1-7.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'sync') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M6.2 14.5H5.4a3.4 3.4 0 1 1 .8-6.7 4.6 4.6 0 0 1 8.8 1.4 2.7 2.7 0 0 1-.8 5.3H6.2Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'link') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M8.2 12.1 11.8 8.5M7.3 6.1l.9-.9a3.2 3.2 0 0 1 4.5 4.5l-.9.9M12.7 13.9l-.9.9a3.2 3.2 0 0 1-4.5-4.5l.9-.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'spark') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M10 2.4 11.4 7l4.3 1.5-4.3 1.6L10 14.6l-1.4-4.5-4.3-1.6L8.6 7 10 2.4ZM15.5 12.8l.6 1.7 1.6.6-1.6.6-.6 1.7-.6-1.7-1.6-.6 1.6-.6.6-1.7Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+      <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function HoodsPanel({
   userId,
   items,
@@ -2762,7 +2798,7 @@ export function HoodsPanel({
               setError(null)
               setContactToolsOpen((current) => {
                 const next = !current
-                setContactComposerMode(next ? 'manual' : null)
+                setContactComposerMode(null)
                 return next
               })
             }}
@@ -2782,47 +2818,88 @@ export function HoodsPanel({
         <div className="rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h3 className="text-h2 text-[#1E293B]">Contact Tools</h3>
-              <p className="text-body-sub mt-1 text-[#64748B]">Add or import contacts.</p>
+              <h3 className="text-h2 text-[#1E293B]">Your Squad</h3>
+              <p className="text-body-sub mt-1 text-[#64748B]">Add hitting partners to organize matches faster.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => {
                   clearMessage()
-                  setContactComposerMode((current) => current === 'manual' ? null : 'manual')
+                  setContactComposerMode('screenshot')
                   setError(null)
                 }}
-                className={[
-                  'text-body-main rounded-full px-4 py-2 font-medium transition',
-                  contactComposerMode === 'manual'
-                    ? 'bg-[#C25E46] text-white'
-                    : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]',
-                ].join(' ')}
+                className="text-body-main inline-flex items-center gap-2 rounded-full bg-[#0B1F44] px-5 py-2.5 font-semibold text-white shadow-[0_10px_24px_-18px_rgba(11,31,68,0.7)] transition hover:bg-[#16325F]"
               >
-                {contactComposerMode === 'manual' ? 'Close Add Contact' : 'Add Contact'}
+                <ContactToolIcon kind="spark" />
+                Smart Import
               </button>
               <button
                 type="button"
                 onClick={() => {
                   clearMessage()
-                  setContactComposerMode((current) => current === 'screenshot' ? null : 'screenshot')
+                  setContactToolsOpen(false)
+                  setContactComposerMode(null)
                   setError(null)
                 }}
-                className={[
-                  'text-body-main rounded-full px-4 py-2 font-medium transition',
-                  contactComposerMode === 'screenshot'
-                    ? 'bg-[#C25E46] text-white'
-                    : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]',
-                ].join(' ')}
+                className="text-body-main inline-flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-white px-4 py-2.5 font-medium text-[#475569] transition hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
               >
-                {contactComposerMode === 'screenshot' ? 'Close Import' : 'Import from Screenshot'}
+                <ContactToolIcon kind="close" />
+                Close
               </button>
             </div>
           </div>
 
+          <div className="mt-6 grid gap-5 md:grid-cols-3">
+            {[
+              {
+                key: 'quick' as const,
+                title: 'Quick Invites',
+                body: 'Add once, invite with a single tap.',
+                tone: 'bg-[#EAF2FF] text-[#075BD7]',
+              },
+              {
+                key: 'sync' as const,
+                title: 'Cloud Sync',
+                body: 'Access your list from any device.',
+                tone: 'bg-[#EEF2FF] text-[#4F46E5]',
+              },
+              {
+                key: 'link' as const,
+                title: 'No Registration',
+                body: 'Contacts confirm via link without an account.',
+                tone: 'bg-[#EAFBF0] text-[#07823F]',
+              },
+            ].map((item) => (
+              <div key={item.key} className="flex items-start gap-4">
+                <span className={['flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', item.tone].join(' ')}>
+                  <ContactToolIcon kind={item.key} />
+                </span>
+                <span>
+                  <span className="text-title-main block text-[#0B1F44]">{item.title}</span>
+                  <span className="text-body-sub mt-1 block leading-relaxed text-[#64748B]">{item.body}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 flex justify-center border-t border-[#EEF2F7] pt-5">
+            <button
+              type="button"
+              onClick={() => {
+                clearMessage()
+                setContactComposerMode((current) => current === 'manual' ? null : 'manual')
+                setError(null)
+              }}
+              className="text-body-main inline-flex items-center gap-2 font-semibold text-[#64748B] transition hover:text-[#075BD7]"
+            >
+              <span className="text-lg leading-none">{contactComposerMode === 'manual' ? '-' : '+'}</span>
+              {contactComposerMode === 'manual' ? 'Hide manual form' : 'Add manually instead'}
+            </button>
+          </div>
+
           {contactComposerMode === 'manual' && (
-            <form onSubmit={handleCreateContact} className="mt-4 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+            <form onSubmit={handleCreateContact} className="mt-6 grid gap-4 rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] p-4 md:grid-cols-2">
               <div className="md:col-span-2">
                 <div className="text-label text-slate-400">
                   Add to {selectedSport.display_name}
@@ -2884,18 +2961,45 @@ export function HoodsPanel({
               </div>
             </form>
           )}
+        </div>
+      )}
 
-          {contactComposerMode === 'screenshot' && (
-            <div className="mt-4">
-              <ContactScreenshotImportSection
-                userId={userId}
-                existingContacts={supportData.contacts}
-                onParseScreenshots={onParseScreenshots}
-                onImportScreenshotContacts={onImportScreenshotContacts}
-                onImported={handleScreenshotImported}
-              />
+      {contactComposerMode === 'screenshot' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close screenshot import"
+            className="absolute inset-0 bg-[#0B1F44]/40 backdrop-blur-sm"
+            onClick={() => setContactComposerMode(null)}
+          />
+          <div className="relative max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-[32px] bg-white p-4 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)]">
+            <div className="mb-4 flex items-start justify-between gap-4 px-2 pt-2">
+              <div>
+                <h3 className="text-h2 text-[#1E293B]">Smart Scan Import</h3>
+                <p className="text-body-sub mt-1 max-w-xl text-[#64748B]">
+                  Upload a screenshot of a chat group, email header, or contact list. We'll find names, emails, and phones for you.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setContactComposerMode(null)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
+                aria-label="Close import modal"
+              >
+                <ContactToolIcon kind="close" />
+              </button>
             </div>
-          )}
+            <ContactScreenshotImportSection
+              userId={userId}
+              existingContacts={supportData.contacts}
+              onParseScreenshots={onParseScreenshots}
+              onImportScreenshotContacts={onImportScreenshotContacts}
+              onImported={async () => {
+                await handleScreenshotImported()
+                setContactComposerMode(null)
+              }}
+            />
+          </div>
         </div>
       )}
 
