@@ -14,6 +14,56 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-12 - SR-20260512-contact-person-match-invite-p4
+
+**Type:** Structural Release
+**Commit:** `548be57`
+**Migration:** `20260512160306_contact_person_match_invite_wrapper.sql`
+**Status:** GitHub, Supabase Remote, and Vercel Production deployed
+
+### Summary
+
+Phase 4 adds a person-first Contact Player match invite path:
+
+- Adds `rpc_match_contact_person_targets`, returning only person-level invite cards: `person_id`, display name, avatar, source, invite eligibility, and sorting metadata.
+- Adds `rpc_match_invite_contact_person`, which validates match invite authority and trusted Contact Player exposure, then resolves registered-user or private invitation-channel delivery internally.
+- Keeps legacy `guest_id` paths available for compatibility, while moving the match detail invite UI to `person_id`.
+- Prevents new match invite UI from depending on `guest_id`, `contact_record_id`, phone, email, or private channel details.
+- Prefers a confirmed linked registered-user path where available without granting proxy, group member, admin, or contact-detail authority.
+- Updates canonical docs for Contact Player match invite wrappers.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local code | Modified | P4 API, match invite UI wiring, migration, and docs updated locally |
+| GitHub main | `548be57` | Pushed to `origin/main` |
+| Vercel Preview | Not deployed | Not used for this structural release |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-2ynsebn1w-nancys-projects-128e326c.vercel.app` reported Ready |
+| Supabase Local | Not applied | Local Supabase was not run for this phase |
+| Supabase Remote | Applied | Migration `20260512160306` appears in both Local and Remote migration list |
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Passed | `npm.cmd run build` |
+| Static diff check | Passed | `git diff --check` on P4 files |
+| Remote DB migration | Passed | `npx.cmd supabase db push --linked --yes` applied migration `20260512160306` |
+| Remote DB validation | Passed | `rpc_validate_contact_person_match_invite_p4()` returned both checks `ok=true` |
+| Vercel Production | Passed | Latest code deployment reported Ready |
+
+### Rollback
+
+Code rollback:
+
+- Revert commit `548be57`.
+
+Database rollback:
+
+- Prefer forward migration to revoke/drop `rpc_match_contact_person_targets`, `rpc_match_invite_contact_person`, and `rpc_validate_contact_person_match_invite_p4` if rollback is required.
+- Existing legacy `guest_id` invite RPCs remain intact.
+
 ## 2026-05-12 - MR-20260512-group-shared-contacts-ui
 
 **Type:** Mini Release
