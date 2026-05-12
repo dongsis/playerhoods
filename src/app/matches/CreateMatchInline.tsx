@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
@@ -23,9 +23,9 @@ import {
   type ScopeUser,
 } from '@/lib/api/matches'
 import { getGroups, getGroupMembers } from '@/lib/api/groups'
-import { listSports } from '@/lib/api/sports'
+import { listSports, setGuestSports } from '@/lib/api/sports'
 import { getInviteCircleList, getInviteCircleSourceLabel } from '@/lib/api/play-network'
-import { getContactPlayerResolution } from '@/lib/api/roster'
+import { createRosterGuest, getContactPlayerResolution } from '@/lib/api/roster'
 import { getContactInvitationDeliveryStatus } from '@/lib/contact-communication'
 import { getAvailabilityStatusLabel } from '@/lib/profile-options'
 import { getVenueDisplayName } from '@/lib/venues/display'
@@ -1012,6 +1012,11 @@ export function CreateMatchInline({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectionMode, setSelectionMode] = useState<'invite' | 'request' | null>(null)
+  const [contactComposerOpen, setContactComposerOpen] = useState(false)
+  const [contactDisplayName, setContactDisplayName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+  const [creatingContact, setCreatingContact] = useState(false)
   const [tooltip, setTooltip] = useState<TooltipState>(null)
   const [prefillConsumed, setPrefillConsumed] = useState(false)
   const courtPlanMenuRef = useRef<HTMLDivElement | null>(null)
@@ -1206,10 +1211,158 @@ export function CreateMatchInline({
     [sportId, sports],
   )
 
+  const loadContactInviteCandidates = useCallback(async () => {
+    const supabase = createSupabaseBrowserClient()
+    try {
+      const rows = await getContactPlayerResolution(supabase)
+      const linkedUserIds = Array.from(
+        new Set(
+          rows
+            .map((row) => row.linked_user_id)
+            .filter((linkedUserId): linkedUserId is string => Boolean(linkedUserId)),
+        ),
+      )
+      const linkedProfileMap = new Map<
+        string,
+        {
+          display_name: string
+          gender: 'male' | 'female' | 'unspecified' | null
+          availability_status: AvailabilityStatus | null
+          availability_note: string | null
+          availability_until: string | null
+        }
+      >()
+
+      if (linkedUserIds.length > 0) {
+        const { data: linkedProfiles, error: linkedProfilesError } = await supabase
+          .from('profiles')
+          .select('id, display_name, gender, availability_status, availability_note, availability_until')
+          .in('id', linkedUserIds)
+
+        if (linkedProfilesError) {
+          console.error('[CreateMatchInline] linked contact profiles:', linkedProfilesError)
+        } else {
+          ;((linkedProfiles ?? []) as Array<{
+            id: string
+            display_name: string
+            gender: 'male' | 'female' | 'unspecified' | null
+            availability_status: AvailabilityStatus | null
+            availability_note: string | null
+            availability_until: string | null
+          }>).forEach((profile) => {
+            linkedProfileMap.set(profile.id, profile)
+          })
+        }
+      }
+
+      setLinkedContactUsers(
+        rows
+          .filter((row) => row.linked_user_id)
+          .map((row) => {
+            const linkedProfile = row.linked_user_id ? linkedProfileMap.get(row.linked_user_id) : null
+            return {
+              userId: row.linked_user_id as string,
+              name: linkedProfile?.display_name?.trim() || row.display_name.trim() || 'Unknown',
+              source: 'contact_players' as const,
+              sourceLabel: 'Contacts',
+              gender: linkedProfile?.gender ?? row.gender ?? null,
+              availabilityStatus: linkedProfile?.availability_status ?? row.availability_status ?? 'available',
+              availabilityNote: linkedProfile?.availability_note ?? row.availability_note ?? null,
+              availabilityUntil: linkedProfile?.availability_until ?? row.availability_until ?? null,
+            }
+          }),
+      )
+
+      const contactOnlyRows = rows.filter((row) => row.resolution_state === 'contact_only' && !row.linked_user_id)
+      const deliveryStatus = await getContactInvitationDeliveryStatus(
+        supabase,
+        contactOnlyRows.map((row) => row.guest_id),
+      ).catch((statusError) => {
+        console.error('[CreateMatchInline] contact delivery status:', statusError)
+        return new Map()
+      })
+
+      setContactPlayers(
+        contactOnlyRows.map((row) => {
+          const status = deliveryStatus.get(row.guest_id)
+          return {
+            key: `contact:${row.guest_id}`,
+            kind: 'contact',
+            name: row.display_name.trim() || 'Contact Player',
+            source: 'contact_players',
+            sourceLabel: 'Contacts',
+            sourceLabels: ['Contacts'],
+            gender: row.gender ?? null,
+            availabilityStatus: row.availability_status ?? 'available',
+            availabilityNote: row.availability_note ?? null,
+            availabilityUntil: row.availability_until ?? null,
+            guestId: row.guest_id,
+            email: row.email,
+            phone: row.phone,
+            notes: row.notes,
+            emailOptedOut: status?.email_opted_out ?? false,
+            smsOptedOut: status?.sms_opted_out ?? false,
+            hasReachableChannel: status?.has_reachable_channel ?? Boolean(row.email || row.phone),
+          }
+        }),
+      )
+    } catch (contactError) {
+      console.error('[CreateMatchInline] contact players:', contactError)
+      setLinkedContactUsers([])
+      setContactPlayers([])
+    }
+  }, [])
+
   const selectedVenue = useMemo(
     () => venues.find((venue) => venue.id === venueId),
     [venueId, venues],
   )
+
+  const handleCreateContactPlayer = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const displayName = contactDisplayName.trim()
+    const email = contactEmail.trim().toLowerCase() || null
+    const phone = contactPhone.trim() || null
+
+    if (!displayName) {
+      setError('Enter a player name.')
+      return
+    }
+    if (!email && !phone) {
+      setError('Add an email or phone so this player can be invited.')
+      return
+    }
+    if (!selectedSport) {
+      setError('Choose a sport before adding players.')
+      return
+    }
+
+    const supabase = createSupabaseBrowserClient()
+    setCreatingContact(true)
+    setError(null)
+    setInviteNotice(null)
+
+    try {
+      const newGuest = await createRosterGuest(supabase, {
+        display_name: displayName,
+        email,
+        phone,
+      })
+      await setGuestSports(supabase, newGuest.id, [selectedSport.code])
+      setContactDisplayName('')
+      setContactEmail('')
+      setContactPhone('')
+      setContactComposerOpen(false)
+      setSelectionMode('invite')
+      setInviteNotice(`${displayName} was added. Select them below to invite them to this match.`)
+      await loadContactInviteCandidates()
+    } catch (createError) {
+      setError((createError as Error).message)
+    } finally {
+      setCreatingContact(false)
+    }
+  }, [contactDisplayName, contactEmail, contactPhone, loadContactInviteCandidates, selectedSport])
 
   useEffect(() => {
     const nextDefaultCourtPlanMode = getDefaultCourtPlanModeForVenueKind(selectedVenue?.venue_kind)
@@ -1280,6 +1433,14 @@ export function CreateMatchInline({
     && selectedInvitedGroups.length === 0
     && selectedScopeUsers.length === 0
     && selectedScopeGroups.length === 0
+  const hasSavedOrContactInvitePlayers = availableInviteOptions.length > 0
+  const selectedInviteTargetCount = selectedInvitePlayers.length + selectedInvitedGroups.length
+  const shouldShowMorePlayersPrompt =
+    selectionMode === 'invite'
+    && hasSavedOrContactInvitePlayers
+    && selectedInviteTargetCount > 0
+    && selectedInviteTargetCount < requiredCount
+    && !contactComposerOpen
 
   const organizerNoteSentences = useMemo(
     () => new Set(parseOrganizerNoteSentences(organizerNote)),
@@ -1413,106 +1574,7 @@ export function CreateMatchInline({
         setSavedPlayers(saved)
       })
       .catch(console.error)
-    getContactPlayerResolution(supabase)
-      .then(async (rows) => {
-        const linkedUserIds = Array.from(
-          new Set(
-            rows
-              .map((row) => row.linked_user_id)
-              .filter((linkedUserId): linkedUserId is string => Boolean(linkedUserId)),
-          ),
-        )
-        const linkedProfileMap = new Map<
-          string,
-          {
-            display_name: string
-            gender: 'male' | 'female' | 'unspecified' | null
-            availability_status: AvailabilityStatus | null
-            availability_note: string | null
-            availability_until: string | null
-          }
-        >()
-
-        if (linkedUserIds.length > 0) {
-          const { data: linkedProfiles, error: linkedProfilesError } = await supabase
-            .from('profiles')
-            .select('id, display_name, gender, availability_status, availability_note, availability_until')
-            .in('id', linkedUserIds)
-
-          if (linkedProfilesError) {
-            console.error('[CreateMatchInline] linked contact profiles:', linkedProfilesError)
-          } else {
-            ;((linkedProfiles ?? []) as Array<{
-              id: string
-              display_name: string
-              gender: 'male' | 'female' | 'unspecified' | null
-              availability_status: AvailabilityStatus | null
-              availability_note: string | null
-              availability_until: string | null
-            }>).forEach((profile) => {
-              linkedProfileMap.set(profile.id, profile)
-            })
-          }
-        }
-
-        setLinkedContactUsers(
-          rows
-            .filter((row) => row.linked_user_id)
-            .map((row) => {
-              const linkedProfile = row.linked_user_id ? linkedProfileMap.get(row.linked_user_id) : null
-              return {
-                userId: row.linked_user_id as string,
-                name: linkedProfile?.display_name?.trim() || row.display_name.trim() || 'Unknown',
-                source: 'contact_players' as const,
-                sourceLabel: 'Contacts',
-                gender: linkedProfile?.gender ?? row.gender ?? null,
-                availabilityStatus: linkedProfile?.availability_status ?? row.availability_status ?? 'available',
-                availabilityNote: linkedProfile?.availability_note ?? row.availability_note ?? null,
-                availabilityUntil: linkedProfile?.availability_until ?? row.availability_until ?? null,
-              }
-            }),
-        )
-
-        const contactOnlyRows = rows.filter((row) => row.resolution_state === 'contact_only' && !row.linked_user_id)
-        const deliveryStatus = await getContactInvitationDeliveryStatus(
-          supabase,
-          contactOnlyRows.map((row) => row.guest_id),
-        ).catch((statusError) => {
-          console.error('[CreateMatchInline] contact delivery status:', statusError)
-          return new Map()
-        })
-
-        setContactPlayers(
-          contactOnlyRows
-            .map((row) => {
-              const status = deliveryStatus.get(row.guest_id)
-              return {
-              key: `contact:${row.guest_id}`,
-              kind: 'contact',
-              name: row.display_name.trim() || 'Contact Player',
-              source: 'contact_players',
-              sourceLabel: 'Contacts',
-              sourceLabels: ['Contacts'],
-              gender: row.gender ?? null,
-              availabilityStatus: row.availability_status ?? 'available',
-              availabilityNote: row.availability_note ?? null,
-              availabilityUntil: row.availability_until ?? null,
-              guestId: row.guest_id,
-              email: row.email,
-              phone: row.phone,
-              notes: row.notes,
-              emailOptedOut: status?.email_opted_out ?? false,
-              smsOptedOut: status?.sms_opted_out ?? false,
-              hasReachableChannel: status?.has_reachable_channel ?? Boolean(row.email || row.phone),
-            }
-            }),
-        )
-      })
-      .catch((contactError) => {
-        console.error('[CreateMatchInline] contact players:', contactError)
-        setLinkedContactUsers([])
-        setContactPlayers([])
-      })
+    void loadContactInviteCandidates()
     getGroups(supabase)
       .then(async (loadedGroups) => {
         setGroups(loadedGroups)
@@ -1536,7 +1598,7 @@ export function CreateMatchInline({
       .catch(console.error)
     getVenues(supabase, { relatedOnly: true }).then(setVenues).catch(console.error)
     listSports(supabase).then(setSports).catch(console.error)
-  }, [])
+  }, [loadContactInviteCandidates])
 
   useEffect(() => {
     if (!venueId) { setCourts([]); return }
@@ -2608,6 +2670,100 @@ export function CreateMatchInline({
                   <div className="mb-4 flex flex-wrap gap-2">
                     {selectionMode === 'invite' && (
                       <>
+                        {!hasSavedOrContactInvitePlayers && !contactComposerOpen ? (
+                          <div className="w-full rounded-2xl border border-[#D7E3F4] bg-white p-4 shadow-sm">
+                            <h4 className="text-title-main text-[#0B1F44]">Add players you usually invite</h4>
+                            <p className="text-body-main mt-1 text-[#52647E]">
+                              Start with your regular players. You can invite them to this game now, even if they are not on PlayerHoods yet.
+                            </p>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setError(null)
+                                  setContactComposerOpen(true)
+                                }}
+                                className="text-body-main rounded-full bg-[#0B1F44] px-4 py-2 font-semibold text-white transition hover:bg-[#16325F]"
+                              >
+                                Add regular players
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setContactComposerOpen(false)
+                                  setSelectionMode(null)
+                                }}
+                                className="text-body-main rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#52647E] transition hover:border-[#B8C8DF]"
+                              >
+                                Continue without players
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                        {contactComposerOpen ? (
+                          <form
+                            onSubmit={handleCreateContactPlayer}
+                            className="w-full rounded-2xl border border-[#D7E3F4] bg-white p-4 shadow-sm"
+                          >
+                            <div className="mb-3">
+                              <h4 className="text-title-main text-[#0B1F44]">Add regular players</h4>
+                              <p className="text-body-sub mt-1 text-[#64748B]">
+                                Add one player now, then select them for this match.
+                              </p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <label className="text-body-sub text-[#52647E]">
+                                <span className="mb-1 block font-semibold">Name</span>
+                                <input
+                                  type="text"
+                                  value={contactDisplayName}
+                                  onChange={(event) => setContactDisplayName(event.target.value)}
+                                  placeholder="Player name"
+                                  className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
+                                />
+                              </label>
+                              <label className="text-body-sub text-[#52647E]">
+                                <span className="mb-1 block font-semibold">Email</span>
+                                <input
+                                  type="email"
+                                  value={contactEmail}
+                                  onChange={(event) => setContactEmail(event.target.value)}
+                                  placeholder="Email"
+                                  className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
+                                />
+                              </label>
+                              <label className="text-body-sub text-[#52647E]">
+                                <span className="mb-1 block font-semibold">Phone</span>
+                                <input
+                                  type="tel"
+                                  value={contactPhone}
+                                  onChange={(event) => setContactPhone(event.target.value)}
+                                  placeholder="Phone"
+                                  className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
+                                />
+                              </label>
+                            </div>
+                            <div className="mt-4 flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setContactComposerOpen(false)
+                                  setError(null)
+                                }}
+                                className="text-body-main rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#52647E] transition hover:border-[#B8C8DF]"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="submit"
+                                disabled={creatingContact}
+                                className="text-body-main rounded-full bg-[#0B1F44] px-4 py-2 font-semibold text-white transition hover:bg-[#16325F] disabled:cursor-wait disabled:bg-[#94A3B8]"
+                              >
+                                {creatingContact ? 'Adding...' : 'Add regular player'}
+                              </button>
+                            </div>
+                          </form>
+                        ) : null}
                         {filteredInviteOptions.map((candidate) => renderInviteCandidateButton(candidate))}
                         {filteredInviteGroups.map((group) =>
                           renderGroupSelector(
@@ -2622,6 +2778,28 @@ export function CreateMatchInline({
                             'indigo',
                           ),
                         )}
+                        {shouldShowMorePlayersPrompt ? (
+                          <div className="w-full rounded-2xl border border-dashed border-[#D7E3F4] bg-white px-4 py-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <h4 className="text-title-main text-[#0B1F44]">Need more players?</h4>
+                                <p className="text-body-sub mt-1 text-[#64748B]">
+                                  Add people you already play with and invite them to this match.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setError(null)
+                                  setContactComposerOpen(true)
+                                }}
+                                className="text-body-main shrink-0 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
+                              >
+                                Add players
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </>
                     )}
 
@@ -2644,9 +2822,9 @@ export function CreateMatchInline({
                       </>
                     )}
 
-                    {selectionMode === 'invite' && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 && (
+                    {selectionMode === 'invite' && hasSavedOrContactInvitePlayers && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 && (
                       <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
-                        Save registered players to your Hood first, or invite a group instead.
+                        Everyone available here is already selected.
                       </div>
                     )}
                     {selectionMode === 'request' && filteredRequestUsers.length === 0 && filteredRequestGroups.length === 0 && (

@@ -2773,7 +2773,7 @@ export function HoodsPanel({
                 : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]',
             ].join(' ')}
           >
-            {contactToolsOpen ? 'Close contact player tools' : 'Add contact player'}
+            {contactToolsOpen ? 'Close contact player tools' : 'Add regular players'}
           </button>
         </div>
       ) : null}
@@ -2919,9 +2919,44 @@ export function HoodsPanel({
           </p>
         </div>
       ) : activePeople.length === 0 ? (
-        <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
-          {getPeopleEmptyState(section, hoodFilter, discoverSource, selectedSport.display_name)}
-        </div>
+        section === 'hood' && hoodFilter === 'contacts' ? (
+          <div className="rounded-[28px] border border-dashed border-[#CBD5E1] bg-[#F8FBFF] p-6 text-left">
+            <div className="mx-auto max-w-2xl">
+              <h3 className="text-h2 text-[#0B1F44]">Make your next game easier to organize</h3>
+              <p className="text-body-main mt-2 text-[#52647E]">
+                Add your regular players once, invite them to games now, and coordinate more smoothly as they join PlayerHoods.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {[
+                  ['Invite them now', 'Use contact players in games right away.'],
+                  ['Save time next time', 'No more rebuilding your invite list from chats.'],
+                  ['Gets smoother as they join', 'Confirmations, game chats, and repeat invites become easier over time.'],
+                ].map(([title, body]) => (
+                  <div key={title} className="rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
+                    <p className="text-title-main text-[#0B1F44]">{title}</p>
+                    <p className="text-body-sub mt-1 text-[#64748B]">{body}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  clearMessage()
+                  setError(null)
+                  setContactToolsOpen(true)
+                  setContactComposerMode('manual')
+                }}
+                className="text-body-main mt-5 rounded-full bg-[#0B1F44] px-5 py-2.5 font-semibold text-white transition hover:bg-[#16325F]"
+              >
+                Add regular players
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
+            {getPeopleEmptyState(section, hoodFilter, discoverSource, selectedSport.display_name)}
+          </div>
+        )
       ) : (
         <div className="space-y-5">
           {activePeople.length > 0 ? (

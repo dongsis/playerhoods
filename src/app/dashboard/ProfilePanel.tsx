@@ -21,7 +21,7 @@ import { DiscoveryAndInvitesSection } from '@/app/profile/DiscoveryAndInvitesSec
 import { SportProfilesEditor } from '@/app/profile/SportProfilesEditor'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
 import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
-import type { LocationCityOption } from '@/lib/api/location-municipalities'
+import { listLocationCityOptions, type LocationCityOption } from '@/lib/api/location-municipalities'
 import {
   PREFERRED_PLAY_TIME_OPTIONS,
   getAvailabilityStatusDotClass,
@@ -508,6 +508,22 @@ const VENUE_SPORT_FILTER_OPTIONS: Array<{ value: VenueSportFilter; label: string
   { value: 'pickleball', label: 'Pickleball' },
 ]
 
+const CANADA_PROVINCE_OPTIONS: Array<{ code: string; label: string }> = [
+  { code: 'AB', label: 'Alberta' },
+  { code: 'BC', label: 'British Columbia' },
+  { code: 'MB', label: 'Manitoba' },
+  { code: 'NB', label: 'New Brunswick' },
+  { code: 'NL', label: 'Newfoundland and Labrador' },
+  { code: 'NS', label: 'Nova Scotia' },
+  { code: 'NT', label: 'Northwest Territories' },
+  { code: 'NU', label: 'Nunavut' },
+  { code: 'ON', label: 'Ontario' },
+  { code: 'PE', label: 'Prince Edward Island' },
+  { code: 'QC', label: 'Quebec' },
+  { code: 'SK', label: 'Saskatchewan' },
+  { code: 'YT', label: 'Yukon' },
+]
+
 function getVenueKindLabel(kind: Venue['venue_kind'] | null | undefined): string {
   switch (kind) {
     case 'club':
@@ -599,14 +615,67 @@ function BasicLocationEditor({
   const [draftCities, setDraftCities] = useState(
     playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean),
   )
+  const [selectedRegion, setSelectedRegion] = useState(region || DEFAULT_PLAY_REGION)
+  const [regionCities, setRegionCities] = useState(availableCities)
+  const [loadedRegionCodes, setLoadedRegionCodes] = useState(
+    () => new Set(availableCities.map((city) => city.region).filter(Boolean)),
+  )
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cityOptionsLoading, setCityOptionsLoading] = useState(false)
   const [isPending, startTransition] = useTransition()
   const dropdownRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setDraftCities(playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean))
   }, [playCities])
+
+  useEffect(() => {
+    setSelectedRegion(region || DEFAULT_PLAY_REGION)
+  }, [region])
+
+  useEffect(() => {
+    setRegionCities(availableCities)
+    setLoadedRegionCodes(new Set(availableCities.map((city) => city.region).filter(Boolean)))
+  }, [availableCities])
+
+  useEffect(() => {
+    let cancelled = false
+    const normalizedRegion = selectedRegion || DEFAULT_PLAY_REGION
+
+    if (loadedRegionCodes.has(normalizedRegion)) return
+
+    setCityOptionsLoading(true)
+    listLocationCityOptions(createSupabaseBrowserClient(), {
+      countryCode: 'CA',
+      provinceCode: normalizedRegion,
+    })
+      .then((cities) => {
+        if (cancelled) return
+        setRegionCities((current) => {
+          const keyFor = (city: { city_name: string; region?: string | null }) =>
+            `${city.city_name.toLowerCase()}::${(city.region ?? '').toLowerCase()}`
+          const merged = new Map(current.map((city) => [keyFor(city), city]))
+          for (const city of cities) {
+            merged.set(keyFor(city), city)
+          }
+          return Array.from(merged.values()).sort((left, right) => left.city_name.localeCompare(right.city_name))
+        })
+        setLoadedRegionCodes((current) => new Set([...current, normalizedRegion]))
+      })
+      .catch((loadError) => {
+        console.error('[ProfilePanel] load province cities:', loadError)
+        if (!cancelled) setError('Could not load cities for this province.')
+        setLoadedRegionCodes((current) => new Set([...current, normalizedRegion]))
+      })
+      .finally(() => {
+        if (!cancelled) setCityOptionsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [loadedRegionCodes, selectedRegion])
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -622,11 +691,11 @@ function BasicLocationEditor({
 
   const cityMetaMap = useMemo(() => {
     const map = new Map<string, { region: string | null; country: string | null }>()
-    for (const city of availableCities) {
+    for (const city of regionCities) {
       const normalized = normalizeCityName(city.city_name ?? '')
       if (!normalized || map.has(normalized.toLowerCase())) continue
       map.set(normalized.toLowerCase(), {
-        region: city.region ?? region,
+        region: city.region ?? selectedRegion,
         country: city.country ?? country,
       })
     }
@@ -634,22 +703,24 @@ function BasicLocationEditor({
       const normalized = normalizeCityName(city.city_name ?? '')
       if (!normalized || map.has(normalized.toLowerCase())) continue
       map.set(normalized.toLowerCase(), {
-        region: city.region ?? region,
+        region: city.region ?? selectedRegion,
         country: city.country ?? country,
       })
     }
     return map
-  }, [availableCities, country, playCities, region])
+  }, [country, playCities, regionCities, selectedRegion])
 
   const cityOptions = useMemo(
     () =>
       Array.from(
         new Set([
-          ...availableCities.map((city) => normalizeCityName(city.city_name ?? '')),
+          ...regionCities
+            .filter((city) => city.region === selectedRegion)
+            .map((city) => normalizeCityName(city.city_name ?? '')),
           ...playCities.map((city) => normalizeCityName(city.city_name ?? '')),
         ].filter(Boolean)),
       ).sort((left, right) => left.localeCompare(right)),
-    [availableCities, playCities],
+    [playCities, regionCities, selectedRegion],
   )
 
   const filteredCities = useMemo(() => {
@@ -671,7 +742,7 @@ function BasicLocationEditor({
         const result = await onSave({
           play_cities: nextCities.map((city_name) => ({
             city_name,
-            region: cityMetaMap.get(city_name.toLowerCase())?.region ?? region,
+            region: cityMetaMap.get(city_name.toLowerCase())?.region ?? selectedRegion,
             country: cityMetaMap.get(city_name.toLowerCase())?.country ?? country,
           })),
         })
@@ -730,8 +801,23 @@ function BasicLocationEditor({
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden="true">
               <path d="M12 2.8a7 7 0 0 0-7 7c0 5.2 7 11.4 7 11.4s7-6.2 7-11.4a7 7 0 0 0-7-7Zm0 9.7a2.7 2.7 0 1 1 0-5.4 2.7 2.7 0 0 1 0 5.4Z" />
             </svg>
-            <span className="min-w-0 flex-1 truncate">{region}</span>
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" aria-hidden="true">
+            <select
+              value={selectedRegion}
+              onChange={(event) => {
+                setSelectedRegion(event.target.value)
+                setCityInput('')
+                setIsDropdownOpen(false)
+                setError(null)
+              }}
+              className="min-w-0 flex-1 appearance-none bg-transparent text-[10px] font-semibold text-[#071A44] outline-none"
+            >
+              {CANADA_PROVINCE_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.code}
+                </option>
+              ))}
+            </select>
+            <svg viewBox="0 0 24 24" className="pointer-events-none h-3.5 w-3.5 shrink-0" fill="none" aria-hidden="true">
               <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
@@ -757,7 +843,7 @@ function BasicLocationEditor({
                 setIsDropdownOpen(true)
               }}
               onFocus={() => setIsDropdownOpen(true)}
-              placeholder={draftCities.length === 0 ? 'Add City' : ''}
+              placeholder={draftCities.length === 0 ? `Add City in ${selectedRegion}` : ''}
               className="h-6 min-w-[72px] flex-1 bg-transparent px-1.5 text-[10px] text-[#071A44] outline-none"
             />
           </div>
@@ -791,7 +877,9 @@ function BasicLocationEditor({
 
         {isDropdownOpen ? (
           <div className="relative z-20 mt-1.5 max-h-40 w-full overflow-y-auto rounded-lg border border-[#CBD5E1] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
-            {filteredCities.length > 0 ? filteredCities.map((city) => (
+            {cityOptionsLoading ? (
+              <div className="px-2.5 py-2 text-[10px] text-[#64748B]">Loading cities...</div>
+            ) : filteredCities.length > 0 ? filteredCities.map((city) => (
               <button
                 key={city}
                 type="button"

@@ -154,22 +154,23 @@ export default function HomePage() {
           <img
             src="/playerhoods-home-hero.png"
             alt="Players greeting each other at a tennis net"
-            className="h-full w-full object-cover object-center"
+            className="h-full w-full object-cover object-[center_42%]"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#001845]/85 via-[#0047AB]/55 to-white/95" />
         </div>
 
         <div className="relative z-10 mx-auto mt-8 w-full max-w-5xl px-4">
-          <p className="mb-4 text-sm font-black uppercase tracking-[0.22em] text-[#CDE11D]">
-            Tennis and pickleball communities
+          <p className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-[#CDE11D]">
+            4,000+ Tennis & Pickleball Communities Across Canada
           </p>
-          <h1 className="mx-auto max-w-4xl text-5xl font-black tracking-tight text-white drop-shadow md:text-7xl">
+          <h1 className="mx-auto max-w-4xl text-4xl font-black leading-[1.05] tracking-tight text-white drop-shadow md:text-6xl">
             Bring players together.
             <span className="block text-[#CDE11D]">Keep the game going.</span>
           </h1>
-          <p className="mx-auto mt-7 max-w-2xl text-xl font-semibold leading-relaxed text-white/95 drop-shadow-sm md:text-2xl">
-            Maintain your trusted playing circle, grow your hood safely, and organize every game
-            without the chaos.
+          <p className="mx-auto mt-6 max-w-3xl text-lg font-semibold leading-relaxed text-white/95 drop-shadow-sm md:text-xl">
+            Every venue is a community. Discover places to play, connect with local players, and
+            organize games without the chaos. Build your playing circle and keep your hood growing
+            safely.
           </p>
 
           <form action="/venues" className="mx-auto mt-10 flex max-w-3xl items-center rounded-full bg-white p-2 shadow-2xl">
@@ -196,7 +197,7 @@ export default function HomePage() {
 
           <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm font-black text-slate-800">
             <div className="rounded-lg border border-white/50 bg-white/90 px-4 py-2 shadow-sm backdrop-blur">
-              <span className="text-[#0047AB]">3,000+</span> Ontario Tennis & Pickleball Places Listed
+              <span className="text-[#0047AB]">4,000+</span> Tennis & Pickleball Communities Across Canada
             </div>
           </div>
         </div>
