@@ -182,6 +182,73 @@ function InfoIcon() {
   )
 }
 
+function ImportExampleCards() {
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      <div className="text-center">
+        <div className="flex aspect-[3/4] flex-col gap-2 rounded-xl border border-[#DCE6F2] bg-[#F8FBFF] p-2 shadow-[0_8px_18px_-16px_rgba(15,23,42,0.45)]">
+          <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-1 text-left">
+            <span className="h-3 w-3 rounded-full bg-[#2D6CDF]" />
+            <span className="truncate text-[8px] font-black text-[#334155]">Tennis Group (12)</span>
+          </div>
+          {[
+            ['RF', 'Roger Federer', 'bg-[#EAF2FF] text-[#075BD7]'],
+            ['RN', 'Rafael Nadal', 'bg-[#EAFBF0] text-[#07823F]'],
+            ['ND', 'Novak Djokovic', 'bg-[#FFF7D6] text-[#B7791F]'],
+          ].map(([initials, name, tone]) => (
+            <div key={name} className="flex items-center gap-2 text-left">
+              <span className={['flex h-4 w-4 items-center justify-center rounded-full text-[6px] font-black', tone].join(' ')}>
+                {initials}
+              </span>
+              <span className="truncate text-[8px] font-semibold text-[#334155]">{name}</span>
+            </div>
+          ))}
+          <span className="mx-auto mt-auto h-0.5 w-7 rounded-full bg-[#CBD5E1]" />
+        </div>
+        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#64748B]">Chat Group</p>
+      </div>
+
+      <div className="text-center">
+        <div className="aspect-[3/4] rounded-xl border border-[#DCE6F2] bg-white p-2 shadow-[0_8px_18px_-16px_rgba(15,23,42,0.45)]">
+          <div className="mb-2 border-b border-[#EEF2F7] pb-2 text-left">
+            <div className="text-[7px] font-black text-[#2D6CDF]">To:</div>
+            <div className="mt-1 h-1 w-12 rounded-full bg-[#E2E8F0]" />
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {['serena@gmail.com', 'venus@tennis.com', 'andy.m@uk.co'].map((email) => (
+              <span key={email} className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-1.5 py-0.5 text-[7px] font-semibold text-[#075BD7]">
+                {email}
+              </span>
+            ))}
+          </div>
+        </div>
+        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#64748B]">Email Header</p>
+      </div>
+
+      <div className="text-center">
+        <div className="aspect-[3/4] overflow-hidden rounded-xl border border-[#DCE6F2] bg-white shadow-[0_8px_18px_-16px_rgba(15,23,42,0.45)]">
+          <div className="grid grid-cols-2 bg-[#F1F5F9] p-1 text-[7px] font-black text-[#64748B]">
+            <span>Name</span>
+            <span>Phone</span>
+          </div>
+          {[
+            ['Stan Wawrinka', '555-0123'],
+            ['Maria S.', '555-0198'],
+            ['Carlos Alcaraz', '555-0442'],
+            ['Coco Gauff', '555-0771'],
+          ].map(([name, phone]) => (
+            <div key={name} className="grid grid-cols-2 border-t border-[#EEF2F7] p-1.5 text-[7px]">
+              <span className="truncate text-[#334155]">{name}</span>
+              <span className="truncate text-[#94A3B8]">{phone}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#64748B]">Sheet/List</p>
+      </div>
+    </div>
+  )
+}
+
 export function ContactScreenshotImportSection({
   userId,
   existingContacts,
@@ -331,17 +398,10 @@ export function ContactScreenshotImportSection({
   }
 
   return (
-    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_40px_-36px_rgba(15,23,42,0.28)]">
-      <div className="sticky top-0 z-10 border-b border-slate-100 bg-white px-6 py-4">
-        <div>
-          <h4 className="text-[1.1rem] font-semibold text-slate-800">Import from Screenshot</h4>
-          <p className="mt-0.5 text-[12px] text-slate-500">Upload screenshots containing names, phones, or emails.</p>
-        </div>
-      </div>
-
-      <div className="p-6">
+    <div className="overflow-hidden bg-white">
+      <div className="px-1 pb-6">
         {step === 'upload' ? (
-          <div className="space-y-4">
+          <div className="space-y-8">
             <input
               ref={fileInputRef}
               type="file"
@@ -363,54 +423,57 @@ export function ContactScreenshotImportSection({
                 handleFileSelection(Array.from(event.dataTransfer.files ?? []).filter((file) => file.type.startsWith('image/')))
               }}
               className={[
-                'flex flex-wrap items-center justify-between gap-3 rounded-[18px] border px-4 py-4 transition',
+                'flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-[28px] border-2 border-dashed px-6 py-9 text-center transition',
                 isDragging
-                  ? 'border-blue-300 bg-blue-50'
-                  : 'border-slate-200 bg-slate-50',
+                  ? 'border-[#2D6CDF] bg-[#EFF6FF]'
+                  : 'border-[#DCE6F2] bg-[#F8FBFF] hover:border-[#93C5FD] hover:bg-[#EFF6FF]',
               ].join(' ')}
+              onClick={() => fileInputRef.current?.click()}
             >
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                  <UploadIcon />
-                </span>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-800">
-                    {files.length > 0 ? `${files.length} screenshot${files.length === 1 ? '' : 's'} selected` : 'Choose screenshot files'}
-                  </div>
-                  <div className="mt-1 truncate text-xs text-slate-500">
-                    {files.length > 0
-                      ? files.map((file) => file.name).join(', ')
-                      : 'PNG, JPG, or WebP. You can also drop files here.'}
-                  </div>
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-[#2D6CDF] shadow-sm">
+                <UploadIcon />
+              </span>
+              <div className="mt-4 min-w-0">
+                <div className="text-base font-black text-[#1E293B]">
+                  {files.length > 0 ? `${files.length} screenshot${files.length === 1 ? '' : 's'} selected` : 'Select Screenshot'}
+                </div>
+                <div className="mt-2 text-xs font-semibold text-[#94A3B8]">
+                  {files.length > 0
+                    ? files.map((file) => file.name).join(', ')
+                    : 'JPG, PNG, or WEBP'}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="shrink-0 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-              >
-                Choose Files
-              </button>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-amber-100 bg-amber-50 p-4">
-              <div className="flex gap-3 text-amber-800">
-                <span className="mt-0.5 shrink-0 text-amber-500">
+            <ImportExampleCards />
+
+            {files.length > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#DBEAFE] bg-[#F8FBFF] p-4">
+                <div className="flex min-w-0 items-center gap-3 text-[#64748B]">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EAF2FF] text-[#075BD7]">
+                    <UploadIcon />
+                  </span>
+                  <span className="min-w-0 truncate text-sm font-semibold">{files.map((file) => file.name).join(', ')}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleParse}
+                  disabled={parsing}
+                  className="rounded-xl bg-[#0B1F44] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#16325F] disabled:cursor-wait disabled:bg-slate-300"
+                >
+                  {parsing ? 'Analyzing...' : 'Parse Screenshot'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 rounded-[18px] border border-[#E2E8F0] bg-[#F8FBFF] p-4 text-[#64748B]">
+                <span className="shrink-0 text-[#075BD7]">
                   <InfoIcon />
                 </span>
-                <p className="text-xs leading-6">
-                  Tip: For best results, ensure screenshots are clear and text is unobstructed. Multiple languages are supported.
+                <p className="text-xs leading-5">
+                  Clear screenshots work best. Names, emails, and phones can come from chat groups, email headers, sheets, or contact lists.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleParse}
-                disabled={parsing || files.length === 0}
-                className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                {parsing ? 'Parsing...' : 'Parse Screenshot'}
-              </button>
-            </div>
+            )}
           </div>
         ) : (
           <div className="space-y-6">
@@ -606,9 +669,10 @@ export function ContactScreenshotImportSection({
         )}
       </div>
 
+      {step === 'review' ? (
       <div className="flex items-center justify-between gap-4 border-t border-slate-100 bg-slate-50 px-6 py-4">
         <div className="text-sm italic text-slate-500">
-          {step === 'review' ? `${selectedCount} contacts selected for import` : 'Supports batch processing of screenshots'}
+          {selectedCount} contacts selected for import
         </div>
         <div className="flex gap-3">
           <button
@@ -634,11 +698,12 @@ export function ContactScreenshotImportSection({
                 : 'cursor-not-allowed bg-slate-200 text-slate-400',
             ].join(' ')}
           >
-            <span>{step === 'review' ? (importing ? 'Importing...' : `Import Selected (${selectedCount})`) : 'Upload First'}</span>
+            <span>{importing ? 'Importing...' : `Import Selected (${selectedCount})`}</span>
             <span aria-hidden="true">›</span>
           </button>
         </div>
       </div>
+      ) : null}
 
       {notice ? (
         <div className="border-t border-emerald-100 bg-emerald-50 px-6 py-3 text-sm text-emerald-700">
