@@ -14,6 +14,51 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-12 - MR-20260512-group-shared-contacts-ui
+
+**Type:** Mini Release
+**Commit:** `b5c7c10`
+**Migration:** None
+**Status:** GitHub and Vercel Production deployed
+
+### Summary
+
+Phase 3 aligns the group detail UI with the canonical Contact Player model:
+
+- Splits group people display into `Members` and `Shared Contacts`.
+- Keeps Contact Players in `group_contacts`; the UI no longer presents them as full group members.
+- Adds product copy that Shared Contacts can be saved and invited where available, are not group members, and private contact details stay hidden.
+- Renames the add panel language from contact-as-member wording to `Shared Contact`.
+- Lets group members save Shared Contacts to Hood through the existing `rpc_contact_player_save` path, while hiding Save when already saved or when the Shared Contact is the viewer's own person.
+- Updates the Contact Player canonical spec to state that group Contact Player inclusion must not create `group_members` rows.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local code | Modified | Group detail UI and canonical spec updated locally |
+| GitHub main | `b5c7c10` | Pushed to `origin/main` |
+| Vercel Preview | Not deployed | Not used for this mini release |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-cxlqo4tb7-nancys-projects-128e326c.vercel.app` reported Ready |
+| Supabase Local | No change | No migration in this phase |
+| Supabase Remote | No change | Existing `group_contacts`, `rpc_group_contact_list_v2`, and `rpc_contact_player_save` verified |
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Passed | `npm.cmd run build` |
+| Static diff check | Passed | `git diff --check` on P3 files |
+| Remote DB dependency check | Passed | `group_contacts`, `rpc_group_contact_list_v2`, and `rpc_contact_player_save` all exist |
+| Vercel Production | Passed | Latest deployment reported Ready |
+
+### Rollback
+
+Code rollback:
+
+- Revert commit `b5c7c10`.
+- No Supabase rollback is required because this phase has no schema or RPC migration.
+
 ## 2026-05-12 - MR-20260512-contact-intro-share-inbox-card
 
 **Type:** Mini Release
