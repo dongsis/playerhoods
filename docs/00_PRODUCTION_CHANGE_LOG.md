@@ -14,6 +14,58 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-12 - SR-20260512-linked-contact-permission-boundary-p5
+
+**Type:** Structural Release
+**Commit:** Pending
+**Migration:** `20260512173000_linked_contact_permission_boundary_p5.sql`
+**Status:** Supabase Remote applied; GitHub/Vercel pending at time of entry
+
+### Summary
+
+Phase 5 tightens linked Contact / registered-user permission boundaries:
+
+- Replaces `handle_contact_claimed` so explicit identity link accept remains an identity bridge, not a permission upgrade.
+- Keeps claim audit, owner-private contact soft archive, saved-player visibility migration, group contact provenance, notifications, and People you may know suggestions.
+- Stops future automatic `group_members` creation from ContactClaimed.
+- Stops future historical match participant mutation/merge/replacement from ContactClaimed.
+- Preserves `group_contacts` as Shared Contacts and preserves historical match participant rows.
+- Does not create Match Proxy bindings or group/admin authority from linked identity state.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local code | Modified | P5 migration and canonical docs updated locally |
+| GitHub main | Pending | Commit/push pending |
+| Vercel Preview | Not deployed | Not used for this structural release |
+| Vercel Production | Pending | Deployment pending GitHub push |
+| Supabase Local | Not applied | Local Supabase was not run for this phase |
+| Supabase Remote | Applied | Migration `20260512173000` appears in both Local and Remote migration list |
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Passed | `npm.cmd run build` |
+| Static diff check | Passed | `git diff --check` on P5 files |
+| Remote DB migration | Passed | `npx.cmd supabase db push --linked --yes` applied migration `20260512173000` |
+| Remote DB validation | Partial | `handle_contact_claimed_exists` and proxy-boundary checks returned `ok=true`; `historical_auto_group_members_from_claims` found 2 pre-existing rows |
+
+### Residual Risk
+
+Remote validation found 2 historical `group_members` rows with `join_method = 'contact_claimed'`. They were created by pre-P5 behavior. This release does not delete or rewrite those rows without explicit cleanup approval.
+
+### Rollback
+
+Code rollback:
+
+- Revert the P5 commit after it is pushed.
+
+Database rollback:
+
+- Prefer forward migration to restore the previous `handle_contact_claimed` behavior only if product decides to re-enable automatic group membership and match participant mutation.
+
 ## 2026-05-12 - SR-20260512-contact-person-match-invite-p4
 
 **Type:** Structural Release

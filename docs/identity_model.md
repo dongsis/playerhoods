@@ -1,6 +1,6 @@
 # PlayerHoods Identity Model
 
-Last updated: 2026-05-05
+Last updated: 2026-05-12
 
 ## Purpose
 
@@ -265,6 +265,14 @@ That confirmed-link workflow may then:
 - preserve private notes and historical invitations
 - switch future invitations to the registered-user path
 
+It must not automatically:
+
+- create `group_members` rows
+- create Match Proxy bindings
+- grant keeper/admin authority
+- mutate historical match participant rows solely because a linked user exists
+- expose another user's private contact details
+
 For MVP this soft archive means:
 
 - set `contact_records.archived_at`
@@ -272,6 +280,8 @@ For MVP this soft archive means:
 - set `contact_records.replaced_by_user_id`
 - hide archived contact records from active Contacts / Hoods contact views by default
 - do not delete historical guest rows, invitations, notes, or match participation rows
+
+Group Contact rows remain group-scoped Shared Contacts. A linked registered user may be rendered as the PlayerHoods identity for that shared person, but the registered user is not made a full group member unless they explicitly join or accept a normal group membership flow.
 
 ## MVP Review Scope
 

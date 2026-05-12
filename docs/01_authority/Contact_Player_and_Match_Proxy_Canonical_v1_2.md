@@ -573,6 +573,8 @@ Audit must distinguish self action vs proxy action.
 - `linked` means identity bridge only
 - `linked` does not auto-upgrade discovery privileges
 - `linked` does not auto-create proxy binding
+- `linked` does not auto-create group membership
+- `linked` does not require rewriting historical match participant rows
 - `linked` does not collapse the boundaries between person node, contact record, registered user identity, and proxy binding
 
 ---
