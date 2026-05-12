@@ -2,11 +2,13 @@ import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import {
   getAdmissionTargets,
+  getContactPersonAdmissionTargets,
   getCourts,
   getMatchCourts,
   getMatchDetailData,
   isCallerInMatchScope,
   type AdmissionTarget,
+  type ContactPersonAdmissionTarget,
   type MatchDetailData,
 } from '@/lib/api/matches'
 import { getGroups } from '@/lib/api/groups'
@@ -24,6 +26,7 @@ export type MatchDetailLoaderData = {
   inScope: boolean
   venueCourts: Court[]
   admissionTargets: AdmissionTarget[]
+  contactPersonTargets: ContactPersonAdmissionTarget[]
   inviteCircle: InviteCircleRow[]
   allGroups: Group[]
   identityLinkCandidates: IdentityLinkCandidate[]
@@ -71,10 +74,13 @@ export async function loadMatchDetailPageData(matchId: string): Promise<MatchDet
       : Promise.resolve([] as Court[]),
   ])
 
-  const [admissionTargets, inviteCircle, allGroups, identityLinkCandidates] = await Promise.all([
+  const [admissionTargets, contactPersonTargets, inviteCircle, allGroups, identityLinkCandidates] = await Promise.all([
     detail.match.status === 'active'
       ? loadWithFallback('admissionTargets', () => getAdmissionTargets(supabase, matchId), [] as AdmissionTarget[])
       : Promise.resolve([] as AdmissionTarget[]),
+    detail.match.status === 'active' && user
+      ? loadWithFallback('contactPersonTargets', () => getContactPersonAdmissionTargets(supabase, matchId), [] as ContactPersonAdmissionTarget[])
+      : Promise.resolve([] as ContactPersonAdmissionTarget[]),
     user
       ? loadWithFallback('inviteCircle', () => getInviteCircleList(supabase), [] as InviteCircleRow[])
       : Promise.resolve([] as InviteCircleRow[]),
@@ -94,6 +100,7 @@ export async function loadMatchDetailPageData(matchId: string): Promise<MatchDet
     inScope,
     venueCourts,
     admissionTargets,
+    contactPersonTargets,
     inviteCircle,
     allGroups,
     identityLinkCandidates,

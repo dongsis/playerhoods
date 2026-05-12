@@ -2,7 +2,7 @@
 
 **Status:** authoritative  
 **Scope:** Contact Player identity, visibility, save/group/match admission, Match Proxy authority boundary  
-**Last updated:** 2026-04-10
+**Last updated:** 2026-05-12
 
 ---
 
@@ -383,6 +383,11 @@ The invite must be:
 - single-person
 - person-specific
 - explicitly addressed to one concrete principal
+- exposed to the UI by `person_id`, not by another user's `guest_id`, `contact_record_id`, phone, or email
+
+New user-facing match invite surfaces should use a `person_id`-first wrapper. The backend may internally resolve legacy `guest_id` compatibility paths and private invitation channels, but those identifiers and channels must not become frontend product objects.
+
+If a Contact Player has a confirmed linked registered user, future match invitations may prefer the registered-user path. The linked state is still an identity bridge only: it does not create Match Proxy authority, group membership, organizer authority, or contact-detail visibility.
 
 ### 8.4 Accepted Contact Player
 

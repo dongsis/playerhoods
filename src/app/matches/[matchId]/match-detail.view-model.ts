@@ -1,5 +1,4 @@
 import {
-  admissionTargetsToContactPlayers,
   admissionTargetsToScopeUsers,
   type ActivityItem,
   type MatchMessageEnriched,
@@ -58,7 +57,7 @@ export type MatchDetailPageViewModel = {
   savedPlayerIds: string[]
   scopeUsersForInvite: ReturnType<typeof admissionTargetsToScopeUsers>
   scopeUsersForNominate: ReturnType<typeof admissionTargetsToScopeUsers>
-  contactTargets: ReturnType<typeof admissionTargetsToContactPlayers>
+  contactTargets: MatchDetailLoaderData['contactPersonTargets']
   showSelfActionsSection: boolean
   showNominateSection: boolean
   showNominateGuestSection: boolean
@@ -213,7 +212,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     savedPlayerIds: loaderData.inviteCircle.map((row) => row.target_user_id),
     scopeUsersForInvite: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
     scopeUsersForNominate: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
-    contactTargets: admissionTargetsToContactPlayers(admissionTargets),
+    contactTargets: loaderData.contactPersonTargets,
     showSelfActionsSection: match.status === 'active' && !isOrganizer && selfNeedsTopAction && loaderData.identityLinkCandidates.length === 0,
     showNominateSection: match.status === 'active' && canNominate,
     showNominateGuestSection: match.status === 'active' && canNominateGuest && !isOrganizer,

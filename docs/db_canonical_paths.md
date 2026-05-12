@@ -126,6 +126,19 @@ Rules:
 - Direct Intro Share is a save eligibility source only. It does not create group membership, Match Proxy authority, recruit eligibility, or public discovery.
 - Keep existing `guest_id` compatibility paths internally, but prefer `person_id`-first wrappers for new user-facing APIs.
 
+## Contact Player Match Invite Wrappers
+
+Use:
+- `rpc_match_contact_person_targets(p_match_id, p_search)`
+- `rpc_match_invite_contact_person(p_match_id, p_person_id)`
+
+Rules:
+- Match invite UI should consume Contact Player candidates as person cards: `person_id`, display name, avatar, source, and invite eligibility only.
+- Do not expose `guest_id`, `contact_record_id`, phone, email, or private invite channel details as frontend product objects.
+- The invite wrapper validates match invite authority and trusted exposure, then resolves a registered-user path or a private invitation channel internally.
+- If a person has a confirmed linked registered user, the wrapper may prefer the registered-user path. This does not grant proxy, group member, admin, or contact-detail rights.
+- Legacy `guest_id` RPCs remain available for compatibility and should not be globally removed without a separate migration plan.
+
 ## Prelaunch Legacy Handling
 
 - Remove active business references first.

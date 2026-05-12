@@ -3,24 +3,17 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { nominateGuest } from '@/lib/api/matches'
+import { inviteContactPersonToMatch, type ContactPersonAdmissionTarget } from '@/lib/api/matches'
 import { processDeliveriesAction } from './process-deliveries-action'
-
-interface ContactTarget {
-  guest_id: string
-  display_name: string
-  source: string
-  sourceLabel: string
-}
 
 interface Props {
   matchId: string
-  contactTargets: ContactTarget[]
+  contactTargets: ContactPersonAdmissionTarget[]
 }
 
-/** Phase 3: Uses unified admission targets (contact_player rows from rpc_match_admission_targets). */
+/** P4: Uses person-level Contact Player targets. */
 export function InviteGuestForm({ matchId, contactTargets }: Props) {
-  const [guestId, setGuestId] = useState('')
+  const [personId, setPersonId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -28,16 +21,16 @@ export function InviteGuestForm({ matchId, contactTargets }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!guestId) return
+    if (!personId) return
     setError(null)
     setSuccess(false)
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
     try {
-      await nominateGuest(supabase, matchId, guestId)
+      await inviteContactPersonToMatch(supabase, matchId, personId)
       await processDeliveriesAction()
       setSuccess(true)
-      setGuestId('')
+      setPersonId('')
       router.refresh()
     } catch (err) {
       setError((err as { message?: string })?.message ?? 'Failed to invite contact')
@@ -58,19 +51,19 @@ export function InviteGuestForm({ matchId, contactTargets }: Props) {
     <form onSubmit={handleSubmit}>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <select
-          value={guestId}
-          onChange={e => setGuestId(e.target.value)}
+          value={personId}
+          onChange={e => setPersonId(e.target.value)}
           required
           style={{ padding: '0.4rem 0.5rem', flex: 1, minWidth: '160px', fontSize: '0.9rem' }}
         >
           <option value="">Select a contact person</option>
-          {contactTargets.map((target) => (
-          <option key={target.guest_id} value={target.guest_id}>
+          {contactTargets.filter((target) => target.can_invite).map((target) => (
+          <option key={target.person_id} value={target.person_id}>
               {`${target.display_name}${target.sourceLabel ? ` - ${target.sourceLabel}` : ''}`}
           </option>
           ))}
         </select>
-        <button type="submit" disabled={loading || !guestId} style={{ padding: '0.4rem 0.8rem', background: '#0e7490', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+        <button type="submit" disabled={loading || !personId} style={{ padding: '0.4rem 0.8rem', background: '#0e7490', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
           {loading ? 'Inviting...' : 'Invite'}
         </button>
       </div>

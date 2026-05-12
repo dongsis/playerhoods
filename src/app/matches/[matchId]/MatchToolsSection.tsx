@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, type ComponentType } from 'react'
 import { MatchManagePanel } from './MatchManagePanel'
 import { MatchRoundRobinPanel, type MatchRoundRobinPanelProps } from './MatchRoundRobinPanel'
-import type { MatchParticipantEnriched, MatchGroupInvite, ScopeUser } from '@/lib/api/matches'
+import type { MatchParticipantEnriched, MatchGroupInvite, ScopeUser, ContactPersonAdmissionTarget } from '@/lib/api/matches'
 import type { Group, MatchCourt, MatchStatus } from '@/lib/types/database'
 import type { MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
@@ -30,7 +30,7 @@ type Props = {
   activeRequestUsers: CurrentRequestTarget[]
   activeRequestGroups: CurrentRequestTarget[]
   candidateUsers: ScopeUser[]
-  contactTargets: { guest_id: string; display_name: string; sourceLabel: string; email: string | null }[]
+  contactTargets: ContactPersonAdmissionTarget[]
   candidateGroups: Group[]
   savedLineup: MatchLineupSnapshot | null
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>

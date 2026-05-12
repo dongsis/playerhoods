@@ -843,6 +843,24 @@ export async function nominateGuest(
   if (error) throw error
 }
 
+/** P4: Person-first Contact Player match invite wrapper. */
+export async function inviteContactPersonToMatch(
+  supabase: Client,
+  matchId: string,
+  personId: string,
+) {
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_invite_contact_person',
+      args: { p_match_id: string; p_person_id: string }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_invite_contact_person', {
+    p_match_id: matchId,
+    p_person_id: personId,
+  })
+  if (error) throw error
+}
+
 /** Canonical Match Proxy confirm. Current authority source must be an explicit Match Proxy binding. */
 export async function proxyConfirmParticipant(
   supabase: Client,
@@ -1845,10 +1863,14 @@ function getAdmissionTargetSourceLabel(source: string): string {
       return 'Saved'
     case 'roster_contacts':
       return 'Contacts'
+    case 'direct_contact':
+      return 'Contacts'
     case 'saved_contact':
       return 'Saved contacts'
     case 'group_contact':
       return 'Shared Group contacts'
+    case 'direct_intro_share':
+      return 'Intro'
     case 'groups':
       return 'Shared Groups'
     case 'club_members':
@@ -1875,6 +1897,18 @@ export type AdmissionTarget = {
   contact_email: string | null
 }
 
+/** P4: Contact Player target surfaced as a person-level card only. */
+export type ContactPersonAdmissionTarget = {
+  person_id: string
+  display_name: string | null
+  avatar_url: string | null
+  source: string
+  sourceLabel?: string
+  can_invite: boolean
+  eligible_via: string | null
+  sort_name: string | null
+}
+
 /** Phase 3: Unified mixed admission targets (users + Contact Players). */
 export async function getAdmissionTargets(
   supabase: Client,
@@ -1887,6 +1921,29 @@ export async function getAdmissionTargets(
   })
   if (error) throw error
   return (data ?? []) as AdmissionTarget[]
+}
+
+/** P4: Person-level Contact Player invite targets. Does not expose guest/contact/channel IDs. */
+export async function getContactPersonAdmissionTargets(
+  supabase: Client,
+  matchId: string,
+  search?: string | null,
+): Promise<ContactPersonAdmissionTarget[]> {
+  const { data, error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_contact_person_targets',
+      args: { p_match_id: string; p_search: string | null }
+    ) => Promise<{ data: ContactPersonAdmissionTarget[] | null; error: Error | null }>
+  }).rpc('rpc_match_contact_person_targets', {
+    p_match_id: matchId,
+    p_search: search ?? null,
+  })
+  if (error) throw error
+
+  return (data ?? []).map((target) => ({
+    ...target,
+    sourceLabel: getAdmissionTargetSourceLabel(target.source),
+  }))
 }
 
 /** Phase 3: User targets only (for InviteUserForm / NominateUserForm). Maps to ScopeUser for backward compat. */

@@ -9,13 +9,14 @@ import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
 import { processDeliveriesAction } from './process-deliveries-action'
 import {
   inviteGroupToMatch,
+  inviteContactPersonToMatch,
   inviteUserToMatch,
-  nominateGuest,
   nominateUser,
   revokeGroupInvite,
   type MatchGroupInvite,
   type MatchParticipantEnriched,
   type ScopeUser,
+  type ContactPersonAdmissionTarget,
 } from '@/lib/api/matches'
 import type { AvailabilityStatus, Group } from '@/lib/types/database'
 import type { MatchUpdateInput } from './match-detail.actions'
@@ -39,6 +40,7 @@ type CandidateItem = {
   avatarUrl?: string | null
   userId?: string | null
   guestId?: string | null
+  personId?: string | null
 }
 
 type PendingAddition = CandidateItem & {
@@ -97,6 +99,7 @@ type SummaryEntry = {
   availabilityStatus?: AvailabilityStatus | null
   userId?: string | null
   guestId?: string | null
+  personId?: string | null
   avatarUrl?: string | null
 }
 
@@ -132,7 +135,7 @@ type Props = {
   activeRequestUsers: CurrentRequestTarget[]
   activeRequestGroups: CurrentRequestTarget[]
   candidateUsers: ScopeUser[]
-  contactTargets: { guest_id: string; display_name: string; sourceLabel: string; email: string | null }[]
+  contactTargets: ContactPersonAdmissionTarget[]
   candidateGroups: Group[]
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
@@ -620,7 +623,6 @@ export function MatchManagePanel({
     const guestIds = Array.from(
       new Set(
         [
-          ...contactTargets.map((target) => target.guest_id),
           ...confirmedParticipants.map((participant) => participant.guest_id).filter((id): id is string => Boolean(id)),
           ...activeInviteParticipants.map((participant) => participant.guest_id).filter((id): id is string => Boolean(id)),
         ].filter(Boolean),
@@ -751,17 +753,15 @@ export function MatchManagePanel({
               sourceLabel: user.sourceLabel,
               userId: user.id,
             })),
-            ...contactTargets.map((target) => ({
-              key: `contact:${target.guest_id}`,
-              id: target.guest_id,
-              name: target.display_name,
+            ...contactTargets.filter((target) => target.can_invite).map((target) => ({
+              key: `contact-person:${target.person_id}`,
+              id: target.person_id,
+              name: target.display_name ?? 'Contact Player',
               kind: 'contact' as const,
-              availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
-                kind: 'contact',
-                guestId: target.guest_id,
-              }),
+              availabilityStatus: null,
               sourceLabel: target.sourceLabel,
-              guestId: target.guest_id,
+              avatarUrl: target.avatar_url ?? null,
+              personId: target.person_id,
             })),
             ...(isOrganizer
               ? candidateGroups.map((group) => ({
@@ -1095,7 +1095,7 @@ export function MatchManagePanel({
           await inviteGroupToMatch(supabase, matchId, item.id)
           shouldProcessQueuedDeliveries = true
         } else {
-          await nominateGuest(supabase, matchId, item.id)
+          await inviteContactPersonToMatch(supabase, matchId, item.personId ?? item.id)
           shouldProcessQueuedDeliveries = true
         }
       }
