@@ -14,6 +14,57 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-12 - MR-20260512-contact-intro-share-inbox-card
+
+**Type:** Mini Release
+**Commit:** `514dd72`
+**Migration:** None
+**Status:** GitHub and Vercel Production deployed
+
+### Summary
+
+Phase 2 of Contact Intro Share adds the first Inbox UI surface:
+
+- Adds a small typed API wrapper for `rpc_contact_intro_share_list`, `rpc_contact_intro_share_accept_or_save`, and `rpc_contact_intro_share_dismiss`.
+- Renders pending inbound Intro Shares as dedicated Inbox cards instead of generic notification rows.
+- Uses product copy:
+  - "Nancy shared Linda's Intro with you."
+  - "Save Linda to your Hood so you can invite them to matches."
+  - "Contact details stay private."
+- Adds actions:
+  - Save to Hood
+  - Dismiss
+- Keeps this as lightweight Inbox/notification behavior only. No full chat implementation and no match invite wrapper in this phase.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local code | Modified | Inbox card and API wrapper added locally |
+| GitHub main | `514dd72` | Pushed to `origin/main` |
+| Vercel Preview | Not deployed | Not used for this mini release |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-h6r4zfhh3-nancys-projects-128e326c.vercel.app` reported Ready |
+| Supabase Local | No change | No migration in this phase |
+| Supabase Remote | No change | Uses Phase 1 RPCs already applied |
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Passed | `npm.cmd run build` |
+| Static diff check | Passed | `git diff --check` on P2 files |
+| Vercel Production | Passed | Latest deployment reported Ready |
+
+### Rollback
+
+Code rollback:
+
+- Revert commit `514dd72` and redeploy the previous known-good production commit.
+
+Database rollback:
+
+- No database rollback required for Phase 2.
+
 ## 2026-05-12 - SR-20260512-contact-intro-share-phase1
 
 **Type:** Structural Release
