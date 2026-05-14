@@ -21,6 +21,12 @@ import { SportsPreferenceForm } from '@/app/profile/SportsPreferenceForm'
 import { DiscoveryAndInvitesSection } from '@/app/profile/DiscoveryAndInvitesSection'
 import { SportProfilesEditor } from '@/app/profile/SportProfilesEditor'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
+import {
+  getPrioritizedQuickCityGroups,
+  normalizeProvinceForCitySuggestions,
+  sortCityNamesByProvincePriority,
+  sortCityOptionsByProvincePriority,
+} from '@/lib/location-city-priority'
 import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
 import { listLocationCityOptions, type LocationCityOption } from '@/lib/api/location-municipalities'
 import {
@@ -184,25 +190,6 @@ function normalizeCityName(value: string) {
   return value.trim().replace(/\s+/g, ' ')
 }
 
-const QUICK_CITY_GROUPS = [
-  { label: 'Peel', cities: ['Mississauga', 'Brampton', 'Caledon'] },
-  { label: 'Halton', cities: ['Oakville', 'Burlington', 'Milton', 'Halton Hills', 'Acton', 'Georgetown'] },
-]
-
-function getQuickCityGroups(cityOptions: string[], selectedCities: string[]) {
-  const optionByLowerName = new Map(cityOptions.map((city) => [city.toLowerCase(), city]))
-  const selectedLowerNames = new Set(selectedCities.map((city) => city.toLowerCase()))
-
-  return QUICK_CITY_GROUPS
-    .map((group) => ({
-      ...group,
-      cities: group.cities
-        .map((city) => optionByLowerName.get(city.toLowerCase()))
-        .filter((city): city is string => typeof city === 'string' && !selectedLowerNames.has(city.toLowerCase())),
-    }))
-    .filter((group) => group.cities.length > 0)
-}
-
 function normalizeEmail(value: string | null | undefined) {
   const normalized = value?.trim().toLowerCase() ?? ''
   return normalized || null
@@ -294,13 +281,13 @@ function CompactLocationEditor({
   }, [availableCities, country, playCities, region])
   const cityOptions = useMemo(
     () =>
-      Array.from(
+      sortCityNamesByProvincePriority(Array.from(
         new Set([
           ...availableCities.map((city) => normalizeCityName(city.city_name ?? '')),
           ...playCities.map((city) => normalizeCityName(city.city_name ?? '')),
         ].filter(Boolean)),
-      ).sort((left, right) => left.localeCompare(right)),
-    [availableCities, playCities],
+      ), region),
+    [availableCities, playCities, region],
   )
   const filteredCities = useMemo(() => {
     const query = normalizeCityName(cityInput).toLowerCase()
@@ -310,8 +297,12 @@ function CompactLocationEditor({
     })
   }, [cityInput, cityOptions, draftCities])
   const quickCityGroups = useMemo(
-    () => getQuickCityGroups(cityOptions, draftCities),
-    [cityOptions, draftCities],
+    () => getPrioritizedQuickCityGroups(
+      cityOptions.map((city_name) => ({ city_name, region })),
+      draftCities,
+      region,
+    ),
+    [cityOptions, draftCities, region],
   )
 
   const addCity = (value: string) => {
@@ -616,10 +607,18 @@ function BasicLocationEditor({
   const [draftCities, setDraftCities] = useState(
     playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean),
   )
-  const [selectedRegion, setSelectedRegion] = useState(region || DEFAULT_PLAY_REGION)
-  const [regionCities, setRegionCities] = useState(availableCities)
+  const [selectedRegion, setSelectedRegion] = useState(
+    normalizeProvinceForCitySuggestions(region || DEFAULT_PLAY_REGION),
+  )
+  const [regionCities, setRegionCities] = useState(
+    sortCityOptionsByProvincePriority(availableCities, DEFAULT_PLAY_REGION),
+  )
   const [loadedRegionCodes, setLoadedRegionCodes] = useState(
-    () => new Set(availableCities.map((city) => city.region).filter(Boolean)),
+    () => new Set(
+      availableCities
+        .map((city) => normalizeProvinceForCitySuggestions(city.region || DEFAULT_PLAY_REGION))
+        .filter(Boolean),
+    ),
   )
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -632,17 +631,21 @@ function BasicLocationEditor({
   }, [playCities])
 
   useEffect(() => {
-    setSelectedRegion(region || DEFAULT_PLAY_REGION)
+    setSelectedRegion(normalizeProvinceForCitySuggestions(region || DEFAULT_PLAY_REGION))
   }, [region])
 
   useEffect(() => {
-    setRegionCities(availableCities)
-    setLoadedRegionCodes(new Set(availableCities.map((city) => city.region).filter(Boolean)))
+    setRegionCities(sortCityOptionsByProvincePriority(availableCities, DEFAULT_PLAY_REGION))
+    setLoadedRegionCodes(new Set(
+      availableCities
+        .map((city) => normalizeProvinceForCitySuggestions(city.region || DEFAULT_PLAY_REGION))
+        .filter(Boolean),
+    ))
   }, [availableCities])
 
   useEffect(() => {
     let cancelled = false
-    const normalizedRegion = selectedRegion || DEFAULT_PLAY_REGION
+    const normalizedRegion = normalizeProvinceForCitySuggestions(selectedRegion || DEFAULT_PLAY_REGION)
 
     if (loadedRegionCodes.has(normalizedRegion)) return
 
@@ -660,7 +663,7 @@ function BasicLocationEditor({
           for (const city of cities) {
             merged.set(keyFor(city), city)
           }
-          return Array.from(merged.values()).sort((left, right) => left.city_name.localeCompare(right.city_name))
+          return sortCityOptionsByProvincePriority(Array.from(merged.values()), normalizedRegion)
         })
         setLoadedRegionCodes((current) => new Set([...current, normalizedRegion]))
       })
@@ -713,14 +716,16 @@ function BasicLocationEditor({
 
   const cityOptions = useMemo(
     () =>
-      Array.from(
+      sortCityNamesByProvincePriority(Array.from(
         new Set([
           ...regionCities
-            .filter((city) => city.region === selectedRegion)
+            .filter((city) => normalizeProvinceForCitySuggestions(city.region || DEFAULT_PLAY_REGION) === selectedRegion)
             .map((city) => normalizeCityName(city.city_name ?? '')),
-          ...playCities.map((city) => normalizeCityName(city.city_name ?? '')),
+          ...playCities
+            .filter((city) => normalizeProvinceForCitySuggestions(city.region || DEFAULT_PLAY_REGION) === selectedRegion)
+            .map((city) => normalizeCityName(city.city_name ?? '')),
         ].filter(Boolean)),
-      ).sort((left, right) => left.localeCompare(right)),
+      ), selectedRegion),
     [playCities, regionCities, selectedRegion],
   )
 
@@ -732,8 +737,12 @@ function BasicLocationEditor({
     })
   }, [cityInput, cityOptions, draftCities])
   const quickCityGroups = useMemo(
-    () => getQuickCityGroups(cityOptions, draftCities),
-    [cityOptions, draftCities],
+    () => getPrioritizedQuickCityGroups(
+      regionCities.filter((city) => normalizeProvinceForCitySuggestions(city.region || DEFAULT_PLAY_REGION) === selectedRegion),
+      draftCities,
+      selectedRegion,
+    ),
+    [draftCities, regionCities, selectedRegion],
   )
 
   const saveCities = (nextCities: string[]) => {
@@ -1781,7 +1790,7 @@ export function ProfilePanel({
   const showAvailabilityDetails =
     availabilityMode === 'busy' || availabilityMode === 'away' || availabilityMode === 'not_looking'
   const playLocationCountry = myPlayCities[0]?.country?.trim() || DEFAULT_PLAY_COUNTRY
-  const playLocationRegion = myPlayCities[0]?.region?.trim() || DEFAULT_PLAY_REGION
+  const playLocationRegion = normalizeProvinceForCitySuggestions(myPlayCities[0]?.region?.trim() || DEFAULT_PLAY_REGION)
   const playLocationCities = myPlayCities.length > 0
     ? myPlayCities
         .map((city) => city.city_name?.trim?.() ?? '')
@@ -1811,8 +1820,8 @@ export function ProfilePanel({
       })
     }
 
-    return Array.from(cityMap.values()).sort((left, right) => left.city_name.localeCompare(right.city_name))
-  }, [availablePlayCities, myPlayCities])
+    return sortCityOptionsByProvincePriority(Array.from(cityMap.values()), playLocationRegion)
+  }, [availablePlayCities, myPlayCities, playLocationRegion])
 
   const handleAvailabilityModeChange = (mode: AvailabilityMode) => {
     const next = AVAILABILITY_MODE_OPTIONS.find((option) => option.value === mode)

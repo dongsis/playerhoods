@@ -4,6 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { completeFirstOnboardingAction } from './actions'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
+import {
+  getPrioritizedQuickCityGroups,
+  sortCityNamesByProvincePriority,
+} from '@/lib/location-city-priority'
 import type { Profile, Sport, Venue } from '@/lib/types/database'
 import type { LocationCityOption } from '@/lib/api/location-municipalities'
 
@@ -29,25 +33,6 @@ function normalizeQuery(value: string) {
 
 function normalizeCityName(value: string) {
   return value.trim().replace(/\s+/g, ' ')
-}
-
-const QUICK_CITY_GROUPS = [
-  { label: 'Peel', cities: ['Mississauga', 'Brampton', 'Caledon'] },
-  { label: 'Halton', cities: ['Oakville', 'Burlington', 'Milton', 'Halton Hills', 'Acton', 'Georgetown'] },
-]
-
-function getQuickCityGroups(cityOptions: string[], selectedCities: string[]) {
-  const optionByLowerName = new Map(cityOptions.map((city) => [city.toLowerCase(), city]))
-  const selectedLowerNames = new Set(selectedCities.map((city) => city.toLowerCase()))
-
-  return QUICK_CITY_GROUPS
-    .map((group) => ({
-      ...group,
-      cities: group.cities
-        .map((city) => optionByLowerName.get(city.toLowerCase()))
-        .filter((city): city is string => typeof city === 'string' && !selectedLowerNames.has(city.toLowerCase())),
-    }))
-    .filter((group) => group.cities.length > 0)
 }
 
 function getVenueMetaLine(venue: VenueOption): string {
@@ -155,13 +140,13 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
 
   const availableCities = useMemo(
     () =>
-      Array.from(
+      sortCityNamesByProvincePriority(Array.from(
         new Set(
           cityOptions
             .map((city) => normalizeCityName(city.city_name))
             .filter(Boolean),
         ),
-      ).sort((left, right) => left.localeCompare(right)),
+      ), DEFAULT_PLAY_REGION),
     [cityOptions],
   )
 
@@ -217,16 +202,17 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
     })
   }, [availableCities, cityInput, selectedCities])
   const quickCityGroups = useMemo(
-    () => getQuickCityGroups(availableCities, selectedCities.map((city) => city.city_name)),
-    [availableCities, selectedCities],
+    () => getPrioritizedQuickCityGroups(cityOptions, selectedCities.map((city) => city.city_name), DEFAULT_PLAY_REGION),
+    [cityOptions, selectedCities],
   )
 
   const availableFilteredVenues = useMemo(() => {
     const query = normalizeQuery(clubInput)
     const selectedCityNames = new Set(selectedCities.map((city) => city.city_name))
-    return venues.filter((venue) => {
+    return venues
+      .filter((venue) => {
       const venueCity = normalizeCityName(venue.city ?? '')
-      if (!selectedCityNames.has(venueCity)) return false
+      if (!query && !selectedCityNames.has(venueCity)) return false
       if (selectedVenues.some((selectedVenue) => selectedVenue.id === venue.id)) return false
       const searchBlob = [
         getVenueDisplayName(venue as Venue),
@@ -241,6 +227,12 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
         .toLowerCase()
       return !query || searchBlob.includes(query)
     })
+      .sort((left, right) => {
+        const leftInSelectedCity = selectedCityNames.has(normalizeCityName(left.city ?? ''))
+        const rightInSelectedCity = selectedCityNames.has(normalizeCityName(right.city ?? ''))
+        if (leftInSelectedCity !== rightInSelectedCity) return leftInSelectedCity ? -1 : 1
+        return getVenueDisplayName(left as Venue).localeCompare(getVenueDisplayName(right as Venue))
+      })
   }, [clubInput, selectedCities, selectedVenues, venues])
 
   const toggleSport = (sportId: number) => {
@@ -582,7 +574,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
             {isClubDropdownOpen ? (
               <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
                 {availableFilteredVenues.length > 0 ? (
-                  <div className="max-h-[300px] overflow-y-auto">
+                  <div className="max-h-[300px] overflow-y-scroll pr-1 [scrollbar-gutter:stable] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#CBD5E1] [&::-webkit-scrollbar-track]:bg-transparent">
                     {availableFilteredVenues.map((venue) => (
                       <div
                         key={venue.id}
@@ -604,7 +596,9 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
                   </div>
                 ) : (
                   <div className="px-4 py-3 text-body-sub text-[#94A3B8]">
-                    No new clubs or venues found for your selected cities.
+                    {clubInput.trim()
+                      ? 'No matching clubs or venues found.'
+                      : 'No new clubs or venues found for your selected cities.'}
                   </div>
                 )}
               </div>

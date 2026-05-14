@@ -8,6 +8,10 @@ import type { GroupLocation, Sport, Venue } from '@/lib/types/database'
 import type { GroupLocationInput, GroupLocationWithVenue } from '@/lib/api/groups'
 import type { LocationCityOption } from '@/lib/api/location-municipalities'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
+import {
+  normalizeProvinceForCitySuggestions,
+  sortCityOptionsByProvincePriority,
+} from '@/lib/location-city-priority'
 import { GROUP_LEVEL_RATING_OPTIONS } from '@/lib/profile-options'
 import { getVenueDisplayName } from '@/lib/venues/display'
 
@@ -167,7 +171,9 @@ export function GroupSettingsPanel({
         : primaryOptions[0]?.key ?? ''
   const filteredCityOptions = useMemo(() => {
     const query = normalizeCityName(cityInput).toLowerCase()
-    return cityOptions.filter((option) => {
+    const selectedRegion = normalizeProvinceForCitySuggestions(selectedCities[0]?.region ?? DEFAULT_PLAY_REGION)
+    return sortCityOptionsByProvincePriority(cityOptions, selectedRegion).filter((option) => {
+      if (normalizeProvinceForCitySuggestions(option.region ?? option.province_code ?? DEFAULT_PLAY_REGION) !== selectedRegion) return false
       if (selectedCities.some((city) => cityKey(city) === cityKey(option))) return false
       const searchBlob = [
         option.city_name,

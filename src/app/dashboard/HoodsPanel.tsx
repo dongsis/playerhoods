@@ -1487,7 +1487,45 @@ function HoodCardGrid({
   )
 }
 
-function ContactToolIcon({ kind }: { kind: 'quick' | 'sync' | 'link' | 'spark' | 'close' }) {
+function ContactToolIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' | 'shield' | 'quick' | 'sync' | 'link' | 'spark' | 'close' }) {
+  if (kind === 'card') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <rect x="4.2" y="3.2" width="11.6" height="13.6" rx="2" stroke="currentColor" strokeWidth="1.7" />
+        <circle cx="10" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M6.9 13.4c.9-1.4 2-2 3.1-2s2.2.6 3.1 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (kind === 'invite') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M7.7 12.3 12.3 7.7M8.2 6.1l.8-.8a3.4 3.4 0 0 1 4.8 4.8l-.8.8M11.8 13.9l-.8.8a3.4 3.4 0 0 1-4.8-4.8l.8-.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'reply') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M4.5 5.2h11a1.7 1.7 0 0 1 1.7 1.7v5.8a1.7 1.7 0 0 1-1.7 1.7H8.6L5 16.6v-2.2h-.5a1.7 1.7 0 0 1-1.7-1.7V6.9a1.7 1.7 0 0 1 1.7-1.7Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'bell') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M7.2 15.4h5.6M8.5 16.5a1.7 1.7 0 0 0 3 0M5.8 13.7c.8-.7 1.1-1.5 1.1-2.7V8.8a3.1 3.1 0 0 1 6.2 0V11c0 1.2.3 2 1.1 2.7H5.8ZM14.7 5.3l1.1-1.1M5.3 5.3 4.2 4.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'shield') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M10 2.8 15.2 5v4.1c0 3.3-1.8 5.8-5.2 7.9-3.4-2.1-5.2-4.6-5.2-7.9V5L10 2.8Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+        <path d="m7.8 9.8 1.4 1.4 3.1-3.3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
   if (kind === 'quick') {
     return (
       <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
@@ -1600,7 +1638,6 @@ export function HoodsPanel({
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [contactNotes, setContactNotes] = useState('')
-  const [contactGender, setContactGender] = useState<ContactGender>(null)
   const [creatingContact, setCreatingContact] = useState(false)
   const [savedStateOverrides, setSavedStateOverrides] = useState<Record<string, boolean>>({})
   const hasLoadedSupportDataRef = useRef(false)
@@ -2583,21 +2620,20 @@ export function HoodsPanel({
     try {
       const newGuest = await createRosterGuest(supabase, {
         display_name: displayName,
-        gender: contactGender,
+        gender: null,
         email,
         phone,
         notes,
       })
       await saveContactPlayer(supabase, newGuest.id, { source: 'manual' })
       await setGuestSports(supabase, newGuest.id, [selectedSport.code])
-      setMessage(`${displayName} was added to your ${selectedSport.display_name} contacts.`)
+      setMessage(`${displayName} was saved. You can add another contact.`)
       setContactDisplayName('')
       setContactEmail('')
       setContactPhone('')
       setContactNotes('')
-      setContactGender(null)
-      setContactComposerMode(null)
-      setContactToolsOpen(false)
+      setContactComposerMode('manual')
+      setContactToolsOpen(true)
       setHoodFilter('saved')
       await loadSupportData()
     } catch (createError) {
@@ -2605,7 +2641,7 @@ export function HoodsPanel({
     } finally {
       setCreatingContact(false)
     }
-  }, [contactDisplayName, contactEmail, contactGender, contactNotes, contactPhone, loadSupportData, selectedSport])
+  }, [contactDisplayName, contactEmail, contactNotes, contactPhone, loadSupportData, selectedSport])
 
   const handleSearchPeopleSubmit = useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -2768,15 +2804,29 @@ export function HoodsPanel({
         ) : null}
 
         <div className="mt-3 flex flex-wrap items-center gap-2 md:gap-3">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {section === 'hood'
-              ? ([
-                  ['all', 'All'],
-                  ['saved', 'Saved'],
-                  ['linked', 'Linked'],
-                  ['club', 'Club'],
-                  ['group', 'From Groups'],
-                ] as const).map(([value, label]) => (
+              ? [
+                  <button
+                    key="add-my-contact"
+                    type="button"
+                    onClick={() => {
+                      clearMessage()
+                      setSection('hood')
+                      setContactToolsOpen(true)
+                      setContactComposerMode('manual')
+                      setError(null)
+                    }}
+                    className="text-body-main inline-flex items-center gap-2 rounded-full bg-[#0B1F44] px-5 py-2.5 font-semibold text-white shadow-[0_14px_28px_-20px_rgba(11,31,68,0.9)] transition hover:bg-[#102A5C]"
+                  >
+                    <span className="text-lg leading-none">+</span>
+                    Add My Contact
+                  </button>,
+                  ...([
+                    ['all', 'All'],
+                    ['saved', 'Saved'],
+                    ['group', 'From Groups'],
+                  ] as const).map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
@@ -2793,22 +2843,8 @@ export function HoodsPanel({
                   >
                     {label}
                   </button>
-                )).concat([
-                  <button
-                    key="add-my-contact"
-                    type="button"
-                    onClick={() => {
-                      clearMessage()
-                      setSection('hood')
-                      setContactToolsOpen(true)
-                      setContactComposerMode(null)
-                      setError(null)
-                    }}
-                    className="text-body-main rounded-full bg-[#F0F7FF] px-4 py-2 font-medium text-[#475569] transition hover:bg-[#E8F1FB]"
-                  >
-                    Add My Contact
-                  </button>,
-                ])
+                )),
+                ]
               : ([
                   ['club_members', 'Club Members'],
                   ['city_players', 'City Players'],
@@ -2939,146 +2975,131 @@ export function HoodsPanel({
       ) : null}
 
       {showContactTools && (
-        <div className="rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h3 className="text-h2 text-[#1E293B]">Your Squad</h3>
-              <p className="text-body-sub mt-1 text-[#64748B]">Add hitting partners to organize matches faster.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  clearMessage()
-                  setContactComposerMode('screenshot')
-                  setError(null)
-                }}
-                className="text-body-main inline-flex items-center gap-2 rounded-full bg-[#0B1F44] px-5 py-2.5 font-semibold text-white shadow-[0_10px_24px_-18px_rgba(11,31,68,0.7)] transition hover:bg-[#16325F]"
-              >
-                <ContactToolIcon kind="spark" />
-                Smart Import
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  clearMessage()
-                  setContactToolsOpen(false)
-                  setContactComposerMode(null)
-                  setError(null)
-                }}
-                className="text-body-main inline-flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-white px-4 py-2.5 font-medium text-[#475569] transition hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
-              >
-                <ContactToolIcon kind="close" />
-                Close contact player tools
-              </button>
-            </div>
+        <div className="overflow-hidden rounded-[40px] border border-[#E2E8F0] bg-white px-5 py-7 shadow-[0_26px_70px_-42px_rgba(11,31,68,0.35)] sm:px-8 lg:px-10">
+          <div className="flex items-start justify-between gap-4">
+            <h3 className="text-[28px] font-black tracking-[-0.02em] text-[#0B1F44]">Add My Contact</h3>
+            <button
+              type="button"
+              onClick={() => {
+                clearMessage()
+                setContactToolsOpen(false)
+                setContactComposerMode(null)
+                setError(null)
+              }}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
+              aria-label="Close add contact panel"
+            >
+              <ContactToolIcon kind="close" />
+            </button>
           </div>
 
-          <div className="mt-6 grid gap-5 md:grid-cols-3">
+          <div className="mt-8 grid gap-5 border-b border-[#E2E8F0] pb-9 sm:grid-cols-2 lg:grid-cols-5">
             {[
               {
-                key: 'quick' as const,
-                title: 'Quick Invites',
-                body: 'Add once, invite with a single tap.',
+                key: 'card' as const,
+                title: 'Save as player card',
+                body: 'Add someone not on PlayerHoods yet.',
                 tone: 'bg-[#EAF2FF] text-[#075BD7]',
               },
               {
-                key: 'sync' as const,
-                title: 'Cloud Sync',
-                body: 'Access your list from any device.',
-                tone: 'bg-[#EEF2FF] text-[#4F46E5]',
+                key: 'invite' as const,
+                title: 'Invite by link',
+                body: 'Send a private invite link anytime.',
+                tone: 'bg-[#F1ECFF] text-[#6D5DF7]',
               },
               {
-                key: 'link' as const,
-                title: 'No Registration',
-                body: 'Contacts confirm via link without an account.',
+                key: 'reply' as const,
+                title: 'Email or SMS reply',
+                body: 'They can accept without an account.',
                 tone: 'bg-[#EAFBF0] text-[#07823F]',
               },
-            ].map((item) => (
-              <div key={item.key} className="flex items-start gap-4">
-                <span className={['flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', item.tone].join(' ')}>
+              {
+                key: 'bell' as const,
+                title: 'Register notification',
+                body: 'Get notified when they join PlayerHoods.',
+                tone: 'bg-[#FFF7E6] text-[#C46B00]',
+              },
+              {
+                key: 'shield' as const,
+                title: 'Private by default',
+                body: 'Contact details stay hidden.',
+                tone: 'bg-[#EAF7FF] text-[#0877B8]',
+              },
+            ].map((item, index) => (
+              <div
+                key={item.title}
+                className={[
+                  'flex items-start gap-3 lg:flex-col lg:items-center lg:justify-start lg:text-center',
+                  index > 0 ? 'lg:border-l lg:border-[#EEF3F8]' : '',
+                ].join(' ')}
+              >
+                <span className={['flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/70 shadow-sm', item.tone].join(' ')}>
                   <ContactToolIcon kind={item.key} />
                 </span>
-                <span>
-                  <span className="text-title-main block text-[#0B1F44]">{item.title}</span>
-                  <span className="text-body-sub mt-1 block leading-relaxed text-[#64748B]">{item.body}</span>
+                <span className="grid gap-1">
+                  <span className="text-[11px] font-black leading-tight text-[#0B1F44]">{item.title}</span>
+                  <span className="text-[10px] leading-tight text-[#94A3B8]">{item.body}</span>
                 </span>
               </div>
             ))}
           </div>
 
-          <div className="mt-6 flex justify-center border-t border-[#EEF2F7] pt-5">
-            <button
-              type="button"
-              onClick={() => {
-                clearMessage()
-                setContactComposerMode((current) => current === 'manual' ? null : 'manual')
-                setError(null)
-              }}
-              className="text-body-main inline-flex items-center gap-2 font-semibold text-[#64748B] transition hover:text-[#075BD7]"
-            >
-              <span className="text-lg leading-none">{contactComposerMode === 'manual' ? '-' : '+'}</span>
-              {contactComposerMode === 'manual' ? 'Hide manual form' : 'Add manually instead'}
-            </button>
-          </div>
-
-          {contactComposerMode === 'manual' && (
-            <form onSubmit={handleCreateContact} className="mt-6 grid gap-4 rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] p-4 md:grid-cols-2">
-              <label className="text-body-main text-slate-600">
-                <span className="mb-1 block">Name</span>
+          <div className="mt-9 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.82fr)] lg:gap-14">
+            <form onSubmit={handleCreateContact} className="grid gap-5 lg:border-r lg:border-[#EEF3F8] lg:pr-10">
+              <label className="text-label text-[#536179]">
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Name</span>
                 <input
                   type="text"
                   value={contactDisplayName}
                   onChange={(event) => setContactDisplayName(event.target.value)}
-                  placeholder="Name"
-                  className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
+                  placeholder="Player's full name"
+                  className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                 />
               </label>
-              <label className="text-body-main text-slate-600">
-                <span className="mb-1 block">Email</span>
-                <input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(event) => setContactEmail(event.target.value)}
-                  placeholder="Email"
-                  className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
-                />
-              </label>
-              <label className="text-body-main text-slate-600">
-                <span className="mb-1 block">Phone</span>
-                <input
-                  type="tel"
-                  value={contactPhone}
-                  onChange={(event) => setContactPhone(event.target.value)}
-                  placeholder="Phone"
-                  className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
-                />
-              </label>
-              <label className="text-body-main text-slate-600">
-                <span className="mb-1 block">Gender</span>
-                <select
-                  value={contactGender ?? ''}
-                  onChange={(event) => setContactGender((event.target.value || null) as ContactGender)}
-                  className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
-                >
-                  {CONTACT_GENDER_OPTIONS.map((option) => (
-                    <option key={option.value || 'empty'} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-body-main text-slate-600 md:col-span-2">
-                <span className="mb-1 block">Notes</span>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-label text-[#536179]">
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Email</span>
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                    placeholder="email@example.com"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  />
+                </label>
+                <label className="text-label text-[#536179]">
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Phone</span>
+                  <input
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(event) => setContactPhone(event.target.value)}
+                    placeholder="+1 234 567 890"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  />
+                </label>
+              </div>
+
+              <label className="text-label text-[#536179]">
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Notes</span>
                 <textarea
                   value={contactNotes}
                   onChange={(event) => setContactNotes(event.target.value)}
-                  placeholder="Notes"
+                  placeholder="Add details like skill level or preferred times..."
                   rows={3}
-                  className="text-body-main w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
+                  className="text-body-main w-full resize-none rounded-2xl border border-[#D7E2F0] bg-white px-4 py-3 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                 />
               </label>
-              <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={creatingContact}
+                  className="text-body-main inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-[#075BD7] px-5 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#064FC0] disabled:cursor-wait disabled:bg-[#94A3B8]"
+                >
+                  <span className="text-lg leading-none">+</span>
+                  {creatingContact ? 'Saving...' : 'Save Contact'}
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -3087,20 +3108,50 @@ export function HoodsPanel({
                     setContactComposerMode(null)
                     setError(null)
                   }}
-                  className="text-body-main rounded-full border border-slate-200 bg-white px-4 py-2 font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                  className="text-body-main rounded-xl border border-[#E2E8F0] bg-white px-5 py-3 font-medium text-[#475569] transition hover:bg-[#F8FBFF]"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={creatingContact}
-                  className="text-body-main rounded-full bg-slate-900 px-4 py-2 font-medium text-white transition hover:bg-slate-700 disabled:cursor-wait disabled:bg-slate-400"
-                >
-                  {creatingContact ? 'Adding...' : 'Add Contact'}
-                </button>
               </div>
             </form>
-          )}
+
+            <div className="flex flex-col items-center justify-center gap-5 px-2 py-6 text-center lg:pl-2">
+              <button
+                type="button"
+                onClick={() => {
+                  clearMessage()
+                  setContactComposerMode('screenshot')
+                  setError(null)
+                }}
+                disabled={!onParseScreenshots || !onImportScreenshotContacts}
+                className="text-body-main inline-flex items-center gap-2 rounded-2xl bg-[#075BD7] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#064FC0] disabled:cursor-not-allowed disabled:bg-[#94A3B8]"
+              >
+                <ContactToolIcon kind="spark" />
+                Smart Import
+              </button>
+              <p className="text-body-main max-w-sm text-[#94A3B8]">
+                We'll extract names, emails, and phones for you.
+              </p>
+              <div className="grid w-full max-w-md grid-cols-3 gap-4 pt-4">
+                {[
+                  ['Chat group', 'Tennis Group', 'Roger Federer'],
+                  ['Email header', 'From', 'email@example.com'],
+                  ['Sheet/list', 'Name', 'Sara Novak'],
+                ].map(([label, heading, body]) => (
+                  <div key={label} className="flex aspect-[3/4] flex-col rounded-2xl border border-[#D7E2F0] bg-[#F8FBFF] p-3 opacity-70 shadow-sm">
+                    <div className="h-2 w-10 rounded-full bg-[#DCE8F8]" />
+                    <div className="mt-3 rounded-lg bg-[#F1F5F9] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
+                      {heading}
+                    </div>
+                    <div className="mt-2 truncate rounded-md bg-[#EAF2FF] px-2 py-1 text-[10px] font-semibold text-[#075BD7]">
+                      {body}
+                    </div>
+                    <p className="mt-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#64748B]">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3119,6 +3170,7 @@ export function HoodsPanel({
                 <p className="text-body-sub mt-1 max-w-xl text-[#64748B]">
                   Upload a screenshot of a chat group, email header, or contact list. We'll extract names, emails, and phones for you.
                   This information is securely saved in PlayerHoods and will never be shown to other users under any circumstances.
+                  We won't send messages or invite anyone until you send a match.
                 </p>
               </div>
               <button
@@ -3200,7 +3252,9 @@ export function HoodsPanel({
             ) : null}
             {savedContactPeople.length > 0 ? (
               <section className="space-y-3">
-                <h3 className="text-label text-[#64748B]">Contact</h3>
+                <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#94A3B8]">
+                  Player Card (Not on PlayerHoods yet)
+                </h3>
                 <HoodCardGrid
                   people={savedContactPeople}
                   myClubNames={myClubNames}
