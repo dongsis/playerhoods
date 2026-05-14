@@ -18,9 +18,10 @@ import { listSports } from '@/lib/api/sports'
 import { AcceptInviteButton } from './AcceptInviteButton'
 import { LeaveGroupButton } from './LeaveGroupButton'
 import { Avatar } from '@/app/components/Avatar'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { SaveContactPlayerButton } from '@/app/components/SaveContactPlayerButton'
 import { getContactPlayerResolution } from '@/lib/api/roster'
-import { getMyVenueIdentities } from '@/lib/api/identities'
+import { getMyVenueMemberships } from '@/lib/api/identities'
 import { getAllVenues } from '@/lib/api/venues'
 import { GroupCommunicationSection } from './GroupCommunicationSection'
 import { GroupResourcesSection } from './GroupResourcesSection'
@@ -351,7 +352,7 @@ export default async function GroupDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [membership, members, groupContacts, groupLocations, locationCityOptions, sportRow, sports, myIdentities, allVenues, groupVenueRow, mePersonRow] = await Promise.all([
+  const [membership, members, groupContacts, groupLocations, locationCityOptions, sportRow, sports, myVenueMemberships, allVenues, groupVenueRow, mePersonRow] = await Promise.all([
     user ? getMyGroupMembership(supabase, groupId, user.id) : Promise.resolve(null),
     getGroupMembers(supabase, groupId),
     getGroupContacts(supabase, groupId),
@@ -361,7 +362,7 @@ export default async function GroupDetailPage({ params }: Props) {
       ? supabase.from('sports').select('display_name').eq('id', group.primary_sport_id).single()
       : Promise.resolve({ data: null, error: null }),
     listSports(supabase),
-    user ? getMyVenueIdentities(supabase, user.id) : Promise.resolve([]),
+    user ? getMyVenueMemberships(supabase, user.id) : Promise.resolve([]),
     getAllVenues(supabase),
     group.venue_id
       ? supabase.from('venues').select('id, name').eq('id', group.venue_id).single()
@@ -389,6 +390,7 @@ export default async function GroupDetailPage({ params }: Props) {
     .map((contact) => ({
       guest_id: contact.guest_id,
       display_name: contact.display_name,
+      linked_user_id: contact.linked_user_id,
     }))
   const linkedGroupContactUserIds = Array.from(
     new Set(groupContacts.map((contact) => contact.linked_user_id).filter((value): value is string => Boolean(value))),
@@ -416,6 +418,9 @@ export default async function GroupDetailPage({ params }: Props) {
   return (
     <GroupDetailPageShell>
     <div style={{ maxWidth: '1320px', padding: '1rem 1.25rem 1.5rem 0' }}>
+      <div style={{ marginBottom: '1rem' }}>
+        <BrandLogo variant="horizontal" href="/dashboard" />
+      </div>
       <div style={{ marginBottom: '0.85rem' }}>
         <Link
           href="/groups"
@@ -525,7 +530,7 @@ export default async function GroupDetailPage({ params }: Props) {
                     venueId={group.venue_id}
                     openToClubMembers={group.open_to_club_members}
                     sports={sports}
-                    venues={myIdentities.map((identity) => identity.venue)}
+                    venues={myVenueMemberships.map((membership) => membership.venue)}
                     allVenues={allVenues}
                     groupLocations={groupLocations}
                     cityOptions={locationCityOptions}

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getAllVenues } from '@/lib/api/venues'
 import { getMyVenuePreferences, getMyVenueRelationships } from '@/lib/api/identities'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { VenueSearch } from './VenueSearch'
 
 interface Props {
@@ -36,16 +37,7 @@ export default async function VenuesPage({ searchParams }: Props) {
           <span>Home</span>
         </Link>
 
-        <Link href="/" className="flex items-center gap-2" aria-label="PlayerHoods home">
-          <img
-            src="/playerhoods-logo.png"
-            alt=""
-            className="h-10 w-10 object-contain"
-          />
-          <span className="hidden text-xl font-black tracking-tight text-[#001845] sm:inline">
-            Player<span className="font-semibold">Hoods</span>
-          </span>
-        </Link>
+        <BrandLogo variant="horizontal" imageClassName="h-11 w-[188px]" />
       </nav>
 
       <VenueSearch

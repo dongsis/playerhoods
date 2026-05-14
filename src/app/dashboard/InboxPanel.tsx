@@ -16,6 +16,11 @@ import {
   saveContactIntroShare,
   type ContactIntroShare,
 } from '@/lib/api/contact-intro-shares'
+import {
+  getUserSaveRequests,
+  respondToUserSaveRequest,
+  type UserSaveRequest,
+} from '@/lib/api/save-requests'
 import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 import { Avatar } from '@/app/components/Avatar'
 
@@ -37,6 +42,7 @@ const KIND_LABELS: Record<string, string> = {
   group_join_request_accepted: 'Group request accepted',
   group_join_request_declined: 'Group request declined',
   contact_intro_share: 'Intro shared',
+  save_request: 'Save request',
 }
 
 function formatTime(iso: string): string {
@@ -73,23 +79,27 @@ function getNotificationTone(kind: string): string {
 export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) => void }) {
   const [items, setItems] = useState<NotificationWithContext[]>([])
   const [introShares, setIntroShares] = useState<ContactIntroShare[]>([])
+  const [saveRequests, setSaveRequests] = useState<UserSaveRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const [introActionId, setIntroActionId] = useState<string | null>(null)
   const [introActionError, setIntroActionError] = useState<string | null>(null)
+  const [saveRequestActionId, setSaveRequestActionId] = useState<string | null>(null)
   const router = useRouter()
 
   const load = async () => {
     const supabase = createSupabaseBrowserClient()
     setLoading(true)
     try {
-      const [list, shares, count] = await Promise.all([
+      const [list, shares, requests, count] = await Promise.all([
         getNotifications(supabase),
         getContactIntroShares(supabase),
+        getUserSaveRequests(supabase),
         import('@/lib/api/notifications').then(m => m.getUnreadNotificationCount(supabase)),
       ])
-      setItems(list.filter((item) => item.kind !== 'contact_intro_share'))
+      setItems(list.filter((item) => item.kind !== 'contact_intro_share' && item.kind !== 'save_request'))
       setIntroShares(shares.filter((share) => share.direction === 'inbound' && share.status === 'pending'))
+      setSaveRequests(requests.filter((request) => request.status === 'pending'))
       setUnreadCount(count)
       onUnreadChange?.(count)
     } catch (e) {
@@ -163,6 +173,22 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
     }
   }
 
+  const handleSaveRequestResponse = async (request: UserSaveRequest, allow: boolean) => {
+    const supabase = createSupabaseBrowserClient()
+    setSaveRequestActionId(request.request_id)
+    setIntroActionError(null)
+    try {
+      await respondToUserSaveRequest(supabase, request.request_id, allow)
+      setSaveRequests(prev => prev.filter(item => item.request_id !== request.request_id))
+      await load()
+      router.refresh()
+    } catch (e) {
+      setIntroActionError((e as Error).message)
+    } finally {
+      setSaveRequestActionId(null)
+    }
+  }
+
   const getLabel = (notification: NotificationWithContext) => {
     if (notification.kind === 'removed' && notification.participant_snapshot) {
       return getMatchParticipantRemovalCopy(notification.participant_snapshot).badgeLabel
@@ -192,10 +218,65 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
 
       {loading ? (
         <p className="text-body-main text-gray-500">Loading…</p>
-      ) : introShares.length === 0 && items.length === 0 ? (
+      ) : introShares.length === 0 && saveRequests.length === 0 && items.length === 0 ? (
         <p className="text-body-main italic text-gray-500">No notifications yet.</p>
       ) : (
         <ul className="space-y-2">
+          {saveRequests.map((request) => {
+            const requesterName = request.requester_display_name || 'Someone'
+            const isBusy = saveRequestActionId === request.request_id
+
+            return (
+              <li
+                key={request.request_id}
+                className="rounded-[24px] border border-[#DBEAFE] bg-[#F8FBFF] px-4 py-4"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 gap-3">
+                    <Avatar
+                      src={request.requester_avatar_url}
+                      displayName={requesterName}
+                      size="md"
+                      fallback="initial"
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-label inline-flex items-center rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#3B82F6] ring-1 ring-[#DBEAFE]">
+                          Save request
+                        </span>
+                        <span className="text-body-sub text-gray-400">{formatTime(request.created_at)}</span>
+                      </div>
+                      <h3 className="mt-2 text-title-main text-gray-900">
+                        {requesterName} wants to save you to their Hood.
+                      </h3>
+                      <p className="text-body-sub mt-1 text-gray-600">
+                        Allowing this lets them keep you in their saved players. Your private contact details stay hidden.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2 sm:flex-col">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => handleSaveRequestResponse(request, true)}
+                      className="text-body-main rounded-full bg-[#0B1F44] px-4 py-2 font-semibold text-white transition hover:bg-[#16335F] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Allow Save
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => handleSaveRequestResponse(request, false)}
+                      className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-semibold text-[#475569] transition hover:border-[#CBD5E1] hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              </li>
+            )
+          })}
           {introShares.map((share) => {
             const personName = share.person_display_name || 'this player'
             const senderName = share.sender_display_name || 'Someone'

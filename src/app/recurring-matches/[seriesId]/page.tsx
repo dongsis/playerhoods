@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { getRecurringMatchSeriesDetail } from '@/lib/api/recurring-matches'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { formatTimeWindow } from '@/lib/utils/format-time'
@@ -43,6 +44,9 @@ export default async function RecurringMatchSeriesPage({ params }: Props) {
 
   return (
     <div style={{ maxWidth: '920px', margin: '0 auto', padding: '1rem' }}>
+      <div style={{ marginBottom: '1rem' }}>
+        <BrandLogo variant="horizontal" href="/dashboard" />
+      </div>
       <nav style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
         <Link
           href="/dashboard"

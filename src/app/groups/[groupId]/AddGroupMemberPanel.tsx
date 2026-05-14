@@ -8,7 +8,7 @@ import { addContactPlayerToGroup, addMemberToGroup, type GroupAddMemberResult } 
 type Props = {
   groupId: string
   invitableUsers: { id: string; display_name: string }[]
-  contacts: { guest_id: string; display_name: string }[]
+  contacts: { guest_id: string; display_name: string; linked_user_id?: string | null }[]
 }
 
 export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props) {
@@ -60,8 +60,14 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
         setFeedback(normalizeInviteFeedback(result))
         setUserId('')
       } else {
-        await addContactPlayerToGroup(supabase, groupId, guestId)
-        setFeedback('Added to Shared Contacts.')
+        const selectedContact = contacts.find((contact) => contact.guest_id === guestId)
+        if (selectedContact?.linked_user_id) {
+          const result = await addMemberToGroup(supabase, groupId, selectedContact.linked_user_id)
+          setFeedback(normalizeInviteFeedback(result))
+        } else {
+          await addContactPlayerToGroup(supabase, groupId, guestId)
+          setFeedback('Added to Shared Contacts.')
+        }
         setGuestId('')
       }
       router.refresh()
@@ -229,7 +235,9 @@ export function AddGroupMemberPanel({ groupId, invitableUsers, contacts }: Props
               >
                 <option value="">Select a shared contact</option>
                 {contacts.map((contact) => (
-                  <option key={contact.guest_id} value={contact.guest_id}>{contact.display_name}</option>
+                  <option key={contact.guest_id} value={contact.guest_id}>
+                    {contact.display_name}{contact.linked_user_id ? ' (Linked)' : ''}
+                  </option>
                 ))}
               </select>
             )}

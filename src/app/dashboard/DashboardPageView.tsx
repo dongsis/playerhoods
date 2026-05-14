@@ -112,7 +112,7 @@ export function DashboardPageView({
       verifiedEmails={viewModel.verifiedEmails}
       identityLinkCandidates={viewModel.identityLinkCandidates}
       profile={viewModel.profile}
-      myIdentities={viewModel.myIdentities}
+      myVenueMemberships={viewModel.myVenueMemberships}
       myVenuePrefs={viewModel.myVenuePrefs}
       joinableVenues={viewModel.joinableVenues}
       venueSports={viewModel.venueSports}

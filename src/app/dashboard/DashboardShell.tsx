@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { InviteCircleRow } from '@/lib/api/play-network'
-import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import type { VenueMembership } from '@/lib/api/identities'
 import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { LeftNav, NavIcon, type DashTab } from './LeftNav'
 import { InboxPanel } from './InboxPanel'
@@ -54,7 +55,7 @@ interface Props {
     | 'looking_to_play'
     | 'preferred_play_times'
   >
-  myIdentities: (VenueIdentity & { venue: Venue })[]
+  myVenueMemberships: VenueMembership[]
   myVenuePrefs: Venue[]
   joinableVenues: Venue[]
   venueSports: VenueSport[]
@@ -205,7 +206,7 @@ export function DashboardShell({
   verifiedEmails,
   identityLinkCandidates,
   profile,
-  myIdentities,
+  myVenueMemberships,
   myVenuePrefs,
   joinableVenues,
   venueSports,
@@ -393,7 +394,8 @@ export function DashboardShell({
           ? item.match.match_date < nowIso.slice(0, 10)
           : false
       const hasUserAccepted = mp.participant_accepted_at != null
-      // Pending invite/nomination needing user action
+      // Pending invite needing user action. Some DB rows still use the historical
+      // join_method value for participant-suggested invites.
       if (
         mp.status === 'pending' &&
         (
@@ -489,7 +491,7 @@ export function DashboardShell({
             items={liveItems}
             inviteCircle={inviteCircle}
             groups={playersData.groups}
-            myIdentities={myIdentities}
+            myVenueMemberships={myVenueMemberships}
             sports={sports}
             enabledSportIds={mySports.map((sport) => sport.sport_id)}
             myPlayCities={myPlayCities}
@@ -513,7 +515,7 @@ export function DashboardShell({
             userEmail={userEmail}
             verifiedEmails={verifiedEmails}
             identityLinkCandidates={identityLinkCandidates}
-            myIdentities={myIdentities}
+            myVenueMemberships={myVenueMemberships}
             myVenuePrefs={myVenuePrefs}
             joinableVenues={joinableVenues}
             venueSports={venueSports}
@@ -562,7 +564,7 @@ export function DashboardShell({
         )}
         {activeTab === 'venues' && (
           <VenuesPanel
-            myIdentities={myIdentities}
+            myVenueMemberships={myVenueMemberships}
             myVenuePrefs={myVenuePrefs}
             isAdmin={isAdmin}
             myAdminVenues={myAdminVenues}

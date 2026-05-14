@@ -5,6 +5,7 @@ import {
   LEGAL_WEBSITE,
   SUPPORT_EMAIL,
 } from '@/lib/legal'
+import { BrandLogo } from '@/app/components/BrandLogo'
 
 export function LegalDocumentPage({
   pageTitle,
@@ -17,6 +18,9 @@ export function LegalDocumentPage({
 }) {
   return (
     <div className="mx-auto max-w-[960px] px-4 py-10">
+      <div className="mb-6">
+        <BrandLogo variant="horizontal" />
+      </div>
       <section className="rounded-[32px] border border-[#E2E8F0] bg-white px-8 py-8 shadow-[0_18px_40px_-30px_rgba(30,41,59,0.18)]">
         <div className="mb-8">
           <div className="ph-kicker mb-3">Legal</div>

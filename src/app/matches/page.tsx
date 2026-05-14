@@ -5,6 +5,7 @@ import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getMatchListData } from '@/lib/api/matches'
 import { isSuperAdmin, getMyAdminVenues } from '@/lib/api/venues'
 import type { Profile } from '@/lib/types/database'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { MatchesShell } from './MatchesShell'
 import { CreateMatchInline } from './CreateMatchInline'
 
@@ -29,6 +30,9 @@ export default async function MatchesPage() {
   return (
     <div className="min-h-screen bg-[#F0F7FF]">
       <div className="mx-auto max-w-[1040px] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mb-6">
+        <BrandLogo variant="horizontal" />
+      </div>
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-label text-[#94A3B8]">

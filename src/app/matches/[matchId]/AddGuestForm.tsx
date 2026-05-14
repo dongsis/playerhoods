@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { createRosterGuest } from '@/lib/api/roster'
-import { nominateGuest } from '@/lib/api/matches'
+import { inviteContactGuestToMatch } from '@/lib/api/matches'
 import { processDeliveriesAction } from './process-deliveries-action'
 
 interface Props {
@@ -12,8 +12,8 @@ interface Props {
 }
 
 /**
- * Create a Contact Player and immediately direct-invite them to a match.
- * Uses roster creation + rpc_match_nominate_guest.
+ * Create a Contact Player and immediately invite them to a match.
+ * Uses roster creation + the compatibility Contact Player invite RPC.
  */
 export function AddGuestForm({ matchId }: Props) {
   const [displayName, setDisplayName] = useState('')
@@ -48,8 +48,8 @@ export function AddGuestForm({ matchId }: Props) {
         phone: phoneVal,
         notes: guestNotes || null,
       })
-      // 2) Direct-invite that Contact Player into this match
-      await nominateGuest(supabase, matchId, guest.id)
+      // 2) Invite that Contact Player into this match
+      await inviteContactGuestToMatch(supabase, matchId, guest.id)
       await processDeliveriesAction()
       setSuccess(true)
       setDisplayName('')

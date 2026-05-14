@@ -107,7 +107,8 @@ export async function middleware(request: NextRequest) {
       `${pathname}${request.nextUrl.search || ''}`,
       '/dashboard',
     )
-    const loginUrl = new URL('/login', request.url)
+    const loginUrl = new URL('/', request.url)
+    loginUrl.searchParams.set('auth', 'login')
     loginUrl.searchParams.set('next', safeNext)
     const redirectResponse = NextResponse.redirect(loginUrl)
     redirectResponse.headers.set('x-ph-middleware', 'auth-required')

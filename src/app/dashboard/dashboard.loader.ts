@@ -6,14 +6,14 @@ import { getUnreadNotificationCount } from '@/lib/api/notifications'
 import { getAllPlayersGroupedByVenue, type PlayersData } from '@/lib/api/players'
 import { getMyPlayCities } from '@/lib/api/discovery'
 import { getIdentityLinkCandidates, reconcileIdentityGuestParticipants } from '@/lib/api/identity-links'
-import { getMyVenueIdentities, getJoinableVenues, getMyVenuePreferences } from '@/lib/api/identities'
+import { getMyVenueMemberships, getJoinableVenues, getMyVenuePreferences, type VenueMembership } from '@/lib/api/identities'
 import { isSuperAdmin, getMyAdminVenues, listVenueSports } from '@/lib/api/venues'
 import { listSports, getMySports } from '@/lib/api/sports'
 import { getInviteCircleList, type InviteCircleRow } from '@/lib/api/play-network'
 import { listLocationCityOptions, type LocationCityOption } from '@/lib/api/location-municipalities'
 import { getMySportProfiles } from '@/lib/api/player-profiles'
 import { listMyGearImages, listMyGearItems, listMyGearShowcaseEntries, listMyGearStringJobs } from '@/lib/api/gear'
-import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
 
 type DashboardUser = NonNullable<Awaited<ReturnType<typeof getUser>>>
 
@@ -25,7 +25,7 @@ export type DashboardLoaderData = {
   inviteCircle: InviteCircleRow[]
   verifiedEmails: UserVerifiedEmail[]
   identityLinkCandidates: IdentityLinkCandidate[]
-  myIdentities: (VenueIdentity & { venue: Venue })[]
+  myVenueMemberships: VenueMembership[]
   joinableVenues: Venue[]
   venueSports: VenueSport[]
   sports: Sport[]
@@ -85,7 +85,7 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     inviteCircle,
     verifiedEmails,
     identityLinkCandidates,
-    myIdentities,
+    myVenueMemberships,
     joinableVenues,
     venueSports,
     sports,
@@ -117,7 +117,7 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     getInviteCircleList(supabase).catch(() => [] as InviteCircleRow[]),
     supabase.from('v_user_verified_emails').select('*').eq('user_id', user.id),
     getIdentityLinkCandidates(supabase).catch(() => [] as IdentityLinkCandidate[]),
-    getMyVenueIdentities(supabase, user.id).catch(() => [] as (VenueIdentity & { venue: Venue })[]),
+    getMyVenueMemberships(supabase, user.id).catch(() => [] as VenueMembership[]),
     getJoinableVenues(supabase, user.id).catch(() => [] as Venue[]),
     listVenueSports(supabase).catch(() => [] as VenueSport[]),
     listSports(supabase).catch(() => [] as Sport[]),
@@ -143,7 +143,7 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     inviteCircle,
     verifiedEmails: verifiedEmails.error ? [] : (verifiedEmails.data ?? []),
     identityLinkCandidates,
-    myIdentities,
+    myVenueMemberships,
     joinableVenues,
     venueSports,
     sports,

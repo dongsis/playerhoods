@@ -54,10 +54,10 @@ function needsUserAction(item: MatchListItem): boolean {
 
   const hasUserAccepted = mp.participant_accepted_at != null
   const isInvited = mp.join_method === 'invited'
-  const isNominated = mp.join_method === 'nominated'
+  const isParticipantInvite = mp.join_method === 'nominated'
   const isRequested = mp.join_method === 'requested'
 
-  if ((isInvited || isNominated) && !hasUserAccepted) return true
+  if ((isInvited || isParticipantInvite) && !hasUserAccepted) return true
   if (isRequested && mp.org_approved_at !== null && !hasUserAccepted) return true
   return false
 }
@@ -345,7 +345,7 @@ function MatchRow({
 
   const hasUserAccepted = myParticipant?.participant_accepted_at != null
   const isInvited = myParticipant?.status === 'pending' && myParticipant.join_method === 'invited'
-  const isNominated = myParticipant?.status === 'pending' && myParticipant.join_method === 'nominated'
+  const isParticipantInvite = myParticipant?.status === 'pending' && myParticipant.join_method === 'nominated'
   const isRequested = myParticipant?.status === 'pending' && myParticipant.join_method === 'requested'
   const needsReconfirmRequested = isRequested && myParticipant?.org_approved_at !== null && !hasUserAccepted
   const isCancelled = match.status === 'cancelled'
@@ -475,10 +475,10 @@ function MatchRow({
         </div>
       )}
 
-      {!isHistoryRow && !isCancelled && (isInvited || (isNominated && !hasUserAccepted) || needsReconfirmRequested) ? (
+      {!isHistoryRow && !isCancelled && (isInvited || (isParticipantInvite && !hasUserAccepted) || needsReconfirmRequested) ? (
         <div className="shrink-0 flex items-center gap-2">
           <span className="text-label rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#3B82F6] ring-1 ring-[#DBEAFE] whitespace-nowrap">
-            {isNominated ? 'Invited' : isInvited ? 'Invited' : 'Needs confirm'}
+            {isParticipantInvite ? 'Invited' : isInvited ? 'Invited' : 'Needs confirm'}
           </span>
           <button
             onClick={handleConfirm}
@@ -491,7 +491,7 @@ function MatchRow({
         </div>
       ) : null}
 
-      {!isHistoryRow && !isCancelled && isNominated && hasUserAccepted ? (
+      {!isHistoryRow && !isCancelled && isParticipantInvite && hasUserAccepted ? (
         <span className="text-label shrink-0 rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#3B82F6] ring-1 ring-[#DBEAFE] whitespace-nowrap">
           Invited and waiting for approval
         </span>
@@ -1237,11 +1237,9 @@ export function MatchesPanel({
         <section className="rounded-[32px] border border-[#E2E8F0] bg-white px-5 pb-5 pt-4 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
           <div className="mb-5 flex items-center justify-between gap-3">
             <img
-              src="/playerhoods-logo-transparent.png"
+              src="/playerhoods-brand-horizontal-cropped.png"
               alt="PlayerHoods"
-              width={1122}
-              height={1402}
-              className="h-auto w-[180px] object-contain"
+              className="h-10 w-[176px] object-contain"
             />
             <div className="flex items-center gap-3">
               <span className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">

@@ -25,7 +25,7 @@ function isMissingLocationMunicipalitiesSchemaError(error: { code?: string; mess
   )
 }
 
-const CA_PROVINCE_NAME_BY_CODE: Record<string, string> = {
+export const CA_PROVINCE_NAME_BY_CODE: Record<string, string> = {
   AB: 'Alberta',
   BC: 'British Columbia',
   MB: 'Manitoba',
@@ -60,7 +60,7 @@ function normalizeCountryName(value: string | null | undefined): string {
   return value?.trim() || countryCode
 }
 
-function normalizeProvinceCode(value: string | null | undefined): string {
+export function normalizeProvinceCode(value: string | null | undefined): string {
   const normalized = value?.trim() ?? ''
   if (!normalized) return ''
   const upper = normalized.toUpperCase()

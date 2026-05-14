@@ -1,18 +1,19 @@
 'use client'
 
 import Link from 'next/link'
-import type { Venue, VenueAdmin, VenueIdentity } from '@/lib/types/database'
+import type { Venue, VenueAdmin } from '@/lib/types/database'
+import type { VenueMembership } from '@/lib/api/identities'
 import { getVenueDisplayName } from '@/lib/venues/display'
 
 interface Props {
-  myIdentities: (VenueIdentity & { venue: Venue })[]
+  myVenueMemberships: VenueMembership[]
   myVenuePrefs: Venue[]
   isAdmin: boolean
   myAdminVenues: (VenueAdmin & { venue: Venue })[]
 }
 
-export function VenuesPanel({ myIdentities, myVenuePrefs, isAdmin, myAdminVenues }: Props) {
-  const joinedVenues = myIdentities.map((identity) => identity.venue)
+export function VenuesPanel({ myVenueMemberships, myVenuePrefs, isAdmin, myAdminVenues }: Props) {
+  const joinedVenues = myVenueMemberships.map((membership) => membership.venue)
   const joinedIds = new Set(joinedVenues.map((venue) => venue.id))
   const savedOnly = myVenuePrefs.filter((venue) => !joinedIds.has(venue.id))
   const adminVenueIds = new Set(myAdminVenues.map(({ venue }) => venue.id))

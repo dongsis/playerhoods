@@ -58,18 +58,18 @@ export function matchTimeChangePendingEmail(m: MatchInfo): string {
   })
 }
 
-export function guestNominatedEmail(m: MatchInfo, nominatorName: string): string {
+export function guestParticipantInviteEmail(m: MatchInfo, inviterName: string): string {
   return renderEmailLayout({
-    eyebrow: 'Nomination',
-    title: "You're nominated",
-    introHtml: `<strong>${escapeHtml(nominatorName)}</strong> nominated you for <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
+    eyebrow: 'Invitation',
+    title: "You're invited",
+    introHtml: `<strong>${escapeHtml(inviterName)}</strong> invited you to <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
     details: buildMatchDetails(m),
     ctaLabel: 'View match',
     ctaUrl: matchLink(m),
     secondaryTitle: 'Why you got this',
     secondaryBody:
-      'A PlayerHoods user added you as a possible player for this match. Review the details before deciding whether to join.',
-    footerNote: 'This message relates to a PlayerHoods match nomination.',
+      'A PlayerHoods user invited you as a possible player for this match. Review the details before deciding whether to join.',
+    footerNote: 'This message relates to a PlayerHoods match invitation.',
     siteUrl: m.siteUrl,
   })
 }
@@ -122,7 +122,7 @@ export function matchRemovedEmail(m: MatchInfo): string {
   })
 }
 
-export function inviteOrNominateEmail(m: MatchInfo, inviterName: string): string {
+export function matchInvitationEmail(m: MatchInfo, inviterName: string): string {
   return renderEmailLayout({
     eyebrow: 'Invitation',
     title: "You're invited",

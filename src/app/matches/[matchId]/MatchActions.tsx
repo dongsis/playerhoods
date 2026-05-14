@@ -79,7 +79,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     border: '1px solid #cbd5e1',
     padding: '0.5rem 1rem',
   } as const
-  const declineActionLabel = mp?.join_method === 'nominated' ? 'Decline nomination' : 'Decline invite'
+  const declineActionLabel = 'Decline invite'
 
   const closeDeclineDialog = () => {
     setDeclineOpen(false)
@@ -173,11 +173,11 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
   if (isPending) {
     const hasUserAccepted = mp.participant_accepted_at != null
     const isInvited = mp.join_method === 'invited'
-    const isNominated = mp.join_method === 'nominated' ||
+    const isParticipantInvite = mp.join_method === 'nominated' ||
       (mp.join_method === 'requested' && mp.nominated_by != null)
     const isSelfRequested = mp.join_method === 'requested' && mp.nominated_by == null
     const showTopAcceptAction =
-      needsReconfirm || (!hasUserAccepted && (isInvited || isNominated))
+      needsReconfirm || (!hasUserAccepted && (isInvited || isParticipantInvite))
 
     if (!showTopAcceptAction) {
       return null
@@ -185,7 +185,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
 
     return (
       <div>
-        {!needsReconfirm && !hasUserAccepted && (isInvited || isNominated) && (
+        {!needsReconfirm && !hasUserAccepted && (isInvited || isParticipantInvite) && (
           <>
             <button
               onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
@@ -232,7 +232,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
                     : (mp.org_approved_at ? 'Host confirmed. Accept to join.' : 'Accept to join.')}
                 </span>
               )}
-              {isNominated && (
+              {isParticipantInvite && (
                 <span>
                   {hasUserAccepted
                     ? (mp.org_approved_at ? 'Confirmed.' : 'You accepted. Waiting for host confirmation.')

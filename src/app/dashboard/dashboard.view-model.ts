@@ -35,7 +35,7 @@ export type DashboardPageViewModel = {
   verifiedEmails: DashboardLoaderData['verifiedEmails']
   identityLinkCandidates: DashboardLoaderData['identityLinkCandidates']
   profile: DashboardProfile
-  myIdentities: DashboardLoaderData['myIdentities']
+  myVenueMemberships: DashboardLoaderData['myVenueMemberships']
   myVenuePrefs: DashboardLoaderData['myVenuePrefs']
   joinableVenues: DashboardLoaderData['joinableVenues']
   venueSports: DashboardLoaderData['venueSports']
@@ -89,7 +89,7 @@ export function buildDashboardPageViewModel(loaderData: DashboardLoaderData): Da
       ...EMPTY_PROFILE,
       display_name: loaderData.user.email ?? '',
     },
-    myIdentities: loaderData.myIdentities,
+    myVenueMemberships: loaderData.myVenueMemberships,
     myVenuePrefs: loaderData.myVenuePrefs,
     joinableVenues: loaderData.joinableVenues,
     venueSports: loaderData.venueSports,

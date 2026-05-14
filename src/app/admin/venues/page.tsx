@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { getAllVenues, getMyAdminVenues, isSuperAdmin } from '@/lib/api/venues'
 import { getVenueDisplayName } from '@/lib/venues/display'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { CreateVenueDialog } from '../venues/CreateVenueDialog'
 
 export default async function AdminVenuesPage() {
@@ -25,6 +26,9 @@ export default async function AdminVenuesPage() {
 
   return (
     <div className="ph-page-narrow">
+      <div className="mb-6">
+        <BrandLogo variant="horizontal" href="/dashboard" />
+      </div>
       <nav className="mb-6 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#94A3B8]">
         <Link href="/dashboard" className="ph-link">
           Dashboard

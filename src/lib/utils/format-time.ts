@@ -128,7 +128,7 @@ export function formatActionType(type: string): string {
   const MAP: Record<string, string> = {
     // v1.3 verb-form values (actual DB values)
     invite:                'invited',
-    nominate:              'nominated',
+    nominate:              'invited',
     request_join:          'requested to join',
     accept:                'accepted invite for',
     approve:               'approved',
@@ -139,7 +139,7 @@ export function formatActionType(type: string): string {
   add_guest_participant: 'added player',
     // v1.3 past-tense aliases (legacy)
     invited:               'invited',
-    nominated:             'nominated',
+    nominated:             'invited',
     requested:             'requested to join',
     accepted:              'accepted invite for',
     approved:              'approved',
@@ -152,7 +152,7 @@ export function formatActionType(type: string): string {
     manual_confirm:        'manually confirmed',
     delegate_manual_confirm: 'confirmed for',
     revoke_delegate_confirm: 'revoked delegated confirmation for',
-    nominate_guest:       'nominated Contact Player',
+    nominate_guest:       'invited Contact Player',
     proxy_confirm:        'confirmed on behalf of',
   }
   return MAP[type] ?? type

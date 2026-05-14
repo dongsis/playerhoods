@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import type { Court, Sport, Venue, VenueSport } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { getPublicVenueNote } from '@/lib/venues/notes'
@@ -57,6 +58,9 @@ export function PublicVenuePageContent({ venue, courts, sports, venueSports }: P
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-8">
+      <div className="mb-6">
+        <BrandLogo variant="horizontal" />
+      </div>
       <nav className="mb-6 text-sm text-gray-400">
         <Link href="/venues" className="hover:text-gray-600">
           &larr; Venues

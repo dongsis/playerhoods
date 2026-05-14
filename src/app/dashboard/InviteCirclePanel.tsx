@@ -68,12 +68,12 @@ export function InviteCirclePanel({
     <div className="mb-6">
       <h3 className="mb-2 text-sm font-semibold text-gray-700">Saved Registered Players</h3>
       <p className="mb-3 text-xs text-gray-500">
-        Registered players you have saved into your Hood. These saved players can later be used as Direct Invite Users or Request Scope Users. Contact players stay on their separate contact path.
+        Registered players you have saved into your Hood. These saved players can later be used in Invite People or Visible to Groups. Contact players stay on their separate contact path.
       </p>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       {items.length === 0 ? (
         <p className="text-sm italic text-gray-400">
-          No saved registered players yet. Discover players first, save them to your Hood, and then use them as Direct Invite Users or Request Scope Users.
+          No saved registered players yet. Discover players first, save them to your Hood, and then use them in Invite People or Visible to Groups.
         </p>
       ) : (
         <div className="space-y-2">

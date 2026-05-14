@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { nominateUser } from '@/lib/api/matches'
+import { inviteParticipantUserToMatch } from '@/lib/api/matches'
 import type { ScopeUser } from '@/lib/api/matches'
 
 interface Props {
@@ -11,7 +11,7 @@ interface Props {
   scopeUsers: ScopeUser[]
 }
 
-export function NominateUserForm({ matchId, scopeUsers }: Props) {
+export function ParticipantInviteUserForm({ matchId, scopeUsers }: Props) {
   const [userId, setUserId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -26,7 +26,7 @@ export function NominateUserForm({ matchId, scopeUsers }: Props) {
     setLoading(true)
     const supabase = createSupabaseBrowserClient()
     try {
-      await nominateUser(supabase, matchId, userId)
+      await inviteParticipantUserToMatch(supabase, matchId, userId)
       setSuccess(true)
       setUserId('')
       router.refresh()

@@ -36,9 +36,8 @@ export type VenueInvitableMemberRow = {
   display_name: string | null
 }
 
-// Legacy note:
-// Do not call rpc_venue_members_discovery in new code.
-// Use rpc_venue_people_discovery_v2 instead.
+// Canonical note:
+// Use the venue_user_relationships-backed rpc_venue_people_discovery_v2 path.
 // See docs/db_canonical_paths.md.
 /** Phase 1: Venue Members discovery. Caller must hold the discovery relationship for the venue kind. */
 export async function getVenueMembersDiscovery(

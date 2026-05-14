@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { SharedGroupJoinPreference, UserPlayCity, VenueIdentity, Venue } from '@/lib/types/database'
+import type { SharedGroupJoinPreference, UserPlayCity, Venue } from '@/lib/types/database'
+import type { VenueMembership } from '@/lib/api/identities'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { SHARED_GROUP_JOIN_PREFERENCE_OPTIONS } from '@/lib/profile-options'
 import type { DashboardPreferenceSaveResult } from '@/app/dashboard/dashboard.actions'
@@ -23,7 +24,7 @@ interface Props {
   searchableByEmailOrPhone: boolean
   sharedGroupJoinPreference: SharedGroupJoinPreference
   playCities: UserPlayCity[]
-  identities: (VenueIdentity & { venue: Venue })[]
+  memberships: VenueMembership[]
   onSaveGlobal: (params: {
     visible_in_city_discovery?: boolean
     searchable_by_email_or_phone?: boolean
@@ -38,7 +39,7 @@ export function DiscoveryAndInvitesSection({
   searchableByEmailOrPhone,
   sharedGroupJoinPreference,
   playCities,
-  identities,
+  memberships,
   onSaveGlobal,
   onSetVenueMemberDiscovery,
 }: Props) {
@@ -75,9 +76,9 @@ export function DiscoveryAndInvitesSection({
     setGroupJoinPreference(normalizedGroupJoinPreference)
 
     const nextVisibility = Object.fromEntries(
-      identities.map((identity) => [
-        identity.venue_id,
-        identity.visible_in_venue_member_discovery ?? true,
+      memberships.map((membership) => [
+        membership.venue_id,
+        membership.visible_in_venue_member_discovery ?? true,
       ]),
     )
     setVenueVisibility(nextVisibility)
@@ -88,14 +89,14 @@ export function DiscoveryAndInvitesSection({
       shared_group_join_preference: normalizedGroupJoinPreference,
     })
     setSaveState('idle')
-  }, [identities, searchableByEmailOrPhone, sharedGroupJoinPreference, visibleInCityDiscovery])
+  }, [memberships, searchableByEmailOrPhone, sharedGroupJoinPreference, visibleInCityDiscovery])
 
-  const sortedIdentities = useMemo(
+  const sortedMemberships = useMemo(
     () =>
-      [...identities].sort((left, right) =>
+      [...memberships].sort((left, right) =>
         getVenueDisplayName(left.venue).localeCompare(getVenueDisplayName(right.venue)),
       ),
-    [identities],
+    [memberships],
   )
 
   const currentSnapshot = JSON.stringify({
@@ -148,8 +149,8 @@ export function DiscoveryAndInvitesSection({
   }, [cityDiscovery, currentSnapshot, emailOrPhoneLookup, groupJoinPreference, onSaveGlobal, router, startTransition])
 
   const clubDiscoveryEnabled =
-    sortedIdentities.length > 0
-      ? sortedIdentities.every((identity) => venueVisibility[identity.venue_id] ?? true)
+    sortedMemberships.length > 0
+      ? sortedMemberships.every((membership) => venueVisibility[membership.venue_id] ?? true)
       : false
 
   const handleSetVisible = (venueId: string, value: boolean) => {
@@ -179,12 +180,12 @@ export function DiscoveryAndInvitesSection({
   }
 
   const handleSetAllClubVisibility = (nextValue: boolean) => {
-    if (sortedIdentities.length === 0) return
+    if (sortedMemberships.length === 0) return
     setError(null)
     setVenueVisibility((current) => {
       const next = { ...current }
-      for (const identity of sortedIdentities) {
-        next[identity.venue_id] = nextValue
+      for (const membership of sortedMemberships) {
+        next[membership.venue_id] = nextValue
       }
       return next
     })
@@ -192,8 +193,8 @@ export function DiscoveryAndInvitesSection({
     startTransition(async () => {
       try {
         const results = await Promise.all(
-          sortedIdentities.map((identity) =>
-            onSetVenueMemberDiscovery(identity.venue_id, nextValue),
+          sortedMemberships.map((membership) =>
+            onSetVenueMemberDiscovery(membership.venue_id, nextValue),
           ),
         )
         const firstError = results.find((result) => !result.ok)
@@ -227,14 +228,14 @@ export function DiscoveryAndInvitesSection({
                 type="checkbox"
                 checked={clubDiscoveryEnabled}
                 onChange={(event) => handleSetAllClubVisibility(event.target.checked)}
-                disabled={sortedIdentities.length === 0 || isPending}
+                disabled={sortedMemberships.length === 0 || isPending}
                 className="mt-1 h-4 w-4 rounded border-slate-300"
               />
               <span className="min-w-0 flex-1">
                 <span className="block text-body-main font-semibold text-[#1E293B]">
                   Let members of my clubs find me
                 </span>
-                {sortedIdentities.length === 0 ? (
+                {sortedMemberships.length === 0 ? (
                   <span className="mt-2 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
                     Add clubs or venues to control where club discovery is active.
                   </span>
@@ -242,22 +243,22 @@ export function DiscoveryAndInvitesSection({
               </span>
             </label>
 
-            {sortedIdentities.length > 0 ? (
+            {sortedMemberships.length > 0 ? (
               <div className="mt-3 space-y-2 pl-7">
-                {sortedIdentities.map((identity) => (
+                {sortedMemberships.map((membership) => (
                   <label
-                    key={identity.id}
+                    key={membership.id}
                     className="flex items-center gap-3 px-3 py-1 transition"
                   >
                     <input
                       type="checkbox"
-                      checked={venueVisibility[identity.venue_id] ?? true}
-                      onChange={(event) => handleSetVisible(identity.venue_id, event.target.checked)}
-                      disabled={venuePending === identity.venue_id || isPending}
+                      checked={venueVisibility[membership.venue_id] ?? true}
+                      onChange={(event) => handleSetVisible(membership.venue_id, event.target.checked)}
+                      disabled={venuePending === membership.venue_id || isPending}
                       className="h-4 w-4 rounded border-slate-300"
                     />
                     <span className="text-sm font-medium text-[#334155]">
-                      Visible to members of {getVenueDisplayName(identity.venue)}
+                      Visible to members of {getVenueDisplayName(membership.venue)}
                     </span>
                   </label>
                 ))}

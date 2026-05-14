@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { MatchActions } from './MatchActions'
 import { ParticipantGroups } from './ParticipantGroups'
@@ -135,7 +136,8 @@ function MatchHeaderSection({
         <span className="h-11 w-11" />
       </div>
 
-      <nav style={{ marginBottom: '1rem', fontSize: '0.85rem' }} className="hidden md:block">
+      <nav style={{ marginBottom: '1rem', fontSize: '0.85rem' }} className="hidden items-center justify-between gap-4 md:flex">
+        <BrandLogo variant="horizontal" href="/dashboard" imageClassName="h-10 w-[176px]" />
         <Link
           href="/dashboard"
           style={{
@@ -478,8 +480,8 @@ export function MatchDetailPageView({
 }: MatchDetailPageViewProps) {
   const showManagePanel =
     viewModel.showOrganizerAdminSection ||
-    viewModel.showNominateSection ||
-    viewModel.showNominateGuestSection
+    viewModel.showParticipantInviteSection ||
+    viewModel.showParticipantInviteContactSection
   const confirmedParticipants = viewModel.participants.filter((participant) => participant.status === 'confirmed')
   const activeInviteParticipants = viewModel.participants.filter((participant) =>
     participant.status === 'pending' &&
@@ -554,7 +556,7 @@ export function MatchDetailPageView({
                 activeGroupInvites={viewModel.groupInvitations}
                 activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
                 activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
-                candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForNominate}
+                candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForParticipantInvite}
                 contactTargets={viewModel.contactTargets}
                 candidateGroups={viewModel.allGroups.filter((group) =>
                   group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
@@ -583,7 +585,7 @@ export function MatchDetailPageView({
               activeGroupInvites={viewModel.groupInvitations}
               activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
               activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
-              candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForNominate}
+              candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForParticipantInvite}
               contactTargets={viewModel.contactTargets}
               candidateGroups={viewModel.allGroups.filter((group) =>
                 group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,

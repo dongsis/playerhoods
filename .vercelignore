@@ -1,0 +1,10 @@
+.env
+.env.*
+.next
+.next*
+exports
+node_modules
+supabase/.temp
+*.log
+*.out
+*.err

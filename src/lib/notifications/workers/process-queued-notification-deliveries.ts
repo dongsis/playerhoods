@@ -5,12 +5,12 @@ import { renderInvitationEmail } from '@/lib/notifications/channels/email/render
 import {
   renderGameFormedSms,
   renderGuestDelegateConfirmedSms,
-  renderGuestNominatedSms,
+  renderGuestParticipantInviteSms,
   renderGuestOrgApprovedSms,
   renderInvitationSms,
 } from '@/lib/notifications/channels/sms/render-notification-sms'
 import {
-  guestNominatedEmail,
+  guestParticipantInviteEmail,
   guestOrgApprovedEmail,
   guestDelegateConfirmedEmail,
   gameFormedEmail,
@@ -107,9 +107,9 @@ export async function processQueuedNotificationDeliveries(
       })
     } else if (templateType === 'guest_nominated') {
       const m = buildMatchInfo(payload)
-      subject = "You're nominated for a match"
-      html = guestNominatedEmail(m, (payload.nominator_display_name as string) ?? 'Someone')
-      smsBody = renderGuestNominatedSms(m, (payload.nominator_display_name as string) ?? 'Someone')
+      subject = "You're invited to a match"
+      html = guestParticipantInviteEmail(m, (payload.nominator_display_name as string) ?? 'Someone')
+      smsBody = renderGuestParticipantInviteSms(m, (payload.nominator_display_name as string) ?? 'Someone')
     } else if (templateType === 'guest_org_approved') {
       const m = buildMatchInfo(payload)
       const inviterDisplayName = (payload.nominator_display_name as string) ?? 'Someone'

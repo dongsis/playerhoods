@@ -44,9 +44,9 @@ export function renderInvitationSms(data: InvitationSmsData): string {
     : `${data.inviterDisplayName} invited you to a PlayerHoods match. Respond: ${invitationUrl} Stop: ${unsubscribeUrl}`
 }
 
-export function renderGuestNominatedSms(match: MatchInfo, nominatorName: string): string {
+export function renderGuestParticipantInviteSms(match: MatchInfo, inviterName: string): string {
   const summary = formatSummaryParts(match.gameType, match.matchDate, match.venueName)
-  return `${nominatorName} nominated you for a PlayerHoods match${summary ? ` (${summary})` : ''}. Details: ${matchLink(match)}`
+  return `${inviterName} invited you to a PlayerHoods match${summary ? ` (${summary})` : ''}. Details: ${matchLink(match)}`
 }
 
 export function renderGuestOrgApprovedSms(match: MatchInfo, inviterName: string): string {

@@ -18,13 +18,15 @@ import {
 } from '@/lib/api/hoods'
 import {
   getCityPlayersDiscovery,
+  sendUserSaveRequest,
   searchPlayersByEmailOrPhone,
   type CityDiscoveryRow,
 } from '@/lib/api/discovery'
 import {
   getAdmissionTargets,
   inviteUserToMatch,
-  nominateGuest,
+  inviteContactGuestToMatch,
+  inviteContactPersonToMatch,
   type AdmissionTarget,
   type MatchListItem,
 } from '@/lib/api/matches'
@@ -66,12 +68,12 @@ import type {
   Sport,
   UserPlayCity,
   Venue,
-  VenueIdentity,
 } from '@/lib/types/database'
+import type { VenueMembership } from '@/lib/api/identities'
 
 type SupportedSportCode = 'tennis' | 'pickleball' | 'badminton'
 type HoodSection = 'hood' | 'discover'
-type HoodFilter = 'all' | 'saved' | 'group' | 'contacts'
+type HoodFilter = 'all' | 'saved' | 'linked' | 'club' | 'group'
 type DiscoverSource = 'club_members' | 'city_players' | 'search_people'
 type IdentityType = 'platform' | 'contact' | 'linked'
 type ContactGender = 'male' | 'female' | 'unspecified' | null
@@ -114,6 +116,9 @@ type MutablePerson = {
   sharedMatchCount: number
   saveSourceGroupId: string | null
   saveSourceMatchId: string | null
+  saveActionKind: 'direct_save' | 'save_request'
+  saveRequestStatus: string | null
+  saveRequestNextEligibleAt: string | null
 }
 
 type HoodPerson = {
@@ -147,6 +152,9 @@ type HoodPerson = {
   sharedMatchCount: number
   saveSourceGroupId: string | null
   saveSourceMatchId: string | null
+  saveActionKind: 'direct_save' | 'save_request'
+  saveRequestStatus: string | null
+  saveRequestNextEligibleAt: string | null
 }
 
 type ClubDiscoverPerson = {
@@ -165,8 +173,11 @@ type CityDiscoverPerson = {
 type SearchDiscoverPerson = {
   userId: string
   displayName: string
-  matchType: 'email' | 'phone'
+  matchType: 'email' | 'phone' | 'possible_match' | 'same_club_name'
   isSaved: boolean
+  actionKind: 'direct_save' | 'save_request'
+  requestStatus: string | null
+  nextEligibleAt: string | null
 }
 
 type SupportData = {
@@ -184,13 +195,13 @@ type Props = {
   items: MatchListItem[]
   inviteCircle: InviteCircleRow[]
   groups: GroupWithMembers[]
-  myIdentities: (VenueIdentity & { venue: Venue })[]
+  myVenueMemberships: VenueMembership[]
   sports: Sport[]
   enabledSportIds: number[]
   myPlayCities: UserPlayCity[]
   onRefreshDashboardLive: () => Promise<void>
-  onParseScreenshots: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
-  onImportScreenshotContacts: (drafts: Array<{
+  onParseScreenshots?: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
+  onImportScreenshotContacts?: (drafts: Array<{
     display_name: string
     phone?: string | null
     email?: string | null
@@ -489,6 +500,9 @@ function ensurePerson(
     if (seed.isPlayedWith) existing.isPlayedWith = true
     if (seed.saveSourceGroupId && !existing.saveSourceGroupId) existing.saveSourceGroupId = seed.saveSourceGroupId
     if (seed.saveSourceMatchId && !existing.saveSourceMatchId) existing.saveSourceMatchId = seed.saveSourceMatchId
+    if (seed.saveActionKind === 'save_request') existing.saveActionKind = 'save_request'
+    if (seed.saveRequestStatus !== undefined) existing.saveRequestStatus = seed.saveRequestStatus
+    if (seed.saveRequestNextEligibleAt !== undefined) existing.saveRequestNextEligibleAt = seed.saveRequestNextEligibleAt
     if (seed.recentInteractionAt && (!existing.recentInteractionAt || seed.recentInteractionAt > existing.recentInteractionAt)) existing.recentInteractionAt = seed.recentInteractionAt
     if ((seed.sharedMatchCount ?? 0) > existing.sharedMatchCount) existing.sharedMatchCount = seed.sharedMatchCount ?? 0
     if (existing.identityType !== 'linked') {
@@ -529,6 +543,9 @@ function ensurePerson(
     sharedMatchCount: seed.sharedMatchCount ?? 0,
     saveSourceGroupId: seed.saveSourceGroupId ?? null,
     saveSourceMatchId: seed.saveSourceMatchId ?? null,
+    saveActionKind: seed.saveActionKind ?? 'direct_save',
+    saveRequestStatus: seed.saveRequestStatus ?? null,
+    saveRequestNextEligibleAt: seed.saveRequestNextEligibleAt ?? null,
   }
   map.set(seed.key, created)
   return created
@@ -552,18 +569,38 @@ function isRegisteredPlayerPerson(person: HoodPerson): boolean {
   return person.userId !== null && !isContactModulePerson(person)
 }
 
+function isLinkedRegisteredContactPerson(person: HoodPerson): boolean {
+  return person.userId !== null && person.identityType === 'linked'
+}
+
 function matchesFilter(person: HoodPerson, filter: HoodFilter): boolean {
   switch (filter) {
     case 'saved':
-      return isRegisteredPlayerPerson(person) && isPersonStarred(person)
+      return (isRegisteredPlayerPerson(person) || isLinkedRegisteredContactPerson(person)) && isPersonStarred(person)
+    case 'linked':
+      return person.isLinked
+    case 'club':
+      return person.isClubMember || person.clubNames.length > 0
     case 'group':
-      return isRegisteredPlayerPerson(person) && person.isFromGroup
-    case 'contacts':
-      return isContactModulePerson(person)
+      return person.isFromGroup
     case 'all':
     default:
       return true
   }
+}
+
+function matchesHoodSearch(person: HoodPerson, query: string): boolean {
+  if (!query) return true
+  return [
+    person.displayName,
+    person.groupNames.join(' '),
+    person.clubNames.join(' '),
+    person.cityNames.join(' '),
+    person.sourceBadges.join(' '),
+  ]
+    .join(' ')
+    .toLowerCase()
+    .includes(query)
 }
 
 function sortHoodPeople(left: HoodPerson, right: HoodPerson, openMatchCount: Map<string, number>): number {
@@ -611,10 +648,12 @@ function readPersistedHoodsUiState(userId: string): {
       ? parsed.selectedSportCode
       : 'tennis'
     const hoodFilter: HoodFilter =
-      parsed.hoodFilter === 'contacts'
-        ? 'contacts'
-        : parsed.hoodFilter === 'saved'
-          ? 'saved'
+      parsed.hoodFilter === 'saved'
+        ? 'saved'
+        : parsed.hoodFilter === 'linked'
+          ? 'linked'
+        : parsed.hoodFilter === 'club'
+          ? 'club'
         : parsed.hoodFilter === 'group'
           ? 'group'
           : 'all'
@@ -681,7 +720,7 @@ function getPeopleEmptyState(
       return `No city players are available in ${sportName} right now.`
     }
     if (discoverSource === 'search_people') {
-      return 'Enter an exact email or phone number to find a registered player.'
+      return 'Enter an exact email, phone, or shared-club display name to find a registered player.'
     }
     return `No club members are available in ${sportName} right now.`
   }
@@ -691,8 +730,6 @@ function getPeopleEmptyState(
       return `No saved registered players are in your ${sportName.toLowerCase()} hood yet.`
     case 'group':
       return `No registered players from groups are in your ${sportName.toLowerCase()} hood yet.`
-    case 'contacts':
-      return `No contact players are in your ${sportName.toLowerCase()} contacts yet.`
     case 'all':
     default:
       return `Your ${sportName} Hood is empty. Save players, add contacts, or bring people in through groups.`
@@ -932,7 +969,7 @@ function HoodPersonDrawer({
     detailItems.push({ key: 'venue', label: 'Venue', value: contactVenueLabel })
   }
   if (person.isLinked) {
-    detailItems.push({ key: 'linked', label: 'Account', value: 'Linked to a PlayerHoods account' })
+    detailItems.push({ key: 'linked', label: 'Account', value: 'This saved contact is now a registered PlayerHoods user.' })
   }
 
   const headerBadges = (
@@ -1214,6 +1251,7 @@ function HoodCard({
   onInviteExisting,
   onInviteNew,
   pendingInviteMatchId,
+  compact = false,
 }: {
   person: HoodPerson
   myClubNames: string[]
@@ -1229,20 +1267,25 @@ function HoodCard({
   onInviteExisting: (person: HoodPerson, matchId: string) => Promise<void>
   onInviteNew: (person: HoodPerson) => void
   pendingInviteMatchId: string | null
+  compact?: boolean
 }) {
   const isContactCard = isContactModulePerson(person)
-  const genderPill = formatGenderPill(person.gender)
-  const sharedClubSet = new Set(myClubNames)
-  const sharedClubNames = person.clubNames.filter((clubName) => sharedClubSet.has(clubName))
-  const clubSummary = sharedClubNames.slice(0, 2).join(' · ')
-  const citySummary = person.cityNames.slice(0, 2).join(' · ')
-  const levelLabel = formatCompactLevel(person.level)
   const currentStatusDotClass = getAvailabilityStatusDotClass(person.statusLabel)
   const shouldShowAvailabilityDot = !isContactCard
   const isStarred = isPersonStarred(person)
+  const requestDisabled = !isStarred && person.saveActionKind === 'save_request' && (
+    person.saveRequestStatus === 'pending'
+    || Boolean(person.saveRequestNextEligibleAt)
+  )
   const starButtonLabel = isContactCard
     ? (isStarred ? 'Unstar contact' : 'Star contact')
-    : (isStarred ? 'Unsave player' : 'Save player')
+    : person.saveActionKind === 'save_request'
+      ? person.saveRequestStatus === 'pending'
+        ? 'Save request sent'
+        : person.saveRequestNextEligibleAt
+          ? `Request available ${new Date(person.saveRequestNextEligibleAt).toLocaleDateString()}`
+          : 'Send Save Request'
+      : (isStarred ? 'Unsave player' : 'Save player')
 
   return (
     <article
@@ -1277,37 +1320,12 @@ function HoodCard({
                 <div className="relative min-w-0 max-w-full">
                   <h3 className="text-title-main truncate leading-none text-slate-900">{person.displayName}</h3>
                 </div>
-                {genderPill ? (
-                  <span className="text-label rounded-full bg-slate-100 px-1.5 py-[2px] text-slate-500">
-                    {genderPill}
+                {person.isLinked ? (
+                  <span className="rounded-full border border-sky-100 bg-sky-50 px-1.5 py-[1px] text-[9px] font-black uppercase tracking-[0.08em] text-sky-700">
+                    Linked
                   </span>
                 ) : null}
               </div>
-              {(clubSummary || citySummary || levelLabel || (shouldShowAvailabilityDot && currentStatusDotClass)) && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  {clubSummary ? (
-                    <span className="text-body-sub truncate text-[#3B82F6]">
-                      {clubSummary}
-                    </span>
-                  ) : citySummary ? (
-                    <span className="text-body-sub truncate text-[#3B82F6]">
-                      {citySummary}
-                    </span>
-                  ) : null}
-                  {shouldShowAvailabilityDot && currentStatusDotClass ? (
-                    <span
-                      className={`inline-block h-2 w-2 rounded-full ${currentStatusDotClass}`}
-                      aria-hidden="true"
-                      title={person.statusLabel ?? 'Availability'}
-                    />
-                  ) : null}
-                  {levelLabel ? (
-                    <span className="text-label rounded-full border border-slate-200 bg-white px-1.5 py-[2px] text-slate-700">
-                      {levelLabel}
-                    </span>
-                  ) : null}
-                </div>
-              )}
             </div>
           </div>
         </button>
@@ -1316,13 +1334,14 @@ function HoodCard({
           {(person.userId || person.guestId) && (
             <button
               type="button"
+              disabled={requestDisabled}
               onClick={(event) => {
                 event.stopPropagation()
                 void onSaveToggle(person)
               }}
               className={[
-                'inline-flex h-7 w-7 items-center justify-center rounded-full border transition',
-                isStarred
+                'inline-flex h-7 w-7 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60',
+                isStarred || person.saveRequestStatus === 'pending'
                   ? 'border-[#FACC15] bg-white text-[#D97706] hover:border-[#EAB308] hover:bg-white'
                   : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
               ].join(' ')}
@@ -1333,10 +1352,10 @@ function HoodCard({
                 aria-hidden="true"
                 className={[
                   'text-[12px] leading-none transition',
-                  isStarred ? 'text-[#EAB308]' : 'text-slate-300',
+                  isStarred || person.saveRequestStatus === 'pending' ? 'text-[#EAB308]' : 'text-slate-300',
                 ].join(' ')}
               >
-                {isStarred ? '★' : '☆'}
+                {isStarred ? '★' : person.saveActionKind === 'save_request' ? '!' : '☆'}
               </span>
             </button>
           )}
@@ -1409,6 +1428,65 @@ function HoodCard({
   )
 }
 
+function HoodCardGrid({
+  people,
+  myClubNames,
+  openMatchCount,
+  activeInviteKey,
+  activeMenuKey,
+  openMatchTargetsByPerson,
+  pendingInviteMatchId,
+  onOpenDrawer,
+  onOpenMenuAddToGroup,
+  onSaveToggle,
+  onToggleInvite,
+  onToggleMenu,
+  onInviteExisting,
+  onInviteNew,
+  compact = false,
+}: {
+  people: HoodPerson[]
+  myClubNames: string[]
+  openMatchCount: Map<string, number>
+  activeInviteKey: string | null
+  activeMenuKey: string | null
+  openMatchTargetsByPerson: Map<string, MatchListItem[]>
+  pendingInviteMatchId: string | null
+  onOpenDrawer: (person: HoodPerson) => void
+  onOpenMenuAddToGroup: (person: HoodPerson) => void
+  onSaveToggle: (person: HoodPerson) => Promise<void>
+  onToggleInvite: (person: HoodPerson) => void
+  onToggleMenu: (person: HoodPerson) => void
+  onInviteExisting: (person: HoodPerson, matchId: string) => Promise<void>
+  onInviteNew: (person: HoodPerson) => void
+  compact?: boolean
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {people.map((person) => (
+        <HoodCard
+          key={person.key}
+          person={person}
+          myClubNames={myClubNames}
+          openMatchCount={openMatchCount.get(person.key) ?? 0}
+          onOpenDrawer={onOpenDrawer}
+          onOpenMenuAddToGroup={onOpenMenuAddToGroup}
+          onSaveToggle={onSaveToggle}
+          inviteOpen={activeInviteKey === person.key}
+          menuOpen={activeMenuKey === person.key}
+          onToggleInvite={onToggleInvite}
+          onToggleMenu={onToggleMenu}
+          inviteMatches={openMatchTargetsByPerson.get(person.key) ?? []}
+          onInviteExisting={onInviteExisting}
+          onInviteNew={onInviteNew}
+          pendingInviteMatchId={pendingInviteMatchId}
+          compact={compact}
+        />
+      ))}
+    </div>
+  )
+}
+
 function ContactToolIcon({ kind }: { kind: 'quick' | 'sync' | 'link' | 'spark' | 'close' }) {
   if (kind === 'quick') {
     return (
@@ -1450,7 +1528,7 @@ export function HoodsPanel({
   items,
   inviteCircle,
   groups,
-  myIdentities,
+  myVenueMemberships,
   sports,
   enabledSportIds,
   myPlayCities,
@@ -1521,6 +1599,7 @@ export function HoodsPanel({
   const [contactDisplayName, setContactDisplayName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
+  const [contactNotes, setContactNotes] = useState('')
   const [contactGender, setContactGender] = useState<ContactGender>(null)
   const [creatingContact, setCreatingContact] = useState(false)
   const [savedStateOverrides, setSavedStateOverrides] = useState<Record<string, boolean>>({})
@@ -1568,12 +1647,12 @@ export function HoodsPanel({
     [selectedSportCode, sportOptions],
   )
   const venueNameAliasMap = useMemo(
-    () => new Map(myIdentities.map((identity) => [identity.venue.name, getVenueDisplayName(identity.venue)])),
-    [myIdentities],
+    () => new Map(myVenueMemberships.map((membership) => [membership.venue.name, getVenueDisplayName(membership.venue)])),
+    [myVenueMemberships],
   )
   const myClubNames = useMemo(
-    () => Array.from(new Set(myIdentities.map((identity) => getVenueDisplayName(identity.venue)).filter(Boolean))),
-    [myIdentities],
+    () => Array.from(new Set(myVenueMemberships.map((membership) => getVenueDisplayName(membership.venue)).filter(Boolean))),
+    [myVenueMemberships],
   )
 
   const sportNameByIdAll = useMemo(
@@ -1741,10 +1820,10 @@ export function HoodsPanel({
     const loadClubDiscover = async () => {
       try {
         setClubDiscoverError(null)
-        const venueIds = Array.from(new Set(myIdentities.map((identity) => identity.venue_id)))
+        const venueIds = Array.from(new Set(myVenueMemberships.map((membership) => membership.venue_id)))
         const entries = await Promise.all(
           venueIds.map(async (venueId) => {
-            const identity = myIdentities.find((item) => item.venue_id === venueId)
+            const membership = myVenueMemberships.find((item) => item.venue_id === venueId)
             const [discoverRows, invitableRows] = await Promise.all([
               getVenueMembersDiscovery(supabase, venueId, null),
               getVenueInvitableMembers(supabase, venueId, userId),
@@ -1756,7 +1835,7 @@ export function HoodsPanel({
                 .map((row) => ({
                 userId: row.user_id,
                 displayName: normalizeDisplayName(row.display_name),
-                clubName: identity ? getVenueDisplayName(identity.venue) : 'Club',
+                clubName: membership ? getVenueDisplayName(membership.venue) : 'Club',
                 isInvitable: invitableUserIds.has(row.user_id),
               })),
             }
@@ -1809,7 +1888,7 @@ export function HoodsPanel({
     return () => {
       cancelled = true
     }
-  }, [groups, myIdentities, selectedSport, userId])
+  }, [groups, myVenueMemberships, selectedSport, userId])
 
   useEffect(() => {
     if (!selectedSport || !selectedCity) {
@@ -1911,6 +1990,9 @@ export function HoodsPanel({
                 displayName: normalizeDisplayName(row.display_name),
                 matchType: row.match_type,
                 isSaved: row.is_saved,
+                actionKind: row.action_kind,
+                requestStatus: row.request_status,
+                nextEligibleAt: row.next_eligible_at,
               })),
           )
           setSearchDiscoverLoading(false)
@@ -1949,9 +2031,7 @@ export function HoodsPanel({
       const linkedProfile = linkedUserId ? combinedProfiles.get(linkedUserId) : null
       const guestSportIds = supportData.guestSportsByGuestId.get(contact.guest_id) ?? []
       if (!guestSportIds.includes(selectedSport.id) && !profileMatchesSport(linkedProfile, selectedSport.id)) continue
-      const isSavedContact =
-        savedUserIds.has(linkedUserId ?? '')
-        || Boolean(personId && supportData.savedContactPersonIds.has(personId))
+      const isSavedContact = true
 
       const key = buildCanonicalKey({
         linkedUserId,
@@ -2217,6 +2297,9 @@ export function HoodsPanel({
           engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
           preferredFormats: sportProfile?.preferred_formats ?? [],
           sportLabel: selectedSport.display_name,
+          saveActionKind: result.actionKind,
+          saveRequestStatus: result.requestStatus,
+          saveRequestNextEligibleAt: result.nextEligibleAt,
         })
         if (savedUserIds.has(result.userId) || result.isSaved) person.sourceBadges.add('Starred')
       }
@@ -2300,19 +2383,7 @@ export function HoodsPanel({
     const query = search.trim().toLowerCase()
     return hoodPeople
       .filter((person) => matchesFilter(person, hoodFilter))
-      .filter((person) => {
-        if (!query) return true
-        return [
-          person.displayName,
-          person.groupNames.join(' '),
-          person.clubNames.join(' '),
-          person.cityNames.join(' '),
-          person.sourceBadges.join(' '),
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(query)
-      })
+      .filter((person) => matchesHoodSearch(person, query))
       .sort((left, right) => sortHoodPeople(left, right, openMatchCount))
   }, [hoodFilter, hoodPeople, openMatchCount, search])
 
@@ -2366,7 +2437,36 @@ export function HoodsPanel({
       [person.key]: nextSavedState,
     }))
     try {
-      if (person.isSaved && person.personId && isContactModulePerson(person)) {
+      if (!person.isSaved && person.userId && person.saveActionKind === 'save_request') {
+        const result = await sendUserSaveRequest(supabase, person.userId)
+        setSavedStateOverrides((current) => {
+          const next = { ...current }
+          delete next[person.key]
+          return next
+        })
+        setSearchDiscover((current) =>
+          current.map((entry) =>
+            entry.userId === person.userId
+              ? {
+                  ...entry,
+                  requestStatus: result.status,
+                  nextEligibleAt: result.next_eligible_at,
+                }
+              : entry,
+          ),
+        )
+        if (result.status === 'pending') {
+          setMessage(`Save request sent to ${person.displayName}.`)
+        } else if (result.status === 'already_saved') {
+          setMessage(`${person.displayName} is already saved.`)
+          const nextInviteCircleRows = await getInviteCircleList(supabase)
+          setInviteCircleRows(nextInviteCircleRows)
+        } else if (result.next_eligible_at) {
+          setMessage(`You can send another save request after ${new Date(result.next_eligible_at).toLocaleDateString()}.`)
+        } else {
+          setMessage(`Save request status: ${result.status}.`)
+        }
+      } else if (person.isSaved && person.personId && isContactModulePerson(person)) {
         const { error: removeError } = await supabase
           .from('person_relationships')
           .delete()
@@ -2409,10 +2509,13 @@ export function HoodsPanel({
     setError(null)
     setMessage(null)
     try {
-      if (person.userId) {
+      if (person.isLinked && person.personId) {
+        await inviteContactPersonToMatch(supabase, matchId, person.personId)
+        await processDeliveriesAction()
+      } else if (person.userId) {
         await inviteUserToMatch(supabase, matchId, person.userId)
       } else if (person.guestId) {
-        await nominateGuest(supabase, matchId, person.guestId)
+        await inviteContactGuestToMatch(supabase, matchId, person.guestId)
         await processDeliveriesAction()
       }
       setMessage(`${person.displayName} was invited to the match.`)
@@ -2462,13 +2565,14 @@ export function HoodsPanel({
     const displayName = contactDisplayName.trim()
     const email = contactEmail.trim().toLowerCase() || null
     const phone = contactPhone.trim() || null
+    const notes = contactNotes.trim() || null
 
     if (!displayName) {
       setError('Contact name is required.')
       return
     }
     if (!email && !phone) {
-      setError('Enter either email or phone for this contact.')
+      setError('Email or phone required')
       return
     }
 
@@ -2482,21 +2586,26 @@ export function HoodsPanel({
         gender: contactGender,
         email,
         phone,
+        notes,
       })
+      await saveContactPlayer(supabase, newGuest.id, { source: 'manual' })
       await setGuestSports(supabase, newGuest.id, [selectedSport.code])
       setMessage(`${displayName} was added to your ${selectedSport.display_name} contacts.`)
       setContactDisplayName('')
       setContactEmail('')
       setContactPhone('')
+      setContactNotes('')
       setContactGender(null)
       setContactComposerMode(null)
+      setContactToolsOpen(false)
+      setHoodFilter('saved')
       await loadSupportData()
     } catch (createError) {
       setError((createError as Error).message)
     } finally {
       setCreatingContact(false)
     }
-  }, [contactDisplayName, contactEmail, contactGender, contactPhone, loadSupportData, selectedSport])
+  }, [contactDisplayName, contactEmail, contactGender, contactNotes, contactPhone, loadSupportData, selectedSport])
 
   const handleSearchPeopleSubmit = useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -2552,6 +2661,8 @@ export function HoodsPanel({
 
       setMessage(`Imported contacts were added to your ${selectedSport.display_name} hood.`)
       setContactComposerMode(null)
+      setContactToolsOpen(false)
+      setHoodFilter('saved')
       await loadSupportData()
     } catch (importError) {
       setError((importError as Error).message)
@@ -2584,8 +2695,32 @@ export function HoodsPanel({
     () => (section === 'discover' ? filteredDiscoverPeople : filteredHoodPeople).map(applySavedOverride),
     [applySavedOverride, filteredDiscoverPeople, filteredHoodPeople, section],
   )
-  const showAddContactButton = section === 'hood' && hoodFilter === 'contacts'
-  const showContactTools = showAddContactButton && contactToolsOpen
+  const savedPrimaryPeople = useMemo(() => {
+    if (section !== 'hood' || hoodFilter !== 'saved') return [] as HoodPerson[]
+    const query = search.trim().toLowerCase()
+    return hoodPeople
+      .map(applySavedOverride)
+      .filter((person) =>
+        isPersonStarred(person)
+        && (isRegisteredPlayerPerson(person) || isLinkedRegisteredContactPerson(person))
+        && matchesHoodSearch(person, query),
+      )
+      .sort((left, right) => sortHoodPeople(left, right, openMatchCount))
+  }, [applySavedOverride, hoodFilter, hoodPeople, openMatchCount, search, section])
+  const savedContactPeople = useMemo(() => {
+    if (section !== 'hood' || hoodFilter !== 'saved') return [] as HoodPerson[]
+    const query = search.trim().toLowerCase()
+    const primaryKeys = new Set(savedPrimaryPeople.map((person) => person.key))
+    return hoodPeople
+      .map(applySavedOverride)
+      .filter((person) =>
+        person.isMyContact
+        && !primaryKeys.has(person.key)
+        && matchesHoodSearch(person, query),
+      )
+      .sort((left, right) => sortHoodPeople(left, right, openMatchCount))
+  }, [applySavedOverride, hoodFilter, hoodPeople, openMatchCount, savedPrimaryPeople, search, section])
+  const showContactTools = section === 'hood' && contactToolsOpen
   return (
     <div className="space-y-5">
       <div className="rounded-[30px] border border-[#E2E8F0] bg-white px-5 py-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
@@ -2638,8 +2773,9 @@ export function HoodsPanel({
               ? ([
                   ['all', 'All'],
                   ['saved', 'Saved'],
+                  ['linked', 'Linked'],
+                  ['club', 'Club'],
                   ['group', 'From Groups'],
-                  ['contacts', 'Contacts'],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
@@ -2657,7 +2793,22 @@ export function HoodsPanel({
                   >
                     {label}
                   </button>
-                ))
+                )).concat([
+                  <button
+                    key="add-my-contact"
+                    type="button"
+                    onClick={() => {
+                      clearMessage()
+                      setSection('hood')
+                      setContactToolsOpen(true)
+                      setContactComposerMode(null)
+                      setError(null)
+                    }}
+                    className="text-body-main rounded-full bg-[#F0F7FF] px-4 py-2 font-medium text-[#475569] transition hover:bg-[#E8F1FB]"
+                  >
+                    Add My Contact
+                  </button>,
+                ])
               : ([
                   ['club_members', 'Club Members'],
                   ['city_players', 'City Players'],
@@ -2690,9 +2841,7 @@ export function HoodsPanel({
               placeholder={
                 section === 'discover'
                   ? 'Search people'
-                  : hoodFilter === 'contacts'
-                    ? 'Search contacts'
-                    : 'Search people'
+                  : 'Search people'
               }
               className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
             />
@@ -2766,7 +2915,7 @@ export function HoodsPanel({
             <div>
               <h3 className="text-h2 text-[#1E293B]">Find a registered player</h3>
               <p className="text-body-sub mt-1 text-[#64748B]">
-                Only registered players who allow email/phone lookup can be found.
+                Search exact email or phone. If direct save is not allowed, send a save request instead.
               </p>
             </div>
             <form onSubmit={handleSearchPeopleSubmit} className="flex flex-col gap-3 sm:flex-row">
@@ -2786,31 +2935,6 @@ export function HoodsPanel({
               </button>
             </form>
           </div>
-        </div>
-      ) : null}
-
-      {showAddContactButton ? (
-        <div className="flex justify-start">
-          <button
-            type="button"
-            onClick={() => {
-              clearMessage()
-              setError(null)
-              setContactToolsOpen((current) => {
-                const next = !current
-                setContactComposerMode(null)
-                return next
-              })
-            }}
-            className={[
-              'text-body-main rounded-full px-4 py-2 font-medium transition',
-              contactToolsOpen
-                ? 'bg-[#1E293B] text-white'
-                : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]',
-            ].join(' ')}
-          >
-            {contactToolsOpen ? 'Close contact player tools' : 'Add regular players'}
-          </button>
         </div>
       ) : null}
 
@@ -2845,7 +2969,7 @@ export function HoodsPanel({
                 className="text-body-main inline-flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-white px-4 py-2.5 font-medium text-[#475569] transition hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
               >
                 <ContactToolIcon kind="close" />
-                Close
+                Close contact player tools
               </button>
             </div>
           </div>
@@ -2900,18 +3024,13 @@ export function HoodsPanel({
 
           {contactComposerMode === 'manual' && (
             <form onSubmit={handleCreateContact} className="mt-6 grid gap-4 rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] p-4 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <div className="text-label text-slate-400">
-                  Add to {selectedSport.display_name}
-                </div>
-              </div>
               <label className="text-body-main text-slate-600">
                 <span className="mb-1 block">Name</span>
                 <input
                   type="text"
                   value={contactDisplayName}
                   onChange={(event) => setContactDisplayName(event.target.value)}
-                  placeholder="Display name"
+                  placeholder="Name"
                   className="text-body-main w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
                 />
               </label>
@@ -2949,8 +3068,29 @@ export function HoodsPanel({
                   ))}
                 </select>
               </label>
+              <label className="text-body-main text-slate-600 md:col-span-2">
+                <span className="mb-1 block">Notes</span>
+                <textarea
+                  value={contactNotes}
+                  onChange={(event) => setContactNotes(event.target.value)}
+                  placeholder="Notes"
+                  rows={3}
+                  className="text-body-main w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-slate-700 outline-none transition focus:border-slate-300"
+                />
+              </label>
               <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-body-sub text-slate-500">Adds to your hood.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearMessage()
+                    setContactToolsOpen(false)
+                    setContactComposerMode(null)
+                    setError(null)
+                  }}
+                  className="text-body-main rounded-full border border-slate-200 bg-white px-4 py-2 font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
                 <button
                   type="submit"
                   disabled={creatingContact}
@@ -2964,7 +3104,7 @@ export function HoodsPanel({
         </div>
       )}
 
-      {contactComposerMode === 'screenshot' && (
+      {contactComposerMode === 'screenshot' && onParseScreenshots && onImportScreenshotContacts && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button
             type="button"
@@ -3014,41 +3154,67 @@ export function HoodsPanel({
         </div>
       ) : showSearchPeoplePanel && !hasSubmittedSearchPeople ? (
         <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
-          Search by exact email or phone to find a registered player you already know.
+          Search by exact email or phone, or an exact display name for someone who shares a club with you.
         </div>
       ) : showSearchPeoplePanel && hasSubmittedSearchPeople && activePeople.length === 0 ? (
         <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
           <p>No available player found for this search.</p>
           <p className="mt-2 text-body-sub text-slate-400">
-            Check the email or phone number, or ask the player to enable email/phone lookup in their discovery settings.
+            Check the email or phone number, or search the exact display name of someone who shares a club with you.
           </p>
         </div>
-      ) : activePeople.length === 0 ? (
-        section === 'hood' && hoodFilter === 'contacts' ? (
-          null
-        ) : (
+      ) : section === 'hood' && hoodFilter === 'saved' ? (
+        savedPrimaryPeople.length === 0 && savedContactPeople.length === 0 ? (
           <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
             {getPeopleEmptyState(section, hoodFilter, discoverSource, selectedSport.display_name)}
           </div>
-        )
-      ) : (
-        <div className="space-y-5">
-          {activePeople.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {activePeople.map((person) => (
-                <HoodCard
-                  key={person.key}
-                  person={person}
+        ) : (
+          <div className="space-y-6">
+            {savedPrimaryPeople.length > 0 ? (
+              <HoodCardGrid
+                people={savedPrimaryPeople}
+                myClubNames={myClubNames}
+                openMatchCount={openMatchCount}
+                activeInviteKey={activeInviteKey}
+                activeMenuKey={activeMenuKey}
+                openMatchTargetsByPerson={openMatchTargetsByPerson}
+                pendingInviteMatchId={pendingInviteMatchId}
+                onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
+                onOpenMenuAddToGroup={(nextPerson) => {
+                  setGroupDialogPerson(nextPerson)
+                  setActiveMenuKey(null)
+                }}
+                onSaveToggle={handleSaveToggle}
+                onToggleInvite={(nextPerson) => {
+                  setActiveMenuKey(null)
+                  setActiveInviteKey((current) => (current === nextPerson.key ? null : nextPerson.key))
+                }}
+                onToggleMenu={(nextPerson) => {
+                  setActiveInviteKey(null)
+                  setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))
+                }}
+                onInviteExisting={handleInviteExisting}
+                onInviteNew={navigateToNewMatch}
+                compact
+              />
+            ) : null}
+            {savedContactPeople.length > 0 ? (
+              <section className="space-y-3">
+                <h3 className="text-label text-[#64748B]">Contact</h3>
+                <HoodCardGrid
+                  people={savedContactPeople}
                   myClubNames={myClubNames}
-                  openMatchCount={openMatchCount.get(person.key) ?? 0}
+                  openMatchCount={openMatchCount}
+                  activeInviteKey={activeInviteKey}
+                  activeMenuKey={activeMenuKey}
+                  openMatchTargetsByPerson={openMatchTargetsByPerson}
+                  pendingInviteMatchId={pendingInviteMatchId}
                   onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
                   onOpenMenuAddToGroup={(nextPerson) => {
                     setGroupDialogPerson(nextPerson)
                     setActiveMenuKey(null)
                   }}
                   onSaveToggle={handleSaveToggle}
-                  inviteOpen={activeInviteKey === person.key}
-                  menuOpen={activeMenuKey === person.key}
                   onToggleInvite={(nextPerson) => {
                     setActiveMenuKey(null)
                     setActiveInviteKey((current) => (current === nextPerson.key ? null : nextPerson.key))
@@ -3057,13 +3223,48 @@ export function HoodsPanel({
                     setActiveInviteKey(null)
                     setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))
                   }}
-                  inviteMatches={openMatchTargetsByPerson.get(person.key) ?? []}
                   onInviteExisting={handleInviteExisting}
                   onInviteNew={navigateToNewMatch}
-                  pendingInviteMatchId={pendingInviteMatchId}
+                  compact
                 />
-              ))}
-            </div>
+              </section>
+            ) : null}
+          </div>
+        )
+      ) : activePeople.length === 0 ? (
+        section === 'hood' && contactToolsOpen ? null : (
+          <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
+            {getPeopleEmptyState(section, hoodFilter, discoverSource, selectedSport.display_name)}
+          </div>
+        )
+      ) : (
+        <div className="space-y-5">
+          {activePeople.length > 0 ? (
+            <HoodCardGrid
+              people={activePeople}
+              myClubNames={myClubNames}
+              openMatchCount={openMatchCount}
+              activeInviteKey={activeInviteKey}
+              activeMenuKey={activeMenuKey}
+              openMatchTargetsByPerson={openMatchTargetsByPerson}
+              pendingInviteMatchId={pendingInviteMatchId}
+              onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
+              onOpenMenuAddToGroup={(nextPerson) => {
+                setGroupDialogPerson(nextPerson)
+                setActiveMenuKey(null)
+              }}
+              onSaveToggle={handleSaveToggle}
+              onToggleInvite={(nextPerson) => {
+                setActiveMenuKey(null)
+                setActiveInviteKey((current) => (current === nextPerson.key ? null : nextPerson.key))
+              }}
+              onToggleMenu={(nextPerson) => {
+                setActiveInviteKey(null)
+                setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))
+              }}
+              onInviteExisting={handleInviteExisting}
+              onInviteNew={navigateToNewMatch}
+            />
           ) : null}
 
         </div>

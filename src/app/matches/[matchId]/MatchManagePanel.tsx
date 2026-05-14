@@ -11,7 +11,7 @@ import {
   inviteGroupToMatch,
   inviteContactPersonToMatch,
   inviteUserToMatch,
-  nominateUser,
+  inviteParticipantUserToMatch,
   revokeGroupInvite,
   type MatchGroupInvite,
   type MatchParticipantEnriched,
@@ -41,6 +41,7 @@ type CandidateItem = {
   userId?: string | null
   guestId?: string | null
   personId?: string | null
+  isLinkedContact?: boolean
 }
 
 type PendingAddition = CandidateItem & {
@@ -478,6 +479,11 @@ function SelectableInviteChip({
           Group
         </span>
       ) : null}
+      {item.isLinkedContact ? (
+        <span className="rounded bg-sky-50 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-sky-700">
+          Linked
+        </span>
+      ) : null}
       {selected ? <span className="text-[10px] font-bold">✓</span> : null}
     </button>
   )
@@ -762,6 +768,7 @@ export function MatchManagePanel({
               sourceLabel: target.sourceLabel,
               avatarUrl: target.avatar_url ?? null,
               personId: target.person_id,
+              isLinkedContact: target.eligible_via === 'registered_user_path',
             })),
             ...(isOrganizer
               ? candidateGroups.map((group) => ({
@@ -1089,7 +1096,7 @@ export function MatchManagePanel({
           if (isOrganizer) {
             await inviteUserToMatch(supabase, matchId, item.id)
           } else {
-            await nominateUser(supabase, matchId, item.id)
+            await inviteParticipantUserToMatch(supabase, matchId, item.id)
           }
         } else if (item.kind === 'group') {
           await inviteGroupToMatch(supabase, matchId, item.id)
@@ -1421,7 +1428,7 @@ export function MatchManagePanel({
                     {inviteCandidates.length === 0 ? (
                       <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
                         {inviteMode === 'request'
-                          ? 'No saved registered players or groups are available for Request Scope.'
+                          ? 'No saved registered players or groups are available for Visible to Groups.'
                           : 'No saved registered players, contacts, or groups are available for direct invites.'}
                       </div>
                     ) : (

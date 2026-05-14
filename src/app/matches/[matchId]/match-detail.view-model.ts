@@ -46,8 +46,8 @@ export type MatchDetailPageViewModel = {
   isOrganizer: boolean
   isMatchAssociated: boolean
   inScope: boolean
-  canNominate: boolean
-  canNominateGuest: boolean
+  canParticipantInvite: boolean
+  canParticipantInviteContact: boolean
   confirmedCount: number
   pendingCount: number
   waitingCount: number
@@ -56,11 +56,11 @@ export type MatchDetailPageViewModel = {
   spotsNeeded: number
   savedPlayerIds: string[]
   scopeUsersForInvite: ReturnType<typeof admissionTargetsToScopeUsers>
-  scopeUsersForNominate: ReturnType<typeof admissionTargetsToScopeUsers>
+  scopeUsersForParticipantInvite: ReturnType<typeof admissionTargetsToScopeUsers>
   contactTargets: MatchDetailLoaderData['contactPersonTargets']
   showSelfActionsSection: boolean
-  showNominateSection: boolean
-  showNominateGuestSection: boolean
+  showParticipantInviteSection: boolean
+  showParticipantInviteContactSection: boolean
   showOrganizerAdminSection: boolean
   showOrganizerEditSection: boolean
   canAccessCommunication: boolean
@@ -98,8 +98,8 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
 
   const isMatchAssociated = isSelfWithdrawAssociated(user?.id, myParticipant)
   const isFormed = Boolean(match.formed_at) || confirmedCount >= match.required_count
-  const canNominate = !isOrganizer && match.can_participants_invite_users && (inScope || isMatchAssociated)
-  const canNominateGuest = isOrganizer || (match.can_participants_invite_users && (inScope || isMatchAssociated))
+  const canParticipantInvite = !isOrganizer && match.can_participants_invite_users && (inScope || isMatchAssociated)
+  const canParticipantInviteContact = isOrganizer || (match.can_participants_invite_users && (inScope || isMatchAssociated))
   const courtState = deriveMatchCourtStatus({
     matchStatus: match.status,
     courtPlanMode: match.court_plan_mode,
@@ -195,8 +195,8 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     isOrganizer,
     isMatchAssociated,
     inScope,
-    canNominate,
-    canNominateGuest,
+    canParticipantInvite,
+    canParticipantInviteContact,
     confirmedCount,
     pendingCount,
     waitingCount,
@@ -211,11 +211,11 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     spotsNeeded: Math.max(match.required_count - confirmedCount, 0),
     savedPlayerIds: loaderData.inviteCircle.map((row) => row.target_user_id),
     scopeUsersForInvite: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
-    scopeUsersForNominate: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
+    scopeUsersForParticipantInvite: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
     contactTargets: loaderData.contactPersonTargets,
     showSelfActionsSection: match.status === 'active' && !isOrganizer && selfNeedsTopAction && loaderData.identityLinkCandidates.length === 0,
-    showNominateSection: match.status === 'active' && canNominate,
-    showNominateGuestSection: match.status === 'active' && canNominateGuest && !isOrganizer,
+    showParticipantInviteSection: match.status === 'active' && canParticipantInvite,
+    showParticipantInviteContactSection: match.status === 'active' && canParticipantInviteContact && !isOrganizer,
     showOrganizerAdminSection: match.status === 'active' && isOrganizer,
     showOrganizerEditSection: match.status === 'active' && isOrganizer,
     canAccessCommunication,

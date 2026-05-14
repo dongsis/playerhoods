@@ -43,6 +43,23 @@ export default function LoginPage() {
     typeof window === 'undefined' ? null : window.location.hostname
   const shouldRouteGoogleThroughCanonicalHost = shouldUseCanonicalLocalAuthHost(currentHost)
 
+  useEffect(() => {
+    const notice = searchParams.get('notice')
+    const hasAuthCallbackPayload = Boolean(oauthCode || oauthAccessToken)
+    if (notice || hasAuthCallbackPayload) return
+    if (typeof window === 'undefined') return
+
+    const requestedMode = searchParams.get('mode')
+    const homeAuthUrl = new URL('/', window.location.origin)
+    homeAuthUrl.searchParams.set(
+      'auth',
+      requestedMode === 'register' || requestedMode === 'forgot' ? requestedMode : 'login',
+    )
+    const requestedNext = searchParams.get('next')
+    if (requestedNext) homeAuthUrl.searchParams.set('next', requestedNext)
+    window.location.replace(homeAuthUrl.toString())
+  }, [oauthAccessToken, oauthCode, searchParams])
+
   function redirectToNext() {
     if (redirectingRef.current) return
     redirectingRef.current = true
@@ -350,7 +367,7 @@ export default function LoginPage() {
       <div style={backdropStyle} aria-hidden="true" />
       <section className="ph-login-hero-copy" style={heroCopyStyle} aria-hidden="true">
         <div style={brandRowStyle}>
-          <img src="/playerhoods-logo-transparent.png" alt="" style={brandMarkStyle} />
+          <img src="/playerhoods-brand-mark-cropped.png" alt="" style={brandMarkStyle} />
           <span style={brandNameStyle}>PlayerHoods</span>
         </div>
         <h1 style={heroTitleStyle}>
@@ -375,7 +392,7 @@ export default function LoginPage() {
       <section className="ph-login-card-stage" style={cardStageStyle} aria-label={titles[mode]}>
         <div className="ph-login-card" style={cardStyle}>
           <img
-            src="/playerhoods-logo-cutout.png"
+            src="/playerhoods-brand-stacked-cropped.png"
             alt="PlayerHoods"
             width={1122}
             height={1402}

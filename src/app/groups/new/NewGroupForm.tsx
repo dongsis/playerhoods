@@ -8,6 +8,7 @@ import { GROUP_LEVEL_RATING_OPTIONS } from '@/lib/profile-options'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Sport, Venue } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { GroupDetailPageShell } from '../[groupId]/GroupDetailPageShell'
 import { createGroupAction } from './actions'
 
@@ -123,6 +124,9 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
   return (
     <GroupDetailPageShell>
       <div className="max-w-[720px] pr-4">
+        <div className="mb-6">
+          <BrandLogo variant="horizontal" href="/dashboard" />
+        </div>
         <nav className="mb-6 text-[11px] font-black uppercase tracking-[0.16em] text-[#94A3B8]">
           <Link href="/groups" className="ph-link">
             Back to Groups

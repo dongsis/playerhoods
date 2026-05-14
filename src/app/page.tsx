@@ -1,122 +1,186 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { BrandLogo } from '@/app/components/BrandLogo'
+import {
+  AUTH_SUBMIT_THROTTLE_MS,
+  MIN_PASSWORD_LENGTH,
+  getConfiguredSiteOrigin,
+  mapAuthErrorToUiMessage,
+  sanitizeNextPath,
+  shouldUseCanonicalLocalAuthHost,
+} from '@/lib/auth-ui'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
-const advantages = [
+type AuthMode = 'login' | 'register' | 'forgot'
+
+type Slide = {
+  key: string
+  label: string
+  title: string
+  imageTitle: string
+  copy: string
+  cta: string
+  href: string
+  image?: string
+  visual: 'fit' | 'join' | 'hood' | 'privacy' | 'flow'
+}
+
+const slides: Slide[] = [
   {
-    number: '1',
-    title: 'Turn scattered communication into clear coordination',
-    description:
-      'Move beyond email, group chats, and verbal coordination. Put your game workflow in one clear, trackable place.',
-    icon: 'message',
+    key: 'fit',
+    label: 'Fit',
+    title: 'Find players and games that fit you',
+    imageTitle: 'Help the right players find you',
+    copy: 'Add your sport, city, and venues so the right playing circles can find you.',
+    cta: 'Complete Your Profile',
+    href: '/profile',
+    image: '/home-feature-fit.png',
+    visual: 'fit',
   },
   {
-    number: '2',
-    title: "See who's invited and who's in",
-    description:
-      'Track invited, confirmed, absent, and pending players without digging through chat history.',
-    icon: 'check',
+    key: 'join',
+    label: 'Join',
+    title: 'Join or invite without the group-chat mess',
+    imageTitle: 'Choose how players join',
+    copy: 'Invite players directly, or open a match so eligible players can request to join.',
+    cta: 'Create a Match',
+    href: '/matches',
+    image: '/home-feature-join.png',
+    visual: 'join',
   },
   {
-    number: '3',
-    title: 'Organize real players, not just app users',
-    description:
-      'Include contacts, club friends, and registered players in the same match and group workflow.',
-    icon: 'users',
+    key: 'hood',
+    label: 'Hood',
+    title: 'Build your Hood after every game',
+    imageTitle: 'Build your Hood',
+    copy: 'Save players you enjoyed playing with, then invite them again next time.',
+    cta: 'Start Your Hood',
+    href: '/dashboard?tab=players',
+    image: '/home-feature-hood.png',
+    visual: 'hood',
   },
   {
-    number: '4',
-    title: 'Every game and group has its own chat',
-    description:
-      'Keep conversations connected to the match or group they belong to, so decisions stay easy to find.',
-    icon: 'chat',
+    key: 'privacy',
+    label: 'Privacy',
+    title: 'Stay visible without exposing everything',
+    imageTitle: "You're in control",
+    copy: 'Choose where others can discover you. Keep email and phone private.',
+    cta: 'Set Privacy',
+    href: '/dashboard?tab=profile',
+    image: '/home-feature-privacy.png',
+    visual: 'privacy',
   },
   {
-    number: '5',
-    title: 'Help club members become visible and connected',
-    description:
-      'Make it easier to find the right players by venue, city, availability, and level.',
-    icon: 'star',
-  },
-  {
-    number: '6',
-    title: 'Easier for hosts, friendlier for participants',
-    description:
-      'Hosts gather players faster. Participants respond with less friction. New players can join more comfortably.',
-    icon: 'heart',
+    key: 'flow',
+    label: 'Flow',
+    title: 'One clear place for every game',
+    imageTitle: 'Clear match flow',
+    copy: "See who's invited, who's confirmed, who declined, and who still needs a reply.",
+    cta: 'See Match Flow',
+    href: '/matches',
+    visual: 'flow',
   },
 ]
 
-const featureCards = [
+const benefits = [
   {
-    title: 'Connect',
-    description:
-      'Find local players by sport, level, venues, and shared groups so your next game starts with the right people.',
-    icon: 'users',
+    title: 'Less digging through chats',
+    copy: 'Match replies, requests, and player status stay attached to the game.',
+    icon: 'chat',
   },
   {
-    title: 'Play',
-    description:
-      'Create open matches, invite from your Hood, and keep player confirmations in one place.',
-    icon: 'calendar',
+    title: 'People you can play with again',
+    copy: 'Save good playing partners into your Hood and invite them next time.',
+    icon: 'people',
   },
   {
-    title: 'Grow',
-    description:
-      'Build a durable player network around your favorite courts, clubs, and recurring games.',
-    icon: 'trophy',
+    title: 'Privacy stays protected',
+    copy: 'Choose how you are discoverable without showing email or phone.',
+    icon: 'lock',
   },
 ]
 
 export default function HomePage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null)
+  const searchParams = useSearchParams()
+  const nextPath = useMemo(
+    () => sanitizeNextPath(searchParams.get('next'), '/dashboard'),
+    [searchParams],
+  )
+
+  useEffect(() => {
+    const requestedAuthMode = searchParams.get('auth')
+    if (
+      requestedAuthMode === 'login' ||
+      requestedAuthMode === 'register' ||
+      requestedAuthMode === 'forgot'
+    ) {
+      setAuthMode(requestedAuthMode)
+    }
+  }, [searchParams])
+
+  function openAuth(mode: AuthMode) {
+    setAuthMode(mode)
+    setIsMenuOpen(false)
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    url.searchParams.set('auth', mode)
+    window.history.pushState({}, '', url)
+  }
+
+  function closeAuth() {
+    setAuthMode(null)
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    url.searchParams.delete('auth')
+    window.history.pushState({}, '', url)
+  }
 
   return (
-    <main className="min-h-screen bg-white text-slate-800">
-      <nav className="sticky top-0 z-50 w-full border-b border-slate-100 bg-white/95 shadow-sm backdrop-blur">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <a href="/" className="flex items-center gap-3" aria-label="PlayerHoods home">
-            <img
-              src="/playerhoods-logo.png"
-              alt=""
-              className="h-11 w-11 object-contain"
-            />
-            <span className="text-2xl font-black tracking-tight text-[#001845]">
-              Player<span className="font-semibold">Hoods</span>
-            </span>
-          </a>
+    <main className="min-h-screen bg-[#F0F7FF] text-[#12213A]">
+      <nav className="sticky top-0 z-50 w-full border-b border-[#D8E4F2] bg-white/95 shadow-sm backdrop-blur">
+        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <BrandLogo variant="horizontal" imageClassName="h-12 w-[205px]" />
 
-          <div className="hidden items-center gap-8 md:flex">
-            <a href="#players" className="text-sm font-bold text-slate-700 hover:text-[#0047AB]">
+          <div className="hidden items-center gap-7 md:flex">
+            <a href="#players" className="text-sm font-bold text-[#30445F] hover:text-[#C25E46]">
               For Players
             </a>
-            <a href="#clubs" className="text-sm font-bold text-slate-700 hover:text-[#0047AB]">
-              For Clubs
+            <a href="#benefits" className="text-sm font-bold text-[#30445F] hover:text-[#C25E46]">
+              Benefits
             </a>
-            <a href="#features" className="text-sm font-bold text-slate-700 hover:text-[#0047AB]">
-              Features
+            <a href="#clubs" className="text-sm font-bold text-[#30445F] hover:text-[#C25E46]">
+              Club Tools
             </a>
-            <a href="/venues" className="text-sm font-bold text-slate-700 hover:text-[#0047AB]">
+            <a href="/venues" className="text-sm font-bold text-[#30445F] hover:text-[#C25E46]">
               Venues
             </a>
           </div>
 
-          <div className="hidden items-center gap-4 md:flex">
-            <a href="/login" className="text-sm font-bold text-[#0047AB] hover:text-[#001845]">
-              Sign In
-            </a>
-            <a
-              href="/login?mode=register"
-              className="rounded-full bg-[#CDE11D] px-5 py-2.5 text-sm font-black text-[#001845] shadow-sm transition hover:bg-[#b8ca18]"
+          <div className="hidden items-center gap-3 md:flex">
+            <button
+              type="button"
+              onClick={() => openAuth('login')}
+              className="text-sm font-bold text-[#071A44] hover:text-[#C25E46]"
             >
-              Sign Up
-            </a>
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => openAuth('register')}
+              className="rounded-full bg-[#C25E46] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-[#A94F3B]"
+            >
+              Join Free
+            </button>
           </div>
 
           <button
             type="button"
             onClick={() => setIsMenuOpen((value) => !value)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 text-[#001845] md:hidden"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#D8E4F2] text-[#071A44] md:hidden"
             aria-label="Toggle menu"
           >
             {isMenuOpen ? <CloseIcon /> : <MenuIcon />}
@@ -124,439 +188,679 @@ export default function HomePage() {
         </div>
 
         {isMenuOpen ? (
-          <div className="border-t border-slate-100 bg-white px-4 py-4 md:hidden">
+          <div className="border-t border-[#D8E4F2] bg-white px-4 py-4 md:hidden">
             <div className="flex flex-col gap-1">
-              <a className="rounded-lg px-3 py-2 font-bold text-slate-700" href="#players">
+              <a className="rounded-lg px-3 py-2 font-bold text-[#30445F]" href="#players">
                 For Players
               </a>
-              <a className="rounded-lg px-3 py-2 font-bold text-slate-700" href="#clubs">
-                For Clubs
+              <a className="rounded-lg px-3 py-2 font-bold text-[#30445F]" href="#benefits">
+                Benefits
               </a>
-              <a className="rounded-lg px-3 py-2 font-bold text-slate-700" href="#features">
-                Features
+              <a className="rounded-lg px-3 py-2 font-bold text-[#30445F]" href="#clubs">
+                Club Tools
               </a>
-              <a className="rounded-lg px-3 py-2 font-bold text-slate-700" href="/login">
-                Sign In
+              <a className="rounded-lg px-3 py-2 font-bold text-[#30445F]" href="/venues">
+                Venues
               </a>
-              <a
-                className="mt-2 rounded-lg bg-[#CDE11D] px-3 py-3 text-center font-black text-[#001845]"
-                href="/login?mode=register"
+              <button
+                type="button"
+                onClick={() => openAuth('login')}
+                className="rounded-lg px-3 py-2 text-left font-bold text-[#30445F]"
               >
-                Sign Up
-              </a>
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => openAuth('register')}
+                className="mt-2 rounded-lg bg-[#C25E46] px-3 py-3 text-center font-black text-white"
+              >
+                Join Free
+              </button>
             </div>
           </div>
         ) : null}
       </nav>
 
-      <section className="relative flex min-h-[640px] items-center justify-center overflow-hidden text-center">
+      <div className="relative overflow-hidden bg-[#F0F7FF]">
         <div className="absolute inset-0">
           <img
             src="/playerhoods-home-hero.png"
-            alt="Players greeting each other at a tennis net"
-            className="h-full w-full object-cover object-[center_42%]"
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover object-[center_14%]"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#001845]/85 via-[#0047AB]/55 to-white/95" />
+          <div className="absolute inset-0 bg-gradient-to-r from-white/18 via-white/66 to-white/14" />
+          <div className="absolute inset-0 bg-gradient-to-b from-white/14 via-white/48 to-[#F0F7FF]/58" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.46)_0%,rgba(255,255,255,0.2)_44%,rgba(255,255,255,0)_78%)]" />
         </div>
 
-        <div className="relative z-10 mx-auto mt-8 w-full max-w-5xl px-4">
-          <p className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-[#CDE11D]">
-            4,000+ Tennis & Pickleball Communities Across Canada
-          </p>
-          <h1 className="mx-auto max-w-4xl text-4xl font-black leading-[1.05] tracking-tight text-white drop-shadow md:text-6xl">
-            Bring players together.
-            <span className="block text-[#CDE11D]">Keep the game going.</span>
-          </h1>
-          <p className="mx-auto mt-6 max-w-3xl text-lg font-semibold leading-relaxed text-white/95 drop-shadow-sm md:text-xl">
-            Every venue is a community. Discover places to play, connect with local players, and
-            organize games without the chaos. Build your playing circle and keep your hood growing
-            safely.
-          </p>
-
-          <form action="/venues" className="mx-auto mt-10 flex max-w-3xl items-center rounded-full bg-white p-2 shadow-2xl">
-            <label className="sr-only" htmlFor="home-search">
-              Search by location, level, or sport
-            </label>
-            <span className="ml-4 text-slate-400">
-              <SearchIcon />
-            </span>
-            <input
-              id="home-search"
-              name="q"
-              type="text"
-              placeholder="Search..."
-              className="min-w-0 flex-1 bg-transparent px-4 py-3 text-base font-semibold text-slate-700 outline-none md:text-lg"
-            />
-            <button
-              type="submit"
-              className="rounded-full bg-[#0047AB] px-6 py-3 text-sm font-black text-white transition hover:bg-[#003380] md:px-8"
-            >
-              Find Games
-            </button>
-          </form>
-
-          <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm font-black text-slate-800">
-            <div className="rounded-lg border border-white/50 bg-white/90 px-4 py-2 shadow-sm backdrop-blur">
-              <span className="text-[#0047AB]">4,000+</span> Tennis & Pickleball Communities Across Canada
-            </div>
-          </div>
+        <div className="relative z-10">
+          <HeroSection />
         </div>
-      </section>
+      </div>
 
-      <section id="players" className="bg-slate-50 py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <CoreAdvantagesCarousel />
-        </div>
-      </section>
-
-      <section id="features" className="bg-white py-24">
-        <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-          <h2 className="text-4xl font-black tracking-tight text-[#001845]">
-            Everything you need to run your games
-          </h2>
-          <div className="mt-14 grid gap-8 md:grid-cols-3">
-            {featureCards.map((feature) => (
-              <div
-                key={feature.title}
-                className="rounded-lg border border-slate-100 bg-slate-50 p-8 transition hover:-translate-y-1 hover:shadow-lg"
+      <section id="benefits" className="bg-white px-4 py-14 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-4 md:grid-cols-3">
+            {benefits.map((benefit) => (
+              <article
+                key={benefit.title}
+                className="rounded-lg border border-[#D8E4F2] bg-[#F8FBFF] p-6 shadow-[0_16px_34px_-30px_rgba(15,23,42,0.24)]"
               >
-                <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-lg bg-[#0047AB]/10 text-[#0047AB]">
-                  <Icon name={feature.icon} className="h-8 w-8" />
+                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-white text-[#C25E46] shadow-sm">
+                  <Icon name={benefit.icon} className="h-6 w-6" />
                 </div>
-                <h3 className="text-2xl font-black text-[#001845]">{feature.title}</h3>
-                <p className="mt-4 leading-relaxed text-slate-600">{feature.description}</p>
-              </div>
+                <h3 className="text-xl font-black text-[#071A44]">{benefit.title}</h3>
+                <p className="mt-3 text-sm font-medium leading-6 text-[#52667F]">{benefit.copy}</p>
+              </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="clubs" className="bg-[#001845] py-20 text-white">
-        <div className="mx-auto max-w-4xl px-4 text-center">
-          <h2 className="text-4xl font-black tracking-tight">Play anytime, anywhere.</h2>
-          <p className="mx-auto mt-5 max-w-2xl text-xl leading-relaxed text-slate-300">
-            Start organizing matches, building your Hood, and keeping every player status clear.
-          </p>
-          <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <a
-              href="/login?mode=register"
-              className="w-full rounded-full bg-[#CDE11D] px-8 py-4 text-lg font-black text-[#001845] shadow-lg transition hover:bg-white sm:w-auto"
-            >
-              Get Started Free
-            </a>
-            <a
-              href="/login"
-              className="w-full rounded-full border border-white/30 px-8 py-4 text-lg font-black text-white transition hover:bg-white/10 sm:w-auto"
-            >
-              Sign In
-            </a>
+      <section id="clubs" className="bg-[#071A44] px-4 py-16 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-7xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div>
+            <p className="text-xs font-black uppercase text-[#9BCB3C]">
+              For clubs, captains, and community organizers
+            </p>
+            <h2 className="mt-3 max-w-3xl text-3xl font-black leading-tight md:text-4xl">
+              Run clearer games, keep members active, and grow a reusable player community.
+            </h2>
           </div>
+          <button
+            type="button"
+            onClick={() => openAuth('register')}
+            className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white px-7 text-sm font-black text-[#071A44] transition hover:bg-[#EEF6FF]"
+          >
+            See Club Tools
+          </button>
         </div>
       </section>
-
-      <footer className="border-t border-slate-800 bg-slate-900 py-10 text-slate-400">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-sm md:flex-row">
-          <div className="font-black text-slate-200">PlayerHoods</div>
-          <div className="flex flex-wrap justify-center gap-6">
-            <a href="/terms" className="hover:text-white">
-              Terms
-            </a>
-            <a href="/privacy" className="hover:text-white">
-              Privacy
-            </a>
-            <a href="/login" className="hover:text-white">
-              Sign In
-            </a>
-          </div>
-          <div>Copyright 2026 PlayerHoods. All rights reserved.</div>
-        </div>
-      </footer>
+      {authMode ? (
+        <HomeAuthOverlay initialMode={authMode} nextPath={nextPath} onClose={closeAuth} />
+      ) : null}
     </main>
   )
 }
 
-function CoreAdvantagesCarousel() {
-  const [current, setCurrent] = useState(0)
-  const slidesCount = 2
+function HomeAuthOverlay({
+  initialMode,
+  nextPath,
+  onClose,
+}: {
+  initialMode: AuthMode
+  nextPath: string
+  onClose: () => void
+}) {
+  const [mode, setMode] = useState<AuthMode>(initialMode)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+  const lastSubmitAtRef = useRef<Record<AuthMode, number>>({
+    login: 0,
+    register: 0,
+    forgot: 0,
+  })
 
-  function nextSlide() {
-    setCurrent((value) => (value === slidesCount - 1 ? 0 : value + 1))
+  useEffect(() => {
+    setMode(initialMode)
+    setError(null)
+    setInfo(null)
+  }, [initialMode])
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [])
+
+  const canonicalSiteOrigin = getConfiguredSiteOrigin()
+  const currentHost = typeof window === 'undefined' ? null : window.location.hostname
+  const shouldRouteGoogleThroughCanonicalHost = shouldUseCanonicalLocalAuthHost(currentHost)
+  const title = mode === 'register' ? 'Create account' : mode === 'forgot' ? 'Reset password' : 'Sign in'
+  const subtitle =
+    mode === 'register'
+      ? 'Create your account and get your player profile ready.'
+      : mode === 'forgot'
+        ? 'Enter your email and we will send a reset link if the account exists.'
+        : 'Welcome back to PlayerHoods.'
+
+  function switchMode(nextMode: AuthMode) {
+    setMode(nextMode)
+    setError(null)
+    setInfo(null)
+    setPassword('')
+    setConfirmPassword('')
   }
 
-  function prevSlide() {
-    setCurrent((value) => (value === 0 ? slidesCount - 1 : value - 1))
+  function normalizeEmail(value: string) {
+    return value.trim().toLowerCase()
+  }
+
+  function guardAgainstRapidSubmit(target: AuthMode) {
+    const now = Date.now()
+    if (now - lastSubmitAtRef.current[target] < AUTH_SUBMIT_THROTTLE_MS) {
+      setError('Please wait a moment and try again.')
+      return false
+    }
+    lastSubmitAtRef.current[target] = now
+    return true
+  }
+
+  async function handleGoogleAuth(targetMode: 'login' | 'register') {
+    setError(null)
+    setInfo(null)
+    if (!guardAgainstRapidSubmit(targetMode)) return
+
+    if (shouldRouteGoogleThroughCanonicalHost && canonicalSiteOrigin) {
+      const canonicalLoginUrl = new URL('/', canonicalSiteOrigin)
+      canonicalLoginUrl.searchParams.set('auth', targetMode)
+      window.location.assign(canonicalLoginUrl.toString())
+      return
+    }
+
+    setLoading(true)
+    const supabase = createSupabaseBrowserClient()
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+        },
+      })
+
+      if (oauthError) {
+        console.error('[home-auth:google]', oauthError)
+        setError('Unable to continue with Google right now. Please try again.')
+        setLoading(false)
+      }
+    } catch (err) {
+      console.error('[home-auth:google]', err)
+      setError('Unable to continue with Google right now. Please try again.')
+      setLoading(false)
+    }
+  }
+
+  async function handleLogin(event: React.FormEvent) {
+    event.preventDefault()
+    setError(null)
+    setInfo(null)
+    if (!guardAgainstRapidSubmit('login')) return
+
+    setLoading(true)
+    const supabase = createSupabaseBrowserClient()
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizeEmail(email),
+        password,
+      })
+
+      if (signInError) {
+        console.error('[home-auth:login]', signInError)
+        setError(mapAuthErrorToUiMessage('login'))
+        return
+      }
+
+      window.location.assign(nextPath)
+    } catch (err) {
+      console.error('[home-auth:login]', err)
+      setError(mapAuthErrorToUiMessage('login'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRegister(event: React.FormEvent) {
+    event.preventDefault()
+    setError(null)
+    setInfo(null)
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      return
+    }
+    if (!guardAgainstRapidSubmit('register')) return
+
+    setLoading(true)
+    const supabase = createSupabaseBrowserClient()
+    try {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: normalizeEmail(email),
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        },
+      })
+
+      if (signUpError) {
+        console.error('[home-auth:register]', signUpError)
+        setError(mapAuthErrorToUiMessage('register'))
+        return
+      }
+
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setInfo(null)
+        setError('This email is already verified with Google. Please continue with Google to sign in.')
+        return
+      }
+
+      if (data.session) {
+        window.location.assign('/onboarding/intro')
+        return
+      }
+
+      setInfo('We sent you a confirmation email. Please verify your email.')
+    } catch (err) {
+      console.error('[home-auth:register]', err)
+      setError(mapAuthErrorToUiMessage('register'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleForgot(event: React.FormEvent) {
+    event.preventDefault()
+    setError(null)
+    setInfo(null)
+    if (!guardAgainstRapidSubmit('forgot')) return
+
+    setLoading(true)
+    const supabase = createSupabaseBrowserClient()
+    try {
+      const redirectTo = `${window.location.origin}/auth/callback?next=/reset-password`
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        normalizeEmail(email),
+        { redirectTo },
+      )
+      if (resetError) console.error('[home-auth:forgot]', resetError)
+      setInfo('If that email is registered, we have sent a password reset link.')
+    } catch (err) {
+      console.error('[home-auth:forgot]', err)
+      setError(mapAuthErrorToUiMessage('forgot'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-slate-100 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-      <div
-        className="flex transition-transform duration-500 ease-in-out"
-        style={{ transform: `translateX(-${current * 100}%)` }}
-      >
-        <div className="w-full flex-shrink-0 p-6 md:p-12">
-          <div className="mb-10 text-center md:text-left">
-            <h2 className="text-4xl font-black text-[#0047AB]">
-              PlayerHoods <span className="text-[#001845]">Core Advantages</span>
-            </h2>
-            <p className="mt-2 text-xl font-semibold text-slate-500">
-              Bring players together. Keep the game going.
-            </p>
-          </div>
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-[#071A44]/42 px-4 py-6 backdrop-blur-sm">
+      <button
+        type="button"
+        aria-label="Close sign in"
+        className="fixed inset-0 cursor-default"
+        onClick={onClose}
+      />
+      <div className="relative mx-auto flex min-h-[calc(100svh-3rem)] max-w-[980px] items-center justify-center">
+        <div className="relative w-full max-w-[430px] rounded-[28px] bg-white px-8 py-8 shadow-[0_28px_80px_rgba(7,26,68,0.28)] sm:px-9">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full text-[#71849D] transition hover:bg-[#F0F7FF] hover:text-[#071A44]"
+          >
+            <CloseIcon />
+          </button>
 
-          <div className="mb-10 grid items-center gap-6 rounded-lg border border-slate-100 bg-slate-50 p-5 lg:grid-cols-[1fr_auto_1fr]">
-            <ComparisonPanel
-              label="Old Ways"
-              tone="muted"
-              items={['Email', 'WhatsApp', 'WeChat', 'Word of mouth']}
-              title="Scattered coordination"
-              description="Invites, replies, and player status get buried across separate chats, emails, and word of mouth."
-            />
-            <div className="hidden text-lg font-black text-slate-300 lg:block">to</div>
-            <ComparisonPanel
-              label="PlayerHoods"
-              tone="brand"
-              items={['Send invites', 'Player status', 'Group chat', 'Matches & groups']}
-              title="One clear game flow"
-              description="Bring match invites, confirmations, groups, and chat into one place built for organizing play."
-            />
-          </div>
-
-          <p className="mx-auto mb-8 max-w-3xl text-center font-bold text-slate-600">
-            Chat tools are good for communication, not for managing complex game coordination.
+          <img
+            src="/playerhoods-brand-stacked-cropped.png"
+            alt="PlayerHoods"
+            className="mx-auto h-[118px] w-[120px] object-contain"
+          />
+          <h2 className="mt-1 text-center text-xl font-black text-[#071A44]">{title}</h2>
+          <p className="mx-auto mt-2 max-w-[250px] text-center text-sm font-medium leading-5 text-[#52667F]">
+            {subtitle}
           </p>
 
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {advantages.map((advantage) => (
-              <AdvantageCard key={advantage.number} {...advantage} />
-            ))}
-          </div>
-
-          <div className="mt-10 overflow-hidden rounded-lg bg-[#0047AB] p-6">
-            <p className="text-lg font-semibold leading-relaxed text-white">
-              PlayerHoods helps sports communities discover players, organize matches, and stay
-              connected, making every game easier, clearer, and more human.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex w-full flex-shrink-0 flex-col items-center justify-center gap-12 bg-gradient-to-br from-blue-50 to-white p-8 md:flex-row md:p-20">
-          <div className="max-w-xl flex-1 space-y-6">
-            <h2 className="text-5xl font-black tracking-tight text-[#001845]">
-              Your club in your pocket
-            </h2>
-            <p className="text-xl leading-relaxed text-slate-600">
-              Help members find partners, create matches, and stay connected around the courts they
-              already love.
-            </p>
-            <ul className="space-y-4 font-bold text-slate-700">
-              <li className="flex items-center gap-3">
-                <CheckBadge /> Invite from saved players and groups
-              </li>
-              <li className="flex items-center gap-3">
-                <CheckBadge /> Track confirmations and requests
-              </li>
-              <li className="flex items-center gap-3">
-                <CheckBadge /> Keep every match conversation focused
-              </li>
-            </ul>
-            <a
-              href="/login?mode=register"
-              className="inline-flex rounded-lg bg-[#0047AB] px-6 py-3 font-black text-white transition hover:bg-[#003380]"
+          {mode !== 'forgot' ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void handleGoogleAuth(mode)}
+              className="mt-6 flex min-h-11 w-full items-center justify-center gap-3 rounded-full border border-[#C8D7EA] bg-white px-4 text-sm font-black text-[#071A44] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Explore PlayerHoods
-            </a>
-          </div>
-          <PhonePreview />
+              <HomeGoogleIcon />
+              {loading ? 'Opening Google...' : 'Continue with Google'}
+            </button>
+          ) : null}
+
+          {mode !== 'forgot' ? (
+            <div className="my-6 flex items-center gap-3 text-xs font-black uppercase text-[#71849D]">
+              <span className="h-px flex-1 bg-[#D8E4F2]" />
+              OR
+              <span className="h-px flex-1 bg-[#D8E4F2]" />
+            </div>
+          ) : null}
+
+          <form onSubmit={mode === 'login' ? handleLogin : mode === 'register' ? handleRegister : handleForgot}>
+            <label className="mb-2 block text-xs font-black text-[#071A44]">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              autoComplete="email"
+              placeholder="Enter your email"
+              className="mb-4 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#075BD7]"
+            />
+
+            {mode !== 'forgot' ? (
+              <>
+                <label className="mb-2 block text-xs font-black text-[#071A44]">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  minLength={mode === 'register' ? MIN_PASSWORD_LENGTH : undefined}
+                  autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                  placeholder="Enter your password"
+                  className="mb-2 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#075BD7]"
+                />
+              </>
+            ) : null}
+
+            {mode === 'login' ? (
+              <div className="mb-4 text-right">
+                <button
+                  type="button"
+                  onClick={() => switchMode('forgot')}
+                  className="text-xs font-black text-[#075BD7] hover:text-[#C25E46]"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            ) : null}
+
+            {mode === 'register' ? (
+              <>
+                <p className="mb-3 text-xs font-semibold text-[#52667F]">
+                  At least {MIN_PASSWORD_LENGTH} characters.
+                </p>
+                <label className="mb-2 block text-xs font-black text-[#071A44]">Confirm password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                  minLength={MIN_PASSWORD_LENGTH}
+                  autoComplete="new-password"
+                  placeholder="Confirm your password"
+                  className="mb-4 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#075BD7]"
+                />
+              </>
+            ) : null}
+
+            {error ? <p className="mb-3 text-sm font-bold text-[#B42318]">{error}</p> : null}
+            {info ? <p className="mb-3 text-sm font-bold text-[#176C3A]">{info}</p> : null}
+
+            {!info || mode !== 'register' ? (
+              <button
+                type="submit"
+                disabled={loading}
+                className="min-h-12 w-full rounded-full bg-[#075BD7] px-5 text-sm font-black text-white shadow-[0_14px_30px_rgba(7,91,215,0.28)] transition hover:bg-[#064CB6] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading
+                  ? mode === 'register'
+                    ? 'Creating account...'
+                    : mode === 'forgot'
+                      ? 'Sending...'
+                      : 'Signing in...'
+                  : mode === 'register'
+                    ? 'Create account'
+                    : mode === 'forgot'
+                      ? 'Send reset email'
+                      : 'Sign In'}
+              </button>
+            ) : null}
+          </form>
+
+          <p className="mt-4 text-center text-sm font-medium text-[#52667F]">
+            {mode === 'register' ? 'Already have an account?' : mode === 'forgot' ? 'Remembered it?' : 'Need an account?'}{' '}
+            <button
+              type="button"
+              onClick={() => switchMode(mode === 'register' || mode === 'forgot' ? 'login' : 'register')}
+              className="font-black text-[#075BD7] underline-offset-2 hover:text-[#C25E46] hover:underline"
+            >
+              {mode === 'register' || mode === 'forgot' ? 'Back to sign in' : 'Create one'}
+            </button>
+          </p>
         </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={prevSlide}
-        className="absolute left-4 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/85 text-slate-600 shadow-lg backdrop-blur transition hover:scale-105 hover:text-[#0047AB]"
-        aria-label="Previous slide"
-      >
-        <ChevronLeft />
-      </button>
-      <button
-        type="button"
-        onClick={nextSlide}
-        className="absolute right-4 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/85 text-slate-600 shadow-lg backdrop-blur transition hover:scale-105 hover:text-[#0047AB]"
-        aria-label="Next slide"
-      >
-        <ChevronRight />
-      </button>
-
-      <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-center gap-2">
-        {Array.from({ length: slidesCount }).map((_, index) => (
-          <button
-            key={index}
-            type="button"
-            onClick={() => setCurrent(index)}
-            className={`h-3 rounded-full transition-all ${
-              current === index ? 'w-7 bg-[#0047AB]' : 'w-3 bg-slate-300 hover:bg-slate-400'
-            }`}
-            aria-label={`Show slide ${index + 1}`}
-          />
-        ))}
       </div>
     </div>
   )
 }
 
-function ComparisonPanel({
-  label,
-  items,
-  tone,
-  title,
-  description,
-}: {
-  label: string
-  items: string[]
-  tone: 'muted' | 'brand'
-  title: string
-  description: string
-}) {
-  const isBrand = tone === 'brand'
+function HeroSection() {
+  return (
+    <section id="players" className="relative overflow-hidden">
+      <div className="mx-auto flex min-h-[calc(100vh-72px)] max-w-7xl flex-col justify-start px-4 pb-8 pt-8 text-[#071A44] sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl text-left">
+          <p className="mb-4 text-xs font-black uppercase text-[#6F7E00]">
+            Tennis and pickleball, organized around real players
+          </p>
+          <h1 className="max-w-3xl text-4xl font-black leading-[1.02] md:text-6xl">
+            Build your player network.
+            <span className="block text-white drop-shadow-[0_2px_14px_rgba(7,26,68,0.55)]">
+              Enjoy the net.
+            </span>
+          </h1>
+          <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-[#243A56] drop-shadow-[0_1px_10px_rgba(255,255,255,0.55)] md:text-lg">
+            4000+ Tennis and Pickleball clubs and Public listed across Canada. Find your club.
+            Add your favorite venues. Build a Hood of players you can invite whenever it's time to play.
+          </p>
+        </div>
+
+        <div className="mt-6 w-full">
+          <FeatureCarousel />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function FeatureCarousel() {
+  const [current, setCurrent] = useState(0)
+  const [phase, setPhase] = useState<'visible' | 'exit' | 'enter'>('enter')
+  const [isPaused, setIsPaused] = useState(false)
+  const touchStartX = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (isPaused) return undefined
+
+    const delayByPhase = {
+      visible: 7000,
+      exit: 500,
+      enter: 40,
+    }
+
+    const timer = window.setTimeout(() => {
+      if (phase === 'visible') {
+        setPhase('exit')
+        return
+      }
+
+      if (phase === 'exit') {
+        setCurrent((value) => (value + 1) % slides.length)
+        setPhase('enter')
+        return
+      }
+
+      setPhase('visible')
+    }, delayByPhase[phase])
+
+    return () => window.clearTimeout(timer)
+  }, [isPaused, phase])
+
+  const activeSlide = slides[current]
+  const progressWidth = useMemo(() => `${((current + 1) / slides.length) * 100}%`, [current])
+
+  function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
+    touchStartX.current = event.touches[0]?.clientX ?? null
+    setIsPaused(true)
+  }
+
+  function handleTouchEnd(event: TouchEvent<HTMLDivElement>) {
+    const startX = touchStartX.current
+    const endX = event.changedTouches[0]?.clientX ?? null
+    touchStartX.current = null
+
+    if (startX != null && endX != null) {
+      const distance = endX - startX
+      if (Math.abs(distance) > 40) {
+        setCurrent((value) => (
+          distance < 0 ? (value + 1) % slides.length : (value - 1 + slides.length) % slides.length
+        ))
+        setPhase('visible')
+      }
+    }
+
+    window.setTimeout(() => setIsPaused(false), 900)
+  }
+
+  const motionClass = {
+    visible: 'translate-x-0 opacity-100',
+    exit: '-translate-x-[120%] opacity-100',
+    enter: 'translate-x-[120%] opacity-100',
+  }[phase]
 
   return (
     <div
-      className={`relative rounded-lg border p-5 shadow-sm ${
-        isBrand ? 'border-[#0047AB]/20 bg-blue-50/60' : 'border-slate-200 bg-white'
-      }`}
+      className="relative min-h-[431px] overflow-hidden"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
-      <span
-        className={`absolute -top-3 left-4 rounded-full px-3 py-1 text-xs font-black text-white ${
-          isBrand ? 'bg-[#0047AB]' : 'bg-slate-500'
-        }`}
+      <div
+        className={`absolute inset-0 overflow-hidden rounded-lg border border-[#D8E4F2] bg-white/90 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.34)] backdrop-blur-sm transition-all duration-500 ease-in-out ${motionClass}`}
       >
-        {label}
-      </span>
-      <div className="pt-4 text-center">
-        <h3 className={`text-lg font-black ${isBrand ? 'text-[#0047AB]' : 'text-[#001845]'}`}>
-          {title}
-        </h3>
-        <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-relaxed text-slate-500">
-          {description}
-        </p>
-      </div>
-      <div className="grid grid-cols-2 gap-4 pt-5 sm:grid-cols-4">
-        {items.map((item) => (
-          <div key={item} className="flex flex-col items-center gap-2 text-center">
-            <div
-              className={`flex h-11 w-11 items-center justify-center rounded-lg ${
-                isBrand ? 'bg-[#0047AB] text-white' : 'bg-slate-100 text-slate-400'
-              }`}
+        <div className="grid min-h-[430px] gap-0 lg:grid-cols-[0.78fr_1fr]">
+          <div className="order-2 flex flex-col justify-center px-6 py-6 sm:px-8 lg:order-1 lg:px-10">
+            <p className="text-xs font-black uppercase text-[#C25E46]">{activeSlide.imageTitle}</p>
+            <h2 className="mt-3 max-w-xl text-3xl font-black leading-tight text-[#071A44] md:text-4xl">
+              {activeSlide.title}
+            </h2>
+            <p className="mt-4 max-w-lg text-base font-medium leading-7 text-[#52667F]">
+              {activeSlide.copy}
+            </p>
+            <a
+              href={activeSlide.href}
+              className="mt-5 inline-flex min-h-11 w-fit items-center justify-center rounded-full bg-[#071A44] px-6 text-sm font-black text-white shadow-sm transition hover:bg-[#10285E]"
             >
-              <Icon name={item.includes('chat') ? 'chat' : item.includes('status') ? 'check' : 'message'} />
-            </div>
-            <span className={`text-xs font-black ${isBrand ? 'text-[#0047AB]' : 'text-slate-500'}`}>
-              {item}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+              {activeSlide.cta}
+            </a>
 
-function AdvantageCard({
-  number,
-  icon,
-  title,
-  description,
-}: {
-  number: string
-  icon: string
-  title: string
-  description: string
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-lg border border-slate-100 bg-white p-6 shadow-sm transition hover:shadow-md">
-      <div className="relative z-10 flex gap-4">
-        <div className="relative">
-          <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-blue-50 text-[#0047AB]">
-            <Icon name={icon} className="h-8 w-8" />
-          </div>
-          <div className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[#0047AB] text-xs font-black text-white">
-            {number}
-          </div>
-        </div>
-        <div className="flex-1">
-          <h4 className="text-lg font-black leading-tight text-[#001845]">{title}</h4>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">{description}</p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function PhonePreview() {
-  return (
-    <div className="relative h-[560px] w-[280px] rounded-[2rem] border-4 border-slate-200 bg-slate-900 p-3 shadow-2xl">
-      <div className="absolute inset-x-0 top-0 flex h-6 justify-center">
-        <div className="h-4 w-32 rounded-b-xl bg-slate-900" />
-      </div>
-      <div className="flex h-full flex-col overflow-hidden rounded-[1.55rem] bg-white">
-        <div className="rounded-b-[2rem] bg-[#0047AB] p-6 pt-9 text-center text-white">
-          <h3 className="font-black">Next Match</h3>
-          <p className="text-sm text-white/80">Sunday, 10:30 AM</p>
-        </div>
-        <div className="-mt-6 p-4">
-          <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-lg">
-            <div className="flex items-center justify-between">
-              <span className="font-black text-slate-800">Doubles</span>
-              <span className="rounded-full bg-[#CDE11D]/30 px-2 py-1 text-xs font-black text-emerald-800">
-                Confirmed
-              </span>
-            </div>
-            <div className="mt-4 flex">
-              {['A', 'B', 'C'].map((letter, index) => (
-                <div
-                  key={letter}
-                  className="-ml-3 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-xs font-black text-slate-600 first:ml-0"
-                  style={{ zIndex: 5 - index }}
+            <div className="mt-6 flex flex-wrap gap-2">
+              {slides.map((slide, index) => (
+                <button
+                  key={slide.key}
+                  type="button"
+                  onClick={() => {
+                    setCurrent(index)
+                    setPhase('visible')
+                  }}
+                  className={`rounded-full border px-3 py-2 text-xs font-black transition ${
+                    current === index
+                      ? 'border-[#C25E46] bg-[#C25E46] text-white'
+                      : 'border-[#D8E4F2] bg-white text-[#52667F] hover:border-[#C25E46]/45 hover:text-[#071A44]'
+                  }`}
+                  aria-label={`Show ${slide.label} slide`}
+                  aria-current={current === index ? 'true' : undefined}
                 >
-                  {letter}
-                </div>
+                  {slide.label}
+                </button>
               ))}
-              <div className="-ml-3 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-[#0047AB] text-xs font-black text-white">
-                +1
-              </div>
             </div>
           </div>
-          <div className="mt-4 space-y-3">
-            <MiniRow icon="pin" title="City Park Courts" subtitle="Court 2" />
-            <MiniRow icon="chat" title="Match Chat" subtitle="2 new messages" />
+
+          <div className="order-1 bg-white/50 p-4 sm:p-6 lg:order-2 lg:p-8">
+            <CarouselVisual slide={activeSlide} />
           </div>
+        </div>
+        <div className="h-1 bg-[#EAF1F8]">
+          <div className="h-full bg-[#C25E46] transition-all duration-500" style={{ width: progressWidth }} />
         </div>
       </div>
     </div>
   )
 }
 
-function MiniRow({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
+function CarouselVisual({ slide }: { slide: Slide }) {
+  if (slide.visual === 'flow') return <FlowIllustration />
+
   return (
-    <div className="flex h-16 items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
-      <Icon name={icon} className="h-6 w-6 text-slate-400" />
-      <div>
-        <div className="text-sm font-black text-slate-800">{title}</div>
-        <div className="text-xs font-semibold text-slate-500">{subtitle}</div>
-      </div>
+    <div className="relative flex h-full min-h-[300px] items-center justify-center overflow-hidden rounded-lg border border-[#D8E4F2] bg-white p-4 shadow-[0_18px_42px_-36px_rgba(15,23,42,0.3)]">
+      {slide.image ? (
+        <img
+          src={slide.image}
+          alt=""
+          aria-hidden="true"
+          className="h-full max-h-[390px] w-full object-contain"
+        />
+      ) : null}
     </div>
   )
 }
 
-function CheckBadge() {
+function FlowIllustration() {
+  const statuses = [
+    { label: 'Invited', count: '8', color: 'bg-blue-50 text-blue-700' },
+    { label: 'Confirmed', count: '4', color: 'bg-green-50 text-green-700' },
+    { label: 'Declined', count: '1', color: 'bg-rose-50 text-rose-700' },
+    { label: 'Needs reply', count: '3', color: 'bg-amber-50 text-amber-700' },
+  ]
+
   return (
-    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#0047AB] text-[#CDE11D]">
-      <CheckIcon />
-    </span>
+    <div className="flex h-full min-h-[360px] items-center justify-center rounded-lg border border-[#D8E4F2] bg-white p-5 shadow-[0_18px_42px_-36px_rgba(15,23,42,0.3)]">
+      <div className="w-full max-w-xl">
+        <div className="rounded-lg border border-[#D8E4F2] bg-[#F8FBFF] p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase text-[#71849D]">Tennis Match</p>
+              <h3 className="mt-2 text-2xl font-black text-[#071A44]">Saturday 10:00 AM</h3>
+              <p className="mt-1 text-sm font-semibold text-[#52667F]">Ontario Racquet Club</p>
+            </div>
+            <span className="rounded-full bg-[#C25E46] px-3 py-1 text-xs font-black text-white">Doubles</span>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {statuses.map((status) => (
+              <div key={status.label} className="rounded-lg border border-[#D8E4F2] bg-white p-4">
+                <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-black ${status.color}`}>
+                  {status.count}
+                </span>
+                <p className="mt-3 text-sm font-black text-[#071A44]">{status.label}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 rounded-lg bg-white p-4">
+            <div className="flex items-center justify-between text-sm font-black text-[#071A44]">
+              <span>Match flow</span>
+              <span>Clear</span>
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {[1, 2, 3, 4].map((item) => (
+                <div key={item} className="h-2 rounded-full bg-[#9BCB3C]" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
 function Icon({ name, className = 'h-6 w-6' }: { name: string; className?: string }) {
-  if (name === 'users') {
+  if (name === 'people') {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -567,49 +871,11 @@ function Icon({ name, className = 'h-6 w-6' }: { name: string; className?: strin
     )
   }
 
-  if (name === 'calendar') {
+  if (name === 'lock') {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-        <path d="M8 2v4M16 2v4M3 10h18" />
-        <rect x="3" y="4" width="18" height="18" rx="2" />
-      </svg>
-    )
-  }
-
-  if (name === 'trophy') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-        <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z" />
-        <path d="M5 5H3v3a4 4 0 0 0 4 4M19 5h2v3a4 4 0 0 1-4 4" />
-      </svg>
-    )
-  }
-
-  if (name === 'check') {
-    return <CheckIcon className={className} />
-  }
-
-  if (name === 'star') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-        <path d="m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2Z" />
-      </svg>
-    )
-  }
-
-  if (name === 'heart') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z" />
-      </svg>
-    )
-  }
-
-  if (name === 'pin') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-        <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z" />
-        <circle cx="12" cy="10" r="3" />
+        <rect x="4" y="11" width="16" height="10" rx="2" />
+        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
       </svg>
     )
   }
@@ -623,33 +889,20 @@ function Icon({ name, className = 'h-6 w-6' }: { name: string; className?: strin
 
 function SearchIcon() {
   return (
-    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.35-4.35" />
     </svg>
   )
 }
 
-function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
+function HomeGoogleIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={className}>
-      <path d="m20 6-11 11-5-5" />
-    </svg>
-  )
-}
-
-function ChevronLeft() {
-  return (
-    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  )
-}
-
-function ChevronRight() {
-  return (
-    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="m9 18 6-6-6-6" />
+    <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.24 1.26-.96 2.33-2.04 3.05l3.3 2.56c1.92-1.77 3.03-4.38 3.03-7.5 0-.72-.06-1.41-.19-2.08H12z" />
+      <path fill="#34A853" d="M12 22c2.75 0 5.05-.91 6.73-2.48l-3.3-2.56c-.91.61-2.08.97-3.43.97-2.64 0-4.88-1.78-5.68-4.18l-3.42 2.64C4.57 19.71 8 22 12 22z" />
+      <path fill="#4A90E2" d="M6.32 13.75A5.98 5.98 0 016 12c0-.61.11-1.2.32-1.75L2.9 7.61A9.95 9.95 0 002 12c0 1.6.38 3.12 1.05 4.39l3.27-2.64z" />
+      <path fill="#FBBC05" d="M12 6.07c1.5 0 2.84.52 3.9 1.54l2.92-2.92C17.04 3.04 14.75 2 12 2 8 2 4.57 4.29 2.9 7.61l3.42 2.64C7.12 7.85 9.36 6.07 12 6.07z" />
     </svg>
   )
 }

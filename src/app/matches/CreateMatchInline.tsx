@@ -19,7 +19,7 @@ import {
   getMatchParticipants,
   inviteGroupToMatch,
   inviteUserToMatch,
-  nominateGuest,
+  inviteContactGuestToMatch,
   type ScopeUser,
 } from '@/lib/api/matches'
 import { getGroups, getGroupMembers } from '@/lib/api/groups'
@@ -767,7 +767,7 @@ function CandidatePreviewModal({
             </>
           ) : (
             <p style={{ margin: 0, fontSize: '0.88rem', color: '#4b5563', lineHeight: 1.5 }}>
-              Saved registered players can be added to Direct Invite Users here. Open the full profile for more details.
+              Saved registered players can be added through Invite People here. Open the full profile for more details.
             </p>
           )}
         </div>
@@ -1812,7 +1812,7 @@ export function CreateMatchInline({
           if (candidate.kind === 'user' && candidate.userId) {
             await inviteUserToMatch(supabase, match.id, candidate.userId)
           } else if (candidate.kind === 'contact' && candidate.guestId) {
-            await nominateGuest(supabase, match.id, candidate.guestId)
+            await inviteContactGuestToMatch(supabase, match.id, candidate.guestId)
             shouldProcessQueuedDeliveries = true
           }
         } catch (inviteError) {
@@ -2244,13 +2244,13 @@ export function CreateMatchInline({
         <div>
           <h4 className="text-h2 m-0 text-gray-900">Invite Player</h4>
           <p className="text-body-main mt-1 text-gray-500">
-            Match created. Pick Direct Invite Users from your saved registered players, then open the match once they are recorded as pending.
+            Match created. Pick Invite People from your saved registered players, then open the match once they are recorded as pending.
           </p>
         </div>
 
         {inviteTargets.length === 0 ? (
           <div className="text-body-main rounded-2xl border border-gray-200 bg-white px-4 py-4 text-gray-500">
-            No saved registered players are available for Direct Invite Users right now.
+            No saved registered players are available for Invite People right now.
           </div>
         ) : (
           <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4">
@@ -2829,7 +2829,7 @@ export function CreateMatchInline({
                     )}
                     {selectionMode === 'request' && filteredRequestUsers.length === 0 && filteredRequestGroups.length === 0 && (
                       <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
-                        Save registered players to your Hood first, or add a group to Request Scope.
+                        Save registered players to your Hood first, or add a group to Visible to Groups.
                       </div>
                     )}
                   </div>

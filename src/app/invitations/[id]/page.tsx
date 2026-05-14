@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { getIdentityLinkCandidates } from '@/lib/api/identity-links'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
@@ -43,6 +44,9 @@ export default async function InvitationPage({ params }: Props) {
   if (inv.related_type === 'match_proxy_binding') {
     return (
       <div style={{ maxWidth: 480, margin: '2rem auto', padding: '0 1rem' }}>
+        <div style={{ marginBottom: '1.25rem' }}>
+          <BrandLogo variant="horizontal" />
+        </div>
         <div style={{ padding: '1rem', border: '1px solid #e0e0e0', borderRadius: 8 }}>
           <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
             This request is not available here right now.
@@ -64,6 +68,9 @@ export default async function InvitationPage({ params }: Props) {
 
   return (
     <div style={{ maxWidth: 480, margin: '2rem auto', padding: '0 1rem' }}>
+      <div style={{ marginBottom: '1.25rem' }}>
+        <BrandLogo variant="horizontal" />
+      </div>
       <h1 style={{ marginBottom: '0.5rem', fontSize: '1.25rem' }}>Match invitation</h1>
 
       <div style={{ padding: '1rem', border: '1px solid #e0e0e0', borderRadius: 8, marginBottom: '1rem' }}>

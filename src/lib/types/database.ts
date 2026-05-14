@@ -1191,7 +1191,33 @@ export interface Database {
           avatar_url: string | null
           match_type: string
           is_saved: boolean
+          action_kind: string
+          request_status: string | null
+          next_eligible_at: string | null
         }[]
+      }
+      rpc_user_save_request_create: {
+        Args: { p_target_user_id: string; p_source?: string | null }
+        Returns: {
+          request_id: string | null
+          status: string
+          next_eligible_at: string | null
+        }[]
+      }
+      rpc_user_save_request_list: {
+        Args: Record<string, never>
+        Returns: {
+          request_id: string
+          requester_user_id: string
+          requester_display_name: string
+          requester_avatar_url: string | null
+          status: string
+          created_at: string
+        }[]
+      }
+      rpc_user_save_request_respond: {
+        Args: { p_request_id: string; p_allow: boolean }
+        Returns: Json
       }
       rpc_group_add_member: {
         Args: { p_group_id: string; p_target_user_id: string; p_note?: string | null }

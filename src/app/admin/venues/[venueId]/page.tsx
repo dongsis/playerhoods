@@ -20,6 +20,7 @@ import {
 import { listSports } from '@/lib/api/sports'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { getVenueCanonicalPath } from '@/lib/venues/slug'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { VenueDetailShell } from '../../venues/[venueId]/VenueDetailShell'
 
 interface Props {
@@ -179,6 +180,9 @@ export default async function VenueAdminDetailPage({ params }: Props) {
 
   return (
     <div className="ph-page">
+      <div className="mb-6">
+        <BrandLogo variant="horizontal" href="/dashboard" />
+      </div>
       <nav className="mb-6 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#94A3B8]">
         <Link href="/dashboard" className="ph-link">
           Dashboard

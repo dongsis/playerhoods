@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { Venue, VenueKind } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { getVenueCanonicalPath } from '@/lib/venues/slug'
+import { CA_PROVINCE_NAME_BY_CODE, normalizeProvinceCode } from '@/lib/api/location-municipalities'
 
 type SportFilter = 'all' | 'tennis' | 'pickleball' | 'both'
 type VenueKindFilter = 'all' | VenueKind
@@ -31,6 +32,10 @@ const VENUE_KIND_OPTIONS: { value: VenueKindFilter; label: string }[] = [
 
 function normalize(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
+}
+
+function getProvinceLabel(value: string) {
+  return CA_PROVINCE_NAME_BY_CODE[value] ?? value
 }
 
 function getVenueKindLabel(kind: Venue['venue_kind']) {
@@ -125,15 +130,18 @@ export function VenueSearch({
   const [page, setPage] = useState(1)
 
   const provinces = useMemo(() => {
-    return Array.from(new Set(venues.map((venue) => venue.province?.trim()).filter(Boolean) as string[]))
-      .sort((a, b) => a.localeCompare(b))
+    return Array.from(new Set(
+      venues
+        .map((venue) => normalizeProvinceCode(venue.province))
+        .filter(Boolean),
+    )).sort((a, b) => getProvinceLabel(a).localeCompare(getProvinceLabel(b)))
   }, [venues])
 
   const cities = useMemo(() => {
     const selectedProvince = normalize(province)
     return Array.from(new Set(
       venues
-        .filter((venue) => !selectedProvince || normalize(venue.province) === selectedProvince)
+        .filter((venue) => !selectedProvince || normalizeProvinceCode(venue.province).toLowerCase() === selectedProvince)
         .map((venue) => venue.city?.trim())
         .filter(Boolean) as string[],
     )).sort((a, b) => a.localeCompare(b))
@@ -145,7 +153,7 @@ export function VenueSearch({
     const nameQuery = normalize(venueNameQuery)
 
     return venues.filter((venue) => {
-      if (selectedProvince && normalize(venue.province) !== selectedProvince) return false
+      if (selectedProvince && normalizeProvinceCode(venue.province).toLowerCase() !== selectedProvince) return false
       if (selectedCity && normalize(venue.city) !== selectedCity) return false
       if (venueKind !== 'all' && venue.venue_kind !== venueKind) return false
       if (!matchesSport(venue, sportFilter)) return false
@@ -235,7 +243,7 @@ export function VenueSearch({
             >
               <option value="">Select province</option>
               {provinces.map((option) => (
-                <option key={option} value={option}>{option}</option>
+                <option key={option} value={option}>{getProvinceLabel(option)}</option>
               ))}
             </select>
           </label>

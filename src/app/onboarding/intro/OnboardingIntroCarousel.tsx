@@ -96,7 +96,7 @@ export function OnboardingIntroCarousel({
       <section className="mx-auto flex min-h-screen w-full max-w-[1180px] flex-col px-5 py-5 sm:px-8 sm:py-7">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-[12px] font-extrabold uppercase tracking-[0.18em] text-[#1C63E8]">
-            <Image src="/playerhoods-logo-transparent.png" alt="" width={32} height={32} className="h-8 w-8" />
+            <Image src="/playerhoods-brand-mark-cropped.png" alt="" width={32} height={32} className="h-8 w-8 object-contain" />
             PlayerHoods
           </div>
           <button
@@ -122,7 +122,7 @@ export function OnboardingIntroCarousel({
             {slide.kind === 'welcome' ? (
               <div className="mx-auto grid max-w-[760px] place-items-center text-center">
                 <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-[#EAF3FF] shadow-[0_18px_50px_rgba(28,99,232,0.16)]">
-                  <Image src="/playerhoods-logo-transparent.png" alt="" width={86} height={86} className="h-20 w-20" priority />
+                  <Image src="/playerhoods-brand-stacked-cropped.png" alt="" width={160} height={80} className="h-20 w-40 object-contain" priority />
                 </div>
                 <p className="mb-4 text-[12px] font-extrabold uppercase tracking-[0.22em] text-[#1C63E8]">Welcome</p>
                 <h1 className="text-balance text-[42px] font-black leading-[1.02] tracking-normal text-[#061A5F] sm:text-[58px] lg:text-[70px]">

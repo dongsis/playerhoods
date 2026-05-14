@@ -11,7 +11,7 @@ import {
   getMatchListData,
   inviteGroupToMatch,
   inviteUserToMatch,
-  nominateGuest,
+  inviteContactGuestToMatch,
   type MatchListItem,
 } from '@/lib/api/matches'
 
@@ -138,7 +138,7 @@ export async function createRecurringMatchSeries(
         if (candidate.kind === 'user') {
           await inviteUserToMatch(supabase, match.id, candidate.userId)
         } else {
-          await nominateGuest(supabase, match.id, candidate.guestId)
+          await inviteContactGuestToMatch(supabase, match.id, candidate.guestId)
           hasQueuedGuestDeliveries = true
         }
       } catch (inviteError) {

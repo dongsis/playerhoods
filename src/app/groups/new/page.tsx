@@ -1,4 +1,4 @@
-import { getMyVenueIdentities } from '@/lib/api/identities'
+import { getMyVenueMemberships } from '@/lib/api/identities'
 import { getSavedRegisteredPlayerCandidates } from '@/lib/api/groups'
 import { getContactPlayerResolution } from '@/lib/api/roster'
 import { listSports } from '@/lib/api/sports'
@@ -8,9 +8,9 @@ import { NewGroupForm } from './NewGroupForm'
 export default async function NewGroupPage() {
   const user = await getUser()
   const supabase = await createSupabaseServerClient()
-  const [sports, myIdentities, contacts, invitableUsers] = await Promise.all([
+  const [sports, myVenueMemberships, contacts, invitableUsers] = await Promise.all([
     listSports(supabase),
-    user ? getMyVenueIdentities(supabase, user.id) : Promise.resolve([]),
+    user ? getMyVenueMemberships(supabase, user.id) : Promise.resolve([]),
     user ? getContactPlayerResolution(supabase) : Promise.resolve([]),
     user ? getSavedRegisteredPlayerCandidates(supabase) : Promise.resolve([]),
   ])
@@ -18,7 +18,7 @@ export default async function NewGroupPage() {
   return (
     <NewGroupForm
       sports={sports}
-      venues={myIdentities.map((identity) => identity.venue)}
+      venues={myVenueMemberships.map((membership) => membership.venue)}
       invitableUsers={invitableUsers}
       contacts={contacts.map((contact) => ({
         guest_id: contact.guest_id,

@@ -4,7 +4,8 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, VenueIdentity, Venue, VenueKind, VenueSport, Sport, UserSportProfile } from '@/lib/types/database'
+import type { IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, Venue, VenueKind, VenueSport, Sport, UserSportProfile } from '@/lib/types/database'
+import type { VenueMembership } from '@/lib/api/identities'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   approveMatchProxyBinding,
@@ -59,7 +60,7 @@ interface Props {
   userEmail?: string | null
   verifiedEmails: UserVerifiedEmail[]
   identityLinkCandidates: IdentityLinkCandidate[]
-  myIdentities: (VenueIdentity & { venue: Venue })[]
+  myVenueMemberships: VenueMembership[]
   myVenuePrefs: Venue[]
   joinableVenues: Venue[]
   venueSports: VenueSport[]
@@ -1451,7 +1452,7 @@ export function ProfilePanel({
   userEmail,
   verifiedEmails,
   identityLinkCandidates,
-  myIdentities,
+  myVenueMemberships,
   myVenuePrefs,
   joinableVenues,
   venueSports,
@@ -1534,20 +1535,20 @@ export function ProfilePanel({
   )
 
   const normalizedDisplayName = profile.display_name?.trim() ?? ''
-  const joinedVenueIds = new Set(myIdentities.map(identity => identity.venue_id))
+  const joinedVenueIds = new Set(myVenueMemberships.map((membership) => membership.venue_id))
   const publicVenuePrefs = myVenuePrefs.filter(venue => !joinedVenueIds.has(venue.id))
   const defaultJoinVenueId =
     profile.primary_venue_id && joinableVenues.some(venue => venue.id === profile.primary_venue_id)
       ? profile.primary_venue_id
       : ''
   const sortedJoinedIdentities = useMemo(
-    () => [...myIdentities].sort((a, b) => {
+    () => [...myVenueMemberships].sort((a, b) => {
       const aPrimary = a.venue_id === profile.primary_venue_id ? 1 : 0
       const bPrimary = b.venue_id === profile.primary_venue_id ? 1 : 0
       if (aPrimary !== bPrimary) return bPrimary - aPrimary
       return getVenueDisplayName(a.venue).localeCompare(getVenueDisplayName(b.venue))
     }),
-    [myIdentities, profile.primary_venue_id],
+    [myVenueMemberships, profile.primary_venue_id],
   )
   const sortedPublicVenuePrefs = useMemo(
     () => [...publicVenuePrefs].sort((a, b) => getVenueDisplayName(a).localeCompare(getVenueDisplayName(b))),
@@ -2144,7 +2145,7 @@ export function ProfilePanel({
         searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
         sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'auto_join_saved_players'}
         playCities={myPlayCities}
-        identities={myIdentities}
+        memberships={myVenueMemberships}
         onSaveGlobal={onSaveGlobalPreferences}
         onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
       />
@@ -3265,7 +3266,7 @@ export function ProfilePanel({
             searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
             sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'auto_join_saved_players'}
             playCities={myPlayCities}
-            identities={myIdentities}
+            memberships={myVenueMemberships}
             onSaveGlobal={onSaveGlobalPreferences}
           onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
           />

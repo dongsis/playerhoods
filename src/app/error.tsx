@@ -18,7 +18,7 @@ export default function GlobalAppError({
       <div className="ph-page-narrow">
         <div className="mb-6 flex justify-center">
           <img
-            src="/playerhoods-logo-transparent.png"
+            src="/playerhoods-brand-stacked-cropped.png"
             alt="PlayerHoods"
             width={1122}
             height={1402}

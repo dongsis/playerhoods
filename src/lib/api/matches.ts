@@ -712,7 +712,7 @@ export async function requestJoinMatch(supabase: Client, matchId: string) {
   if (error) throw error
 }
 
-/** Canonical admission write. Organizer → invite (org_approved_at set). Non-org → nominate. Returns participant. */
+/** Canonical admission write. Organizer → invite (org_approved_at set). Returns participant. */
 export async function admitUserToMatch(
   supabase: Client,
   matchId: string,
@@ -731,8 +731,8 @@ export async function inviteUserToMatch(supabase: Client, matchId: string, userI
   await admitUserToMatch(supabase, matchId, userId)
 }
 
-/** v1.5: Nominate a user. join_method=nominated. Scope enforced. ORG or non-removed participant. */
-export async function nominateUser(supabase: Client, matchId: string, userId: string) {
+/** Participant-suggested registered-user invite. Compatibility RPC writes join_method=nominated. */
+export async function inviteParticipantUserToMatch(supabase: Client, matchId: string, userId: string) {
   const { error } = await supabase.rpc('rpc_match_nominate_user', {
     p_match_id: matchId,
     p_user_id: userId,
@@ -740,7 +740,7 @@ export async function nominateUser(supabase: Client, matchId: string, userId: st
   if (error) throw error
 }
 
-/** v1.5: Accept a pending invitation or nomination. Writes participant_accepted_at + via=in_app. */
+/** v1.5: Accept a pending invitation. Writes participant_accepted_at + via=in_app. */
 export async function acceptMatchInvite(supabase: Client, matchId: string) {
   const { error } = await supabase.rpc('rpc_match_accept_invite', { p_match_id: matchId })
   if (error) throw error
@@ -828,10 +828,10 @@ export async function removeParticipant(
 }
 
 // Deprecated addGuestOrg/addGuestParticipant paths have been replaced by the
-// direct-invite Contact Player model.
+// Invite People Contact Player model.
 
-/** Direct-invite an existing Contact Player into a match. */
-export async function nominateGuest(
+/** Invite an existing Contact Player into a match. Compatibility RPC keeps its historical name. */
+export async function inviteContactGuestToMatch(
   supabase: Client,
   matchId: string,
   guestId: string,
@@ -1946,7 +1946,7 @@ export async function getContactPersonAdmissionTargets(
   }))
 }
 
-/** Phase 3: User targets only (for InviteUserForm / NominateUserForm). Maps to ScopeUser for backward compat. */
+/** Phase 3: User targets only (for InviteUserForm). Maps to ScopeUser for backward compat. */
 export function admissionTargetsToScopeUsers(
   targets: AdmissionTarget[],
   options?: { requireCanAdmit?: boolean }

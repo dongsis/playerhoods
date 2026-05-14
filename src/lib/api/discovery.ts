@@ -15,8 +15,17 @@ export type EmailOrPhoneSearchRow = {
   user_id: string
   display_name: string | null
   avatar_url: string | null
-  match_type: 'email' | 'phone'
+  match_type: 'email' | 'phone' | 'possible_match' | 'same_club_name'
   is_saved: boolean
+  action_kind: 'direct_save' | 'save_request'
+  request_status: string | null
+  next_eligible_at: string | null
+}
+
+export type SaveRequestResult = {
+  request_id: string | null
+  status: string
+  next_eligible_at: string | null
 }
 
 export async function getMyPlayCities(
@@ -74,7 +83,7 @@ export async function searchPlayersByEmailOrPhone(
   query: string,
 ): Promise<EmailOrPhoneSearchRow[]> {
   // Legacy RPC name is still rpc_player_search_by_contact_info.
-  // App-level code should use "Email / Phone Search" terminology.
+  // App-level code should use "Exact Email / Phone Search" terminology.
   const { data, error } = await supabase.rpc('rpc_player_search_by_contact_info', {
     p_query: query,
   })
@@ -84,7 +93,36 @@ export async function searchPlayersByEmailOrPhone(
     user_id: row.user_id,
     display_name: row.display_name ?? null,
     avatar_url: row.avatar_url ?? null,
-    match_type: row.match_type === 'phone' ? 'phone' : 'email',
+    match_type:
+      row.match_type === 'phone'
+        ? 'phone'
+        : row.match_type === 'same_club_name'
+          ? 'same_club_name'
+          : row.match_type === 'possible_match'
+            ? 'possible_match'
+            : 'email',
     is_saved: row.is_saved,
+    action_kind: row.action_kind === 'save_request' ? 'save_request' : 'direct_save',
+    request_status: row.request_status ?? null,
+    next_eligible_at: row.next_eligible_at ?? null,
   }))
+}
+
+export async function sendUserSaveRequest(
+  supabase: Client,
+  targetUserId: string,
+  source = 'contact_lookup',
+): Promise<SaveRequestResult> {
+  const { data, error } = await supabase.rpc('rpc_user_save_request_create', {
+    p_target_user_id: targetUserId,
+    p_source: source,
+  })
+  if (error) throw error
+
+  const row = ((data ?? []) as Database['public']['Functions']['rpc_user_save_request_create']['Returns'])[0]
+  return {
+    request_id: row?.request_id ?? null,
+    status: row?.status ?? 'pending',
+    next_eligible_at: row?.next_eligible_at ?? null,
+  }
 }

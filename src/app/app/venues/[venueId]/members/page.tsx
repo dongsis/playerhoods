@@ -5,6 +5,7 @@ import { getVenue } from '@/lib/api/venues'
 import { getMyVenueRelationships } from '@/lib/api/identities'
 import { getInviteCircleList } from '@/lib/api/play-network'
 import { getVenueDisplayName } from '@/lib/venues/display'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { VenueMembersSection } from '@/app/venues/[venueId]/VenueMembersSection'
 
 export const dynamic = 'force-dynamic'
@@ -35,6 +36,9 @@ export default async function AppVenueMembersPage({ params }: Props) {
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-8">
+      <div className="mb-6">
+        <BrandLogo variant="horizontal" href="/dashboard" />
+      </div>
       <nav className="mb-6 text-sm text-gray-400">
         <Link href={`/app/venues/${venueId}`} className="hover:text-gray-600">
           &larr; {getVenueDisplayName(venue)}

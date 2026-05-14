@@ -15,6 +15,7 @@ import { getInviteCircleList } from '@/lib/api/play-network'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { getPublicVenueNote } from '@/lib/venues/notes'
 import { getVenueCanonicalPath } from '@/lib/venues/slug'
+import { BrandLogo } from '@/app/components/BrandLogo'
 import { VenueMembersSection } from './VenueMembersSection'
 
 function venueSupportsMembership(kind: string | null | undefined) {
@@ -137,6 +138,9 @@ export async function VenueDetailPageContent({
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-8">
+      <div className="mb-6">
+        <BrandLogo variant="horizontal" />
+      </div>
       <nav className="mb-6 text-sm text-gray-400">
         <Link href="/dashboard?tab=profile&section=venues" className="hover:text-gray-600">
           &larr; Profile venues

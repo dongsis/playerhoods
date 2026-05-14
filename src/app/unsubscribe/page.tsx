@@ -1,5 +1,6 @@
 import { createSupabasePublicServerClient } from '@/lib/supabase/server'
 import { unsubscribeContactCommunication } from '@/lib/contact-communication'
+import { BrandLogo } from '@/app/components/BrandLogo'
 
 type Props = {
   searchParams: Promise<{
@@ -45,8 +46,11 @@ export default async function UnsubscribePage({ searchParams }: Props) {
 
   return (
     <main className="min-h-screen bg-[#F3F8FF] px-5 py-12 text-[#0F172A]">
+      <div className="mx-auto mb-6 max-w-xl">
+        <BrandLogo variant="horizontal" />
+      </div>
       <section className="mx-auto max-w-xl rounded-2xl border border-[#DCE7F5] bg-white p-8 shadow-sm">
-        <p className="text-label text-[#64748B]">PlayerHoods</p>
+        <p className="text-label text-[#64748B]">Communication preferences</p>
         <h1 className="mt-2 text-h1">
           {status === 'success' ? 'You are unsubscribed' : 'Unsubscribe'}
         </h1>

@@ -161,15 +161,13 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
         <button
           type="button"
           onClick={() => onTab('matches')}
-          className="group flex w-full items-center justify-center rounded-3xl px-0 py-1 transition-colors hover:bg-transparent"
+          className="group flex w-full items-center justify-start rounded-3xl px-0 py-1 transition-colors hover:bg-transparent"
           aria-label="Playerhoods home"
         >
           <img
-            src="/playerhoods-logo-transparent.png"
-            alt="Playerhoods"
-            width={1122}
-            height={1402}
-            className="mx-auto h-auto w-full max-w-[245px] object-contain transition-transform duration-200 group-hover:scale-[1.01]"
+            src="/playerhoods-brand-stacked-cropped.png"
+            alt="PlayerHoods"
+            className="h-[116px] w-[210px] object-contain transition-transform duration-200 group-hover:scale-[1.01]"
           />
         </button>
       </div>
