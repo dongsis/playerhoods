@@ -2832,6 +2832,9 @@ export function HoodsPanel({
                     type="button"
                     onClick={() => {
                       clearMessage()
+                      setContactToolsOpen(false)
+                      setContactComposerMode(null)
+                      setError(null)
                       setHoodFilter(value)
                     }}
                     className={[

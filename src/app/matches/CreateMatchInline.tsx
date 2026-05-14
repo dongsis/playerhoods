@@ -129,6 +129,10 @@ const DS_STEP = 'text-title-main flex h-8 w-8 items-center justify-center rounde
 const DS_LABEL = 'text-label mb-1 block'
 const DS_FIELD =
   'text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10'
+const DS_OPTION_BUTTON =
+  'text-body-main rounded-xl border px-4 py-2.5 font-semibold transition focus:outline-none focus:ring-4 focus:ring-[#C25E46]/10'
+const DS_OPTION_SELECTED = 'border-[#075BD7] bg-[#075BD7] text-white shadow-[0_12px_24px_-18px_rgba(7,91,215,0.9)]'
+const DS_OPTION_UNSELECTED = 'border-[#E2E8F0] bg-white text-[#1E293B] hover:border-[#BFD4EA] hover:bg-[#F8FBFF]'
 
 const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'secured', label: 'Court already secured' },
@@ -144,6 +148,39 @@ function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | nu
     return 'walk_in'
   }
   return null
+}
+
+function isPickleballSport(sport: Pick<Sport, 'code' | 'display_name'> | null | undefined) {
+  const value = `${sport?.code ?? ''} ${sport?.display_name ?? ''}`.toLowerCase()
+  return value.includes('pickle')
+}
+
+function BallSectionMark({ sport, className = '' }: { sport: Pick<Sport, 'code' | 'display_name'> | null | undefined; className?: string }) {
+  const pickleball = isPickleballSport(sport)
+  return (
+    <span
+      className={[
+        'relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F7FBDE] shadow-[0_8px_18px_rgba(201,212,0,0.18)]',
+        className,
+      ].join(' ')}
+      aria-hidden="true"
+    >
+      <span className="relative h-5 w-5 overflow-hidden rounded-full bg-[#C9D400] shadow-inner">
+        {pickleball ? (
+          <>
+            <span className="absolute left-[4px] top-[4px] h-1.5 w-1.5 rounded-full bg-white/85" />
+            <span className="absolute right-[4px] top-[5px] h-1.5 w-1.5 rounded-full bg-white/85" />
+            <span className="absolute bottom-[4px] left-[8px] h-1.5 w-1.5 rounded-full bg-white/85" />
+          </>
+        ) : (
+          <>
+            <span className="absolute -left-1 top-[-2px] h-7 w-3 rounded-full border-r-2 border-white/90" />
+            <span className="absolute -right-1 bottom-[-2px] h-7 w-3 rounded-full border-l-2 border-white/90" />
+          </>
+        )}
+      </span>
+    </span>
+  )
 }
 
 const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
@@ -981,6 +1018,8 @@ export function CreateMatchInline({
   const [courtPlanMode, setCourtPlanMode] = useState<MatchCourtPlanMode>('secured')
   const [courtPlanNote, setCourtPlanNote] = useState('')
   const [courtCount, setCourtCount] = useState(1)
+  const [customPlayersOpen, setCustomPlayersOpen] = useState(false)
+  const [customCourtsOpen, setCustomCourtsOpen] = useState(false)
   const [courtPlanMenuOpen, setCourtPlanMenuOpen] = useState(false)
   const [organizerNote, setOrganizerNote] = useState('')
   const [organizerNoteExpanded, setOrganizerNoteExpanded] = useState(false)
@@ -1317,6 +1356,12 @@ export function CreateMatchInline({
     () => venues.find((venue) => venue.id === venueId),
     [venueId, venues],
   )
+
+  const visibleVenueOptions = useMemo(() => {
+    const selected = selectedVenue ? [selectedVenue] : []
+    const rest = venues.filter((venue) => venue.id !== selectedVenue?.id)
+    return [...selected, ...rest]
+  }, [selectedVenue, venues])
 
   const handleCreateContactPlayer = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -2368,123 +2413,220 @@ export function CreateMatchInline({
         </div>
       </div>
       <section className="rounded-2xl bg-white">
-        <div className="mb-3 flex items-center">
-          <div className={`mr-3 ${DS_STEP}`}>
-            1
-          </div>
+        <div className="mb-5 flex items-center">
+          <BallSectionMark sport={selectedSport} className="mr-3" />
           <h3 className={DS_SECTION_TITLE}>General Information</h3>
         </div>
 
-        <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-[1fr_2fr_2fr]">
-          <div>
-            <label className={DS_LABEL}>Sport</label>
-            <select
-              value={sportId}
-              onChange={(e) => setSportId(parseInt(e.target.value, 10))}
-              className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
-            >
-              {sports.map((sport) => (
-                <option key={sport.id} value={sport.id}>
-                  {sport.display_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className={DS_LABEL}>Venue</label>
-            <select
-              value={venueId}
-              onChange={(e) => setVenueId(e.target.value)}
-              className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
-            >
-              <option value="">Select venue</option>
-              {venues.map((venue) => (
-                <option key={venue.id} value={venue.id}>
-                  {getVenueDisplayName(venue)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className={DS_LABEL}>Game Type</label>
-            <select
-              value={selectedCombinedGameTypeValue}
-              onChange={(e) => {
-                const nextOption = COMBINED_GAME_TYPE_OPTIONS.find((option) => option.value === e.target.value)
-                if (!nextOption) return
-                setGameType(nextOption.gameType)
-                setDoublesFormat(nextOption.format)
-                setRequiredCount(nextOption.requiredCount)
-              }}
-              className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
-            >
-              {COMBINED_GAME_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={DS_LABEL}>Players</label>
-                <input
-                  type="number"
-                  min={gameType === 'singles' ? 2 : 4}
-                  step={1}
-                  value={requiredCount}
-                  onChange={(e) => {
-                    const fallbackValue = gameType === 'singles' ? 2 : 4
-                    const nextValue = Number.parseInt(e.target.value, 10)
-                    if (Number.isNaN(nextValue)) {
-                      setRequiredCount(fallbackValue)
-                      return
-                    }
-                    setRequiredCount(Math.max(1, nextValue))
-                  }}
-                  className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-center text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
-                />
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.72fr)]">
+            <div>
+              <label className={DS_LABEL}>Sport</label>
+              <div className="flex flex-wrap gap-2">
+                {sports.map((sport) => {
+                  const selected = sport.id === sportId
+                  return (
+                    <button
+                      key={sport.id}
+                      type="button"
+                      onClick={() => setSportId(sport.id)}
+                      className={[DS_OPTION_BUTTON, selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED].join(' ')}
+                    >
+                      {sport.display_name}
+                    </button>
+                  )
+                })}
               </div>
-              <div>
-                <label className={DS_LABEL}>Courts</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={6}
-                  step={1}
-                  value={courtCount}
-                  onChange={(e) => {
-                    const nextValue = Number.parseInt(e.target.value, 10)
-                    if (Number.isNaN(nextValue)) {
-                      setCourtCount(1)
-                      return
-                    }
-                    setCourtCount(Math.min(6, Math.max(1, nextValue)))
-                  }}
-                  className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-center text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
-                />
+            </div>
+
+            <div>
+              <label className={DS_LABEL}>Players</label>
+              <div className="flex flex-wrap items-center gap-3">
+                {[2, 4, 8].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => {
+                      setCustomPlayersOpen(false)
+                      setRequiredCount(count)
+                    }}
+                    className={[
+                      'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 font-black transition',
+                      !customPlayersOpen && requiredCount === count ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                    ].join(' ')}
+                  >
+                    {count}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setCustomPlayersOpen((open) => !open)}
+                  className={[
+                    'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 font-black transition',
+                    customPlayersOpen || ![2, 4, 8].includes(requiredCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                  ].join(' ')}
+                  aria-label="Set custom player count"
+                >
+                  +
+                </button>
+                {customPlayersOpen || ![2, 4, 8].includes(requiredCount) ? (
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={requiredCount}
+                    onChange={(e) => {
+                      const fallbackValue = gameType === 'singles' ? 2 : 4
+                      const nextValue = Number.parseInt(e.target.value, 10)
+                      setRequiredCount(Number.isNaN(nextValue) ? fallbackValue : Math.max(1, nextValue))
+                    }}
+                    className="h-10 w-20 rounded-xl border border-[#E2E8F0] bg-white px-3 text-center text-sm font-bold text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
+                  />
+                ) : null}
               </div>
             </div>
           </div>
 
           <div>
-            <label className={DS_LABEL}>Court Plan</label>
-            <select
-              value={courtPlanMode}
-              onChange={(e) => setCourtPlanMode(e.target.value as MatchCourtPlanMode)}
-              className="w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
-            >
-              {COURT_PLAN_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <label className={DS_LABEL}>Game Type</label>
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {(['singles', 'doubles'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setGameType(type)
+                      if (type === 'singles' && doublesFormat === 'mixed_doubles') setDoublesFormat('open')
+                    }}
+                    className={[DS_OPTION_BUTTON, gameType === type ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED].join(' ')}
+                  >
+                    {type === 'singles' ? 'Single' : 'Double'}
+                  </button>
+                ))}
+                <span className="mx-1 hidden h-8 w-px bg-[#E2E8F0] sm:inline-block" />
+                {(gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setDoublesFormat(option.value)}
+                    className={[
+                      DS_OPTION_BUTTON,
+                      doublesFormat === option.value ? DS_OPTION_SELECTED : 'border-transparent bg-white text-[#475569] hover:bg-[#F8FBFF]',
+                    ].join(' ')}
+                  >
+                    {option.value === 'open'
+                      ? 'Open'
+                      : option.value === 'mens_doubles'
+                        ? 'Man'
+                        : option.value === 'womens_doubles'
+                          ? 'Woman'
+                          : 'Mixed'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+
+          <div>
+            <label className={DS_LABEL}>Venue</label>
+            {visibleVenueOptions.length > 0 ? (
+              <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {visibleVenueOptions.map((venue) => {
+                  const selected = venue.id === venueId
+                  return (
+                    <button
+                      key={venue.id}
+                      type="button"
+                      onClick={() => setVenueId(venue.id)}
+                      className={[
+                        DS_OPTION_BUTTON,
+                        'min-h-12 justify-center text-center',
+                        selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                      ].join(' ')}
+                    >
+                      {getVenueDisplayName(venue)}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-body-sub rounded-xl border border-dashed border-[#D7E2F0] bg-[#F8FBFF] px-4 py-3 text-[#64748B]">
+                Add a venue to your profile before creating a match.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className={DS_LABEL}>Court Plan</label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {COURT_PLAN_OPTIONS.map((option) => {
+                const selected = courtPlanMode === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setCourtPlanMode(option.value)}
+                    className={[
+                      DS_OPTION_BUTTON,
+                      'min-h-12 text-center',
+                      selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                    ].join(' ')}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(180px,0.6fr)_minmax(0,1fr)]">
+            <div>
+              <label className={DS_LABEL}>Courts Needed</label>
+              <div className="flex flex-wrap items-center gap-3">
+                {[1, 2].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => {
+                      setCustomCourtsOpen(false)
+                      setCourtCount(count)
+                    }}
+                    className={[
+                      'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 font-black transition',
+                      !customCourtsOpen && courtCount === count ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                    ].join(' ')}
+                  >
+                    {count}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setCustomCourtsOpen((open) => !open)}
+                  className={[
+                    'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 font-black transition',
+                    customCourtsOpen || ![1, 2].includes(courtCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                  ].join(' ')}
+                  aria-label="Set custom court count"
+                >
+                  +
+                </button>
+                {customCourtsOpen || ![1, 2].includes(courtCount) ? (
+                  <input
+                    type="number"
+                    min={1}
+                    max={6}
+                    step={1}
+                    value={courtCount}
+                    onChange={(e) => {
+                      const nextValue = Number.parseInt(e.target.value, 10)
+                      setCourtCount(Number.isNaN(nextValue) ? 1 : Math.min(6, Math.max(1, nextValue)))
+                    }}
+                    className="h-10 w-20 rounded-xl border border-[#E2E8F0] bg-white px-3 text-center text-sm font-bold text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
+                  />
+                ) : null}
+              </div>
+            </div>
 
           {courtPlanMode === 'secured' ? (
             <div>
@@ -2558,6 +2700,8 @@ export function CreateMatchInline({
               </div>
             </div>
           ) : null}
+        </div>
+
         </div>
 
       </section>

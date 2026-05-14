@@ -500,6 +500,109 @@ const VENUE_SPORT_FILTER_OPTIONS: Array<{ value: VenueSportFilter; label: string
   { value: 'pickleball', label: 'Pickleball' },
 ]
 
+function normalizeVenueSearchText(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function isOrderedSubsequence(query: string, target: string): boolean {
+  if (!query) return true
+  let queryIndex = 0
+  for (let targetIndex = 0; targetIndex < target.length && queryIndex < query.length; targetIndex += 1) {
+    if (target[targetIndex] === query[queryIndex]) {
+      queryIndex += 1
+    }
+  }
+  return queryIndex === query.length
+}
+
+function boundedEditDistance(a: string, b: string, maxDistance: number): number {
+  if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index)
+  const current = Array.from({ length: b.length + 1 }, () => 0)
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i
+    let rowMin = current[0]
+
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + cost,
+      )
+      rowMin = Math.min(rowMin, current[j])
+    }
+
+    if (rowMin > maxDistance) return maxDistance + 1
+    for (let j = 0; j <= b.length; j += 1) {
+      previous[j] = current[j]
+    }
+  }
+
+  return previous[b.length]
+}
+
+function getVenueFuzzyScore(rawQuery: string, rawValues: string[]): number | null {
+  const query = normalizeVenueSearchText(rawQuery)
+  if (!query) return 0
+
+  const normalizedValues = rawValues
+    .map(normalizeVenueSearchText)
+    .filter(Boolean)
+  if (normalizedValues.length === 0) return null
+
+  const haystack = normalizeVenueSearchText(normalizedValues.join(' '))
+  const compactQuery = query.replace(/\s/g, '')
+  const compactHaystack = haystack.replace(/\s/g, '')
+  const tokens = haystack.split(' ').filter(Boolean)
+  const initials = tokens.map((token) => token[0]).join('')
+  const queryTokens = query.split(' ').filter(Boolean)
+
+  let bestScore: number | null = null
+  const record = (score: number) => {
+    bestScore = bestScore == null ? score : Math.max(bestScore, score)
+  }
+
+  if (haystack === query) record(120)
+  if (haystack.startsWith(query)) record(112)
+  if (haystack.includes(query)) record(104 - Math.min(haystack.indexOf(query), 24))
+  if (compactHaystack.includes(compactQuery)) record(96 - Math.min(compactHaystack.indexOf(compactQuery), 24))
+  if (tokens.some((token) => token === query)) record(110)
+  if (tokens.some((token) => token.startsWith(query))) record(102)
+  if (tokens.some((token) => token.includes(query))) record(88)
+  if (initials.startsWith(compactQuery)) record(86)
+
+  if (queryTokens.length > 1 && queryTokens.every((queryToken) => tokens.some((token) => token.startsWith(queryToken)))) {
+    record(94)
+  }
+
+  if (compactQuery.length >= 2 && isOrderedSubsequence(compactQuery, compactHaystack)) {
+    const spreadPenalty = Math.min(compactHaystack.length - compactQuery.length, 30)
+    record(72 - spreadPenalty)
+  }
+
+  if (compactQuery.length >= 3) {
+    const maxDistance = compactQuery.length <= 5 ? 1 : 2
+    for (const token of tokens) {
+      if (Math.abs(token.length - compactQuery.length) <= maxDistance) {
+        const distance = boundedEditDistance(compactQuery, token, maxDistance)
+        if (distance <= maxDistance) {
+          record(82 - distance * 8)
+        }
+      }
+    }
+  }
+
+  return bestScore
+}
+
 const CANADA_PROVINCE_OPTIONS: Array<{ code: string; label: string }> = [
   { code: 'AB', label: 'Alberta' },
   { code: 'BC', label: 'British Columbia' },
@@ -1600,35 +1703,49 @@ export function ProfilePanel({
       return []
     }
 
-    return joinableVenues.filter((venue) => {
-      if (savedVenueIds.has(venue.id)) return false
-      const matchesType = venueTypeFilter === 'all' || venue.venue_kind === venueTypeFilter
-      const venueName = [
-        getVenueDisplayName(venue),
-        venue.name,
-        venue.abbreviation ?? '',
-        venue.location_text ?? '',
-      ]
-        .join(' ')
-        .toLowerCase()
-      const venueLocation = [
-        venue.city ?? '',
-        venue.province ?? '',
-        venue.country ?? '',
-        venue.location_text ?? '',
-      ]
-        .join(' ')
-        .toLowerCase()
-      const matchesName = !nameQuery || venueName.includes(nameQuery)
-      const matchesCity = !cityQuery || venueLocation.includes(cityQuery)
-      const venueSportIds = venueSportIdsByVenueId.get(venue.id) ?? new Set<number>()
-      const hasTennis = tennisSportId != null && venueSportIds.has(tennisSportId)
-      const hasPickleball = pickleballSportId != null && venueSportIds.has(pickleballSportId)
-      const matchesSport =
-        (venueSportFilter === 'tennis' && hasTennis)
-        || (venueSportFilter === 'pickleball' && hasPickleball)
-      return matchesType && matchesName && matchesCity && matchesSport
-    })
+    return joinableVenues
+      .map((venue) => {
+        if (savedVenueIds.has(venue.id)) return null
+        const matchesType = venueTypeFilter === 'all' || venue.venue_kind === venueTypeFilter
+        const venueNameValues = [
+          getVenueDisplayName(venue),
+          venue.name,
+          venue.abbreviation ?? '',
+          venue.location_text ?? '',
+          venue.postal_code ?? '',
+          venue.website_url ?? '',
+          venue.google_maps_url ?? '',
+        ]
+        const venueLocationValues = [
+          venue.city ?? '',
+          venue.province ?? '',
+          venue.country ?? '',
+          venue.postal_code ?? '',
+          venue.location_text ?? '',
+        ]
+        const nameScore = getVenueFuzzyScore(nameQuery, venueNameValues)
+        const cityScore = getVenueFuzzyScore(cityQuery, venueLocationValues)
+        const matchesName = !nameQuery || nameScore != null
+        const matchesCity = !cityQuery || cityScore != null
+        const venueSportIds = venueSportIdsByVenueId.get(venue.id) ?? new Set<number>()
+        const hasTennis = tennisSportId != null && venueSportIds.has(tennisSportId)
+        const hasPickleball = pickleballSportId != null && venueSportIds.has(pickleballSportId)
+        const matchesSport =
+          (venueSportFilter === 'tennis' && hasTennis)
+          || (venueSportFilter === 'pickleball' && hasPickleball)
+        if (!matchesType || !matchesName || !matchesCity || !matchesSport) return null
+
+        return {
+          venue,
+          score: (nameScore ?? 0) + (cityScore ?? 0),
+        }
+      })
+      .filter((entry): entry is { venue: Venue; score: number } => entry != null)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        return getVenueDisplayName(a.venue).localeCompare(getVenueDisplayName(b.venue))
+      })
+      .map((entry) => entry.venue)
   }, [joinableVenues, pickleballSportId, publicVenuePrefs, tennisSportId, venueCitySearch, venueNameSearch, venueSportFilter, venueSportIdsByVenueId, venueTypeFilter])
   const hasVenueDiscoveryQuery = venueCitySearch.trim().length > 0 || venueNameSearch.trim().length > 0
 
@@ -2032,13 +2149,6 @@ export function ProfilePanel({
             </div>
           </div>
 
-          <BasicLocationEditor
-            country={playLocationCountry}
-            region={playLocationRegion}
-            playCities={myPlayCities}
-            availableCities={availablePlayCityChoices}
-            onSave={(params) => onSaveGlobalPreferences(params)}
-          />
         </div>
       </div>
       </div>
@@ -2182,6 +2292,16 @@ export function ProfilePanel({
       onToggle={() => toggleSection('venues')}
     >
       <div className="space-y-5">
+        <div className="rounded-[24px] border border-[#DCE7F3] bg-white p-4 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.12)] md:p-5">
+          <BasicLocationEditor
+            country={playLocationCountry}
+            region={playLocationRegion}
+            playCities={myPlayCities}
+            availableCities={availablePlayCityChoices}
+            onSave={(params) => onSaveGlobalPreferences(params)}
+          />
+        </div>
+
         <div>
           <div className="mb-4 flex items-center justify-between gap-4">
             <h3 className="text-h2 text-slate-900">Your Venues</h3>
