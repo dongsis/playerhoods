@@ -9,6 +9,7 @@ interface Props {
   onTab: (t: DashTab) => void
   isAdmin: boolean
   badges?: Partial<Record<DashTab, number>>
+  badgeTooltips?: Partial<Record<DashTab, string>>
 }
 
 function TennisCourtIcon({ className = 'h-[18px] w-[18px]' }: { className?: string }) {
@@ -142,7 +143,7 @@ const tabs: { key: DashTab; label: string }[] = [
   { key: 'admin', label: 'Venue Admin' },
 ]
 
-export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
+export function LeftNav({ active, onTab, isAdmin, badges, badgeTooltips }: Props) {
   const visible = tabs.filter((tab) => {
     if (tab.key === 'venues' || tab.key === 'admin' || tab.key === 'gear') return isAdmin
     return true
@@ -167,13 +168,14 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
           <img
             src="/playerhoods-brand-stacked-cropped.png"
             alt="PlayerHoods"
-            className="h-[116px] w-[210px] object-contain transition-transform duration-200 group-hover:scale-[1.01]"
+            className="h-[139px] w-[252px] object-contain transition-transform duration-200 group-hover:scale-[1.01]"
           />
         </button>
       </div>
 
       {visible.map((tab) => {
         const badge = badges?.[tab.key] ?? 0
+        const showDotBadge = badge < 0
         return (
           <button
             key={tab.key}
@@ -196,7 +198,13 @@ export function LeftNav({ active, onTab, isAdmin, badges }: Props) {
               <NavIcon tab={tab.key} />
             </span>
             <span className="flex-1">{tab.label}</span>
-            {badge > 0 && (
+            {showDotBadge ? (
+              <span
+                className="h-2 w-2 rounded-full bg-[#2563EB]"
+                title={badgeTooltips?.[tab.key]}
+                aria-label={badgeTooltips?.[tab.key] ?? 'Next step available'}
+              />
+            ) : badge > 0 && (
               <span className="text-body-sub flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#3B82F6] px-1 font-bold leading-none text-white">
                 {badge > 99 ? '99+' : badge}
               </span>

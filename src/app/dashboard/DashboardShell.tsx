@@ -22,6 +22,8 @@ import type { GearLinkImportDraft } from '@/lib/gear-link-import'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
 import type { LocationCityOption } from '@/lib/api/location-municipalities'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getContactPlayerResolution } from '@/lib/api/roster'
 
 interface Props {
   userId: string
@@ -142,6 +144,16 @@ function getDismissedMatchStorageKey(userId: string) {
 type DashboardLiveResponse = {
   items: MatchListItem[]
   inboxUnreadCount: number
+}
+
+type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
+
+function getStarterFormatStorageKey(userId: string) {
+  return `dashboard:first-hood-format:${userId}`
+}
+
+function getStarterTarget(format: StarterMatchFormat) {
+  return format === 'doubles' ? 3 : 1
 }
 
 function MobileBottomNav({
@@ -267,6 +279,8 @@ export function DashboardShell({
   const [dismissedMatchIdsReady, setDismissedMatchIdsReady] = useState(false)
   const [inboxBadge, setInboxBadge] = useState(inboxUnreadCount ?? 0)
   const [liveItems, setLiveItems] = useState(items)
+  const [starterContactCount, setStarterContactCount] = useState(0)
+  const [starterFormat, setStarterFormat] = useState<StarterMatchFormat>('unknown')
 
   const refreshDashboardLive = useCallback(async () => {
     try {
@@ -300,6 +314,32 @@ export function DashboardShell({
   useEffect(() => {
     setInboxBadge(inboxUnreadCount ?? 0)
   }, [inboxUnreadCount])
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(getStarterFormatStorageKey(userId))
+      if (stored === 'singles' || stored === 'doubles' || stored === 'unknown') {
+        setStarterFormat(stored)
+      }
+    } catch {
+      // Keep the default format if localStorage is unavailable.
+    }
+
+    const supabase = createSupabaseBrowserClient()
+    let cancelled = false
+    getContactPlayerResolution(supabase)
+      .then((contacts) => {
+        if (cancelled) return
+        setStarterContactCount(contacts.length)
+      })
+      .catch((error) => {
+        console.warn('[DashboardShell] starter contact count failed:', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
 
   useEffect(() => {
     try {
@@ -425,12 +465,17 @@ export function DashboardShell({
       }
     }
     const groupsBadge = playersData.pendingGroupInvites.length || undefined
+    const firstMatchCreated = liveItems.some((item) => item.match.organizer_id === userId)
+    const starterTarget = getStarterTarget(starterFormat)
+    const hoodsStarterDot = starterContactCount < starterTarget
+    const matchesStarterDot = starterContactCount >= starterTarget && !firstMatchCreated
     return {
       inbox: inboxBadge || undefined,
-      matches: matchesBadge || undefined,
+      matches: matchesBadge || (matchesStarterDot ? -1 : undefined),
+      hoods: hoodsStarterDot ? -1 : undefined,
       groups: groupsBadge,
     }
-  }, [liveItems, playersData.pendingGroupInvites.length, suppressedMatchIds, inboxBadge])
+  }, [inboxBadge, liveItems, playersData.pendingGroupInvites.length, starterContactCount, starterFormat, suppressedMatchIds, userId])
 
   const mainWidthClass = activeTab === 'profile' || activeTab === 'gear' || activeTab === 'hoods' || activeTab === 'groups'
     ? 'max-w-6xl'
@@ -446,6 +491,10 @@ export function DashboardShell({
           onTab={setActiveTab}
           isAdmin={isAdmin}
           badges={{ ...badges, inbox: badges.inbox ?? inboxBadge }}
+          badgeTooltips={{
+            hoods: 'Add contacts to build your first Hood.',
+            matches: 'Start your first match from your Hood.',
+          }}
         />
       </aside>
 
@@ -499,6 +548,10 @@ export function DashboardShell({
             onParseScreenshots={onParseContactScreenshots}
             onImportScreenshotContacts={onImportScreenshotContacts}
             onOpenProfile={() => setActiveTab('profile')}
+            onStarterStatusChange={({ contactCount, preferredFormat }) => {
+              setStarterContactCount(contactCount)
+              setStarterFormat(preferredFormat)
+            }}
           />
         )}
         {activeTab === 'groups' && (

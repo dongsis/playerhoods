@@ -216,7 +216,7 @@ function ContactAddIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' |
 function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="w-full rounded-2xl border border-dashed border-[#7FB2FF] bg-[#F8FBFF] px-4 py-3">
-      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D7E3F4] bg-white text-[#075BD7]">
             <ContactAddIcon kind="people" />
@@ -231,7 +231,7 @@ function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
         <button
           type="button"
           onClick={onAdd}
-          className="text-body-main inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
+          className="text-body-main mt-8 inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF] sm:mt-6"
         >
           <span className="text-lg leading-none">+</span>
           Add My Contact
@@ -1109,6 +1109,8 @@ export function CreateMatchInline({
   const prefillSportId = searchParams.get('createSport')
   const prefillInviteUserId = searchParams.get('inviteUserId')
   const prefillInviteGuestId = searchParams.get('inviteGuestId')
+  const prefillCreateFormat = searchParams.get('createFormat')
+  const starterHint = searchParams.get('starterHint') === '1'
 
   const availableInviteOptions = useMemo(() => {
     const combined = new Map<string, InviteCandidate>()
@@ -1763,6 +1765,17 @@ export function CreateMatchInline({
       setSportId(nextSportId)
     }
 
+    if (prefillCreateFormat === 'singles' || prefillCreateFormat === 'doubles') {
+      setGameType(prefillCreateFormat)
+      if (prefillCreateFormat === 'singles' && doublesFormat === 'mixed_doubles') {
+        setDoublesFormat('open')
+      }
+    }
+
+    if (prefillSportId || prefillCreateFormat || starterHint) {
+      setCreateExpanded(true)
+    }
+
     const nextInviteKey = prefillInviteUserId
       ? `user:${prefillInviteUserId}`
       : prefillInviteGuestId
@@ -1792,8 +1805,11 @@ export function CreateMatchInline({
     prefillConsumed,
     prefillInviteGuestId,
     prefillInviteUserId,
+    prefillCreateFormat,
     prefillSportId,
+    starterHint,
     sportId,
+    doublesFormat,
   ])
 
   const createMatchFlow = async (mode: 'create' | 'invite') => {
@@ -2615,6 +2631,11 @@ export function CreateMatchInline({
 
         {createExpanded ? (
           <div className="space-y-6 border-t border-[#F1F5F9] px-5 pb-6 pt-6 md:px-6">
+      {starterHint ? (
+        <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-body-main font-semibold text-[#1D4ED8]">
+          You can start now and add more players later.
+        </div>
+      ) : null}
       <div className="md:hidden">
         <div className="mb-5">
           <h2 className="text-h1 text-[#1E293B]">Create a Match</h2>
@@ -3023,7 +3044,7 @@ export function CreateMatchInline({
             </button>
           </div>
 
-          <div className="w-full md:w-2/5">
+          <div className="w-full md:flex-1">
             <div className="text-label mb-4 flex items-center text-[#94A3B8]">
               <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
               Select Target
@@ -3037,7 +3058,7 @@ export function CreateMatchInline({
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col">
-                  <div className="mb-4 flex flex-wrap gap-2">
+                  <div className="mb-4 grid gap-2">
                     {selectionMode === 'invite' && (
                       <>
                         <NeedMorePlayersPrompt

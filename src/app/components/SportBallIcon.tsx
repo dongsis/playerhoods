@@ -9,21 +9,27 @@ export function isPickleballSport(sport: SportLike) {
 
 export function TennisBallIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
-    <span className={['relative inline-block overflow-hidden rounded-full bg-[#C9D400]', className].join(' ')} aria-hidden="true">
-      <span className="absolute -left-[18%] top-[-12%] h-[124%] w-[55%] rounded-full border-r-2 border-white/95" />
-      <span className="absolute -right-[18%] bottom-[-12%] h-[124%] w-[55%] rounded-full border-l-2 border-white/95" />
+    <span className={['relative inline-block overflow-hidden rounded-full bg-[#D4EA00]', className].join(' ')} aria-hidden="true">
+      <span className="absolute -left-[19%] top-[5%] h-[90%] w-[42%] rounded-full border-r-[3px] border-white" />
+      <span className="absolute -right-[19%] top-[5%] h-[90%] w-[42%] rounded-full border-l-[3px] border-white" />
     </span>
   )
 }
 
 export function PickleballIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
-    <span className={['relative inline-block overflow-hidden rounded-full bg-[#C9D400]', className].join(' ')} aria-hidden="true">
-      <span className="absolute left-[23%] top-[22%] h-[20%] w-[20%] rounded-full bg-white/95" />
-      <span className="absolute right-[22%] top-[24%] h-[20%] w-[20%] rounded-full bg-white/95" />
-      <span className="absolute left-[18%] bottom-[25%] h-[20%] w-[20%] rounded-full bg-white/95" />
-      <span className="absolute right-[18%] bottom-[22%] h-[20%] w-[20%] rounded-full bg-white/95" />
-      <span className="absolute left-[40%] top-[42%] h-[22%] w-[22%] rounded-full bg-white/95" />
+    <span className={['relative inline-block overflow-hidden rounded-full bg-[#D4EA00]', className].join(' ')} aria-hidden="true">
+      <span className="absolute left-[24%] top-[10%] h-[13%] w-[13%] rounded-full bg-white" />
+      <span className="absolute right-[24%] top-[10%] h-[13%] w-[13%] rounded-full bg-white" />
+      <span className="absolute left-[45%] top-[24%] h-[14%] w-[14%] rounded-full bg-white" />
+      <span className="absolute left-[20%] top-[42%] h-[15%] w-[15%] rounded-full bg-white" />
+      <span className="absolute right-[20%] top-[42%] h-[15%] w-[15%] rounded-full bg-white" />
+      <span className="absolute left-[7%] top-[55%] h-[13%] w-[13%] rounded-full bg-white" />
+      <span className="absolute right-[7%] top-[55%] h-[13%] w-[13%] rounded-full bg-white" />
+      <span className="absolute left-[43%] top-[55%] h-[17%] w-[17%] rounded-full bg-white" />
+      <span className="absolute left-[25%] bottom-[12%] h-[14%] w-[14%] rounded-full bg-white" />
+      <span className="absolute right-[25%] bottom-[12%] h-[14%] w-[14%] rounded-full bg-white" />
+      <span className="absolute left-[45%] bottom-[2%] h-[15%] w-[15%] rounded-full bg-white" />
     </span>
   )
 }
@@ -48,12 +54,12 @@ export function SportSectionIcon({
   return (
     <span
       className={[
-        'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F7FBDE] shadow-[0_8px_18px_rgba(201,212,0,0.18)]',
+        'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#FFFDF3] shadow-[0_8px_18px_rgba(212,234,0,0.18)]',
         className,
       ].join(' ')}
       aria-hidden="true"
     >
-      <SportBallIcon sport={sport} className="h-5 w-5" />
+      <SportBallIcon sport={sport} className="h-6 w-6" />
     </span>
   )
 }

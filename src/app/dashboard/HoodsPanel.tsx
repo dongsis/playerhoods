@@ -77,6 +77,7 @@ type HoodFilter = 'all' | 'saved' | 'linked' | 'club' | 'group'
 type DiscoverSource = 'club_members' | 'city_players' | 'search_people'
 type IdentityType = 'platform' | 'contact' | 'linked'
 type ContactGender = 'male' | 'female' | 'unspecified' | null
+type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
 type SourceBadge =
   | 'My Contact'
   | 'Starred'
@@ -208,9 +209,233 @@ type Props = {
     source_file_name?: string | null
   }>) => Promise<{ created: number; skipped: number }>
   onOpenProfile: () => void
+  onStarterStatusChange?: (status: {
+    contactCount: number
+    preferredFormat: StarterMatchFormat
+    firstMatchCreated: boolean
+  }) => void
 }
 
 const SUPPORTED_SPORTS: SupportedSportCode[] = ['tennis', 'pickleball', 'badminton']
+
+const STARTER_DISMISS_MS = 24 * 60 * 60 * 1000
+
+function getStarterFormatStorageKey(userId: string) {
+  return `dashboard:first-hood-format:${userId}`
+}
+
+function getStarterDismissStorageKey(userId: string) {
+  return `dashboard:first-hood-dismissed-at:${userId}`
+}
+
+function getStarterTarget(format: StarterMatchFormat) {
+  return format === 'doubles' ? 3 : 1
+}
+
+function StarterPeopleIcon({
+  count,
+  complete,
+}: {
+  count: number
+  complete: boolean
+}) {
+  return (
+    <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl border border-[#D7E2F0] bg-[#F8FBFF] text-[#2563EB] sm:h-28 sm:w-28">
+      <svg viewBox="0 0 48 48" className="h-12 w-12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="18" cy="18" r="6" />
+        <circle cx="32" cy="17" r="5" />
+        <path d="M8 36c1.8-6 5.5-9 10-9s8.2 3 10 9" />
+        <path d="M27 34c1.4-4.2 4.2-6.4 7.5-6.4 2.8 0 5.2 1.3 7 3.9" />
+      </svg>
+      <span className={[
+        'absolute bottom-5 right-5 flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] font-black text-white',
+        complete ? 'bg-[#22C55E]' : 'bg-[#60A5FA]',
+      ].join(' ')}>
+        {Math.min(count, 99)}
+      </span>
+    </div>
+  )
+}
+
+function FirstHoodStarterCard({
+  contactCount,
+  firstMatchCreated,
+  preferredFormat,
+  onPreferredFormatChange,
+  onAddContact,
+  onStartMatch,
+  onDismiss,
+}: {
+  contactCount: number
+  firstMatchCreated: boolean
+  preferredFormat: StarterMatchFormat
+  onPreferredFormatChange: (format: StarterMatchFormat) => void
+  onAddContact: () => void
+  onStartMatch: () => void
+  onDismiss: () => void
+}) {
+  const target = getStarterTarget(preferredFormat)
+  const clampedCount = Math.min(contactCount, target)
+  const ready = contactCount >= target
+  const progressPercent = Math.max(6, Math.round((clampedCount / target) * 100))
+  const plural = target === 1 ? 'contact saved as Player Card' : 'contacts saved as Player Cards'
+
+  const copy = (() => {
+    if (firstMatchCreated) {
+      return {
+        title: 'First match started',
+        body: 'Nice. Your first Hood and match are set up.',
+      }
+    }
+    if (ready && preferredFormat === 'singles') {
+      return {
+        title: 'Your singles match is ready to start',
+        body: "You've saved 1 Player Card. Now invite them to a match.",
+      }
+    }
+    if (ready && preferredFormat === 'doubles') {
+      return {
+        title: 'Your doubles group is ready',
+        body: "You've saved 3 Player Cards. Now invite them to a match.",
+      }
+    }
+    if (ready) {
+      return {
+        title: 'Your Hood is ready',
+        body: `You've saved ${target} Player ${target === 1 ? 'Card' : 'Cards'}. Now invite them to your first match.`,
+      }
+    }
+    if (contactCount > 0) {
+      return {
+        title: 'Keep building your Hood',
+        body:
+          preferredFormat === 'doubles'
+            ? `You've saved ${contactCount} Player ${contactCount === 1 ? 'Card' : 'Cards'}. Add ${target - contactCount} more to make your first match easier.`
+            : `You've saved ${contactCount} Player Card. Start a match now or add another regular player.`,
+      }
+    }
+    if (preferredFormat === 'singles') {
+      return {
+        title: 'Build your first singles match',
+        body: 'Add 1 person you play with, then invite them to a match.',
+      }
+    }
+    if (preferredFormat === 'doubles') {
+      return {
+        title: 'Build your first doubles match',
+        body: 'Add 3 people you play with, then invite them to a match.',
+      }
+    }
+    return {
+      title: 'Build your first Hood',
+      body: 'Add people you play with, then invite them to your first match.',
+    }
+  })()
+
+  return (
+    <section className="relative overflow-hidden rounded-[32px] border border-[#D7E2F0] bg-white px-5 py-5 shadow-[0_22px_60px_-42px_rgba(11,31,68,0.35)] sm:px-7 sm:py-6">
+      <style>{`
+        @keyframes starterContactGlow {
+          0%, 78%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+          82% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.25); }
+          96% { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+        }
+      `}</style>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
+        aria-label="Dismiss starter card"
+      >
+        <ContactToolIcon kind="close" />
+      </button>
+
+      <div className="flex flex-col gap-5 pr-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[22px] font-black tracking-[-0.02em] text-[#0B1F44]">{copy.title}</h2>
+          <p className="mt-2 text-body-main leading-6 text-[#536179]">{copy.body}</p>
+
+          {!ready && !firstMatchCreated ? (
+            <div className="mt-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#94A3B8]">What do you usually play?</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([
+                  ['singles', 'Singles'],
+                  ['doubles', 'Doubles'],
+                  ['unknown', 'Not sure yet'],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => onPreferredFormatChange(value)}
+                    className={[
+                      'rounded-full px-3.5 py-1.5 text-body-sub font-bold transition',
+                      preferredFormat === value
+                        ? 'bg-[#0B1F44] text-white'
+                        : 'border border-[#D7E2F0] bg-white text-[#536179] hover:bg-[#F8FBFF]',
+                    ].join(' ')}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#7A8AA6]">
+                {firstMatchCreated
+                  ? 'First match started'
+                  : ready
+                    ? `${clampedCount} / ${target} Player ${target === 1 ? 'Card' : 'Cards'} saved`
+                    : `${clampedCount} / ${target} ${plural}`}
+              </p>
+              {ready || firstMatchCreated ? (
+                <span className="text-[11px] font-black uppercase tracking-[0.08em] text-[#16A34A]">Done</span>
+              ) : null}
+            </div>
+            <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-[#EEF3F8]">
+              <div
+                className={['h-full rounded-full transition-all duration-500', ready || firstMatchCreated ? 'bg-[#22C55E]' : 'bg-[#2563EB]'].join(' ')}
+                style={{ width: `${ready || firstMatchCreated ? 100 : progressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            {!ready && !firstMatchCreated ? (
+              <button
+                type="button"
+                onClick={onAddContact}
+                className="text-body-main inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 font-bold text-white shadow-[0_16px_32px_-20px_rgba(37,99,235,0.9)] transition hover:bg-[#1D4ED8]"
+                style={{ animation: 'starterContactGlow 6s ease-in-out infinite' }}
+              >
+                <span className="text-lg leading-none">+</span>
+                Add My Contact
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onStartMatch}
+              className={[
+                'text-body-main inline-flex items-center gap-2 rounded-xl px-5 py-3 font-bold transition',
+                ready || firstMatchCreated
+                  ? 'bg-[#2563EB] text-white shadow-[0_16px_32px_-20px_rgba(37,99,235,0.9)] hover:bg-[#1D4ED8]'
+                  : 'bg-white text-[#7A8AA6] hover:bg-[#F8FBFF] hover:text-[#0B1F44]',
+              ].join(' ')}
+            >
+              {firstMatchCreated ? 'View Match' : 'Start a Match'}
+              {(ready || firstMatchCreated) ? <span aria-hidden="true">›</span> : null}
+            </button>
+          </div>
+        </div>
+
+        <StarterPeopleIcon count={clampedCount} complete={ready || firstMatchCreated} />
+      </div>
+    </section>
+  )
+}
 
 function isSupportedSportCode(value: string): value is SupportedSportCode {
   return SUPPORTED_SPORTS.includes(value as SupportedSportCode)
@@ -1574,6 +1799,7 @@ export function HoodsPanel({
   onParseScreenshots,
   onImportScreenshotContacts,
   onOpenProfile,
+  onStarterStatusChange,
 }: Props) {
   const router = useRouter()
   const sportOptions = useMemo(
@@ -1640,12 +1866,29 @@ export function HoodsPanel({
   const [contactNotes, setContactNotes] = useState('')
   const [creatingContact, setCreatingContact] = useState(false)
   const [savedStateOverrides, setSavedStateOverrides] = useState<Record<string, boolean>>({})
+  const [starterPreferredFormat, setStarterPreferredFormat] = useState<StarterMatchFormat>('unknown')
+  const [starterDismissedAt, setStarterDismissedAt] = useState<number | null>(null)
   const hasLoadedSupportDataRef = useRef(false)
 
   useEffect(() => {
     if (sportOptions.some((sport) => sport.code === selectedSportCode)) return
     if (sportOptions[0]) setSelectedSportCode(sportOptions[0].code)
   }, [selectedSportCode, sportOptions])
+
+  useEffect(() => {
+    try {
+      const storedFormat = window.localStorage.getItem(getStarterFormatStorageKey(userId))
+      if (storedFormat === 'singles' || storedFormat === 'doubles' || storedFormat === 'unknown') {
+        setStarterPreferredFormat(storedFormat)
+      }
+      const storedDismissedAt = Number(window.localStorage.getItem(getStarterDismissStorageKey(userId)) ?? '')
+      if (Number.isFinite(storedDismissedAt) && storedDismissedAt > 0) {
+        setStarterDismissedAt(storedDismissedAt)
+      }
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, [userId])
 
   useEffect(() => {
     try {
@@ -2756,9 +2999,98 @@ export function HoodsPanel({
       )
       .sort((left, right) => sortHoodPeople(left, right, openMatchCount))
   }, [applySavedOverride, hoodFilter, hoodPeople, openMatchCount, savedPrimaryPeople, search, section])
+  const starterContactCount = useMemo(() => {
+    const contactKeys = new Set<string>()
+    hoodPeople
+      .map(applySavedOverride)
+      .forEach((person) => {
+        if (!person.isMyContact) return
+        contactKeys.add(person.personId ?? person.guestId ?? person.key)
+      })
+    return contactKeys.size
+  }, [applySavedOverride, hoodPeople])
+  const firstCreatedMatch = useMemo(
+    () => items.find((item) => item.match.organizer_id === userId) ?? null,
+    [items, userId],
+  )
+  const firstMatchCreated = Boolean(firstCreatedMatch)
+  const starterTarget = getStarterTarget(starterPreferredFormat)
+  const starterDismissedRecently = starterDismissedAt !== null && Date.now() - starterDismissedAt < STARTER_DISMISS_MS
+  const shouldShowStarterCard = section === 'hood'
+    && !starterDismissedRecently
+    && !(starterContactCount >= starterTarget && firstMatchCreated)
+
+  useEffect(() => {
+    onStarterStatusChange?.({
+      contactCount: starterContactCount,
+      preferredFormat: starterPreferredFormat,
+      firstMatchCreated,
+    })
+  }, [firstMatchCreated, onStarterStatusChange, starterContactCount, starterPreferredFormat])
+
+  const handleStarterFormatChange = useCallback((format: StarterMatchFormat) => {
+    setStarterPreferredFormat(format)
+    try {
+      window.localStorage.setItem(getStarterFormatStorageKey(userId), format)
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, [userId])
+
+  const handleStarterDismiss = useCallback(() => {
+    const dismissedAt = Date.now()
+    setStarterDismissedAt(dismissedAt)
+    try {
+      window.localStorage.setItem(getStarterDismissStorageKey(userId), String(dismissedAt))
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, [userId])
+
+  const handleStarterAddContact = useCallback(() => {
+    clearMessage()
+    setSection('hood')
+    setContactToolsOpen(true)
+    setContactComposerMode('manual')
+    setError(null)
+    window.setTimeout(() => {
+      document.getElementById('add-my-contact-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+  }, [clearMessage])
+
+  const handleStarterStartMatch = useCallback(() => {
+    if (firstCreatedMatch?.match.id && firstMatchCreated) {
+      router.push(`/matches/${firstCreatedMatch.match.id}`)
+      return
+    }
+    if (!selectedSport) return
+    const params = new URLSearchParams()
+    params.set('tab', 'matches')
+    params.set('createSport', String(selectedSport.id))
+    params.set('starterHint', '1')
+    if (starterPreferredFormat === 'singles' || starterPreferredFormat === 'unknown') {
+      params.set('createFormat', 'singles')
+    } else if (starterPreferredFormat === 'doubles') {
+      params.set('createFormat', 'doubles')
+    }
+    router.push(`/dashboard?${params.toString()}`)
+  }, [firstCreatedMatch?.match.id, firstMatchCreated, router, selectedSport, starterPreferredFormat])
+
   const showContactTools = section === 'hood' && contactToolsOpen
   return (
     <div className="space-y-5">
+      {shouldShowStarterCard ? (
+        <FirstHoodStarterCard
+          contactCount={starterContactCount}
+          firstMatchCreated={firstMatchCreated}
+          preferredFormat={starterPreferredFormat}
+          onPreferredFormatChange={handleStarterFormatChange}
+          onAddContact={handleStarterAddContact}
+          onStartMatch={handleStarterStartMatch}
+          onDismiss={handleStarterDismiss}
+        />
+      ) : null}
+
       <div className="rounded-[30px] border border-[#E2E8F0] bg-white px-5 py-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
         <div className="flex flex-wrap gap-2">
           {sportOptions.map((sport) => (
@@ -2978,7 +3310,7 @@ export function HoodsPanel({
       ) : null}
 
       {showContactTools && (
-        <div className="overflow-hidden rounded-[40px] border border-[#E2E8F0] bg-white px-5 py-7 shadow-[0_26px_70px_-42px_rgba(11,31,68,0.35)] sm:px-8 lg:px-10">
+        <div id="add-my-contact-panel" className="overflow-hidden rounded-[40px] border border-[#E2E8F0] bg-white px-5 py-7 shadow-[0_26px_70px_-42px_rgba(11,31,68,0.35)] sm:px-8 lg:px-10">
           <div className="flex items-start justify-between gap-4">
             <h3 className="text-[28px] font-black tracking-[-0.02em] text-[#0B1F44]">Add My Contact</h3>
             <button
