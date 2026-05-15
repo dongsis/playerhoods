@@ -216,14 +216,14 @@ function ContactAddIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' |
 function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="w-full rounded-2xl border border-dashed border-[#7FB2FF] bg-[#F8FBFF] px-4 py-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
+      <div className="flex flex-col items-start gap-3">
+        <div className="flex items-start gap-3 self-stretch">
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D7E3F4] bg-white text-[#075BD7]">
             <ContactAddIcon kind="people" />
           </span>
-          <span>
+          <span className="min-w-0">
             <h4 className="text-title-main text-[#0B1F44]">Need more players?</h4>
-            <p className="text-body-sub mt-1 max-w-[240px] text-[#64748B]">
+            <p className="text-body-sub mt-1 text-[#64748B]">
               Add people you already play with and invite them to this match.
             </p>
           </span>
@@ -231,7 +231,7 @@ function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
         <button
           type="button"
           onClick={onAdd}
-          className="text-body-main mt-8 inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF] sm:mt-6"
+          className="text-body-main inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
         >
           <span className="text-lg leading-none">+</span>
           Add My Contact
@@ -1005,7 +1005,7 @@ function MiniCalendar({
                 className={[
                   'flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-medium transition-all',
                   isSelected
-                    ? 'border border-[#FB923C] bg-[#FFF7ED] text-[#EA580C]'
+                    ? 'border border-[#3B82F6] bg-[#EFF6FF] text-[#075BD7]'
                     : isPast
                       ? 'text-[#CBD5E1]'
                       : isToday
@@ -1066,6 +1066,7 @@ export function CreateMatchInline({
   const [courtPlanMenuOpen, setCourtPlanMenuOpen] = useState(false)
   const [organizerNote, setOrganizerNote] = useState('')
   const [organizerNoteExpanded, setOrganizerNoteExpanded] = useState(false)
+  const [venueOptionsExpanded, setVenueOptionsExpanded] = useState(false)
   const [courtSlots, setCourtSlots] = useState<CourtSlotSelection[]>([
     { enabled: true, courtId: '', manualLabel: '' },
   ])
@@ -1408,6 +1409,16 @@ export function CreateMatchInline({
     const rest = venues.filter((venue) => venue.id !== selectedVenue?.id)
     return [...selected, ...rest]
   }, [selectedVenue, venues])
+
+  const primaryVenueOptions = useMemo(
+    () => visibleVenueOptions.slice(0, 3),
+    [visibleVenueOptions],
+  )
+
+  const additionalVenueOptions = useMemo(
+    () => visibleVenueOptions.slice(3),
+    [visibleVenueOptions],
+  )
 
   const handleCreateContactPlayer = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -2475,7 +2486,7 @@ export function CreateMatchInline({
                 key={item.title}
                 className={[
                   'flex items-start gap-3 lg:flex-col lg:items-center lg:justify-start lg:text-center',
-                  index > 0 ? 'lg:border-l lg:border-[#EEF3F8]' : '',
+                  index > 0 ? 'lg:border-l-2 lg:border-[#CBD5E1]' : '',
                 ].join(' ')}
               >
                 <span className={['flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/70 shadow-sm', item.tone].join(' ')}>
@@ -2490,49 +2501,49 @@ export function CreateMatchInline({
           </div>
 
           <div className="mt-9 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.82fr)] lg:gap-14">
-            <form onSubmit={handleCreateContactPlayer} className="grid gap-5 lg:border-r lg:border-[#EEF3F8] lg:pr-10">
+            <form onSubmit={handleCreateContactPlayer} className="grid gap-5 lg:border-r-2 lg:border-[#CBD5E1] lg:pr-10">
               <label className="text-label text-[#536179]">
-                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Name</span>
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Name</span>
                 <input
                   type="text"
                   value={contactDisplayName}
                   onChange={(event) => setContactDisplayName(event.target.value)}
                   placeholder="Player's full name"
-                  className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                 />
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-label text-[#536179]">
-                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Email</span>
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Email</span>
                   <input
                     type="email"
                     value={contactEmail}
                     onChange={(event) => setContactEmail(event.target.value)}
                     placeholder="email@example.com"
-                    className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                   />
                 </label>
                 <label className="text-label text-[#536179]">
-                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Phone</span>
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Phone</span>
                   <input
                     type="tel"
                     value={contactPhone}
                     onChange={(event) => setContactPhone(event.target.value)}
                     placeholder="+1 234 567 890"
-                    className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                   />
                 </label>
               </div>
 
               <label className="text-label text-[#536179]">
-                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Notes</span>
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Notes</span>
                 <textarea
                   value={contactNotes}
                   onChange={(event) => setContactNotes(event.target.value)}
                   placeholder="Add details like skill level or preferred times..."
                   rows={3}
-                  className="text-body-main w-full resize-none rounded-2xl border border-[#D7E2F0] bg-white px-4 py-3 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                 />
               </label>
 
@@ -2778,24 +2789,61 @@ export function CreateMatchInline({
           <div>
             <label className={DS_LABEL}>Venue</label>
             {visibleVenueOptions.length > 0 ? (
-              <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                {visibleVenueOptions.map((venue) => {
-                  const selected = venue.id === venueId
-                  return (
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {primaryVenueOptions.map((venue) => {
+                    const selected = venue.id === venueId
+                    return (
+                      <button
+                        key={venue.id}
+                        type="button"
+                        onClick={() => setVenueId(venue.id)}
+                        className={[
+                          DS_OPTION_BUTTON,
+                          'min-h-12 justify-center text-center',
+                          selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                        ].join(' ')}
+                      >
+                        {getVenueDisplayName(venue)}
+                      </button>
+                    )
+                  })}
+                  {additionalVenueOptions.length > 0 ? (
                     <button
-                      key={venue.id}
                       type="button"
-                      onClick={() => setVenueId(venue.id)}
+                      onClick={() => setVenueOptionsExpanded((open) => !open)}
                       className={[
                         DS_OPTION_BUTTON,
                         'min-h-12 justify-center text-center',
-                        selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                        venueOptionsExpanded ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
                       ].join(' ')}
+                      aria-label="Show more venues"
                     >
-                      {getVenueDisplayName(venue)}
+                      +
                     </button>
-                  )
-                })}
+                  ) : null}
+                </div>
+                {venueOptionsExpanded && additionalVenueOptions.length > 0 ? (
+                  <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                    {additionalVenueOptions.map((venue) => {
+                      const selected = venue.id === venueId
+                      return (
+                        <button
+                          key={venue.id}
+                          type="button"
+                          onClick={() => setVenueId(venue.id)}
+                          className={[
+                            DS_OPTION_BUTTON,
+                            'min-h-12 justify-center text-center',
+                            selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                          ].join(' ')}
+                        >
+                          {getVenueDisplayName(venue)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <p className="text-body-sub rounded-xl border border-dashed border-[#D7E2F0] bg-[#F8FBFF] px-4 py-3 text-[#64748B]">
@@ -2852,7 +2900,7 @@ export function CreateMatchInline({
                   onClick={() => setCustomCourtsOpen((open) => !open)}
                   className={[
                     'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
-                    customCourtsOpen || ![1, 2].includes(courtCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                    customCourtsOpen && [1, 2].includes(courtCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
                   ].join(' ')}
                   aria-label="Set custom court count"
                 >
@@ -2869,7 +2917,7 @@ export function CreateMatchInline({
                       const nextValue = Number.parseInt(e.target.value, 10)
                       setCourtCount(Number.isNaN(nextValue) ? 1 : Math.min(6, Math.max(1, nextValue)))
                     }}
-                    className="h-10 w-20 rounded-xl border border-[#E2E8F0] bg-white px-3 text-center text-sm font-bold text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
+                    className="h-10 w-20 rounded-xl border border-[#3B82F6] bg-[#EFF6FF] px-3 text-center text-sm font-black text-[#075BD7] outline-none transition focus:border-[#3B82F6] focus:ring-4 focus:ring-[#3B82F6]/10"
                   />
                 ) : null}
               </div>

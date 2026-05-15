@@ -3016,7 +3016,8 @@ export function HoodsPanel({
   const firstMatchCreated = Boolean(firstCreatedMatch)
   const starterTarget = getStarterTarget(starterPreferredFormat)
   const starterDismissedRecently = starterDismissedAt !== null && Date.now() - starterDismissedAt < STARTER_DISMISS_MS
-  const shouldShowStarterCard = section === 'hood'
+  const shouldShowStarterCard = false
+    && section === 'hood'
     && !starterDismissedRecently
     && !(starterContactCount >= starterTarget && firstMatchCreated)
 
@@ -3365,7 +3366,7 @@ export function HoodsPanel({
                 key={item.title}
                 className={[
                   'flex items-start gap-3 lg:flex-col lg:items-center lg:justify-start lg:text-center',
-                  index > 0 ? 'lg:border-l lg:border-[#EEF3F8]' : '',
+                  index > 0 ? 'lg:border-l-2 lg:border-[#CBD5E1]' : '',
                 ].join(' ')}
               >
                 <span className={['flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/70 shadow-sm', item.tone].join(' ')}>
@@ -3380,49 +3381,49 @@ export function HoodsPanel({
           </div>
 
           <div className="mt-9 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.82fr)] lg:gap-14">
-            <form onSubmit={handleCreateContact} className="grid gap-5 lg:border-r lg:border-[#EEF3F8] lg:pr-10">
+            <form onSubmit={handleCreateContact} className="grid gap-5 lg:border-r-2 lg:border-[#CBD5E1] lg:pr-10">
               <label className="text-label text-[#536179]">
-                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Name</span>
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Name</span>
                 <input
                   type="text"
                   value={contactDisplayName}
                   onChange={(event) => setContactDisplayName(event.target.value)}
                   placeholder="Player's full name"
-                  className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                 />
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-label text-[#536179]">
-                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Email</span>
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Email</span>
                   <input
                     type="email"
                     value={contactEmail}
                     onChange={(event) => setContactEmail(event.target.value)}
                     placeholder="email@example.com"
-                    className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                   />
                 </label>
                 <label className="text-label text-[#536179]">
-                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Phone</span>
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Phone</span>
                   <input
                     type="tel"
                     value={contactPhone}
                     onChange={(event) => setContactPhone(event.target.value)}
                     placeholder="+1 234 567 890"
-                    className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                   />
                 </label>
               </div>
 
               <label className="text-label text-[#536179]">
-                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Notes</span>
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Notes</span>
                 <textarea
                   value={contactNotes}
                   onChange={(event) => setContactNotes(event.target.value)}
                   placeholder="Add details like skill level or preferred times..."
                   rows={3}
-                  className="text-body-main w-full resize-none rounded-2xl border border-[#D7E2F0] bg-white px-4 py-3 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
                 />
               </label>
 

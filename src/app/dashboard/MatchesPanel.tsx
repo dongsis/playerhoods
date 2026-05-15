@@ -36,6 +36,147 @@ const FALLBACK_ROSTER_INSIGHT = {
   },
 } as const
 
+type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
+
+function getStarterTarget(format: StarterMatchFormat) {
+  return format === 'doubles' ? 3 : 1
+}
+
+function StarterPeopleIcon({ count }: { count: number }) {
+  return (
+    <div className="relative flex h-20 w-20 items-center justify-center rounded-[22px] border border-[#CFE0F3] bg-[#F8FBFF] text-[#2563EB] shadow-[0_12px_28px_rgba(37,99,235,0.08)]">
+      <svg viewBox="0 0 48 48" className="h-11 w-11" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="18" cy="17" r="6" />
+        <circle cx="31" cy="19" r="5" />
+        <path d="M8 37c2.4-7 7.5-10.5 13-10.5S31.6 30 34 37" />
+        <path d="M29 30.5c2.2-2.3 5.1-3.3 8.5-2.5 2.8.7 5.1 2.8 6.5 6" />
+      </svg>
+      {count > 0 ? (
+        <span className="absolute -bottom-1 -right-1 flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-white bg-[#22C55E] px-2 text-[12px] font-black leading-none text-white shadow-[0_8px_20px_rgba(34,197,94,0.28)]">
+          {count}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+type FirstMatchStarterCardProps = {
+  contactCount: number
+  firstMatchCreated: boolean
+  preferredFormat: StarterMatchFormat
+  onPreferredFormatChange: (format: StarterMatchFormat) => void
+  onAddContact?: () => void
+  onStartMatch: () => void
+  onDismiss: () => void
+}
+
+function FirstMatchStarterCard({
+  contactCount,
+  firstMatchCreated,
+  preferredFormat,
+  onPreferredFormatChange,
+  onAddContact,
+  onStartMatch,
+  onDismiss,
+}: FirstMatchStarterCardProps) {
+  const target = getStarterTarget(preferredFormat)
+  const ready = contactCount >= target
+  const progress = Math.min(100, Math.round((contactCount / target) * 100))
+  const formatLabel = preferredFormat === 'doubles' ? 'doubles' : 'singles'
+
+  const title = firstMatchCreated
+    ? 'Your first match is live'
+    : ready
+      ? 'Your Hood is ready'
+      : 'Build your first match list'
+  const body = firstMatchCreated
+    ? 'Keep inviting your saved players as your playing circle grows.'
+    : ready
+      ? `You've saved ${contactCount} Player Card${contactCount === 1 ? '' : 's'}. Now invite them to your first match.`
+      : `Save ${Math.max(target - contactCount, 0)} more regular player${target - contactCount === 1 ? '' : 's'} to start a ${formatLabel} match faster.`
+
+  return (
+    <section className="relative overflow-hidden rounded-[28px] border border-[#D8E6F6] bg-white px-5 py-5 shadow-[0_20px_48px_rgba(15,23,42,0.06)] sm:px-7">
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="absolute right-5 top-5 inline-flex h-8 w-8 items-center justify-center rounded-full text-[22px] font-light leading-none text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#1E293B]"
+        aria-label="Dismiss starter card"
+      >
+        x
+      </button>
+      <div className="flex flex-col gap-5 pr-9 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-h2 font-black tracking-[-0.03em] text-[#0F172A]">{title}</h2>
+          <p className="mt-2 max-w-2xl text-body-main text-[#536783]">{body}</p>
+
+          {!ready && !firstMatchCreated ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {(['singles', 'doubles'] as const).map((format) => (
+                <button
+                  key={format}
+                  type="button"
+                  onClick={() => onPreferredFormatChange(format)}
+                  className={[
+                    'rounded-full border px-4 py-2 text-body-main font-bold transition',
+                    preferredFormat === format
+                      ? 'border-[#0B2A5B] bg-[#0B2A5B] text-white shadow-[0_10px_24px_rgba(11,42,91,0.18)]'
+                      : 'border-[#D8E6F6] bg-[#F8FBFF] text-[#536783] hover:border-[#B8CCE5] hover:text-[#0F172A]',
+                  ].join(' ')}
+                >
+                  {format === 'singles' ? 'Singles' : 'Doubles'}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-4">
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#7186A4]">
+              <span>{contactCount} / {target} Player Card{target === 1 ? '' : 's'} Saved</span>
+              {ready ? <span className="text-[#16A34A]">Done</span> : null}
+            </div>
+            <div className="h-2 w-full max-w-[520px] overflow-hidden rounded-full bg-[#E7EEF7]">
+              <div className="h-full rounded-full bg-[#22C55E]" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            {ready || firstMatchCreated ? (
+              <button
+                type="button"
+                onClick={onStartMatch}
+                className="rounded-[12px] bg-[#2563EB] px-5 py-3 text-body-main font-black text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)] transition hover:bg-[#1D4ED8]"
+              >
+                Start a Match&nbsp; &gt;
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onAddContact}
+                  className="rounded-[12px] bg-[#0B2A5B] px-5 py-3 text-body-main font-black text-white shadow-[0_12px_24px_rgba(11,42,91,0.18)] transition hover:bg-[#12386F]"
+                >
+                  + Add My Contact
+                </button>
+                <button
+                  type="button"
+                  onClick={onStartMatch}
+                  className="rounded-[12px] border border-[#D8E6F6] bg-white px-5 py-3 text-body-main font-black text-[#536783] transition hover:border-[#B8CCE5] hover:text-[#0F172A]"
+                >
+                  Create Match
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="hidden shrink-0 items-center gap-4 sm:flex">
+          <StarterPeopleIcon count={contactCount} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function isPast(item: MatchListItem, nowIso: string): boolean {
   const { match } = item
   if (match.start_at_utc) return match.start_at_utc < nowIso
@@ -1138,6 +1279,14 @@ interface Props {
   onViewedMatch?: (matchId: string) => void
   dismissedAlertMatchIds?: Set<string>
   onDismissAlert?: (matchId: string) => void
+  starterCard?: {
+    contactCount: number
+    preferredFormat: StarterMatchFormat
+    firstMatchCreated: boolean
+    onPreferredFormatChange: (format: StarterMatchFormat) => void
+    onDismiss: () => void
+    onAddContact?: () => void
+  } | null
 }
 
 export function MatchesPanel({
@@ -1148,6 +1297,7 @@ export function MatchesPanel({
   onViewedMatch,
   dismissedAlertMatchIds,
   onDismissAlert,
+  starterCard,
 }: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'calendar' | 'history'>('upcoming')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
@@ -1224,12 +1374,24 @@ export function MatchesPanel({
     </button>
   )
 
-  const openMobileCreate = () => {
+  const openCreateMatch = () => {
     setMobileCreateExpandSignal((value) => value + 1)
     window.setTimeout(() => {
       document.getElementById('create-match-inline')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 60)
   }
+
+  const renderStarterCard = () => starterCard ? (
+    <FirstMatchStarterCard
+      contactCount={starterCard.contactCount}
+      firstMatchCreated={starterCard.firstMatchCreated}
+      preferredFormat={starterCard.preferredFormat}
+      onPreferredFormatChange={starterCard.onPreferredFormatChange}
+      onAddContact={starterCard.onAddContact}
+      onStartMatch={openCreateMatch}
+      onDismiss={starterCard.onDismiss}
+    />
+  ) : null
 
   return (
     <div className="space-y-8">
@@ -1265,6 +1427,8 @@ export function MatchesPanel({
             {subTabBtn('history', 'History', history.length)}
           </div>
         </section>
+
+        {renderStarterCard()}
 
         {subTab === 'upcoming' ? (
           <>
@@ -1342,7 +1506,7 @@ export function MatchesPanel({
         <div className="sticky bottom-[5.3rem] z-20 px-1">
           <button
             type="button"
-            onClick={openMobileCreate}
+            onClick={openCreateMatch}
             className="flex w-full items-center justify-center gap-4 rounded-full bg-[#C25E46] px-6 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-white shadow-[0_24px_40px_rgba(194,94,70,0.28)]"
           >
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-[28px] font-medium leading-none text-[#C25E46]">+</span>
@@ -1352,7 +1516,8 @@ export function MatchesPanel({
       </div>
 
       <div className="hidden space-y-8 md:block">
-      <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
+        {renderStarterCard()}
+        <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
         <div className="flex items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
           <div>
             <h2 className="text-h2 font-semibold tracking-tight text-[#0F172A]">Match Board</h2>

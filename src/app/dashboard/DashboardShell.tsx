@@ -147,9 +147,14 @@ type DashboardLiveResponse = {
 }
 
 type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
+const STARTER_DISMISS_MS = 24 * 60 * 60 * 1000
 
 function getStarterFormatStorageKey(userId: string) {
   return `dashboard:first-hood-format:${userId}`
+}
+
+function getStarterDismissStorageKey(userId: string) {
+  return `dashboard:first-hood-dismissed-at:${userId}`
 }
 
 function getStarterTarget(format: StarterMatchFormat) {
@@ -281,6 +286,7 @@ export function DashboardShell({
   const [liveItems, setLiveItems] = useState(items)
   const [starterContactCount, setStarterContactCount] = useState(0)
   const [starterFormat, setStarterFormat] = useState<StarterMatchFormat>('unknown')
+  const [starterDismissedAt, setStarterDismissedAt] = useState<number | null>(null)
 
   const refreshDashboardLive = useCallback(async () => {
     try {
@@ -321,6 +327,10 @@ export function DashboardShell({
       if (stored === 'singles' || stored === 'doubles' || stored === 'unknown') {
         setStarterFormat(stored)
       }
+      const storedDismissedAt = Number(window.localStorage.getItem(getStarterDismissStorageKey(userId)) ?? '')
+      if (Number.isFinite(storedDismissedAt) && storedDismissedAt > 0) {
+        setStarterDismissedAt(storedDismissedAt)
+      }
     } catch {
       // Keep the default format if localStorage is unavailable.
     }
@@ -338,6 +348,25 @@ export function DashboardShell({
 
     return () => {
       cancelled = true
+    }
+  }, [userId])
+
+  const handleStarterFormatChange = useCallback((format: StarterMatchFormat) => {
+    setStarterFormat(format)
+    try {
+      window.localStorage.setItem(getStarterFormatStorageKey(userId), format)
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, [userId])
+
+  const handleStarterDismiss = useCallback(() => {
+    const dismissedAt = Date.now()
+    setStarterDismissedAt(dismissedAt)
+    try {
+      window.localStorage.setItem(getStarterDismissStorageKey(userId), String(dismissedAt))
+    } catch {
+      // Ignore localStorage failures.
     }
   }, [userId])
 
@@ -373,6 +402,14 @@ export function DashboardShell({
     () => new Set([...viewedMatchIds, ...dismissedMatchIds]),
     [dismissedMatchIds, viewedMatchIds],
   )
+  const firstMatchCreated = useMemo(
+    () => liveItems.some((item) => item.match.organizer_id === userId),
+    [liveItems, userId],
+  )
+  const starterTarget = getStarterTarget(starterFormat)
+  const starterDismissedRecently = starterDismissedAt !== null && Date.now() - starterDismissedAt < STARTER_DISMISS_MS
+  const shouldShowStarterCard = !starterDismissedRecently
+    && !(starterContactCount >= starterTarget && firstMatchCreated)
 
   useEffect(() => {
     if (!isAdmin && (activeTab === 'venues' || activeTab === 'admin' || activeTab === 'gear')) {
@@ -465,17 +502,15 @@ export function DashboardShell({
       }
     }
     const groupsBadge = playersData.pendingGroupInvites.length || undefined
-    const firstMatchCreated = liveItems.some((item) => item.match.organizer_id === userId)
-    const starterTarget = getStarterTarget(starterFormat)
-    const hoodsStarterDot = starterContactCount < starterTarget
-    const matchesStarterDot = starterContactCount >= starterTarget && !firstMatchCreated
+    const hoodsStarterDot = !starterDismissedRecently && starterContactCount < starterTarget
+    const matchesStarterDot = !starterDismissedRecently && starterContactCount >= starterTarget && !firstMatchCreated
     return {
       inbox: inboxBadge || undefined,
       matches: matchesBadge || (matchesStarterDot ? -1 : undefined),
       hoods: hoodsStarterDot ? -1 : undefined,
       groups: groupsBadge,
     }
-  }, [inboxBadge, liveItems, playersData.pendingGroupInvites.length, starterContactCount, starterFormat, suppressedMatchIds, userId])
+  }, [firstMatchCreated, inboxBadge, liveItems, playersData.pendingGroupInvites.length, starterContactCount, starterDismissedRecently, starterTarget, suppressedMatchIds])
 
   const mainWidthClass = activeTab === 'profile' || activeTab === 'gear' || activeTab === 'hoods' || activeTab === 'groups'
     ? 'max-w-6xl'
@@ -525,6 +560,14 @@ export function DashboardShell({
           userId={userId}
           defaultVenueId={profile.primary_venue_id ?? ''}
           onCancelMatch={onCancelMatch}
+          starterCard={shouldShowStarterCard ? {
+            contactCount: starterContactCount,
+            preferredFormat: starterFormat,
+            firstMatchCreated,
+            onPreferredFormatChange: handleStarterFormatChange,
+            onDismiss: handleStarterDismiss,
+            onAddContact: () => setActiveTab('hoods'),
+          } : null}
           dismissedAlertMatchIds={suppressedMatchIds}
           onViewedMatch={matchId =>
             setViewedMatchIds(prev => new Set([...prev, matchId]))
