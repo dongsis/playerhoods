@@ -16,10 +16,51 @@ import {
 
 interface Props {
   params: Promise<{ id: string }>
+  searchParams: Promise<{
+    error?: string
+    notice?: string
+  }>
 }
 
-export default async function InvitationPage({ params }: Props) {
+function getInvitationPageErrorMessage(code: string | undefined): string | null {
+  switch (code) {
+    case 'not-authenticated':
+      return 'Please open the magic link again, or sign in with the invited account.'
+    case 'email-mismatch':
+      return 'This invitation is tied to a different email address.'
+    case 'expired':
+      return 'This invitation has expired.'
+    case 'match-not-active':
+      return 'This match is no longer active.'
+    case 'participant-ambiguous':
+      return 'This invitation matches more than one participant record. Ask the organizer to resend it.'
+    case 'participant-not-found':
+      return 'This invitation is no longer connected to an active participant.'
+    case 'not-found':
+      return 'This invitation could not be found.'
+    case 'unsupported':
+      return 'This invitation type is not supported here.'
+    case 'failed':
+      return 'Could not update this invitation. Please try again.'
+    default:
+      return null
+  }
+}
+
+function getInvitationPageNotice(code: string | undefined): string | null {
+  switch (code) {
+    case 'accepted':
+      return 'Invitation accepted.'
+    case 'declined':
+      return 'Invitation declined.'
+    default:
+      return null
+  }
+}
+
+export default async function InvitationPage({ params, searchParams }: Props) {
   const { id } = await params
+  const pageParams = await searchParams
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
 
@@ -65,6 +106,8 @@ export default async function InvitationPage({ params }: Props) {
         .filter(Boolean)
         .join(' · ') || 'Match'
     : 'Match'
+  const pageError = getInvitationPageErrorMessage(pageParams.error)
+  const pageNotice = getInvitationPageNotice(pageParams.notice)
 
   return (
     <div style={{ maxWidth: 480, margin: '2rem auto', padding: '0 1rem' }}>
@@ -72,6 +115,18 @@ export default async function InvitationPage({ params }: Props) {
         <BrandLogo variant="horizontal" />
       </div>
       <h1 style={{ marginBottom: '0.5rem', fontSize: '1.25rem' }}>Match invitation</h1>
+
+      {pageError ? (
+        <div style={{ padding: '0.75rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, marginBottom: '1rem' }}>
+          <p style={{ margin: 0, color: '#991b1b', fontSize: '0.9rem' }}>{pageError}</p>
+        </div>
+      ) : null}
+
+      {pageNotice ? (
+        <div style={{ padding: '0.75rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, marginBottom: '1rem' }}>
+          <p style={{ margin: 0, color: '#166534', fontSize: '0.9rem' }}>{pageNotice}</p>
+        </div>
+      ) : null}
 
       <div style={{ padding: '1rem', border: '1px solid #e0e0e0', borderRadius: 8, marginBottom: '1rem' }}>
         <p style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#555' }}>

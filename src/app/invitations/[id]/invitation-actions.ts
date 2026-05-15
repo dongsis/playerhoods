@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 
@@ -30,6 +31,30 @@ function revalidateInvitationSurfaces(invitationId: string, relatedId?: string |
   }
 }
 
+function getInvitationActionErrorCode(error: unknown): string {
+  const message =
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : ''
+
+  if (message.includes('not_authenticated')) return 'not-authenticated'
+  if (message.includes('email_mismatch')) return 'email-mismatch'
+  if (message.includes('invitation_expired')) return 'expired'
+  if (message.includes('match_not_active') || message.includes('Match is not active')) return 'match-not-active'
+  if (message.includes('participant_ambiguous')) return 'participant-ambiguous'
+  if (message.includes('participant_not_found') || message.includes('anchored_participant_not_found')) return 'participant-not-found'
+  if (message.includes('invitation_not_found')) return 'not-found'
+  return 'failed'
+}
+
+function redirectToInvitation(invitationId: string, params: Record<string, string>) {
+  const query = new URLSearchParams(params)
+  redirect(`/invitations/${invitationId}?${query.toString()}`)
+}
+
 async function callInvitationRpc(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   rpcName: 'rpc_email_invitation_accept' | 'rpc_email_invitation_decline',
@@ -52,12 +77,18 @@ export async function acceptInvitationAuthenticatedAction(
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
   if (!user) {
-    throw new Error('Please log in again.')
+    redirectToInvitation(invitationId, { error: 'not-authenticated' })
   }
 
-  await callInvitationRpc(supabase, 'rpc_email_invitation_accept', invitationId)
+  try {
+    await callInvitationRpc(supabase, 'rpc_email_invitation_accept', invitationId)
+    revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
+  } catch (error) {
+    console.error('[invitation:accept-authenticated]', error)
+    redirectToInvitation(invitationId, { error: getInvitationActionErrorCode(error) })
+  }
 
-  revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
+  redirectToInvitation(invitationId, { notice: 'accepted' })
 }
 
 export async function declineInvitationAuthenticatedAction(
@@ -68,12 +99,18 @@ export async function declineInvitationAuthenticatedAction(
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
   if (!user) {
-    throw new Error('Please log in again.')
+    redirectToInvitation(invitationId, { error: 'not-authenticated' })
   }
 
-  await callInvitationRpc(supabase, 'rpc_email_invitation_decline', invitationId)
+  try {
+    await callInvitationRpc(supabase, 'rpc_email_invitation_decline', invitationId)
+    revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
+  } catch (error) {
+    console.error('[invitation:decline-authenticated]', error)
+    redirectToInvitation(invitationId, { error: getInvitationActionErrorCode(error) })
+  }
 
-  revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
+  redirectToInvitation(invitationId, { notice: 'declined' })
 }
 
 export async function acceptInvitationIdentityLinkAndContinueAction(
