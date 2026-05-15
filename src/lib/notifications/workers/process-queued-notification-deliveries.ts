@@ -15,6 +15,7 @@ import {
   guestDelegateConfirmedEmail,
   gameFormedEmail,
 } from '@/lib/email/templates'
+import { formatInvitationToken } from '@/lib/invitations/invitation-token'
 
 const raw =
   process.env.NEXT_PUBLIC_SITE_URL ??
@@ -105,7 +106,7 @@ export async function processQueuedNotificationDeliveries(
         invitationId,
         matchSummary,
         siteUrl: SMS_SITE_URL,
-        unsubscribeUrl: `${SMS_SITE_URL}/stop/${encodeURIComponent(invitationId)}`,
+        unsubscribeUrl: `${SMS_SITE_URL}/stop/${formatInvitationToken(invitationId)}`,
       })
     } else if (templateType === 'guest_nominated') {
       const m = buildMatchInfo(payload)

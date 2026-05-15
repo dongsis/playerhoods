@@ -1,4 +1,5 @@
 import type { MatchInfo } from '@/lib/email/templates'
+import { formatInvitationToken } from '@/lib/invitations/invitation-token'
 
 type InvitationSmsData = {
   inviterDisplayName: string
@@ -45,8 +46,9 @@ export function renderInvitationSms(data: InvitationSmsData): string {
   const gameType = formatGameType(data.matchSummary?.game_type)
   const date = formatSmsDate(data.matchSummary?.match_date)
   const venueName = data.matchSummary?.club_name?.trim()
-  const invitationUrl = `${baseUrl}/i/${data.invitationId}`
-  const unsubscribeUrl = data.unsubscribeUrl ?? `${baseUrl}/stop/${data.invitationId}`
+  const token = formatInvitationToken(data.invitationId)
+  const invitationUrl = `${baseUrl}/i/${token}`
+  const unsubscribeUrl = data.unsubscribeUrl ?? `${baseUrl}/stop/${token}`
   const details = [
     gameType === 'match' ? 'a match' : `a ${gameType} match`,
     date ? `on ${date}` : null,

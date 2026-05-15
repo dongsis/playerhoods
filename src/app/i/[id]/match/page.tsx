@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { getInvitationById } from '@/lib/invitations/get-invitation-by-id'
+import { resolveInvitationToken } from '@/lib/invitations/invitation-token'
 import { createSupabasePublicServerClient } from '@/lib/supabase/server'
 
 type Props = {
@@ -34,7 +35,8 @@ function formatStatus(value: string): string {
 export default async function GuestInvitationMatchPage({ params }: Props) {
   const { id } = await params
   const supabase = createSupabasePublicServerClient()
-  const invitation = await getInvitationById(supabase, id)
+  const invitationId = await resolveInvitationToken(supabase, id)
+  const invitation = invitationId ? await getInvitationById(supabase, invitationId) : null
 
   if (!invitation || invitation.related_type !== 'match') {
     notFound()
@@ -95,7 +97,7 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
                 Create account
               </Link>
               <Link
-                href={`/invitations/${id}`}
+                href={`/invitations/${invitationId}`}
                 className="rounded-full border border-[#CBD5E1] px-5 py-2 text-sm font-semibold text-[#0B1F4D]"
               >
                 Maybe later
