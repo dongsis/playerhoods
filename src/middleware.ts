@@ -16,6 +16,7 @@ export async function middleware(request: NextRequest) {
   const isLoginRoute = pathname.startsWith('/login')
   const isAuthCallback = pathname.startsWith('/auth/callback')
   const isResetPasswordRoute = pathname.startsWith('/reset-password')
+  const isUnsubscribeRoute = pathname.startsWith('/unsubscribe')
   const isCanonicalLocalAuthRoute = isLoginRoute || isAuthCallback || isResetPasswordRoute
 
   if (shouldUseCanonicalLocalAuthHost(requestHost) && isCanonicalLocalAuthRoute) {
@@ -60,6 +61,7 @@ export async function middleware(request: NextRequest) {
     || isLoginRoute
     || isAuthCallback
     || isResetPasswordRoute
+    || isUnsubscribeRoute
     || isInvitationPage
     || isPublicVenueProfile
     || isPublicVenueDirectory

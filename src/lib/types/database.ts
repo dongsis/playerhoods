@@ -618,7 +618,7 @@ export type MatchParticipant = {
   removal_note: string | null
   // v1.5 participant-accepted fields
   participant_accepted_at: string | null
-  participant_accepted_via: string | null  // 'in_app' | 'manual' | 'delegate_manual' | 'email_invitation' | 'proxy' | null
+  participant_accepted_via: string | null  // 'in_app' | 'manual' | 'delegate_manual' | 'email_invitation' | 'sms_invitation' | 'proxy' | null
   manual_confirmed_by: string | null
   waiting_list_at: string | null
   source_contact_id?: string | null
