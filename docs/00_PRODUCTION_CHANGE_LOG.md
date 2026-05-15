@@ -14,6 +14,49 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-14 - MR-20260514-starter-card-match-flow
+
+**Type:** Mini Release
+**Code Commit:** `4af80bf`
+**Migration:** None
+**Status:** GitHub and Vercel Production deployed
+
+### Summary
+
+This mini release ships the current dashboard/contact/match UX polish:
+
+- Moves the first-Hood starter card from Hoods to Matches, directly above Match Board.
+- Adds starter-card dismiss behavior backed by localStorage.
+- Makes `Start a Match` expand the inline Create Match form on the Matches page.
+- Keeps Hoods responsible for starter progress reporting without rendering the starter card there.
+- Includes the pending Add My Contact and Create Match visual/density refinements already present in local source.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| Local code | Modified | Dashboard/Hoods/Matches/CreateMatchInline source updated locally |
+| GitHub main | `4af80bf` | Pushed to `origin/main` |
+| Vercel Preview | Not deployed | Not used for this mini release |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-87tmnhat0-nancys-projects-128e326c.vercel.app` reported Ready |
+| Supabase Local | N/A | No database migration in this release |
+| Supabase Remote | N/A | No database migration in this release |
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| TypeScript | Passed | `npx tsc --noEmit` |
+| Build | Passed | `npm run build` |
+| Static diff check | Passed | `git diff --check` on changed source files |
+| Production login smoke | Passed | `https://playerhoods-codex.vercel.app/login` and `https://www.playerhoods.com/login` returned HTTP 200 |
+| Authenticated production flow | Not run | Production test-account credentials were not used in this deployment task |
+
+### Rollback
+
+- Revert code commit `4af80bf` and redeploy the previous known-good production commit.
+- No Supabase rollback is needed because this release has no migration.
+
 ## 2026-05-12 - SR-20260512-linked-contact-permission-boundary-p5
 
 **Type:** Structural Release
