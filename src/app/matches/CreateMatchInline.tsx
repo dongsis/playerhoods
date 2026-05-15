@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
 import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
+import { SportSectionIcon } from '@/app/components/SportBallIcon'
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
 import type { CreateRecurringMatchSeriesInput, RecurringDirectInviteInput } from '@/lib/api/recurring-matches'
@@ -24,7 +25,7 @@ import {
 } from '@/lib/api/matches'
 import { getGroups, getGroupMembers } from '@/lib/api/groups'
 import { listSports, setGuestSports } from '@/lib/api/sports'
-import { getInviteCircleList, getInviteCircleSourceLabel } from '@/lib/api/play-network'
+import { getInviteCircleList, getInviteCircleSourceLabel, saveContactPlayer } from '@/lib/api/play-network'
 import { createRosterGuest, getContactPlayerResolution } from '@/lib/api/roster'
 import { getContactInvitationDeliveryStatus } from '@/lib/contact-communication'
 import { getAvailabilityStatusLabel } from '@/lib/profile-options'
@@ -125,14 +126,13 @@ const TIME_SLOTS = buildTimeSlots()
 
 const DS_CARD = 'rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]'
 const DS_SECTION_TITLE = 'text-h2 text-[#1E293B]'
-const DS_STEP = 'text-title-main flex h-8 w-8 items-center justify-center rounded-full bg-[#FFF7ED] font-black text-[#C25E46]'
 const DS_LABEL = 'text-label mb-1 block'
 const DS_FIELD =
   'text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10'
 const DS_OPTION_BUTTON =
   'text-body-main rounded-xl border px-4 py-2.5 font-semibold transition focus:outline-none focus:ring-4 focus:ring-[#C25E46]/10'
-const DS_OPTION_SELECTED = 'border-[#075BD7] bg-[#075BD7] text-white shadow-[0_12px_24px_-18px_rgba(7,91,215,0.9)]'
-const DS_OPTION_UNSELECTED = 'border-[#E2E8F0] bg-white text-[#1E293B] hover:border-[#BFD4EA] hover:bg-[#F8FBFF]'
+const DS_OPTION_SELECTED = 'border-[#2F74FF] bg-[#EEF5FF] text-[#075BD7] shadow-[0_10px_22px_-20px_rgba(7,91,215,0.8)]'
+const DS_OPTION_UNSELECTED = 'border-[#E2E8F0] bg-white text-[#52647E] hover:border-[#BFD4EA] hover:bg-[#F8FBFF]'
 
 const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'secured', label: 'Court already secured' },
@@ -150,38 +150,97 @@ function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | nu
   return null
 }
 
-function isPickleballSport(sport: Pick<Sport, 'code' | 'display_name'> | null | undefined) {
-  const value = `${sport?.code ?? ''} ${sport?.display_name ?? ''}`.toLowerCase()
-  return value.includes('pickle')
-}
-
-function BallSectionMark({ sport, className = '' }: { sport: Pick<Sport, 'code' | 'display_name'> | null | undefined; className?: string }) {
-  const pickleball = isPickleballSport(sport)
+function ContactAddIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' | 'shield' | 'spark' | 'close' | 'people' }) {
+  if (kind === 'card') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <rect x="4.2" y="3.2" width="11.6" height="13.6" rx="2" stroke="currentColor" strokeWidth="1.7" />
+        <circle cx="10" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M6.9 13.4c.9-1.4 2-2 3.1-2s2.2.6 3.1 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (kind === 'invite') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M7.7 12.3 12.3 7.7M8.2 6.1l.8-.8a3.4 3.4 0 0 1 4.8 4.8l-.8.8M11.8 13.9l-.8.8a3.4 3.4 0 0 1-4.8-4.8l.8-.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'reply') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M4.5 5.2h11a1.7 1.7 0 0 1 1.7 1.7v5.8a1.7 1.7 0 0 1-1.7 1.7H8.6L5 16.6v-2.2h-.5a1.7 1.7 0 0 1-1.7-1.7V6.9a1.7 1.7 0 0 1 1.7-1.7Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'bell') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M7.2 15.4h5.6M8.5 16.5a1.7 1.7 0 0 0 3 0M5.8 13.7c.8-.7 1.1-1.5 1.1-2.7V8.8a3.1 3.1 0 0 1 6.2 0V11c0 1.2.3 2 1.1 2.7H5.8Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'shield') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M10 2.8 15.2 5v4.1c0 3.3-1.8 5.8-5.2 7.9-3.4-2.1-5.2-4.6-5.2-7.9V5L10 2.8Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+        <path d="m7.8 9.8 1.4 1.4 3.1-3.3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'spark') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M10 2.4 11.4 7l4.3 1.5-4.3 1.6L10 14.6l-1.4-4.5-4.3-1.6L8.6 7 10 2.4Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'people') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <circle cx="7.7" cy="7.2" r="2.4" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M3.8 15c.7-2 2-3 3.9-3s3.2 1 3.9 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="13.6" cy="8.2" r="1.8" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M12.7 12.3c1.5.2 2.6 1 3.2 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    )
+  }
   return (
-    <span
-      className={[
-        'relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F7FBDE] shadow-[0_8px_18px_rgba(201,212,0,0.18)]',
-        className,
-      ].join(' ')}
-      aria-hidden="true"
-    >
-      <span className="relative h-5 w-5 overflow-hidden rounded-full bg-[#C9D400] shadow-inner">
-        {pickleball ? (
-          <>
-            <span className="absolute left-[4px] top-[4px] h-1.5 w-1.5 rounded-full bg-white/85" />
-            <span className="absolute right-[4px] top-[5px] h-1.5 w-1.5 rounded-full bg-white/85" />
-            <span className="absolute bottom-[4px] left-[8px] h-1.5 w-1.5 rounded-full bg-white/85" />
-          </>
-        ) : (
-          <>
-            <span className="absolute -left-1 top-[-2px] h-7 w-3 rounded-full border-r-2 border-white/90" />
-            <span className="absolute -right-1 bottom-[-2px] h-7 w-3 rounded-full border-l-2 border-white/90" />
-          </>
-        )}
-      </span>
-    </span>
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+      <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   )
 }
+
+function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div className="w-full rounded-2xl border border-dashed border-[#7FB2FF] bg-[#F8FBFF] px-4 py-3">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D7E3F4] bg-white text-[#075BD7]">
+            <ContactAddIcon kind="people" />
+          </span>
+          <span>
+            <h4 className="text-title-main text-[#0B1F44]">Need more players?</h4>
+            <p className="text-body-sub mt-1 max-w-[240px] text-[#64748B]">
+              Add people you already play with and invite them to this match.
+            </p>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="text-body-main inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
+        >
+          <span className="text-lg leading-none">+</span>
+          Add My Contact
+        </button>
+      </div>
+    </div>
+  )
+}
+
 
 const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open doubles' },
@@ -194,22 +253,6 @@ const SINGLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open singles' },
   { value: 'mens_doubles', label: "Men's singles" },
   { value: 'womens_doubles', label: "Women's singles" },
-]
-
-const COMBINED_GAME_TYPE_OPTIONS: Array<{
-  value: string
-  label: string
-  gameType: 'singles' | 'doubles'
-  format: MatchDoublesFormat
-  requiredCount: number
-}> = [
-  { value: 'double_open', label: 'Double - Open', gameType: 'doubles', format: 'open', requiredCount: 4 },
-  { value: 'double_man', label: 'Double - Man', gameType: 'doubles', format: 'mens_doubles', requiredCount: 4 },
-  { value: 'double_woman', label: 'Double - Woman', gameType: 'doubles', format: 'womens_doubles', requiredCount: 4 },
-  { value: 'double_mixed', label: 'Double - Mixed', gameType: 'doubles', format: 'mixed_doubles', requiredCount: 4 },
-  { value: 'single_open', label: 'Single - Open', gameType: 'singles', format: 'open', requiredCount: 2 },
-  { value: 'single_man', label: 'Single - Man', gameType: 'singles', format: 'mens_doubles', requiredCount: 2 },
-  { value: 'single_woman', label: 'Single - Woman', gameType: 'singles', format: 'womens_doubles', requiredCount: 2 },
 ]
 
 type ReviewInviteItem = {
@@ -1051,10 +1094,11 @@ export function CreateMatchInline({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectionMode, setSelectionMode] = useState<'invite' | 'request' | null>(null)
-  const [contactComposerOpen, setContactComposerOpen] = useState(false)
+  const [contactAddPanelOpen, setContactAddPanelOpen] = useState(false)
   const [contactDisplayName, setContactDisplayName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
+  const [contactNotes, setContactNotes] = useState('')
   const [creatingContact, setCreatingContact] = useState(false)
   const [tooltip, setTooltip] = useState<TooltipState>(null)
   const [prefillConsumed, setPrefillConsumed] = useState(false)
@@ -1369,6 +1413,7 @@ export function CreateMatchInline({
     const displayName = contactDisplayName.trim()
     const email = contactEmail.trim().toLowerCase() || null
     const phone = contactPhone.trim() || null
+    const notes = contactNotes.trim() || null
 
     if (!displayName) {
       setError('Enter a player name.')
@@ -1393,21 +1438,29 @@ export function CreateMatchInline({
         display_name: displayName,
         email,
         phone,
+        notes,
       })
+      await saveContactPlayer(supabase, newGuest.id, { source: 'manual' })
       await setGuestSports(supabase, newGuest.id, [selectedSport.code])
       setContactDisplayName('')
       setContactEmail('')
       setContactPhone('')
-      setContactComposerOpen(false)
+      setContactNotes('')
+      setContactAddPanelOpen(false)
       setSelectionMode('invite')
-      setInviteNotice(`${displayName} was added. Select them below to invite them to this match.`)
+      setSelectedDirectInviteKeys((current) => {
+        const next = new Set(current)
+        next.add(`contact:${newGuest.id}`)
+        return next
+      })
+      setInviteNotice(`${displayName} was saved and added to this match invite.`)
       await loadContactInviteCandidates()
     } catch (createError) {
       setError((createError as Error).message)
     } finally {
       setCreatingContact(false)
     }
-  }, [contactDisplayName, contactEmail, contactPhone, loadContactInviteCandidates, selectedSport])
+  }, [contactDisplayName, contactEmail, contactNotes, contactPhone, loadContactInviteCandidates, selectedSport])
 
   useEffect(() => {
     const nextDefaultCourtPlanMode = getDefaultCourtPlanModeForVenueKind(selectedVenue?.venue_kind)
@@ -1434,14 +1487,6 @@ export function CreateMatchInline({
   const selectedFormatLabel = useMemo(() => {
     const source = gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS
     return source.find((option) => option.value === doublesFormat)?.label ?? 'Not selected'
-  }, [doublesFormat, gameType])
-
-  const selectedCombinedGameTypeValue = useMemo(() => {
-    return (
-      COMBINED_GAME_TYPE_OPTIONS.find(
-        (option) => option.gameType === gameType && option.format === doublesFormat,
-      )?.value ?? COMBINED_GAME_TYPE_OPTIONS[0].value
-    )
   }, [doublesFormat, gameType])
 
   const reviewCourtSummary = useMemo(() => {
@@ -1479,13 +1524,6 @@ export function CreateMatchInline({
     && selectedScopeUsers.length === 0
     && selectedScopeGroups.length === 0
   const hasSavedOrContactInvitePlayers = availableInviteOptions.length > 0
-  const selectedInviteTargetCount = selectedInvitePlayers.length + selectedInvitedGroups.length
-  const shouldShowMorePlayersPrompt =
-    selectionMode === 'invite'
-    && hasSavedOrContactInvitePlayers
-    && selectedInviteTargetCount > 0
-    && selectedInviteTargetCount < requiredCount
-    && !contactComposerOpen
 
   const organizerNoteSentences = useMemo(
     () => new Set(parseOrganizerNoteSentences(organizerNote)),
@@ -2357,6 +2395,194 @@ export function CreateMatchInline({
 
   return (
     <>
+    {contactAddPanelOpen ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <button
+          type="button"
+          aria-label="Close add contact"
+          className="absolute inset-0 bg-[#0B1F44]/35 backdrop-blur-sm"
+          onClick={() => {
+            setContactAddPanelOpen(false)
+            setError(null)
+          }}
+        />
+        <div className="relative max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-[36px] border border-[#D7E2F0] bg-white px-5 py-7 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)] sm:px-8 lg:px-10">
+          <div className="flex items-start justify-between gap-4">
+            <h3 className="text-[28px] font-black tracking-[-0.02em] text-[#0B1F44]">Add My Contact</h3>
+            <button
+              type="button"
+              onClick={() => {
+                setContactAddPanelOpen(false)
+                setError(null)
+              }}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
+              aria-label="Close add contact panel"
+            >
+              <ContactAddIcon kind="close" />
+            </button>
+          </div>
+
+          <div className="mt-8 grid gap-5 border-b border-[#E2E8F0] pb-9 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              {
+                key: 'card' as const,
+                title: 'Save as player card',
+                body: 'Add someone not on PlayerHoods yet.',
+                tone: 'bg-[#EAF2FF] text-[#075BD7]',
+              },
+              {
+                key: 'invite' as const,
+                title: 'Invite by link',
+                body: 'Send a private invite link anytime.',
+                tone: 'bg-[#F1ECFF] text-[#6D5DF7]',
+              },
+              {
+                key: 'reply' as const,
+                title: 'Email or SMS reply',
+                body: 'They can accept without an account.',
+                tone: 'bg-[#EAFBF0] text-[#07823F]',
+              },
+              {
+                key: 'bell' as const,
+                title: 'Register notification',
+                body: 'Get notified when they join PlayerHoods.',
+                tone: 'bg-[#FFF7E6] text-[#C46B00]',
+              },
+              {
+                key: 'shield' as const,
+                title: 'Private by default',
+                body: 'Contact details stay hidden.',
+                tone: 'bg-[#EAF7FF] text-[#0877B8]',
+              },
+            ].map((item, index) => (
+              <div
+                key={item.title}
+                className={[
+                  'flex items-start gap-3 lg:flex-col lg:items-center lg:justify-start lg:text-center',
+                  index > 0 ? 'lg:border-l lg:border-[#EEF3F8]' : '',
+                ].join(' ')}
+              >
+                <span className={['flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/70 shadow-sm', item.tone].join(' ')}>
+                  <ContactAddIcon kind={item.key} />
+                </span>
+                <span className="grid gap-1">
+                  <span className="text-[11px] font-black leading-tight text-[#0B1F44]">{item.title}</span>
+                  <span className="text-[10px] leading-tight text-[#94A3B8]">{item.body}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-9 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.82fr)] lg:gap-14">
+            <form onSubmit={handleCreateContactPlayer} className="grid gap-5 lg:border-r lg:border-[#EEF3F8] lg:pr-10">
+              <label className="text-label text-[#536179]">
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Name</span>
+                <input
+                  type="text"
+                  value={contactDisplayName}
+                  onChange={(event) => setContactDisplayName(event.target.value)}
+                  placeholder="Player's full name"
+                  className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                />
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-label text-[#536179]">
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Email</span>
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                    placeholder="email@example.com"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  />
+                </label>
+                <label className="text-label text-[#536179]">
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Phone</span>
+                  <input
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(event) => setContactPhone(event.target.value)}
+                    placeholder="+1 234 567 890"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#D7E2F0] bg-white px-4 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  />
+                </label>
+              </div>
+
+              <label className="text-label text-[#536179]">
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#94A3B8]">Notes</span>
+                <textarea
+                  value={contactNotes}
+                  onChange={(event) => setContactNotes(event.target.value)}
+                  placeholder="Add details like skill level or preferred times..."
+                  rows={3}
+                  className="text-body-main w-full resize-none rounded-2xl border border-[#D7E2F0] bg-white px-4 py-3 text-[#1E293B] shadow-sm outline-none transition placeholder:text-[#CBD5E1] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                />
+              </label>
+
+              {error ? (
+                <p className="text-body-main rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
+                  {error}
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={creatingContact}
+                  className="text-body-main inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-[#075BD7] px-5 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#064FC0] disabled:cursor-wait disabled:bg-[#94A3B8]"
+                >
+                  <span className="text-lg leading-none">+</span>
+                  {creatingContact ? 'Saving...' : 'Save Contact'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContactAddPanelOpen(false)
+                    setError(null)
+                  }}
+                  className="text-body-main rounded-xl border border-[#E2E8F0] bg-white px-5 py-3 font-medium text-[#475569] transition hover:bg-[#F8FBFF]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+
+            <div className="flex flex-col items-center justify-center gap-5 px-2 py-6 text-center lg:pl-2">
+              <button
+                type="button"
+                disabled
+                className="text-body-main inline-flex cursor-not-allowed items-center gap-2 rounded-2xl bg-[#94A3B8] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.5)]"
+              >
+                <ContactAddIcon kind="spark" />
+                Smart Import
+              </button>
+              <p className="text-body-main max-w-sm text-[#94A3B8]">
+                We'll extract names, emails, and phones for you.
+              </p>
+              <div className="grid w-full max-w-md grid-cols-3 gap-4 pt-4">
+                {[
+                  ['Chat group', 'Tennis Group', 'Roger Federer'],
+                  ['Email header', 'From', 'email@example.com'],
+                  ['Sheet/list', 'Name', 'Sara Novak'],
+                ].map(([label, heading, body]) => (
+                  <div key={label} className="flex aspect-[3/4] flex-col rounded-2xl border border-[#D7E2F0] bg-[#F8FBFF] p-3 opacity-70 shadow-sm">
+                    <div className="h-2 w-10 rounded-full bg-[#DCE8F8]" />
+                    <div className="mt-3 rounded-lg bg-[#F1F5F9] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
+                      {heading}
+                    </div>
+                    <div className="mt-2 truncate rounded-md bg-[#EAF2FF] px-2 py-1 text-[10px] font-semibold text-[#075BD7]">
+                      {body}
+                    </div>
+                    <p className="mt-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#64748B]">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null}
     <form
       id="create-match-inline"
       onSubmit={handleSubmit}
@@ -2414,7 +2640,7 @@ export function CreateMatchInline({
       </div>
       <section className="rounded-2xl bg-white">
         <div className="mb-5 flex items-center">
-          <BallSectionMark sport={selectedSport} className="mr-3" />
+          <SportSectionIcon sport={selectedSport} className="mr-3" />
           <h3 className={DS_SECTION_TITLE}>General Information</h3>
         </div>
 
@@ -2451,7 +2677,7 @@ export function CreateMatchInline({
                       setRequiredCount(count)
                     }}
                     className={[
-                      'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 font-black transition',
+                      'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
                       !customPlayersOpen && requiredCount === count ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
                     ].join(' ')}
                   >
@@ -2462,7 +2688,7 @@ export function CreateMatchInline({
                   type="button"
                   onClick={() => setCustomPlayersOpen((open) => !open)}
                   className={[
-                    'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 font-black transition',
+                    'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
                     customPlayersOpen || ![2, 4, 8].includes(requiredCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
                   ].join(' ')}
                   aria-label="Set custom player count"
@@ -2512,7 +2738,7 @@ export function CreateMatchInline({
                     onClick={() => setDoublesFormat(option.value)}
                     className={[
                       DS_OPTION_BUTTON,
-                      doublesFormat === option.value ? DS_OPTION_SELECTED : 'border-transparent bg-white text-[#475569] hover:bg-[#F8FBFF]',
+                      doublesFormat === option.value ? DS_OPTION_SELECTED : 'border-transparent bg-white text-[#7A8AA6] hover:bg-[#F8FBFF]',
                     ].join(' ')}
                   >
                     {option.value === 'open'
@@ -2593,7 +2819,7 @@ export function CreateMatchInline({
                       setCourtCount(count)
                     }}
                     className={[
-                      'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 font-black transition',
+                      'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
                       !customCourtsOpen && courtCount === count ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
                     ].join(' ')}
                   >
@@ -2604,7 +2830,7 @@ export function CreateMatchInline({
                   type="button"
                   onClick={() => setCustomCourtsOpen((open) => !open)}
                   className={[
-                    'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-3 font-black transition',
+                    'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
                     customCourtsOpen || ![1, 2].includes(courtCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
                   ].join(' ')}
                   aria-label="Set custom court count"
@@ -2708,7 +2934,7 @@ export function CreateMatchInline({
 
       <section className="px-1 py-1">
         <div className="mb-3 flex items-center">
-          <div className={`${DS_STEP} mr-3`}>2</div>
+          <SportSectionIcon sport={selectedSport} className="mr-3" />
           <h3 className={DS_SECTION_TITLE}>Schedule</h3>
         </div>
 
@@ -2755,7 +2981,7 @@ export function CreateMatchInline({
       <section className="px-1 py-2">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center">
-            <div className={`${DS_STEP} mr-3`}>3</div>
+            <SportSectionIcon sport={selectedSport} className="mr-3" />
             <h3 className={DS_SECTION_TITLE}>Players</h3>
           </div>
           <div className="text-label rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-[#94A3B8]">
@@ -2814,100 +3040,12 @@ export function CreateMatchInline({
                   <div className="mb-4 flex flex-wrap gap-2">
                     {selectionMode === 'invite' && (
                       <>
-                        {!hasSavedOrContactInvitePlayers && !contactComposerOpen ? (
-                          <div className="w-full rounded-2xl border border-[#D7E3F4] bg-white p-4 shadow-sm">
-                            <h4 className="text-title-main text-[#0B1F44]">Add players you usually invite</h4>
-                            <p className="text-body-main mt-1 text-[#52647E]">
-                              Start with your regular players. You can invite them to this game now, even if they are not on PlayerHoods yet.
-                            </p>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setError(null)
-                                  setContactComposerOpen(true)
-                                }}
-                                className="text-body-main rounded-full bg-[#0B1F44] px-4 py-2 font-semibold text-white transition hover:bg-[#16325F]"
-                              >
-                                Add regular players
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setContactComposerOpen(false)
-                                  setSelectionMode(null)
-                                }}
-                                className="text-body-main rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#52647E] transition hover:border-[#B8C8DF]"
-                              >
-                                Continue without players
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-                        {contactComposerOpen ? (
-                          <form
-                            onSubmit={handleCreateContactPlayer}
-                            className="w-full rounded-2xl border border-[#D7E3F4] bg-white p-4 shadow-sm"
-                          >
-                            <div className="mb-3">
-                              <h4 className="text-title-main text-[#0B1F44]">Add regular players</h4>
-                              <p className="text-body-sub mt-1 text-[#64748B]">
-                                Add one player now, then select them for this match.
-                              </p>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              <label className="text-body-sub text-[#52647E]">
-                                <span className="mb-1 block font-semibold">Name</span>
-                                <input
-                                  type="text"
-                                  value={contactDisplayName}
-                                  onChange={(event) => setContactDisplayName(event.target.value)}
-                                  placeholder="Player name"
-                                  className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
-                                />
-                              </label>
-                              <label className="text-body-sub text-[#52647E]">
-                                <span className="mb-1 block font-semibold">Email</span>
-                                <input
-                                  type="email"
-                                  value={contactEmail}
-                                  onChange={(event) => setContactEmail(event.target.value)}
-                                  placeholder="Email"
-                                  className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
-                                />
-                              </label>
-                              <label className="text-body-sub text-[#52647E]">
-                                <span className="mb-1 block font-semibold">Phone</span>
-                                <input
-                                  type="tel"
-                                  value={contactPhone}
-                                  onChange={(event) => setContactPhone(event.target.value)}
-                                  placeholder="Phone"
-                                  className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
-                                />
-                              </label>
-                            </div>
-                            <div className="mt-4 flex flex-wrap justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setContactComposerOpen(false)
-                                  setError(null)
-                                }}
-                                className="text-body-main rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#52647E] transition hover:border-[#B8C8DF]"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="submit"
-                                disabled={creatingContact}
-                                className="text-body-main rounded-full bg-[#0B1F44] px-4 py-2 font-semibold text-white transition hover:bg-[#16325F] disabled:cursor-wait disabled:bg-[#94A3B8]"
-                              >
-                                {creatingContact ? 'Adding...' : 'Add regular player'}
-                              </button>
-                            </div>
-                          </form>
-                        ) : null}
+                        <NeedMorePlayersPrompt
+                          onAdd={() => {
+                            setError(null)
+                            setContactAddPanelOpen(true)
+                          }}
+                        />
                         {filteredInviteOptions.map((candidate) => renderInviteCandidateButton(candidate))}
                         {filteredInviteGroups.map((group) =>
                           renderGroupSelector(
@@ -2922,33 +3060,17 @@ export function CreateMatchInline({
                             'indigo',
                           ),
                         )}
-                        {shouldShowMorePlayersPrompt ? (
-                          <div className="w-full rounded-2xl border border-dashed border-[#D7E3F4] bg-white px-4 py-3">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                              <div>
-                                <h4 className="text-title-main text-[#0B1F44]">Need more players?</h4>
-                                <p className="text-body-sub mt-1 text-[#64748B]">
-                                  Add people you already play with and invite them to this match.
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setError(null)
-                                  setContactComposerOpen(true)
-                                }}
-                                className="text-body-main shrink-0 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
-                              >
-                                Add players
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
                       </>
                     )}
 
                     {selectionMode === 'request' && (
                       <>
+                        <NeedMorePlayersPrompt
+                          onAdd={() => {
+                            setError(null)
+                            setContactAddPanelOpen(true)
+                          }}
+                        />
                         {filteredRequestUsers.map((candidate) => renderRequestScopeCandidateButton(candidate))}
                         {filteredRequestGroups.map((group) =>
                           renderGroupSelector(
@@ -3133,7 +3255,7 @@ export function CreateMatchInline({
           className="flex w-full items-center justify-between rounded-xl p-1 text-left transition hover:bg-[#F8FAFC]"
         >
           <div className="flex items-center gap-3">
-            <div className={DS_STEP}>4</div>
+            <SportSectionIcon sport={selectedSport} />
             <h3 className={DS_SECTION_TITLE}>Host Note</h3>
             {organizerNote.trim() && !organizerNoteExpanded ? (
               <span className="text-body-sub rounded-full border border-[#C25E46]/15 bg-[#FFF8F5] px-2 py-0.5 font-bold text-[#C25E46]">

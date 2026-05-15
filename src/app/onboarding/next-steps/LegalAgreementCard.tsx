@@ -2,11 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import {
-  ONBOARDING_AGREEMENT_INTRO,
-  ONBOARDING_AGREEMENT_TITLE,
-  SUPPORT_EMAIL,
-} from '@/lib/legal'
+import { SUPPORT_EMAIL } from '@/lib/legal'
 import { acceptOnboardingLegalAgreementAction } from './actions'
 
 export function LegalAgreementCard({
@@ -14,16 +10,16 @@ export function LegalAgreementCard({
 }: {
   continueHref: string
 }) {
-  const [ageConfirmed, setAgeConfirmed] = useState(false)
-  const [termsAccepted, setTermsAccepted] = useState(false)
-  const [responsibleUseAccepted, setResponsibleUseAccepted] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  const canContinue = ageConfirmed && termsAccepted && responsibleUseAccepted
-
   const handleContinue = () => {
-    if (!canContinue) return
+    if (!confirmed) {
+      setError('Please confirm before continuing.')
+      return
+    }
+
     setError(null)
     startTransition(async () => {
       const result = await acceptOnboardingLegalAgreementAction()
@@ -36,62 +32,28 @@ export function LegalAgreementCard({
   }
 
   return (
-    <section className="ph-card rounded-[32px] px-8 py-8">
-      <div className="mb-8">
-        <div className="ph-kicker mb-3">Final step</div>
-        <h1 className="ph-title">{ONBOARDING_AGREEMENT_TITLE}</h1>
-        <p className="ph-subtitle mt-3 max-w-[620px] text-[13px] leading-6">
-          {ONBOARDING_AGREEMENT_INTRO}
-        </p>
-      </div>
+    <section className="mx-auto max-w-[880px] rounded-[24px] border border-[#DCE7F3] bg-white px-5 py-5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.16)]">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-h2 text-[#0B1F44]">Almost done</h1>
+          <label className="mt-4 flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => {
+                setConfirmed(event.target.checked)
+                if (event.target.checked) setError(null)
+              }}
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-[#075BD7] focus:ring-[#075BD7]"
+            />
+            <span className="text-body-main font-semibold leading-6 text-[#1E293B]">
+              I confirm that I am 18 or older and agree to the PlayerHoods Terms, Privacy Notice, and responsible use rules.
+            </span>
+          </label>
 
-      <div className="space-y-4 rounded-[28px] border border-[#E2E8F0] bg-[#F8FBFF] p-5">
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={ageConfirmed}
-            onChange={(event) => setAgeConfirmed(event.target.checked)}
-            className="mt-1 h-4 w-4 rounded border-slate-300"
-          />
-          <span className="text-body-main font-semibold text-[#1E293B]">
-            I confirm that I am at least 18 years old.
-          </span>
-        </label>
+          {error ? <p className="mt-3 text-body-main font-semibold text-rose-600">{error}</p> : null}
 
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={termsAccepted}
-            onChange={(event) => setTermsAccepted(event.target.checked)}
-            className="mt-1 h-4 w-4 rounded border-slate-300"
-          />
-          <span className="text-body-main font-semibold text-[#1E293B]">
-            I agree to the PlayerHoods Terms of Use and Privacy Notice.
-          </span>
-        </label>
-
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={responsibleUseAccepted}
-            onChange={(event) => setResponsibleUseAccepted(event.target.checked)}
-            className="mt-1 h-4 w-4 rounded border-slate-300"
-          />
-          <span className="text-body-main font-semibold text-[#1E293B]">
-            I agree to use PlayerHoods honestly and responsibly, and I will not mislead, deceive, impersonate, harass,
-            or misuse another person's information.
-          </span>
-        </label>
-      </div>
-
-      <div className="mt-6 rounded-[20px] border border-[#E2E8F0] bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-sm text-[#64748B]">
-            {isPending ? 'Saving agreement...' : 'You only need to confirm this once during onboarding.'}
-          </span>
-          {error ? <span className="text-sm font-medium text-rose-600">{error}</span> : null}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-4 text-sm text-[#64748B]">
+          <div className="mt-4 flex flex-wrap gap-4 text-body-sub font-semibold text-[#64748B]">
           <Link href="/terms" className="underline underline-offset-2 hover:text-[#1E293B]">
             Terms of Use
           </Link>
@@ -101,17 +63,16 @@ export function LegalAgreementCard({
           <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-2 hover:text-[#1E293B]">
             Contact
           </a>
+          </div>
         </div>
-      </div>
 
-      <div className="mt-8 flex justify-end">
         <button
           type="button"
-          disabled={!canContinue || isPending}
+          disabled={isPending}
           onClick={handleContinue}
-          className="rounded-full bg-[#C25E46] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#A94E39] disabled:cursor-not-allowed disabled:bg-[#CBD5E1]"
+          className="text-body-main inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#071A44] px-5 font-semibold text-white shadow-sm transition hover:bg-[#0B255D] disabled:cursor-wait disabled:bg-[#94A3B8]"
         >
-          {isPending ? 'Saving...' : 'Continue'}
+          {isPending ? 'Saving...' : 'Continue to PlayerHoods'}
         </button>
       </div>
     </section>
