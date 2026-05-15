@@ -36,7 +36,7 @@ export default async function MatchesPage() {
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-label text-[#94A3B8]">
-            Playerhoods
+            PlayerHoods
           </p>
           <h1 className="text-h1 mt-2 text-[#1E293B]">Matches</h1>
           <p className="text-body-main mt-2 text-[#64748B]">

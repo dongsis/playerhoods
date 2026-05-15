@@ -58,6 +58,23 @@ function getInvitationPageNotice(code: string | undefined): string | null {
   }
 }
 
+function formatGameType(value: string | null | undefined): string {
+  if (!value) return 'Match'
+  return value.replace(/_/g, ' ')
+}
+
+function formatDate(value: string | null | undefined): string | null {
+  if (!value) return null
+  const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!parts) return value
+  const date = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])))
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date)
+}
+
 export default async function InvitationPage({ params, searchParams }: Props) {
   const { id } = await params
   const pageParams = await searchParams
@@ -95,23 +112,27 @@ export default async function InvitationPage({ params, searchParams }: Props) {
         </div>
 
         <p style={{ marginTop: '1.5rem', fontSize: '0.8rem', color: '#888' }}>
-          <Link href="/">Playerhoods</Link>
+          <Link href="/">PlayerHoods</Link>
         </p>
       </div>
     )
   }
 
-  const matchStr = inv.match_summary
-    ? [inv.match_summary.game_type, inv.match_summary.match_date, inv.match_summary.club_name]
-        .filter(Boolean)
-        .join(' · ') || 'Match'
-    : 'Match'
+  const matchType = formatGameType(inv.match_summary?.game_type)
+  const matchDate = formatDate(inv.match_summary?.match_date)
+  const matchTime = inv.match_summary?.start_time ?? null
+  const venueName = inv.match_summary?.club_name ?? null
+  const matchHref = user && inv.related_type === 'match'
+    ? `/matches/${inv.related_id}`
+    : `/i/${id}/match`
   const pageError = getInvitationPageErrorMessage(pageParams.error)
-  const pageNotice = getInvitationPageNotice(pageParams.notice)
+  const pageNotice = inv.status === 'accepted' && pageParams.notice === 'accepted'
+    ? null
+    : getInvitationPageNotice(pageParams.notice)
 
   return (
-    <div style={{ maxWidth: 480, margin: '2rem auto', padding: '0 1rem' }}>
-      <div style={{ marginBottom: '1.25rem' }}>
+    <div style={{ maxWidth: 480, margin: '1.5rem auto', padding: '0 1rem' }}>
+      <div style={{ marginBottom: '1rem' }}>
         <BrandLogo variant="horizontal" />
       </div>
       <h1 style={{ marginBottom: '0.5rem', fontSize: '1.25rem' }}>Match invitation</h1>
@@ -128,26 +149,53 @@ export default async function InvitationPage({ params, searchParams }: Props) {
         </div>
       ) : null}
 
-      <div style={{ padding: '1rem', border: '1px solid #e0e0e0', borderRadius: 8, marginBottom: '1rem' }}>
+      <div style={{ padding: '1rem', border: '1px solid #e0e0e0', borderRadius: 8, marginBottom: '1rem', background: '#fff' }}>
         <p style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#555' }}>
           <strong>{inv.inviter_display_name}</strong> invited you to join a match.
         </p>
-        <p style={{ margin: 0, fontSize: '0.9rem' }}>{matchStr}</p>
+        <dl style={{ display: 'grid', gap: '0.45rem', margin: 0, fontSize: '0.9rem' }}>
+          <div>
+            <dt style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Match</dt>
+            <dd style={{ margin: 0, fontWeight: 700 }}>{matchType}</dd>
+          </div>
+          <div>
+            <dt style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Date and time</dt>
+            <dd style={{ margin: 0, fontWeight: 700 }}>{[matchDate, matchTime].filter(Boolean).join(' at ') || 'Time to be confirmed'}</dd>
+          </div>
+          <div>
+            <dt style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Venue</dt>
+            <dd style={{ margin: 0, fontWeight: 700 }}>{venueName ?? 'Venue to be confirmed'}</dd>
+          </div>
+        </dl>
       </div>
 
       {inv.status === 'accepted' && (
-        <div style={{ padding: '0.75rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, marginBottom: '1rem' }}>
-          <p style={{ margin: 0, color: '#166534', fontSize: '0.9rem' }}>
-            You accepted this invitation.
+        <div style={{ padding: '1rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0, color: '#166534', fontSize: '1rem' }}>
+            Invitation accepted. You're in this match.
+          </h2>
+          <p style={{ margin: '0.45rem 0 0', color: '#166534', fontSize: '0.85rem' }}>
+            Save {inv.inviter_display_name} as a player contact after you join.
           </p>
           {inv.related_type === 'match' && (
-            <Link href={`/matches/${inv.related_id}`} style={{ display: 'inline-block', marginTop: '0.5rem', color: '#0369a1', fontSize: '0.85rem' }}>
-              View match →
+            <Link href={matchHref} style={{ display: 'inline-block', marginTop: '0.75rem', padding: '0.55rem 0.9rem', background: '#0B1F4D', color: 'white', borderRadius: 999, fontSize: '0.85rem', fontWeight: 700, textDecoration: 'none' }}>
+              View match
             </Link>
           )}
-          <p style={{ margin: '0.6rem 0 0', color: '#166534', fontSize: '0.82rem' }}>
-            You can join PlayerHoods later.
-          </p>
+          <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #bbf7d0' }}>
+            <h3 style={{ margin: 0, color: '#0B1F4D', fontSize: '0.95rem' }}>Create your PlayerHoods account</h3>
+            <p style={{ margin: '0.35rem 0 0', color: '#475569', fontSize: '0.82rem' }}>
+              Manage this match, get updates, save players for next time, and join future matches faster.
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+              <Link href={`/login?mode=register&next=${encodeURIComponent(matchHref)}`} style={{ padding: '0.5rem 0.85rem', background: '#0369a1', color: 'white', borderRadius: 999, fontSize: '0.82rem', fontWeight: 700, textDecoration: 'none' }}>
+                Create account
+              </Link>
+              <Link href={matchHref} style={{ padding: '0.5rem 0.85rem', border: '1px solid #cbd5e1', color: '#0B1F4D', borderRadius: 999, fontSize: '0.82rem', fontWeight: 700, textDecoration: 'none' }}>
+                Maybe later
+              </Link>
+            </div>
+          </div>
         </div>
       )}
 
@@ -248,7 +296,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
       )}
 
       <p style={{ marginTop: '1.5rem', fontSize: '0.8rem', color: '#888' }}>
-        <Link href="/">Playerhoods</Link>
+        <Link href="/">PlayerHoods</Link>
       </p>
     </div>
   )

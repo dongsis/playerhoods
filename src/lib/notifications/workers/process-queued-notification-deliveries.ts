@@ -20,6 +20,8 @@ const raw =
   process.env.NEXT_PUBLIC_SITE_URL ??
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 const SITE_URL = raw && raw !== 'undefined' ? raw : 'http://localhost:3000'
+const smsRaw = process.env.NEXT_PUBLIC_SMS_SITE_URL ?? raw
+const SMS_SITE_URL = smsRaw && smsRaw !== 'undefined' ? smsRaw : SITE_URL
 
 export type DeliveryRow = {
   id: string
@@ -68,7 +70,7 @@ export async function processQueuedNotificationDeliveries(
       invitation_id?: string
       inviter_display_name?: string
       target_email?: string
-      match_summary?: { game_type?: string | null; match_date?: string | null; club_name?: string | null }
+      match_summary?: { game_type?: string | null; match_date?: string | null; start_time?: string | null; club_name?: string | null }
       nominator_display_name?: string
       match_id?: string
       game_type?: string
@@ -85,7 +87,7 @@ export async function processQueuedNotificationDeliveries(
     if (templateType === 'invitation') {
       const ms = payload.match_summary
       const matchSummary = ms
-        ? { game_type: ms.game_type ?? null, match_date: ms.match_date ?? null, club_name: ms.club_name ?? null }
+        ? { game_type: ms.game_type ?? null, match_date: ms.match_date ?? null, start_time: ms.start_time ?? null, club_name: ms.club_name ?? null }
         : null
       const inviterDisplayName = (payload.inviter_display_name as string) ?? 'Someone'
       subject = `${inviterDisplayName} invited you to a match`
@@ -102,8 +104,8 @@ export async function processQueuedNotificationDeliveries(
         inviterDisplayName,
         invitationId,
         matchSummary,
-        siteUrl: SITE_URL,
-        unsubscribeUrl: `${SITE_URL}/unsubscribe?invitation=${encodeURIComponent(invitationId)}&channel=sms&scope=contact_invites`,
+        siteUrl: SMS_SITE_URL,
+        unsubscribeUrl: `${SMS_SITE_URL}/stop/${encodeURIComponent(invitationId)}`,
       })
     } else if (templateType === 'guest_nominated') {
       const m = buildMatchInfo(payload)

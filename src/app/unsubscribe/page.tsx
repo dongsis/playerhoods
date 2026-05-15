@@ -55,16 +55,28 @@ export default async function UnsubscribePage({ searchParams }: Props) {
           {status === 'success' ? 'You are unsubscribed' : 'Unsubscribe'}
         </h1>
         {status === 'success' ? (
-          <p className="mt-3 text-body-main text-[#475569]">
-            We will stop sending these contact invitation messages to this destination.
-          </p>
+          <>
+            <p className="mt-3 text-body-main text-[#475569]">
+              {channel === 'sms'
+                ? "You're unsubscribed from PlayerHoods SMS match invitations."
+                : "You're unsubscribed from these PlayerHoods invitation messages."}
+            </p>
+            <p className="mt-3 text-body-secondary text-[#64748B]">
+              You may still receive messages if you create an account and turn notifications back on.
+            </p>
+          </>
         ) : status === 'error' ? (
-          <p className="mt-3 text-body-main text-[#B42318]">
-            This unsubscribe link could not be processed. The invitation may no longer be available.
-          </p>
+          <>
+            <p className="mt-3 text-body-main text-[#B42318]">
+              We couldn't update your {channel === 'sms' ? 'SMS' : 'message'} preference from this link.
+            </p>
+            <p className="mt-3 text-body-secondary text-[#64748B]">
+              The link may be expired or incomplete. Please contact support@playerhoods.com if you want us to stop messages to this destination.
+            </p>
+          </>
         ) : (
           <p className="mt-3 text-body-main text-[#475569]">
-            This unsubscribe link is missing an invitation id.
+            This unsubscribe link is missing the information needed to update your preference. Please contact support@playerhoods.com if you want us to stop messages to this destination.
           </p>
         )}
       </section>

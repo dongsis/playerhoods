@@ -6,7 +6,7 @@ import { SiteFooterLinks } from '@/app/components/SiteFooterLinks'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Playerhoods',
+  title: 'PlayerHoods',
   description: 'Tennis match organization platform',
 }
 
