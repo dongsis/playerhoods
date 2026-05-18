@@ -15,9 +15,20 @@ import type {
   AdminUserSearchResult,
 } from '@/lib/types/database'
 import { inferVenueTimezone } from '@/lib/venues/timezone'
-import { getVenueSlug, slugifyVenueSegment } from '@/lib/venues/slug'
 
 type Client = SupabaseClient<Database>
+
+export type PublicVenueSitemapRow = {
+  venue_id: string
+  canonical_path: string
+  name: string
+  city: string | null
+  province: string | null
+  country: string | null
+  supports_tennis: boolean
+  supports_pickleball: boolean
+  created_at: string
+}
 
 // ============================================================================
 // Auth helpers
@@ -65,19 +76,36 @@ export async function getVenueByCanonicalPath(
   supabase: Client,
   params: { country: string; province: string; city: string; slug: string },
 ): Promise<Venue | null> {
-  const { data, error } = await supabase
-    .from('venues')
-    .select('*')
-    .order('name', { ascending: true })
+  const rpcClient = supabase as SupabaseClient<any>
+  const { data, error } = await rpcClient.rpc('rpc_public_venue_by_canonical_path', {
+    p_country: params.country,
+    p_province: params.province,
+    p_city: params.city,
+    p_slug: params.slug,
+  })
   if (error) throw error
 
-  const venues = (data ?? []) as Venue[]
-  return venues.find((venue) => (
-    slugifyVenueSegment(venue.country === 'Canada' ? 'ca' : venue.country) === params.country
-    && slugifyVenueSegment(venue.province === 'Ontario' ? 'on' : venue.province) === params.province
-    && slugifyVenueSegment(venue.city) === params.city
-    && getVenueSlug(venue) === params.slug
-  )) ?? null
+  return ((data ?? []) as Venue[])[0] ?? null
+}
+
+export async function listPublicVenueSitemapRows(supabase: Client): Promise<PublicVenueSitemapRow[]> {
+  const rpcClient = supabase as SupabaseClient<any>
+  const pageSize = 1000
+  const rows: PublicVenueSitemapRow[] = []
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await rpcClient
+      .rpc('rpc_public_venue_sitemap')
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+
+    const page = (data ?? []) as PublicVenueSitemapRow[]
+    rows.push(...page)
+
+    if (page.length < pageSize) break
+  }
+
+  return rows
 }
 
 export async function getVenueCourts(supabase: Client, venueId: string): Promise<Court[]> {

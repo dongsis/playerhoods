@@ -19,6 +19,7 @@ export async function middleware(request: NextRequest) {
   const isUnsubscribeRoute = pathname.startsWith('/unsubscribe')
   const isShortInvitationRoute = pathname.startsWith('/i/')
   const isShortStopRoute = pathname.startsWith('/stop/')
+  const isSeoFileRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   const isCanonicalLocalAuthRoute = isLoginRoute || isAuthCallback || isResetPasswordRoute
 
   if (shouldUseCanonicalLocalAuthHost(requestHost) && isCanonicalLocalAuthRoute) {
@@ -66,10 +67,16 @@ export async function middleware(request: NextRequest) {
     || isUnsubscribeRoute
     || isShortInvitationRoute
     || isShortStopRoute
+    || isSeoFileRoute
     || isInvitationPage
     || isPublicVenueProfile
     || isPublicVenueDirectory
   const isProtectedRoute = !isPublicRoute && !isOnboarding
+
+  if (isSeoFileRoute) {
+    response.headers.set('x-ph-middleware', 'seo-file')
+    return response
+  }
 
   if (isPublicVenueProfile || isPublicVenueDirectory) {
     response.headers.set('x-ph-middleware', 'public-venue')

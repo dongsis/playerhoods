@@ -3,11 +3,19 @@ import { maskEmail } from '@/lib/auth-ui'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import type { Profile } from '@/lib/types/database'
 import { SiteFooterLinks } from '@/app/components/SiteFooterLinks'
+import { getSiteOrigin } from '@/lib/site-url'
 import './globals.css'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteOrigin()),
   title: 'PlayerHoods',
-  description: 'Tennis match organization platform',
+  description: 'Find tennis and pickleball venues, matches, and players with PlayerHoods.',
+  openGraph: {
+    title: 'PlayerHoods',
+    description: 'Find tennis and pickleball venues, matches, and players with PlayerHoods.',
+    siteName: 'PlayerHoods',
+    type: 'website',
+  },
 }
 
 export default async function RootLayout({

@@ -3,6 +3,8 @@ import { BrandLogo } from '@/app/components/BrandLogo'
 import type { Court, Sport, Venue, VenueSport } from '@/lib/types/database'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { getPublicVenueNote } from '@/lib/venues/notes'
+import { getVenueCanonicalPath } from '@/lib/venues/slug'
+import { getAbsoluteUrl } from '@/lib/site-url'
 
 interface Props {
   venue: Venue
@@ -27,6 +29,7 @@ export function PublicVenuePageContent({ venue, courts, sports, venueSports }: P
       sportName: sportMap.get(entry.sport_id) ?? `Sport ${entry.sport_id}`,
     }))
     .sort((left, right) => left.sportName.localeCompare(right.sportName))
+  const sportNames = venueSportsSummary.map((entry) => entry.sportName)
 
   const venueMetaParts = [
     venue.location_text,
@@ -56,8 +59,43 @@ export function PublicVenuePageContent({ venue, courts, sports, venueSports }: P
     venue.has_washroom === true ? 'Washroom' : null,
   ].filter(Boolean)
 
+  const canonicalUrl = getAbsoluteUrl(getVenueCanonicalPath(venue))
+  const sameAs = [venue.website_url, venue.google_maps_url].filter((url): url is string => Boolean(url))
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SportsActivityLocation',
+    name: getVenueDisplayName(venue),
+    url: canonicalUrl,
+    ...(sameAs.length > 0 ? { sameAs } : {}),
+    ...(venue.venue_phone || venue.contact_phone ? { telephone: venue.venue_phone ?? venue.contact_phone } : {}),
+    ...(sportNames.length > 0 ? { sport: sportNames } : {}),
+    ...(venue.latitude != null && venue.longitude != null
+      ? {
+          geo: {
+            '@type': 'GeoCoordinates',
+            latitude: venue.latitude,
+            longitude: venue.longitude,
+          },
+        }
+      : {}),
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: venue.location_text ?? undefined,
+      addressLocality: venue.city ?? undefined,
+      addressRegion: venue.province ?? undefined,
+      postalCode: venue.postal_code ?? undefined,
+      addressCountry: venue.country ?? undefined,
+    },
+  }
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c'),
+        }}
+      />
       <div className="mb-6">
         <BrandLogo variant="horizontal" />
       </div>
