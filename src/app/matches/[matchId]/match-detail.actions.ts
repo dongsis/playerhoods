@@ -13,10 +13,11 @@ import {
   updateMatchDetails,
 } from '@/lib/api/matches'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
-import { sendMatchTimeChangeEmails, sendParticipantRemovedNotification } from '@/lib/email/send-participant-notifications'
+import { sendParticipantRemovedNotification } from '@/lib/email/send-participant-notifications'
 import {
   notifyMatchCourtPlanUpdated,
 } from '@/lib/notifications/match-court'
+import { NotificationService } from '@/lib/notifications/notification-service'
 import type { MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
 
 export type MatchUpdateInput = {
@@ -49,6 +50,25 @@ type MatchRemovalNotificationSnapshot = MatchNotificationSnapshot & {
 }
 
 type IdentityLinkActionResult = { ok: true } | { ok: false; error: string }
+
+function buildCriticalChangeSet(
+  previous: MatchNotificationSnapshot,
+  next: MatchUpdateInput,
+) {
+  const changeSet: Record<string, { old: unknown; new: unknown }> = {}
+
+  if (next.match_date !== undefined && next.match_date !== previous.match_date) {
+    changeSet.match_date = { old: previous.match_date, new: next.match_date }
+  }
+  if (next.start_time !== undefined && next.start_time !== previous.start_time) {
+    changeSet.start_time = { old: previous.start_time, new: next.start_time }
+  }
+  if (next.duration_minutes !== undefined) {
+    changeSet.duration_minutes = { old: null, new: next.duration_minutes }
+  }
+
+  return changeSet
+}
 
 function getIdentityLinkActionError(error: unknown): string {
   const message =
@@ -85,18 +105,12 @@ export async function updateMatchDetailsAction(
     await rebalanceMatchRosterAfterEdit(supabase, matchId)
   }
 
-  if (
-    data.match_date !== undefined ||
-    data.start_time !== undefined ||
-    data.duration_minutes !== undefined
-  ) {
-    await sendMatchTimeChangeEmails(
+  const criticalChangeSet = buildCriticalChangeSet(matchSnapshot, data)
+  if (Object.keys(criticalChangeSet).length > 0) {
+    await NotificationService.enqueueCriticalUpdateNotifications(
       supabase,
-      {
-        ...matchSnapshot,
-        ...data,
-      },
-      venueName,
+      matchId,
+      criticalChangeSet,
     )
   }
 
@@ -197,6 +211,17 @@ export async function saveMatchLineupAction(matchId: string, lineup: MatchLineup
   revalidateMatchSurfaces(matchId)
 }
 
+export async function confirmMatchAndNotifyAction(matchId: string) {
+  const supabase = await createSupabaseServerClient()
+  const user = await getUser()
+  if (!user) {
+    throw new Error('not_authenticated')
+  }
+
+  await NotificationService.confirmMatchAndNotify(supabase, matchId)
+  revalidateMatchSurfaces(matchId)
+}
+
 export async function cancelMatchWithReasonAction(matchId: string, reason: string) {
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
@@ -210,11 +235,18 @@ export async function cancelMatchWithReasonAction(matchId: string, reason: strin
   }
 
   await cancelMatch(supabase, matchId)
+  await NotificationService.enqueueCriticalUpdateNotifications(
+    supabase,
+    matchId,
+    {
+      status: { old: 'active', new: 'cancelled' },
+    },
+  )
   await sendMatchMessage(
     supabase,
     matchId,
     user.id,
-    `Match cancelled by host. Reason: ${trimmedReason}`,
+    `Match cancelled by organizer. Reason: ${trimmedReason}`,
   )
   revalidateMatchSurfaces(matchId)
 }

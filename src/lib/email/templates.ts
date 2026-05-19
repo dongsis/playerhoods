@@ -11,10 +11,16 @@ export type MatchInfo = {
   startTime: string | null
   venueName: string | null
   siteUrl: string
+  magicLinkPath?: string | null
+  changeSet?: Record<string, unknown> | null
 }
 
 function matchLink(m: MatchInfo): string {
   const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : 'http://localhost:3000'
+  if (m.magicLinkPath) {
+    const path = m.magicLinkPath.startsWith('/') ? m.magicLinkPath : `/${m.magicLinkPath}`
+    return `${base}${path}`
+  }
   return `${base}/matches/${m.matchId}`
 }
 
@@ -133,6 +139,62 @@ export function matchInvitationEmail(m: MatchInfo, inviterName: string): string 
     secondaryTitle: 'Next step',
     secondaryBody: 'Review the match details, then respond from the match page when you are ready.',
     footerNote: 'This message relates to a PlayerHoods match invitation.',
+    siteUrl: m.siteUrl,
+  })
+}
+
+export function playerhoodsMatchInviteEmail(m: MatchInfo): string {
+  return renderEmailLayout({
+    eyebrow: 'Invitation',
+    title: "You're invited to a match",
+    introHtml: 'You are invited to a match.',
+    details: buildMatchDetails(m),
+    ctaLabel: 'Accept or decline',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Notification note',
+    secondaryBody: "We'll only notify you again if the match is confirmed and you're selected to play.",
+    footerNote: 'This message relates to a PlayerHoods match invitation.',
+    siteUrl: m.siteUrl,
+  })
+}
+
+export function confirmedLineupEmail(m: MatchInfo): string {
+  return renderEmailLayout({
+    eyebrow: 'Game on',
+    title: "You're confirmed to play",
+    introHtml: 'The match is confirmed, and you are in the lineup.',
+    details: buildMatchDetails(m),
+    ctaLabel: 'View match',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Notification note',
+    secondaryBody: "We'll only notify you again if the match is cancelled or key details change.",
+    footerNote: 'You are receiving this email because you are confirmed for a PlayerHoods match.',
+    siteUrl: m.siteUrl,
+  })
+}
+
+export function criticalUpdateEmail(m: MatchInfo): string {
+  return renderEmailLayout({
+    eyebrow: 'Match update',
+    title: 'PlayerHoods match update',
+    introHtml: 'Key details for your match changed.',
+    details: buildMatchDetails(m),
+    ctaLabel: 'View details',
+    ctaUrl: matchLink(m),
+    footerNote: 'You are receiving this email because you are confirmed for a PlayerHoods match.',
+    siteUrl: m.siteUrl,
+  })
+}
+
+export function cancellationEmail(m: MatchInfo): string {
+  return renderEmailLayout({
+    eyebrow: 'Match cancelled',
+    title: 'PlayerHoods match cancelled',
+    introHtml: 'This match has been cancelled.',
+    details: buildMatchDetails(m),
+    ctaLabel: 'View details',
+    ctaUrl: matchLink(m),
+    footerNote: 'You are receiving this email because you were confirmed for a PlayerHoods match.',
     siteUrl: m.siteUrl,
   })
 }

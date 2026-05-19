@@ -75,6 +75,7 @@ type MatchDetailPageViewProps = {
   onUpdateOrganizerNote: (organizerNote: string | null) => Promise<void>
   onPostMessage: (body: string) => Promise<void>
   onSaveLineup: (lineup: MatchLineupSnapshot | null) => Promise<void>
+  onConfirmMatch: () => Promise<void>
   onCancelMatch: (reason: string) => Promise<void>
   onSaveCourtPlan: (data: MatchCourtPlanUpdateInput) => Promise<void>
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
@@ -87,7 +88,8 @@ function MatchHeaderSection({
   onUpdateMatchDetails,
   onCancelMatch,
   onSaveCourtPlan,
-}: Pick<MatchDetailPageViewProps, 'viewModel' | 'onUpdateMatchDetails' | 'onCancelMatch' | 'onSaveCourtPlan'>) {
+  onConfirmMatch,
+}: Pick<MatchDetailPageViewProps, 'viewModel' | 'onUpdateMatchDetails' | 'onCancelMatch' | 'onSaveCourtPlan' | 'onConfirmMatch'>) {
   const {
     match,
     sportName,
@@ -106,6 +108,11 @@ function MatchHeaderSection({
   } = viewModel
   const showMatchFormedBanner =
     match.status === 'active' &&
+    Boolean(match.formed_at)
+  const showReadyToConfirm =
+    isOrganizer &&
+    match.status === 'active' &&
+    !match.formed_at &&
     confirmedCount >= match.required_count
   const gameTypeLabel = match.game_type
     ? `${match.game_type.charAt(0).toUpperCase()}${match.game_type.slice(1)}`
@@ -269,6 +276,27 @@ function MatchHeaderSection({
                     height: 'auto',
                   }}
                 />
+              </div>
+            ) : null}
+
+            {showReadyToConfirm ? (
+              <div className="mb-4 rounded-[18px] border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#2563EB]">Ready to confirm</p>
+                    <p className="mt-1 text-[14px] font-semibold text-[#0F172A]">
+                      {confirmedCount} of {match.required_count} players confirmed
+                    </p>
+                  </div>
+                  <form action={onConfirmMatch}>
+                    <button
+                      type="submit"
+                      className="inline-flex h-10 items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
+                    >
+                      Confirm and Notify
+                    </button>
+                  </form>
+                </div>
               </div>
             ) : null}
 
@@ -475,6 +503,7 @@ export function MatchDetailPageView({
   onSaveCourtPlan,
   onRemoveParticipant,
   onSaveLineup,
+  onConfirmMatch,
   onAcceptIdentityLink,
   onKeepSeparateIdentityLink,
 }: MatchDetailPageViewProps) {
@@ -510,6 +539,7 @@ export function MatchDetailPageView({
         onUpdateMatchDetails={onUpdateMatchDetails}
         onCancelMatch={onCancelMatch}
         onSaveCourtPlan={onSaveCourtPlan}
+        onConfirmMatch={onConfirmMatch}
       />
       {viewModel.identityLinkCandidates.length > 0 ? (
         <div style={{ marginBottom: '1.1rem' }}>

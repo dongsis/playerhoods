@@ -511,11 +511,13 @@ function HomeAuthOverlay({
             <CloseIcon />
           </button>
 
-          <img
-            src="/playerhoods-brand-stacked-cropped.png"
-            alt="PlayerHoods"
-            className="mx-auto h-[118px] w-[120px] object-contain"
-          />
+          <div className="mx-auto flex flex-col items-center gap-1">
+            <img
+              src="/playerhoods-brand-stacked-cropped.png"
+              alt="PlayerHoods"
+              className="h-[62px] w-[220px] object-contain"
+            />
+          </div>
           <h2 className="mt-1 text-center text-xl font-black text-[#071A44]">{title}</h2>
           <p className="mx-auto mt-2 max-w-[250px] text-center text-sm font-medium leading-5 text-[#52667F]">
             {subtitle}

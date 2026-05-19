@@ -1,5 +1,7 @@
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
 
+export type DiscoveryVolumeInput = 'quiet' | 'playerhood' | 'recommended'
+
 export type BasicPlayCityInput = {
   city_name?: string | null
   city?: string | null
@@ -14,6 +16,8 @@ export type CompleteFirstOnboardingInput = {
   club_or_venue_ids: string[]
   visible_in_city_discovery: boolean
   visible_in_club_member_discovery: boolean
+  discovery_volume?: DiscoveryVolumeInput
+  accepting_new_invites?: boolean
 }
 
 export type NormalizedPlayCityInput = {
@@ -29,6 +33,8 @@ export type NormalizedCompleteFirstOnboardingInput = {
   club_or_venue_ids: string[]
   visible_in_city_discovery: boolean
   visible_in_club_member_discovery: boolean
+  discovery_volume: DiscoveryVolumeInput
+  accepting_new_invites: boolean
 }
 
 export class BasicProfileValidationError extends Error {
@@ -104,6 +110,10 @@ export function normalizeCompleteFirstOnboardingInput(
 
   const playCities = normalizePlayCities(input.play_cities)
   const venueIds = uniqueStrings(input.club_or_venue_ids)
+  const discoveryVolume = input.discovery_volume ?? 'recommended'
+  if (!['quiet', 'playerhood', 'recommended'].includes(discoveryVolume)) {
+    throw new BasicProfileValidationError('invalid_discovery_volume', 'Choose a valid discovery volume.')
+  }
 
   return {
     display_name: displayName,
@@ -112,5 +122,7 @@ export function normalizeCompleteFirstOnboardingInput(
     club_or_venue_ids: venueIds,
     visible_in_city_discovery: input.visible_in_city_discovery,
     visible_in_club_member_discovery: input.visible_in_club_member_discovery,
+    discovery_volume: discoveryVolume,
+    accepting_new_invites: input.accepting_new_invites ?? true,
   }
 }

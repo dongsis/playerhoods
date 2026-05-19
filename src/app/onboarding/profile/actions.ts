@@ -63,6 +63,13 @@ export async function completeFirstOnboardingAction(input: CompleteFirstOnboardi
 
     if (error) throw error
 
+    const { error: discoveryError } = await supabase.rpc('rpc_profile_update_discovery_preferences', {
+      p_discovery_volume: normalized.discovery_volume,
+      p_accepting_new_invites: normalized.accepting_new_invites,
+    })
+
+    if (discoveryError) throw discoveryError
+
     revalidatePath('/dashboard')
     revalidatePath('/onboarding/profile')
     revalidatePath('/onboarding/next-steps')

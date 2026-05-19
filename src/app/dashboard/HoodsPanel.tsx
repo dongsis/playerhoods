@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -24,10 +24,12 @@ import {
 } from '@/lib/api/discovery'
 import {
   getAdmissionTargets,
+  getContactPersonAdmissionTargets,
   inviteUserToMatch,
   inviteContactGuestToMatch,
   inviteContactPersonToMatch,
   type AdmissionTarget,
+  type ContactPersonAdmissionTarget,
   type MatchListItem,
 } from '@/lib/api/matches'
 import type { InviteCircleRow } from '@/lib/api/play-network'
@@ -120,6 +122,7 @@ type MutablePerson = {
   saveActionKind: 'direct_save' | 'save_request'
   saveRequestStatus: string | null
   saveRequestNextEligibleAt: string | null
+  canInvite: boolean
 }
 
 type HoodPerson = {
@@ -156,6 +159,7 @@ type HoodPerson = {
   saveActionKind: 'direct_save' | 'save_request'
   saveRequestStatus: string | null
   saveRequestNextEligibleAt: string | null
+  canInvite: boolean
 }
 
 type ClubDiscoverPerson = {
@@ -174,9 +178,11 @@ type CityDiscoverPerson = {
 type SearchDiscoverPerson = {
   userId: string
   displayName: string
-  matchType: 'email' | 'phone' | 'possible_match' | 'same_club_name'
+  visibility: 'visible' | 'requestable'
   isSaved: boolean
-  actionKind: 'direct_save' | 'save_request'
+  canAdd: boolean
+  canRequestAdd: boolean
+  canInvite: boolean
   requestStatus: string | null
   nextEligibleAt: string | null
 }
@@ -728,6 +734,7 @@ function ensurePerson(
     if (seed.saveActionKind === 'save_request') existing.saveActionKind = 'save_request'
     if (seed.saveRequestStatus !== undefined) existing.saveRequestStatus = seed.saveRequestStatus
     if (seed.saveRequestNextEligibleAt !== undefined) existing.saveRequestNextEligibleAt = seed.saveRequestNextEligibleAt
+    if (seed.canInvite === false) existing.canInvite = false
     if (seed.recentInteractionAt && (!existing.recentInteractionAt || seed.recentInteractionAt > existing.recentInteractionAt)) existing.recentInteractionAt = seed.recentInteractionAt
     if ((seed.sharedMatchCount ?? 0) > existing.sharedMatchCount) existing.sharedMatchCount = seed.sharedMatchCount ?? 0
     if (existing.identityType !== 'linked') {
@@ -771,6 +778,7 @@ function ensurePerson(
     saveActionKind: seed.saveActionKind ?? 'direct_save',
     saveRequestStatus: seed.saveRequestStatus ?? null,
     saveRequestNextEligibleAt: seed.saveRequestNextEligibleAt ?? null,
+    canInvite: seed.canInvite ?? true,
   }
   map.set(seed.key, created)
   return created
@@ -957,8 +965,16 @@ function getPeopleEmptyState(
       return `No registered players from groups are in your ${sportName.toLowerCase()} hood yet.`
     case 'all':
     default:
-      return `Your ${sportName} Hood is empty. Save players, add contacts, or bring people in through groups.`
+      return `Your ${sportName} Hood is empty. Add players, add contacts, or bring people in through groups.`
   }
+}
+
+function getLookupContextForSearch(query: string) {
+  const trimmed = query.trim()
+  const digits = trimmed.replace(/\D/g, '')
+  return trimmed.includes('@') || digits.length >= 7
+    ? 'exact_contact_lookup'
+    : 'same_public_venue_name_search'
 }
 
 function AddToGroupDialog({
@@ -1115,20 +1131,6 @@ function HoodPersonDrawer({
     [profile, sport.id],
   )
 
-  const sharedMatches = useMemo(() => {
-    if (!person) return []
-    return items
-      .filter((item) => item.match.sport_id === sport.id)
-      .filter((item) =>
-        item.participants.some((participant) =>
-          (person.userId && participant.user_id === person.userId)
-          || (person.guestId && participant.guest_id === person.guestId),
-        ),
-      )
-      .sort((left, right) => (right.match.start_at_utc ?? '').localeCompare(left.match.start_at_utc ?? ''))
-      .slice(0, 5)
-  }, [items, person, sport.id])
-
   const sharedClubNames = useMemo(() => {
     if (!person) return [] as string[]
     const clubSet = new Set(myClubNames)
@@ -1152,29 +1154,6 @@ function HoodPersonDrawer({
   const playStyles = splitDetailText(activeSportProfile?.play_style)
 
   const connections: DetailConnection[] = []
-  if (sharedClubNames.length > 0) {
-    connections.push({
-      key: 'venues',
-      icon: 'venue',
-      text: `Both play at ${sharedClubNames.join(', ')}`,
-    })
-  }
-  if (person.groupNames.length > 0) {
-    connections.push({
-      key: 'groups',
-      icon: 'groups',
-      text: `Shared groups: ${person.groupNames.join(', ')}`,
-      iconClassName: 'text-sky-500',
-    })
-  }
-  if (sharedMatches.length > 0) {
-    connections.push({
-      key: 'matches',
-      icon: 'matches',
-      text: sharedMatches.length === 1 ? 'Played 1 match together' : `Played ${sharedMatches.length} matches together`,
-      iconClassName: 'text-amber-500',
-    })
-  }
 
   const detailItems: DetailValue[] = []
   const detailGender = formatContactGenderLabel(profile?.gender ?? person.gender)
@@ -1272,29 +1251,6 @@ function HoodPersonDrawer({
         </section>
       ) : null}
 
-      {sharedMatches.length > 0 ? (
-        <section className="space-y-3">
-          <h3 className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
-            Match History
-          </h3>
-          <div className="space-y-2">
-            {sharedMatches.map((item) => (
-              <div key={item.match.id} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                <div className="text-sm font-semibold text-slate-800">{item.sportName ?? person.sportLabel}</div>
-                <div className="mt-1 text-xs font-medium text-slate-500">
-                  {formatTimeWindow(
-                    item.match.start_at_utc,
-                    item.match.match_date,
-                    item.match.start_time,
-                    item.match.duration_minutes,
-                    item.venueTimezone ?? 'UTC',
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
     </>
   )
 
@@ -1341,11 +1297,15 @@ function HoodPersonDrawer({
               className="text-body-sub inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
             >
               <span className={isStarred ? 'text-[#EAB308]' : 'text-slate-300'}>
-                {isStarred ? '★' : '☆'}
+                {isStarred ? '?' : '?'}
               </span>
               {isContactDetail
                 ? (isStarred ? 'Unstar contact' : 'Star contact')
-                : (isStarred ? 'Unsave player' : 'Save player')}
+                : person.saveActionKind === 'save_request'
+                  ? person.saveRequestStatus === 'pending'
+                    ? 'Request sent'
+                    : 'Request to Add'
+                  : (isStarred ? 'Remove from PlayerHood' : 'Add to PlayerHood')}
             </button>
           ) : null}
           <button
@@ -1506,11 +1466,11 @@ function HoodCard({
     ? (isStarred ? 'Unstar contact' : 'Star contact')
     : person.saveActionKind === 'save_request'
       ? person.saveRequestStatus === 'pending'
-        ? 'Save request sent'
+        ? 'Request sent'
         : person.saveRequestNextEligibleAt
           ? `Request available ${new Date(person.saveRequestNextEligibleAt).toLocaleDateString()}`
-          : 'Send Save Request'
-      : (isStarred ? 'Unsave player' : 'Save player')
+          : 'Request to Add'
+      : (isStarred ? 'Remove from PlayerHood' : 'Add to PlayerHood')
 
   return (
     <article
@@ -1580,7 +1540,7 @@ function HoodCard({
                   isStarred || person.saveRequestStatus === 'pending' ? 'text-[#EAB308]' : 'text-slate-300',
                 ].join(' ')}
               >
-                {isStarred ? '★' : person.saveActionKind === 'save_request' ? '!' : '☆'}
+                {isStarred ? '?' : person.saveActionKind === 'save_request' ? '!' : '?'}
               </span>
             </button>
           )}
@@ -1602,7 +1562,7 @@ function HoodCard({
         </div>
       </div>
 
-      {inviteOpen && (
+      {inviteOpen && person.canInvite && (
         <InvitePopover
           person={person}
           matches={inviteMatches}
@@ -1614,16 +1574,18 @@ function HoodCard({
 
       {menuOpen && (
         <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-3xl border border-slate-200 bg-white p-2 shadow-[0_22px_44px_-26px_rgba(15,23,42,0.32)]">
-          <button
-            type="button"
-            onClick={() => {
-              onToggleInvite(person)
-              onToggleMenu(person)
-            }}
-            className="text-body-main w-full rounded-2xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50"
-          >
-            Invite to Match{openMatchCount > 0 ? ` (${openMatchCount})` : ''}
-          </button>
+          {person.canInvite ? (
+            <button
+              type="button"
+              onClick={() => {
+                onToggleInvite(person)
+                onToggleMenu(person)
+              }}
+              className="text-body-main w-full rounded-2xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50"
+            >
+              Invite to Match{openMatchCount > 0 ? ` (${openMatchCount})` : ''}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => onOpenMenuAddToGroup(person)}
@@ -1859,6 +1821,7 @@ export function HoodsPanel({
   const [groupPending, setGroupPending] = useState(false)
   const [pendingInviteMatchId, setPendingInviteMatchId] = useState<string | null>(null)
   const [admissionTargetsByMatchId, setAdmissionTargetsByMatchId] = useState<Map<string, AdmissionTarget[]>>(new Map())
+  const [contactPersonTargetsByMatchId, setContactPersonTargetsByMatchId] = useState<Map<string, ContactPersonAdmissionTarget[]>>(new Map())
   const [contactComposerMode, setContactComposerMode] = useState<'manual' | 'screenshot' | null>(null)
   const [contactDisplayName, setContactDisplayName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -2140,7 +2103,7 @@ export function HoodsPanel({
 
         const userIds = Array.from(deduped.keys())
         const [profiles, userSportsMap] = await Promise.all([
-          fetchPublicPlayerProfiles(supabase, userIds),
+          fetchPublicPlayerProfiles(supabase, userIds, 'same_public_venue_name_search'),
           fetchUserSportsMap(supabase, userIds),
         ])
         if (cancelled) return
@@ -2250,10 +2213,13 @@ export function HoodsPanel({
         try {
           setSearchDiscoverError(null)
           const rows = await searchPlayersByEmailOrPhone(supabase, query)
-          const userIds = rows.map((row) => row.user_id)
+          const visibleUserIds = rows
+            .filter((row) => row.visibility === 'visible')
+            .map((row) => row.user_id)
+          const lookupContext = getLookupContextForSearch(query)
           const [profiles, userSportsMap] = await Promise.all([
-            fetchPublicPlayerProfiles(supabase, userIds),
-            fetchUserSportsMap(supabase, userIds),
+            fetchPublicPlayerProfiles(supabase, visibleUserIds, lookupContext),
+            fetchUserSportsMap(supabase, visibleUserIds),
           ])
 
           if (cancelled) return
@@ -2262,15 +2228,18 @@ export function HoodsPanel({
           setSearchDiscover(
             rows
               .filter((row) =>
-                profileMatchesSport(profiles.get(row.user_id), selectedSport?.id ?? 0)
+                row.visibility === 'requestable'
+                || profileMatchesSport(profiles.get(row.user_id), selectedSport?.id ?? 0)
                 || (userSportsMap.get(row.user_id) ?? []).includes(selectedSport?.id ?? 0),
               )
               .map((row) => ({
                 userId: row.user_id,
                 displayName: normalizeDisplayName(row.display_name),
-                matchType: row.match_type,
+                visibility: row.visibility,
                 isSaved: row.is_saved,
-                actionKind: row.action_kind,
+                canAdd: row.can_add,
+                canRequestAdd: row.can_request_add,
+                canInvite: row.can_invite,
                 requestStatus: row.request_status,
                 nextEligibleAt: row.next_eligible_at,
               })),
@@ -2577,9 +2546,10 @@ export function HoodsPanel({
           engagedSports: profile?.sport_profiles.map((entry) => entry.sport_name) ?? [selectedSport.display_name],
           preferredFormats: sportProfile?.preferred_formats ?? [],
           sportLabel: selectedSport.display_name,
-          saveActionKind: result.actionKind,
+          saveActionKind: result.visibility === 'requestable' ? 'save_request' : 'direct_save',
           saveRequestStatus: result.requestStatus,
           saveRequestNextEligibleAt: result.nextEligibleAt,
+          canInvite: result.canInvite,
         })
         if (savedUserIds.has(result.userId) || result.isSaved) person.sourceBadges.add('Starred')
       }
@@ -2601,6 +2571,7 @@ export function HoodsPanel({
   useEffect(() => {
     if (!selectedSport || openMatches.length === 0) {
       setAdmissionTargetsByMatchId(new Map())
+      setContactPersonTargetsByMatchId(new Map())
       return
     }
 
@@ -2609,18 +2580,27 @@ export function HoodsPanel({
 
     const loadAdmissionTargets = async () => {
       const nextMap = new Map<string, AdmissionTarget[]>()
+      const nextContactMap = new Map<string, ContactPersonAdmissionTarget[]>()
       await Promise.all(
         openMatches.map(async (item) => {
           try {
-            const targets = await getAdmissionTargets(supabase, item.match.id)
+            const [targets, contactTargets] = await Promise.all([
+              getAdmissionTargets(supabase, item.match.id),
+              getContactPersonAdmissionTargets(supabase, item.match.id),
+            ])
             nextMap.set(item.match.id, targets)
+            nextContactMap.set(item.match.id, contactTargets)
           } catch (loadError) {
             console.error(`[hoods] admission targets ${item.match.id}:`, loadError)
             nextMap.set(item.match.id, [])
+            nextContactMap.set(item.match.id, [])
           }
         }),
       )
-      if (!cancelled) setAdmissionTargetsByMatchId(nextMap)
+      if (!cancelled) {
+        setAdmissionTargetsByMatchId(nextMap)
+        setContactPersonTargetsByMatchId(nextContactMap)
+      }
     }
 
     void loadAdmissionTargets()
@@ -2633,15 +2613,22 @@ export function HoodsPanel({
     const result = new Map<string, MatchListItem[]>()
     const allPeople = [...hoodPeople, ...discoverPeople]
     for (const person of allPeople) {
+      if (!person.canInvite) continue
       for (const match of openMatches) {
         const targets = admissionTargetsByMatchId.get(match.match.id) ?? []
-        const canInvite = targets.some((target) =>
+        const contactTargets = contactPersonTargetsByMatchId.get(match.match.id) ?? []
+        const canInviteRegistered = targets.some((target) =>
           target.can_admit
-          && (
-            (person.userId && target.action_kind === 'admit_user' && target.target_id === person.userId)
-            || (person.guestId && target.action_kind === 'nominate_contact_player' && target.target_id === person.guestId)
-          ),
+          && person.userId
+          && target.action_kind === 'admit_user'
+          && target.target_id === person.userId,
         )
+        const canInviteContact = contactTargets.some((target) =>
+          target.can_invite
+          && person.personId
+          && target.person_id === person.personId,
+        )
+        const canInvite = canInviteRegistered || canInviteContact
         if (!canInvite) continue
         const list = result.get(person.key) ?? []
         list.push(match)
@@ -2649,7 +2636,7 @@ export function HoodsPanel({
       }
     }
     return result
-  }, [admissionTargetsByMatchId, discoverPeople, hoodPeople, openMatches])
+  }, [admissionTargetsByMatchId, contactPersonTargetsByMatchId, discoverPeople, hoodPeople, openMatches])
 
   const openMatchCount = useMemo(() => {
     const counts = new Map<string, number>()
@@ -2736,15 +2723,15 @@ export function HoodsPanel({
           ),
         )
         if (result.status === 'pending') {
-          setMessage(`Save request sent to ${person.displayName}.`)
+          setMessage(`Request sent to ${person.displayName}.`)
         } else if (result.status === 'already_saved') {
-          setMessage(`${person.displayName} is already saved.`)
+          setMessage(`${person.displayName} is already in your PlayerHood.`)
           const nextInviteCircleRows = await getInviteCircleList(supabase)
           setInviteCircleRows(nextInviteCircleRows)
         } else if (result.next_eligible_at) {
-          setMessage(`You can send another save request after ${new Date(result.next_eligible_at).toLocaleDateString()}.`)
+          setMessage(`You can send another request after ${new Date(result.next_eligible_at).toLocaleDateString()}.`)
         } else {
-          setMessage(`Save request status: ${result.status}.`)
+          setMessage(`Request status: ${result.status}.`)
         }
       } else if (person.isSaved && person.personId && isContactModulePerson(person)) {
         const { error: removeError } = await supabase
@@ -2757,7 +2744,7 @@ export function HoodsPanel({
         setMessage(`${person.displayName} was removed from Saved.`)
       } else if (person.isSaved && person.userId) {
         await removeFromInviteCircle(supabase, person.userId)
-        setMessage(`${person.displayName} was removed from Saved.`)
+        setMessage(`${person.displayName} was removed from your PlayerHood.`)
       } else if (person.guestId && isContactModulePerson(person)) {
         await saveContactPlayer(supabase, person.guestId, {
           source: person.saveSourceGroupId ? 'group_contact' : person.saveSourceMatchId ? 'shared_match' : 'manual',
@@ -2767,7 +2754,7 @@ export function HoodsPanel({
         setMessage(`${person.displayName} is now starred.`)
       } else if (person.userId) {
         await saveToInviteCircle(supabase, person.userId, person.isPlayedWith ? 'played_with_auto' : 'manual')
-        setMessage(`${person.displayName} is now saved.`)
+        setMessage(`${person.displayName} is now in your PlayerHood.`)
       }
       if (person.userId && !isContactModulePerson(person)) {
         const nextInviteCircleRows = await getInviteCircleList(supabase)
@@ -2789,7 +2776,7 @@ export function HoodsPanel({
     setError(null)
     setMessage(null)
     try {
-      if (person.isLinked && person.personId) {
+      if (person.personId && isContactModulePerson(person)) {
         await inviteContactPersonToMatch(supabase, matchId, person.personId)
         await processDeliveriesAction()
       } else if (person.userId) {
@@ -3287,7 +3274,7 @@ export function HoodsPanel({
             <div>
               <h3 className="text-h2 text-[#1E293B]">Find a registered player</h3>
               <p className="text-body-sub mt-1 text-[#64748B]">
-                Search exact email or phone. If direct save is not allowed, send a save request instead.
+                Find by exact email or phone. Some players may ask you to request access before you can add or invite them.
               </p>
             </div>
             <form onSubmit={handleSearchPeopleSubmit} className="flex flex-col gap-3 sm:flex-row">
@@ -3546,7 +3533,7 @@ export function HoodsPanel({
         </div>
       ) : showSearchPeoplePanel && hasSubmittedSearchPeople && activePeople.length === 0 ? (
         <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
-          <p>No available player found for this search.</p>
+          <p>No discoverable player found.</p>
           <p className="mt-2 text-body-sub text-slate-400">
             Check the email or phone number, or search the exact display name of someone who shares a club with you.
           </p>

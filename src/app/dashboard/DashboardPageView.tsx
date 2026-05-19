@@ -1,7 +1,7 @@
 import { DashboardShell } from './DashboardShell'
 import type { DashboardPageViewModel } from './dashboard.view-model'
 import type { GearImageInput, GearItemInput, GearShowcaseEntryInput, GearStringJobInput } from '@/lib/api/gear'
-import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob } from '@/lib/types/database'
+import type { DiscoveryVolume, GearImage, GearItem, GearShowcaseEntry, GearStringJob } from '@/lib/types/database'
 import type { GearLinkImportDraft } from '@/lib/gear-link-import'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
@@ -22,6 +22,8 @@ type DashboardPageViewProps = {
   onSaveGlobalPreferences: (params: {
     visible_in_city_discovery?: boolean
     searchable_by_email_or_phone?: boolean
+    discovery_volume?: DiscoveryVolume
+    accepting_new_invites?: boolean
     play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
     shared_group_join_preference?: 'auto_join_saved_players' | 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'

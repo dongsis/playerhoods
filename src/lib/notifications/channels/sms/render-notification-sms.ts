@@ -12,6 +12,13 @@ type InvitationSmsData = {
   } | null
   siteUrl: string
   unsubscribeUrl?: string | null
+  replyCode?: string | null
+}
+
+type MatchSmsData = MatchInfo & {
+  replyCode?: string | null
+  magicLinkPath?: string | null
+  changeSet?: Record<string, unknown> | null
 }
 
 const FALLBACK_SITE_URL = 'http://localhost:3000'
@@ -37,7 +44,11 @@ function formatSummaryParts(gameType: string | null | undefined, matchDate: stri
   return [formatGameType(gameType), matchDate ?? null, venueName?.trim() || null].filter(Boolean).join(' - ')
 }
 
-function matchLink(match: MatchInfo): string {
+function matchLink(match: Pick<MatchSmsData, 'matchId' | 'siteUrl' | 'magicLinkPath'>): string {
+  if (match.magicLinkPath) {
+    const path = match.magicLinkPath.startsWith('/') ? match.magicLinkPath : `/${match.magicLinkPath}`
+    return `${normalizeBaseUrl(match.siteUrl)}${path}`
+  }
   return `${normalizeBaseUrl(match.siteUrl)}/matches/${match.matchId}`
 }
 
@@ -55,7 +66,8 @@ export function renderInvitationSms(data: InvitationSmsData): string {
     venueName ? `at ${venueName}` : null,
   ].filter(Boolean).join(' ')
 
-  return `PlayerHoods: ${data.inviterDisplayName} invited you to ${details}. Respond: ${invitationUrl}. Stop invites: ${unsubscribeUrl}. Reply STOP to unsubscribe.`
+  const codeText = data.replyCode ? ` Reply YES ${data.replyCode} to accept or NO ${data.replyCode} to decline.` : ''
+  return `PlayerHoods: ${data.inviterDisplayName} invited you to ${details}.${codeText} Details: ${invitationUrl}. Reply STOP to unsubscribe. Stop invites: ${unsubscribeUrl}.`
 }
 
 export function renderGuestParticipantInviteSms(match: MatchInfo, inviterName: string): string {
@@ -86,4 +98,41 @@ export function renderMatchTimeChangeSms(match: MatchInfo): string {
 export function renderMatchRemovedSms(match: MatchInfo): string {
   const summary = formatSummaryParts(match.gameType, match.matchDate, match.venueName)
   return `You were removed from a PlayerHoods match${summary ? ` (${summary})` : ''}. Details: ${matchLink(match)}`
+}
+
+export function renderMatchInviteSms(match: MatchSmsData): string {
+  const date = formatSmsDate(match.matchDate) ?? 'TBD'
+  const time = match.startTime ?? 'TBD'
+  const location = match.venueName ?? 'TBD'
+  const codeText = match.replyCode ? ` Reply YES ${match.replyCode} to accept or NO ${match.replyCode} to decline.` : ''
+  return `You're invited to a PlayerHoods match: ${date} at ${time}, ${location}.${codeText} Details: ${matchLink(match)}`
+}
+
+export function renderConfirmedLineupSms(match: MatchSmsData): string {
+  const date = formatSmsDate(match.matchDate) ?? 'TBD'
+  const time = match.startTime ?? 'TBD'
+  const location = match.venueName ?? 'TBD'
+  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
+  return `Game on. You're confirmed to play: ${date} at ${time}, ${location}.${outText} We'll only notify you again if the match is cancelled or key details change.`
+}
+
+function summarizeChangeSet(changeSet: Record<string, unknown> | null | undefined): string {
+  if (!changeSet || Object.keys(changeSet).length === 0) return 'match details changed'
+  if ('status' in changeSet) return 'this match has been cancelled'
+  return Object.keys(changeSet)
+    .map((key) => key.replace(/_/g, ' '))
+    .join(', ') + ' changed'
+}
+
+export function renderCriticalUpdateSms(match: MatchSmsData): string {
+  const summary = summarizeChangeSet(match.changeSet)
+  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
+  return `PlayerHoods update: ${summary}.${outText} Details: ${matchLink(match)}`
+}
+
+export function renderCancellationSms(match: MatchSmsData): string {
+  const date = formatSmsDate(match.matchDate) ?? 'TBD'
+  const time = match.startTime ?? 'TBD'
+  const location = match.venueName ?? 'TBD'
+  return `PlayerHoods update: this match has been cancelled. ${date} at ${time}, ${location}. Details: ${matchLink(match)}`
 }

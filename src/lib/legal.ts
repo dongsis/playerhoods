@@ -2,7 +2,7 @@ export const LEGAL_AGREEMENT_VERSION = '2026-05-05'
 
 export const LEGAL_EFFECTIVE_DATE = LEGAL_AGREEMENT_VERSION
 
-export const LEGAL_WEBSITE = 'playerhoods.com'
+export const LEGAL_WEBSITE = 'www.playerhoods.com'
 
 export const SUPPORT_EMAIL =
   process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || 'support@playerhoods.com'

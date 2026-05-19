@@ -19,6 +19,8 @@ type DashboardProfile = Pick<
   | 'avatar_url'
   | 'visible_in_city_discovery'
   | 'searchable_by_contact_info'
+  | 'discovery_volume'
+  | 'accepting_new_invites'
   | 'allow_non_group_invites'
   | 'shared_group_join_preference'
   | 'looking_to_play'
@@ -69,6 +71,8 @@ const EMPTY_PROFILE: DashboardProfile = {
   avatar_url: null,
   visible_in_city_discovery: false,
   searchable_by_contact_info: false,
+  discovery_volume: 'recommended',
+  accepting_new_invites: true,
   allow_non_group_invites: true,
   shared_group_join_preference: 'auto_join_saved_players',
   looking_to_play: null,

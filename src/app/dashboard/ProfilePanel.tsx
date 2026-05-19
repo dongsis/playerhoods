@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, Venue, VenueKind, VenueSport, Sport, UserSportProfile } from '@/lib/types/database'
+import type { DiscoveryVolume, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, Venue, VenueKind, VenueSport, Sport, UserSportProfile } from '@/lib/types/database'
 import type { VenueMembership } from '@/lib/api/identities'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
@@ -54,6 +54,8 @@ type ProfileData = Pick<
     | 'avatar_url'
     | 'visible_in_city_discovery'
     | 'searchable_by_contact_info'
+    | 'discovery_volume'
+    | 'accepting_new_invites'
     | 'allow_non_group_invites'
     | 'shared_group_join_preference'
     | 'looking_to_play'
@@ -88,6 +90,8 @@ interface Props {
   onSaveGlobalPreferences: (params: {
     visible_in_city_discovery?: boolean
     searchable_by_email_or_phone?: boolean
+    discovery_volume?: DiscoveryVolume
+    accepting_new_invites?: boolean
     play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
     shared_group_join_preference?: 'auto_join_saved_players' | 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'
@@ -2252,21 +2256,17 @@ export function ProfilePanel({
 
   const privacySection = () => (
     <AccordionSection
-      title="Discovery Settings"
-      description="Choose where other registered players can find you."
+      title="Privacy & Discovery"
+      description="Control discovery volume and invite availability."
       eyebrow="Sharing"
       isOpen={activeSection === 'privacy'}
       onToggle={() => toggleSection('privacy')}
     >
       <DiscoveryAndInvitesSection
         showTitle={false}
-        visibleInCityDiscovery={profile.visible_in_city_discovery ?? false}
-        searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
-        sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'auto_join_saved_players'}
-        playCities={myPlayCities}
-        memberships={myVenueMemberships}
+        discoveryVolume={profile.discovery_volume ?? 'recommended'}
+        acceptingNewInvites={profile.accepting_new_invites ?? true}
         onSaveGlobal={onSaveGlobalPreferences}
-        onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
       />
     </AccordionSection>
   )
@@ -3385,19 +3385,15 @@ export function ProfilePanel({
         </SectionCard>
 
         <SectionCard
-          title="Discovery Settings"
-          description="Choose where other registered players can find you."
+          title="Privacy & Discovery"
+          description="Control discovery volume and invite availability."
           tone="soft"
         >
         <DiscoveryAndInvitesSection
             showTitle={false}
-            visibleInCityDiscovery={profile.visible_in_city_discovery ?? false}
-            searchableByEmailOrPhone={profile.searchable_by_contact_info ?? false}
-            sharedGroupJoinPreference={profile.shared_group_join_preference ?? 'auto_join_saved_players'}
-            playCities={myPlayCities}
-            memberships={myVenueMemberships}
+            discoveryVolume={profile.discovery_volume ?? 'recommended'}
+            acceptingNewInvites={profile.accepting_new_invites ?? true}
             onSaveGlobal={onSaveGlobalPreferences}
-          onSetVenueMemberDiscovery={onSetVenueMemberDiscovery}
           />
         </SectionCard>
       </div>

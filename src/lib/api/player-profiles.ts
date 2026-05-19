@@ -118,9 +118,11 @@ export async function saveMySportProfile(
 export async function getPublicPlayerProfile(
   supabase: Client,
   targetUserId: string,
+  context = 'passive_recommendation',
 ): Promise<PublicPlayerProfile | null> {
   const { data, error } = await supabase.rpc('rpc_player_profile_get', {
     p_target_user_id: targetUserId,
+    p_context: context,
   })
 
   if (error) throw error

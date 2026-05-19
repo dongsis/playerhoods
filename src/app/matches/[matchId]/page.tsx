@@ -1,6 +1,7 @@
 import {
   acceptMatchIdentityLinkAction,
   cancelMatchWithReasonAction,
+  confirmMatchAndNotifyAction,
   keepSeparateMatchIdentityLinkAction,
   removeMatchParticipantAction,
   postMatchMessageAction,
@@ -35,6 +36,7 @@ export default async function MatchDetailPage({ params }: Props) {
       onUpdateOrganizerNote={updateMatchOrganizerNoteAction.bind(null, matchId)}
       onPostMessage={postMatchMessageAction.bind(null, matchId)}
       onSaveLineup={saveMatchLineupAction.bind(null, matchId)}
+      onConfirmMatch={confirmMatchAndNotifyAction.bind(null, matchId)}
       onCancelMatch={cancelMatchWithReasonAction.bind(null, matchId)}
       onSaveCourtPlan={updateMatchCourtPlanAction.bind(null, matchId)}
       onRemoveParticipant={removeMatchParticipantAction.bind(null, matchId)}

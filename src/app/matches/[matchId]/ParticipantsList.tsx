@@ -76,6 +76,11 @@ export function ParticipantsList({
     return dateStr.split('T')[0]
   }
 
+  const formatJoinMethod = (joinMethod: string | null) => {
+    if (joinMethod === 'nominated') return 'invited'
+    return joinMethod ?? 'invited'
+  }
+
   return (
     <div style={{ marginBottom: '1rem' }}>
       {title && <h4 style={{ color }}>{title} ({participants.length})</h4>}
@@ -103,7 +108,7 @@ export function ParticipantsList({
                   )}
                   <br />
                   <small>
-                    {p.join_method}
+                    {formatJoinMethod(p.join_method)}
                     {p.status === 'pending' && (
                       <>
                         {p.participant_accepted_at ? ' | User: accepted' : ' | User: waiting'}

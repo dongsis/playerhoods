@@ -97,9 +97,9 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
   } = detail
 
   const isMatchAssociated = isSelfWithdrawAssociated(user?.id, myParticipant)
-  const isFormed = Boolean(match.formed_at) || confirmedCount >= match.required_count
+  const isFormed = Boolean(match.formed_at)
   const canParticipantInvite = !isOrganizer && match.can_participants_invite_users && (inScope || isMatchAssociated)
-  const canParticipantInviteContact = isOrganizer || (match.can_participants_invite_users && (inScope || isMatchAssociated))
+  const canParticipantInviteContact = isOrganizer
   const courtState = deriveMatchCourtStatus({
     matchStatus: match.status,
     courtPlanMode: match.court_plan_mode,

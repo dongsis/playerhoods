@@ -1759,7 +1759,7 @@ export async function getMatchDetailData(
   const myParticipant = userId
     ? (enriched.find(p => p.user_id === userId || participantLinkedToUser.get(p.id) === userId) ?? null)
     : null
-  const isFormed = Boolean(match.formed_at) || (((formedRes.error ? null : formedRes.data?.confirmed_count) ?? confirmed.length) >= match.required_count)
+  const isFormed = Boolean(match.formed_at)
   const hasActiveParticipantAccess = Boolean(
     myParticipant &&
     myParticipant.removed_at === null &&
@@ -1894,7 +1894,6 @@ export type AdmissionTarget = {
   can_admit: boolean
   eligible_via: string | null
   sort_name: string | null
-  contact_email: string | null
 }
 
 /** P4: Contact Player target surfaced as a person-level card only. */
@@ -1962,14 +1961,14 @@ export function admissionTargetsToScopeUsers(
     }))
 }
 
-/** Phase 3: Contact Player targets only (for InviteGuestForm). */
+/** Legacy Contact Player target adapter. New flows should use person-level ContactPersonAdmissionTarget. */
 export function admissionTargetsToContactPlayers(targets: AdmissionTarget[]): { guest_id: string; display_name: string; email: string | null; source: string; sourceLabel: string }[] {
   return targets
     .filter(t => t.action_kind === 'nominate_contact_player')
     .map(t => ({
       guest_id: t.target_id,
       display_name: t.display_name ?? '',
-      email: t.contact_email ?? null,
+      email: null,
       source: t.source,
       sourceLabel: getAdmissionTargetSourceLabel(t.source),
     }))

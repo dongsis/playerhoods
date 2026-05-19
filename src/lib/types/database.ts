@@ -37,6 +37,8 @@ export type GearCategory = 'rackets' | 'shoes' | 'apparel' | 'strings' | 'access
 export type GearImageKind = 'item' | 'setup_photo'
 export type GearShowcaseSourceType = 'owned_item' | 'wishlist_item' | 'photo'
 export type AvailabilityStatus = 'available' | 'busy' | 'away' | 'inactive'
+export type DiscoveryVolume = 'quiet' | 'playerhood' | 'recommended'
+export type LookupVisibility = 'none' | 'requestable' | 'visible'
 
 export type Json =
   | string
@@ -103,6 +105,25 @@ export type Profile = {
   visible_in_city_discovery?: boolean
   /** Discovery: whether exact email/phone search may find this user */
   searchable_by_contact_info?: boolean
+  /** Player Discovery Volume: quiet | playerhood | recommended */
+  discovery_volume?: DiscoveryVolume
+  /** Accept New Invites */
+  accepting_new_invites?: boolean
+}
+
+export type UserBlock = {
+  blocker_user_id: string
+  blocked_user_id: string
+  created_at: string
+}
+
+export type UserLookupVisibilityGrant = {
+  viewer_user_id: string
+  target_user_id: string
+  grant_context: 'exact_contact_lookup' | 'same_public_venue_name_search' | 'same_public_club_name_search'
+  visibility: 'requestable' | 'visible'
+  created_at: string
+  expires_at: string
 }
 
 export type UserPlayCity = {
@@ -275,6 +296,10 @@ export type Match = {
   finalized_by_user_id: string | null
   finalized_at: string | null
   formed_at: string | null
+  formation_mode?: 'manual' | 'auto'
+  formed_by_user_id?: string | null
+  formation_source?: 'manual' | 'auto' | null
+  auto_formation_rules?: Json
   start_at_utc: string | null
   created_at: string
   sport_id: number  // v1.6.3: FK sports; NOT NULL DEFAULT 1 (tennis)
@@ -627,6 +652,9 @@ export type MatchParticipant = {
   contact_claim_id?: string | null
   replaced_by_participant_id?: string | null
   migrated_at?: string | null
+  invite_notification_sent_at?: string | null
+  confirmed_lineup_notification_sent_at?: string | null
+  last_critical_update_notification_sent_at?: string | null
 }
 
 // View types
@@ -816,6 +844,18 @@ export interface Database {
         Row: UserPlayCity
         Insert: Partial<UserPlayCity> & { user_id: string; city_name: string; country: string }
         Update: Partial<UserPlayCity>
+        Relationships: []
+      }
+      user_blocks: {
+        Row: UserBlock
+        Insert: Partial<UserBlock> & { blocker_user_id: string; blocked_user_id: string }
+        Update: Partial<UserBlock>
+        Relationships: []
+      }
+      user_lookup_visibility_grants: {
+        Row: UserLookupVisibilityGrant
+        Insert: Partial<UserLookupVisibilityGrant> & { viewer_user_id: string; target_user_id: string; grant_context: UserLookupVisibilityGrant['grant_context']; visibility: UserLookupVisibilityGrant['visibility'] }
+        Update: Partial<UserLookupVisibilityGrant>
         Relationships: []
       }
       location_municipalities: {
@@ -1150,6 +1190,51 @@ export interface Database {
         }
         Returns: void
       }
+      rpc_profile_update_discovery_preferences: {
+        Args: {
+          p_discovery_volume?: DiscoveryVolume | null
+          p_accepting_new_invites?: boolean | null
+        }
+        Returns: void
+      }
+      get_lookup_visibility: {
+        Args: { p_viewer_user_id: string; p_target_user_id: string; p_context?: string | null }
+        Returns: LookupVisibility
+      }
+      has_lookup_visibility_grant: {
+        Args: {
+          p_viewer_user_id: string
+          p_target_user_id: string
+          p_context: string
+          p_visibility?: 'requestable' | 'visible' | null
+        }
+        Returns: boolean
+      }
+      can_view_basic_profile: {
+        Args: { p_viewer_user_id: string; p_target_user_id: string; p_context?: string | null }
+        Returns: boolean
+      }
+      can_request_add: {
+        Args: { p_viewer_user_id: string; p_target_user_id: string; p_context?: string | null }
+        Returns: boolean
+      }
+      can_direct_add: {
+        Args: { p_viewer_user_id: string; p_target_user_id: string; p_context?: string | null }
+        Returns: boolean
+      }
+      can_invite_user: {
+        Args: {
+          p_viewer_user_id: string
+          p_target_user_id: string
+          p_match_id?: string | null
+          p_context?: string | null
+        }
+        Returns: boolean
+      }
+      can_recommend_user: {
+        Args: { p_viewer_user_id: string; p_target_user_id: string }
+        Returns: boolean
+      }
       rpc_user_play_cities_replace: {
         Args: { p_cities?: Json | null }
         Returns: void
@@ -1189,9 +1274,12 @@ export interface Database {
           user_id: string
           display_name: string | null
           avatar_url: string | null
-          match_type: string
+          primary_sport: string | null
+          visibility: LookupVisibility
           is_saved: boolean
-          action_kind: string
+          can_add: boolean
+          can_request_add: boolean
+          can_invite: boolean
           request_status: string | null
           next_eligible_at: string | null
         }[]
@@ -1275,7 +1363,7 @@ export interface Database {
         Returns: void
       }
       rpc_player_profile_get: {
-        Args: { p_target_user_id: string }
+        Args: { p_target_user_id: string; p_context?: string | null }
         Returns: {
           user_id: string
           display_name: string | null
@@ -1741,7 +1829,7 @@ export interface Database {
       }
       rpc_match_admission_targets: {
         Args: { p_match_id: string; p_search?: string | null }
-        Returns: { target_kind: string; target_id: string; display_name: string | null; avatar_url: string | null; source: string; action_kind: string; can_admit: boolean; eligible_via: string | null; sort_name: string | null; contact_email: string | null }[]
+        Returns: { target_kind: string; target_id: string; display_name: string | null; avatar_url: string | null; source: string; action_kind: string; can_admit: boolean; eligible_via: string | null; sort_name: string | null }[]
       }
       rpc_match_invite_group: {
         Args: { p_match_id: string; p_group_id: string }

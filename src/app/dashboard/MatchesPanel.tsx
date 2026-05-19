@@ -1398,11 +1398,13 @@ export function MatchesPanel({
       <div className="space-y-6 md:hidden">
         <section className="rounded-[32px] border border-[#E2E8F0] bg-white px-5 pb-5 pt-4 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
           <div className="mb-5 flex items-center justify-between gap-3">
-            <img
-              src="/playerhoods-brand-horizontal-cropped.png"
-              alt="PlayerHoods"
-              className="h-10 w-[176px] object-contain"
-            />
+            <div className="flex items-center gap-2">
+              <img
+                src="/playerhoods-brand-stacked-cropped.png"
+                alt="PlayerHoods"
+                className="h-10 w-36 object-contain"
+              />
+            </div>
             <div className="flex items-center gap-3">
               <span className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

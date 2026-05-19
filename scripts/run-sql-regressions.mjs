@@ -79,6 +79,10 @@ const suites = [
     file: 'tests/test_runner_contact_claimed_flow.sql',
     functionName: 'test_runner_contact_claimed_flow',
   },
+  {
+    file: 'tests/test_runner_privacy_invite_notification_formation.sql',
+    functionName: 'test_runner_privacy_invite_notification_formation',
+  },
 ]
 
 for (const suite of suites) {

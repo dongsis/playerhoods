@@ -165,11 +165,13 @@ export function LeftNav({ active, onTab, isAdmin, badges, badgeTooltips }: Props
           className="group flex w-full items-center justify-start rounded-3xl px-0 py-1 transition-colors hover:bg-transparent"
           aria-label="PlayerHoods home"
         >
-          <img
-            src="/playerhoods-brand-stacked-cropped.png"
-            alt="PlayerHoods"
-            className="h-[139px] w-[252px] object-contain transition-transform duration-200 group-hover:scale-[1.01]"
-          />
+          <span className="flex w-full flex-col items-center gap-2 transition-transform duration-200 group-hover:scale-[1.01]">
+            <img
+              src="/playerhoods-brand-stacked-cropped.png"
+              alt="PlayerHoods"
+              className="h-[72px] w-[172px] object-contain"
+            />
+          </span>
         </button>
       </div>
 

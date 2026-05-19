@@ -87,11 +87,11 @@ function buildEmail(delivery) {
     }
     case 'guest_nominated':
       return {
-        subject: "You're nominated for a match",
+        subject: "You're invited to a match",
         html: `
           <div style="font-family: Inter, Arial, sans-serif; color: #0f172a; line-height: 1.5;">
-            <h2 style="margin-bottom: 12px;">You're nominated for a match</h2>
-            <p><strong>${inviterName}</strong> nominated you for ${summaryText}.</p>
+            <h2 style="margin-bottom: 12px;">You're invited to a match</h2>
+            <p>You have been invited to ${summaryText}.</p>
             <p>Open PlayerHoods to review the invitation.</p>
           </div>
         `,

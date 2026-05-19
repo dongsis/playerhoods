@@ -1,58 +1,56 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { SharedGroupJoinPreference, UserPlayCity, Venue } from '@/lib/types/database'
-import type { VenueMembership } from '@/lib/api/identities'
-import { getVenueDisplayName } from '@/lib/venues/display'
-import { SHARED_GROUP_JOIN_PREFERENCE_OPTIONS } from '@/lib/profile-options'
+import type { DiscoveryVolume } from '@/lib/types/database'
 import type { DashboardPreferenceSaveResult } from '@/app/dashboard/dashboard.actions'
 
-const TRUSTED_INVITATION_REASONS = [
-  "Players I've saved",
-  'Members from my clubs / venues',
-  'Invitations matching my sports and play locations',
-] as const
-
-function normalizeGroupJoinPreference(value: SharedGroupJoinPreference): SharedGroupJoinPreference {
-  return value === 'auto_join_enabled_sports' ? 'auto_join_saved_players' : value
-}
+const DISCOVERY_VOLUME_OPTIONS: Array<{
+  value: DiscoveryVolume
+  label: string
+  description: string
+}> = [
+  {
+    value: 'quiet',
+    label: 'Quiet',
+    description:
+      'Do not actively recommend me. Only players who already share a clear playing context with me can see my basic profile.',
+  },
+  {
+    value: 'playerhood',
+    label: 'My PlayerHood',
+    description:
+      'Help me grow my playing circle through real playing connections. PlayerHoods will not show who suggested whom or reveal mutual players.',
+  },
+  {
+    value: 'recommended',
+    label: 'Recommended',
+    description:
+      'PlayerHoods can recommend me to suitable players based on sport, level, area, and playing preferences. Recommended does not mean public.',
+  },
+]
 
 interface Props {
   showTitle?: boolean
-  visibleInCityDiscovery: boolean
-  searchableByEmailOrPhone: boolean
-  sharedGroupJoinPreference: SharedGroupJoinPreference
-  playCities: UserPlayCity[]
-  memberships: VenueMembership[]
+  discoveryVolume: DiscoveryVolume
+  acceptingNewInvites: boolean
   onSaveGlobal: (params: {
-    visible_in_city_discovery?: boolean
-    searchable_by_email_or_phone?: boolean
-    shared_group_join_preference?: SharedGroupJoinPreference
+    discovery_volume?: DiscoveryVolume
+    accepting_new_invites?: boolean
   }) => Promise<DashboardPreferenceSaveResult>
-  onSetVenueMemberDiscovery: (venueId: string, visibleInVenueMemberDiscovery: boolean) => Promise<DashboardPreferenceSaveResult>
 }
 
 export function DiscoveryAndInvitesSection({
   showTitle = true,
-  visibleInCityDiscovery,
-  searchableByEmailOrPhone,
-  sharedGroupJoinPreference,
-  playCities,
-  memberships,
+  discoveryVolume,
+  acceptingNewInvites,
   onSaveGlobal,
-  onSetVenueMemberDiscovery,
 }: Props) {
   const router = useRouter()
-  const [cityDiscovery, setCityDiscovery] = useState(visibleInCityDiscovery)
-  const [emailOrPhoneLookup, setEmailOrPhoneLookup] = useState(searchableByEmailOrPhone)
-  const [groupJoinPreference, setGroupJoinPreference] = useState<SharedGroupJoinPreference>(
-    normalizeGroupJoinPreference(sharedGroupJoinPreference),
-  )
-  const [venueVisibility, setVenueVisibility] = useState<Record<string, boolean>>({})
+  const [volume, setVolume] = useState<DiscoveryVolume>(discoveryVolume)
+  const [acceptInvites, setAcceptInvites] = useState(acceptingNewInvites)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  const [venuePending, setVenuePending] = useState<string | null>(null)
   const [, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const mountedRef = useRef(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -69,40 +67,18 @@ export function DiscoveryAndInvitesSection({
   }
 
   useEffect(() => {
-    const normalizedGroupJoinPreference = normalizeGroupJoinPreference(sharedGroupJoinPreference)
-
-    setCityDiscovery(visibleInCityDiscovery)
-    setEmailOrPhoneLookup(searchableByEmailOrPhone)
-    setGroupJoinPreference(normalizedGroupJoinPreference)
-
-    const nextVisibility = Object.fromEntries(
-      memberships.map((membership) => [
-        membership.venue_id,
-        membership.visible_in_venue_member_discovery ?? true,
-      ]),
-    )
-    setVenueVisibility(nextVisibility)
-
+    setVolume(discoveryVolume)
+    setAcceptInvites(acceptingNewInvites)
     lastSavedSnapshotRef.current = JSON.stringify({
-      visible_in_city_discovery: visibleInCityDiscovery,
-      searchable_by_email_or_phone: searchableByEmailOrPhone,
-      shared_group_join_preference: normalizedGroupJoinPreference,
+      discovery_volume: discoveryVolume,
+      accepting_new_invites: acceptingNewInvites,
     })
     setSaveState('idle')
-  }, [memberships, searchableByEmailOrPhone, sharedGroupJoinPreference, visibleInCityDiscovery])
-
-  const sortedMemberships = useMemo(
-    () =>
-      [...memberships].sort((left, right) =>
-        getVenueDisplayName(left.venue).localeCompare(getVenueDisplayName(right.venue)),
-      ),
-    [memberships],
-  )
+  }, [acceptingNewInvites, discoveryVolume])
 
   const currentSnapshot = JSON.stringify({
-    visible_in_city_discovery: cityDiscovery,
-    searchable_by_email_or_phone: emailOrPhoneLookup,
-    shared_group_join_preference: groupJoinPreference,
+    discovery_volume: volume,
+    accepting_new_invites: acceptInvites,
   })
 
   useEffect(() => {
@@ -121,9 +97,8 @@ export function DiscoveryAndInvitesSection({
       startTransition(async () => {
         try {
           const result = await onSaveGlobal({
-            visible_in_city_discovery: cityDiscovery,
-            searchable_by_email_or_phone: emailOrPhoneLookup,
-            shared_group_join_preference: groupJoinPreference,
+            discovery_volume: volume,
+            accepting_new_invites: acceptInvites,
           })
           if (!result.ok) {
             setError(result.error)
@@ -146,199 +121,72 @@ export function DiscoveryAndInvitesSection({
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [cityDiscovery, currentSnapshot, emailOrPhoneLookup, groupJoinPreference, onSaveGlobal, router, startTransition])
-
-  const clubDiscoveryEnabled =
-    sortedMemberships.length > 0
-      ? sortedMemberships.every((membership) => venueVisibility[membership.venue_id] ?? true)
-      : false
-
-  const handleSetVisible = (venueId: string, value: boolean) => {
-    setVenueVisibility((current) => ({ ...current, [venueId]: value }))
-    setVenuePending(venueId)
-    setError(null)
-    onSetVenueMemberDiscovery(venueId, value)
-      .then((result) => {
-        if (!result.ok) {
-          setVenueVisibility((current) => ({
-            ...current,
-            [venueId]: !value,
-          }))
-          setError(result.error)
-          return
-        }
-        router.refresh()
-      })
-      .catch((venueError) => {
-        setVenueVisibility((current) => ({
-          ...current,
-          [venueId]: !value,
-        }))
-        setError(getErrorMessage(venueError))
-      })
-      .finally(() => setVenuePending(null))
-  }
-
-  const handleSetAllClubVisibility = (nextValue: boolean) => {
-    if (sortedMemberships.length === 0) return
-    setError(null)
-    setVenueVisibility((current) => {
-      const next = { ...current }
-      for (const membership of sortedMemberships) {
-        next[membership.venue_id] = nextValue
-      }
-      return next
-    })
-
-    startTransition(async () => {
-      try {
-        const results = await Promise.all(
-          sortedMemberships.map((membership) =>
-            onSetVenueMemberDiscovery(membership.venue_id, nextValue),
-          ),
-        )
-        const firstError = results.find((result) => !result.ok)
-        if (firstError && !firstError.ok) {
-          setError(firstError.error)
-          router.refresh()
-          return
-        }
-        router.refresh()
-      } catch (venueError) {
-        setError(getErrorMessage(venueError))
-        router.refresh()
-      }
-    })
-  }
+  }, [acceptInvites, currentSnapshot, onSaveGlobal, router, startTransition, volume])
 
   return (
     <div className="space-y-5">
-      {showTitle ? <h2 className="text-h2 text-[#1E293B]">Discovery Settings</h2> : null}
+      {showTitle ? <h2 className="text-h2 text-[#1E293B]">Privacy &amp; Discovery</h2> : null}
 
       <section className="space-y-4 px-1">
         <div className="space-y-1">
-          <h3 className="text-h2 text-[#1E293B]">Who can find me?</h3>
-          <p className="text-body-sub text-[#64748B]">Control who can discover your player profile.</p>
+          <h3 className="text-h2 text-[#1E293B]">Player Discovery Volume</h3>
+          <p className="text-body-sub text-[#64748B]">
+            Control how widely suitable players can discover your basic player profile and invite you to play.
+          </p>
         </div>
 
-        <div className="space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4">
-          <div>
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={clubDiscoveryEnabled}
-                onChange={(event) => handleSetAllClubVisibility(event.target.checked)}
-                disabled={sortedMemberships.length === 0 || isPending}
-                className="mt-1 h-4 w-4 rounded border-slate-300"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-body-main font-semibold text-[#1E293B]">
-                  Let members of my clubs find me
-                </span>
-                {sortedMemberships.length === 0 ? (
-                  <span className="mt-2 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
-                    Add clubs or venues to control where club discovery is active.
-                  </span>
-                ) : null}
-              </span>
-            </label>
-
-            {sortedMemberships.length > 0 ? (
-              <div className="mt-3 space-y-2 pl-7">
-                {sortedMemberships.map((membership) => (
-                  <label
-                    key={membership.id}
-                    className="flex items-center gap-3 px-3 py-1 transition"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={venueVisibility[membership.venue_id] ?? true}
-                      onChange={(event) => handleSetVisible(membership.venue_id, event.target.checked)}
-                      disabled={venuePending === membership.venue_id || isPending}
-                      className="h-4 w-4 rounded border-slate-300"
-                    />
-                    <span className="text-sm font-medium text-[#334155]">
-                      Visible to members of {getVenueDisplayName(membership.venue)}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={cityDiscovery}
-              onChange={(event) => setCityDiscovery(event.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-slate-300"
-            />
-            <span className="text-body-main font-semibold text-[#1E293B]">
-              Let players in my play cities find me
-            </span>
-          </label>
-
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={emailOrPhoneLookup}
-              onChange={(event) => setEmailOrPhoneLookup(event.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-slate-300"
-            />
-            <span className="text-body-main font-semibold text-[#1E293B]">
-              Let people who know my email or phone find me
-            </span>
-          </label>
-        </div>
-      </section>
-
-      <section className="space-y-4 px-1">
-        <div className="space-y-1">
-          <h3 className="text-h2 text-[#1E293B]">Group Invite Settings</h3>
-          <p className="text-body-sub text-[#64748B]">Control which invitations are automatically accepted.</p>
-        </div>
-
-        <div className="space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4">
-          {SHARED_GROUP_JOIN_PREFERENCE_OPTIONS.map((option) => (
+        <div className="space-y-3">
+          {DISCOVERY_VOLUME_OPTIONS.map((option) => (
             <label
               key={option.value}
-              className="flex items-start gap-3"
+              className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4 transition hover:border-[#CBD5E1]"
             >
               <input
                 type="radio"
-                name="shared_group_join_preference"
+                name="discovery_volume"
                 value={option.value}
-                checked={groupJoinPreference === option.value}
-                onChange={() => setGroupJoinPreference(option.value)}
+                checked={volume === option.value}
+                onChange={() => setVolume(option.value)}
+                disabled={isPending}
                 className="mt-1 h-4 w-4 border-slate-300"
               />
               <span>
                 <span className="block text-body-main font-semibold text-[#1E293B]">{option.label}</span>
-                {option.value === 'auto_join_saved_players' ? (
-                  <span className="mt-3 block space-y-2 text-body-sub text-[#475569]">
-                    <span className="block font-semibold text-[#334155]">Trusted invitations include:</span>
-                    {TRUSTED_INVITATION_REASONS.map((reason) => (
-                      <span key={reason} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked
-                          readOnly
-                          aria-label={reason}
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                        <span>{reason}</span>
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
+                <span className="mt-1 block text-body-sub text-[#64748B]">{option.description}</span>
               </span>
             </label>
           ))}
         </div>
       </section>
 
+      <section className="space-y-4 px-1">
+        <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4">
+          <span className="min-w-0 flex-1">
+            <span className="block text-body-main font-semibold text-[#1E293B]">Accept New Invites</span>
+            <span className="mt-1 block text-body-sub text-[#64748B]">
+              {acceptInvites
+                ? 'Players within your discovery volume can invite you to play. You always choose whether to join.'
+                : 'You will not receive new play invites or be recommended to new players. Your existing matches, groups, and activities are not affected.'}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={acceptInvites}
+            onChange={(event) => setAcceptInvites(event.target.checked)}
+            disabled={isPending}
+            className="mt-1 h-5 w-5 rounded border-slate-300"
+          />
+        </label>
+      </section>
+
+      <p className="rounded-lg border border-[#E2E8F0] bg-white px-4 py-3 text-body-sub text-[#64748B]">
+        Your phone, email, and private contact details are never shown to other players. People who know your exact
+        email or phone, or search your name in a shared club or venue, may be able to request to add you to their
+        PlayerHood.
+      </p>
+
       {error ? (
-        <p className="rounded-[20px] border border-rose-200 bg-white px-4 py-3 text-sm font-medium text-rose-600">
+        <p className="rounded-lg border border-rose-200 bg-white px-4 py-3 text-sm font-medium text-rose-600">
           {error}
         </p>
       ) : null}

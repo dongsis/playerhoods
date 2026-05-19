@@ -42,7 +42,7 @@ const KIND_LABELS: Record<string, string> = {
   group_join_request_accepted: 'Group request accepted',
   group_join_request_declined: 'Group request declined',
   contact_intro_share: 'Intro shared',
-  save_request: 'Save request',
+  save_request: 'PlayerHood request',
 }
 
 function formatTime(iso: string): string {
@@ -243,15 +243,15 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-label inline-flex items-center rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#3B82F6] ring-1 ring-[#DBEAFE]">
-                          Save request
+                          PlayerHood request
                         </span>
                         <span className="text-body-sub text-gray-400">{formatTime(request.created_at)}</span>
                       </div>
                       <h3 className="mt-2 text-title-main text-gray-900">
-                        {requesterName} wants to save you to their Hood.
+                        {requesterName} wants to add you to their PlayerHood.
                       </h3>
                       <p className="text-body-sub mt-1 text-gray-600">
-                        Allowing this lets them keep you in their saved players. Your private contact details stay hidden.
+                        If you allow this, {requesterName} can save your basic player profile and invite you to play. Your phone and email will not be shared.
                       </p>
                     </div>
                   </div>
@@ -262,7 +262,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
                       onClick={() => handleSaveRequestResponse(request, true)}
                       className="text-body-main rounded-full bg-[#0B1F44] px-4 py-2 font-semibold text-white transition hover:bg-[#16335F] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Allow Save
+                      Allow
                     </button>
                     <button
                       type="button"

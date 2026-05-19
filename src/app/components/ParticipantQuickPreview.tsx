@@ -91,7 +91,6 @@ export function ParticipantQuickPreview({
   open,
   anchor,
   target,
-  items = [],
   onClose,
 }: Props) {
   const [contact, setContact] = useState<ContactPlayerResolved | null>(null)
@@ -198,35 +197,6 @@ export function ParticipantQuickPreview({
     () => splitPlayStyle(primarySportProfile?.play_style).slice(0, 2),
     [primarySportProfile],
   )
-
-  const sharedMatchCount = useMemo(() => {
-    if (profile?.shared_match_count) return profile.shared_match_count
-    if (!target.guestId) return 0
-
-    return items.filter((item) =>
-      item.participants.some((participant) => participant.guest_id === target.guestId),
-    ).length
-  }, [items, profile?.shared_match_count, target.guestId])
-
-  const connections = useMemo(() => {
-    const next: string[] = []
-
-    if (profile?.shared_venue_names?.length) {
-      next.push(`Both play at ${profile.shared_venue_names.join(', ')}`)
-    }
-
-    if (profile?.shared_group_names?.length) {
-      next.push(`Shared groups: ${profile.shared_group_names.join(', ')}`)
-    } else if (target.sharesGroupWithViewer) {
-      next.push('You share at least one group connection')
-    }
-
-    if (sharedMatchCount > 0) {
-      next.push(sharedMatchCount === 1 ? 'Played 1 match together' : `Played ${sharedMatchCount} matches together`)
-    }
-
-    return next.slice(0, 3)
-  }, [profile?.shared_group_names, profile?.shared_venue_names, sharedMatchCount, target.sharesGroupWithViewer])
 
   const detailItems = useMemo(() => {
     const next: Array<{ label: string; value: string }> = []
@@ -344,17 +314,6 @@ export function ParticipantQuickPreview({
                     <span key={format} className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-600">
                       {format}
                     </span>
-                  ))}
-                </div>
-              ) : null}
-
-              {connections.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  {connections.map((text) => (
-                    <div key={text} className="flex items-start gap-2 text-sm font-medium text-slate-600">
-                      <span className="mt-[7px] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
-                      <span>{text}</span>
-                    </div>
                   ))}
                 </div>
               ) : null}

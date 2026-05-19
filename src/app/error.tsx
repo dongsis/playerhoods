@@ -17,13 +17,15 @@ export default function GlobalAppError({
     <div className="min-h-screen bg-[#EEF1F7] px-4 py-10">
       <div className="ph-page-narrow">
         <div className="mb-6 flex justify-center">
-          <img
-            src="/playerhoods-brand-stacked-cropped.png"
-            alt="PlayerHoods"
-            width={1122}
-            height={1402}
-            className="h-auto w-full max-w-[220px] object-contain"
-          />
+          <div className="flex flex-col items-center gap-2">
+            <img
+              src="/playerhoods-brand-stacked-cropped.png"
+              alt="PlayerHoods"
+              width={1512}
+              height={375}
+              className="h-16 w-56 object-contain"
+            />
+          </div>
         </div>
 
         <section className="ph-card px-6 py-6 text-center">

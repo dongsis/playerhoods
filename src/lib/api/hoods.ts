@@ -23,6 +23,7 @@ export type GuestLookupRow = {
 export async function fetchPublicPlayerProfiles(
   supabase: Client,
   userIds: string[],
+  context = 'passive_recommendation',
 ): Promise<Map<string, PublicPlayerProfile | null>> {
   const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)))
   const result = new Map<string, PublicPlayerProfile | null>()
@@ -30,7 +31,7 @@ export async function fetchPublicPlayerProfiles(
   await Promise.all(
     uniqueUserIds.map(async (userId) => {
       try {
-        const profile = await getPublicPlayerProfile(supabase, userId)
+        const profile = await getPublicPlayerProfile(supabase, userId, context)
         result.set(userId, profile)
       } catch (error) {
         console.error(`[hoods] failed to load public profile ${userId}:`, error)

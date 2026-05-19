@@ -3,19 +3,28 @@ import { sendEmail } from '@/lib/email/send'
 import { sendSms } from '@/lib/sms/send'
 import { renderInvitationEmail } from '@/lib/notifications/channels/email/render-invitation-email'
 import {
+  renderCancellationSms,
+  renderConfirmedLineupSms,
+  renderCriticalUpdateSms,
   renderGameFormedSms,
   renderGuestDelegateConfirmedSms,
   renderGuestParticipantInviteSms,
   renderGuestOrgApprovedSms,
   renderInvitationSms,
+  renderMatchInviteSms,
 } from '@/lib/notifications/channels/sms/render-notification-sms'
 import {
+  cancellationEmail,
+  confirmedLineupEmail,
+  criticalUpdateEmail,
   guestParticipantInviteEmail,
   guestOrgApprovedEmail,
   guestDelegateConfirmedEmail,
   gameFormedEmail,
+  playerhoodsMatchInviteEmail,
 } from '@/lib/email/templates'
 import { formatInvitationToken } from '@/lib/invitations/invitation-token'
+import { NotificationService } from '@/lib/notifications/notification-service'
 
 const raw =
   process.env.NEXT_PUBLIC_SITE_URL ??
@@ -40,14 +49,20 @@ function buildMatchInfo(payload: Record<string, unknown>): {
   startTime: string | null
   venueName: string | null
   siteUrl: string
+  replyCode: string | null
+  magicLinkPath: string | null
+  changeSet: Record<string, unknown> | null
 } {
   return {
     matchId: (payload.match_id as string) ?? '',
     gameType: (payload.game_type as string) ?? 'Match',
     matchDate: (payload.match_date as string) ?? null,
-    startTime: null,
-    venueName: (payload.club_name as string) ?? null,
+    startTime: (payload.start_time as string) ?? null,
+    venueName: ((payload.venue_name as string) ?? (payload.club_name as string)) ?? null,
     siteUrl: SITE_URL,
+    replyCode: (payload.reply_code as string) ?? null,
+    magicLinkPath: (payload.magic_link_path as string) ?? null,
+    changeSet: (payload.change_set as Record<string, unknown>) ?? null,
   }
 }
 
@@ -74,9 +89,15 @@ export async function processQueuedNotificationDeliveries(
       match_summary?: { game_type?: string | null; match_date?: string | null; start_time?: string | null; club_name?: string | null }
       nominator_display_name?: string
       match_id?: string
+      match_participant_id?: string
       game_type?: string
       match_date?: string
+      start_time?: string
       club_name?: string
+      venue_name?: string
+      reply_code?: string
+      magic_link_path?: string
+      change_set?: Record<string, unknown>
     }
 
     let subject = ''
@@ -93,6 +114,10 @@ export async function processQueuedNotificationDeliveries(
       const inviterDisplayName = (payload.inviter_display_name as string) ?? 'Someone'
       subject = `${inviterDisplayName} invited you to a match`
       const invitationId = (payload.invitation_id as string) ?? ''
+      const replyCode =
+        d.channel === 'sms' && invitationId
+          ? await NotificationService.createOrGetSmsReplyCodeForInvitation(supabase as never, invitationId, 'invite').catch(() => null)
+          : null
       html = renderInvitationEmail({
         inviterDisplayName,
         targetEmail: (payload.target_email as string) ?? d.destination,
@@ -107,6 +132,7 @@ export async function processQueuedNotificationDeliveries(
         matchSummary,
         siteUrl: SMS_SITE_URL,
         unsubscribeUrl: `${SMS_SITE_URL}/stop/${formatInvitationToken(invitationId)}`,
+        replyCode,
       })
     } else if (templateType === 'guest_nominated') {
       const m = buildMatchInfo(payload)
@@ -129,6 +155,26 @@ export async function processQueuedNotificationDeliveries(
       subject = 'Game formed'
       html = gameFormedEmail(m)
       smsBody = renderGameFormedSms(m)
+    } else if (templateType === 'match_invite') {
+      const m = buildMatchInfo(payload)
+      subject = "You're invited to a PlayerHoods match"
+      html = playerhoodsMatchInviteEmail(m)
+      smsBody = renderMatchInviteSms(m)
+    } else if (templateType === 'confirmed_lineup') {
+      const m = buildMatchInfo(payload)
+      subject = "Game on - you're confirmed to play"
+      html = confirmedLineupEmail(m)
+      smsBody = renderConfirmedLineupSms(m)
+    } else if (templateType === 'critical_update') {
+      const m = buildMatchInfo(payload)
+      subject = 'PlayerHoods match update'
+      html = criticalUpdateEmail(m)
+      smsBody = renderCriticalUpdateSms(m)
+    } else if (templateType === 'cancellation') {
+      const m = buildMatchInfo(payload)
+      subject = 'PlayerHoods match cancelled'
+      html = cancellationEmail(m)
+      smsBody = renderCancellationSms(m)
     } else {
       continue
     }

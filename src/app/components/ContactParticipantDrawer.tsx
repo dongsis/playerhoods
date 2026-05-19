@@ -178,43 +178,7 @@ export function ContactParticipantDrawer({
       .map((value) => value.trim())
   ), [linkedProfile])
 
-  const sharedMatchCount = useMemo(() => (
-    items.filter((item) =>
-      item.participants.some((participant) => participant.guest_id === target.guestId),
-    ).length
-  ), [items, target.guestId])
-
-  const connections = useMemo(() => {
-    const next: DetailConnection[] = []
-
-    if (linkedProfile?.shared_venue_names?.length) {
-      next.push({
-        key: 'venues',
-        icon: 'venue',
-        text: `Both play at ${linkedProfile.shared_venue_names.join(', ')}`,
-      })
-    }
-
-    if (target.sharesGroupWithViewer) {
-      next.push({
-        key: 'groups',
-        icon: 'groups',
-        text: 'You share at least one group connection',
-        iconClassName: 'text-sky-500',
-      })
-    }
-
-    if (sharedMatchCount > 0) {
-      next.push({
-        key: 'matches',
-        icon: 'matches',
-        text: sharedMatchCount === 1 ? 'Played 1 match together' : `Played ${sharedMatchCount} matches together`,
-        iconClassName: 'text-amber-500',
-      })
-    }
-
-    return next
-  }, [linkedProfile?.shared_venue_names, sharedMatchCount, target.sharesGroupWithViewer])
+  const connections = useMemo(() => [] as DetailConnection[], [])
 
   const detailItems = useMemo(() => {
     const next: DetailValue[] = []

@@ -1,4 +1,4 @@
-const DEFAULT_SITE_ORIGIN = 'https://playerhoods.com'
+const DEFAULT_SITE_ORIGIN = 'https://www.playerhoods.com'
 
 export function getSiteOrigin(): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim()

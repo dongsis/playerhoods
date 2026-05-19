@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   AvailabilityStatus,
   Database,
+  DiscoveryVolume,
   Group,
   GroupMember,
   SharedGroupJoinPreference,
@@ -49,6 +50,8 @@ export async function updateProfile(
     availability_status?: AvailabilityStatus | null
     availability_note?: string | null
     availability_until?: string | null
+    discovery_volume?: DiscoveryVolume
+    accepting_new_invites?: boolean
   }
 ): Promise<void> {
   const rpcParams: Record<string, unknown> = {
@@ -72,6 +75,14 @@ export async function updateProfile(
   if (params.availability_until !== undefined) rpcParams.p_availability_until = params.availability_until
   const { error } = await supabase.rpc('rpc_profile_update', rpcParams)
   if (error) throw error
+
+  if (params.discovery_volume !== undefined || params.accepting_new_invites !== undefined) {
+    const { error: discoveryError } = await supabase.rpc('rpc_profile_update_discovery_preferences', {
+      p_discovery_volume: params.discovery_volume ?? null,
+      p_accepting_new_invites: params.accepting_new_invites ?? null,
+    })
+    if (discoveryError) throw discoveryError
+  }
 }
 
 /** Set venue member discovery on the canonical venue relationship row. */

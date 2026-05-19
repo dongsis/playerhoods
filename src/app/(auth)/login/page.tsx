@@ -367,8 +367,7 @@ export default function LoginPage() {
       <div style={backdropStyle} aria-hidden="true" />
       <section className="ph-login-hero-copy" style={heroCopyStyle} aria-hidden="true">
         <div style={brandRowStyle}>
-          <img src="/playerhoods-brand-mark-cropped.png" alt="" style={brandMarkStyle} />
-          <span style={brandNameStyle}>PlayerHoods</span>
+          <img src="/playerhoods-brand-stacked-cropped.png" alt="PlayerHoods" style={brandMarkStyle} />
         </div>
         <h1 style={heroTitleStyle}>
           <strong>Bring players together.</strong>
@@ -391,13 +390,15 @@ export default function LoginPage() {
 
       <section className="ph-login-card-stage" style={cardStageStyle} aria-label={titles[mode]}>
         <div className="ph-login-card" style={cardStyle}>
-          <img
-            src="/playerhoods-brand-stacked-cropped.png"
-            alt="PlayerHoods"
-            width={1122}
-            height={1402}
-            style={logoStyle}
-          />
+          <div style={logoLockupStyle} aria-label="PlayerHoods">
+            <img
+              src="/playerhoods-brand-stacked-cropped.png"
+              alt="PlayerHoods"
+              width={1512}
+              height={375}
+              style={logoMarkStyle}
+            />
+          </div>
           <h2 style={titleStyle}>{titles[mode]}</h2>
           <p style={subtitleStyle}>{subtitles[mode]}</p>
 
@@ -770,7 +771,7 @@ const backdropStyle: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
   backgroundImage:
-    'linear-gradient(90deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 42%, rgba(255,255,255,0.02) 100%), url("/login-playerhoods-hero-final.png")',
+    'linear-gradient(90deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 42%, rgba(255,255,255,0.02) 100%), url("/playerhoods-home-hero.png")',
   backgroundSize: 'auto 100%',
   backgroundPosition: 'left center',
   backgroundRepeat: 'no-repeat',
@@ -796,16 +797,10 @@ const brandRowStyle: React.CSSProperties = {
 }
 
 const brandMarkStyle: React.CSSProperties = {
-  width: '5.3rem',
-  height: '6.45rem',
+  width: '14rem',
+  height: 'auto',
+  maxHeight: '4.2rem',
   objectFit: 'contain',
-}
-
-const brandNameStyle: React.CSSProperties = {
-  color: '#061D4F',
-  fontFamily: 'Georgia, "Times New Roman", serif',
-  fontSize: '3.05rem',
-  fontWeight: 700,
 }
 
 const heroTitleStyle: React.CSSProperties = {
@@ -904,13 +899,21 @@ const cardStageStyle: React.CSSProperties = {
   padding: '4vh 7vw 4vh 1.5rem',
 }
 
-const logoStyle: React.CSSProperties = {
-  width: '8.45rem',
-  height: '10.4rem',
+const logoLockupStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.3rem',
+  margin: '0 auto 1rem',
+}
+
+const logoMarkStyle: React.CSSProperties = {
+  width: '12.5rem',
+  height: 'auto',
+  maxHeight: '4.4rem',
   objectFit: 'contain',
   display: 'block',
   background: 'transparent',
-  margin: '0 auto 0.25rem',
 }
 
 const cardStyle: React.CSSProperties = {

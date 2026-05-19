@@ -38,6 +38,7 @@ import {
 import { importGearDraftFromLink } from '@/lib/gear-link-import'
 import { createRosterGuest, getContactPlayerResolution } from '@/lib/api/roster'
 import { normalizePlayCities } from '@/lib/profile/basic-profile'
+import type { DiscoveryVolume } from '@/lib/types/database'
 import {
   parseContactScreenshotUploads,
   type ContactImportDraft,
@@ -214,6 +215,8 @@ export async function saveDashboardVenuePreferenceAction(venueId: string): Promi
 export async function saveDashboardGlobalPreferencesAction(params: {
   visible_in_city_discovery?: boolean
   searchable_by_email_or_phone?: boolean
+  discovery_volume?: DiscoveryVolume
+  accepting_new_invites?: boolean
   play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
   allow_non_group_invites?: boolean
   shared_group_join_preference?: 'auto_join_saved_players' | 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'

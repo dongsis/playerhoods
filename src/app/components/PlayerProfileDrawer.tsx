@@ -9,7 +9,7 @@ import {
   getPreferredPlayTimeLabel,
   getSportFormatOptions,
 } from '@/lib/profile-options'
-import { ParticipantDetailPanel, type DetailConnection } from './ParticipantDetailPanel'
+import { ParticipantDetailPanel } from './ParticipantDetailPanel'
 
 interface Props {
   open: boolean
@@ -41,41 +41,6 @@ function pickPrimarySportProfile(profile: PublicPlayerProfile | null): PublicSpo
     || item.play_style
     || item.competition_experience,
   ) ?? profile.sport_profiles[0]
-}
-
-function buildSharedConnections(profile: PublicPlayerProfile): DetailConnection[] {
-  const connections: DetailConnection[] = []
-
-  if (profile.shared_venue_names.length > 0) {
-    connections.push({
-      key: 'venues',
-      icon: 'venue',
-      text: `Both play at ${profile.shared_venue_names.join(', ')}`,
-    })
-  }
-
-  if (profile.shared_group_names.length > 0) {
-    connections.push({
-      key: 'groups',
-      icon: 'groups',
-      text: `You both share ${profile.shared_group_names.join(', ')}`,
-      iconClassName: 'text-sky-500',
-    })
-  }
-
-  if (profile.shared_match_count > 0) {
-    connections.push({
-      key: 'matches',
-      icon: 'matches',
-      text:
-        profile.shared_match_count === 1
-          ? 'Played 1 match together'
-          : `Played ${profile.shared_match_count} matches together`,
-      iconClassName: 'text-amber-500',
-    })
-  }
-
-  return connections
 }
 
 export function PlayerProfileDrawer({
@@ -146,11 +111,6 @@ export function PlayerProfileDrawer({
     )
   ), [profile])
 
-  const connections = useMemo(
-    () => (profile ? buildSharedConnections(profile) : []),
-    [profile],
-  )
-
   const playStyles = useMemo(
     () => splitPlayStyle(primarySportProfile?.play_style),
     [primarySportProfile],
@@ -189,7 +149,7 @@ export function PlayerProfileDrawer({
       statusClassName={getAvailabilityStatusDotClass(profile?.looking_to_play)}
       level={getLevelLabel(primarySportProfile?.level) ?? primarySportProfile?.level ?? null}
       formatLabels={formatLabels}
-      connections={connections}
+      connections={[]}
       playStyles={playStyles}
       experience={primarySportProfile?.competition_experience ?? null}
       preferredTimes={preferredTimes}

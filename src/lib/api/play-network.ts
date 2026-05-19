@@ -67,7 +67,7 @@ export async function getVenueMembersDiscovery(
   throw next.error
 }
 
-/** Venue people who allow direct non-group invites in this venue. */
+/** Venue people who are visible in this venue context and accept new invites. */
 export async function getVenueInvitableMembers(
   supabase: Client,
   venueId: string,
@@ -81,7 +81,7 @@ export async function getVenueInvitableMembers(
   const userIds = discovered.map((row) => row.user_id)
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, display_name, allow_non_group_invites')
+    .select('id, display_name, accepting_new_invites')
     .in('id', userIds)
   if (profilesError) throw profilesError
 
@@ -89,13 +89,13 @@ export async function getVenueInvitableMembers(
     ((profiles ?? []) as {
       id: string
       display_name: string | null
-      allow_non_group_invites: boolean | null
+      accepting_new_invites: boolean | null
     }[]).map((profile) => [profile.id, profile]),
   )
 
   return discovered
     .filter((row) => row.user_id !== currentUserId)
-    .filter((row) => profileMap.get(row.user_id)?.allow_non_group_invites === true)
+    .filter((row) => profileMap.get(row.user_id)?.accepting_new_invites === true)
     .map((row) => ({
       user_id: row.user_id,
       display_name: profileMap.get(row.user_id)?.display_name ?? row.display_name ?? null,

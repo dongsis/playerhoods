@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
 import type { InviteCircleRow } from '@/lib/api/play-network'
-import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
+import type { DiscoveryVolume, GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
 import type { VenueMembership } from '@/lib/api/identities'
 import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { LeftNav, NavIcon, type DashTab } from './LeftNav'
@@ -52,6 +52,8 @@ interface Props {
     | 'avatar_url'
     | 'visible_in_city_discovery'
     | 'searchable_by_contact_info'
+    | 'discovery_volume'
+    | 'accepting_new_invites'
     | 'allow_non_group_invites'
     | 'shared_group_join_preference'
     | 'looking_to_play'
@@ -85,6 +87,8 @@ interface Props {
   onSaveGlobalPreferences: (params: {
     visible_in_city_discovery?: boolean
     searchable_by_email_or_phone?: boolean
+    discovery_volume?: DiscoveryVolume
+    accepting_new_invites?: boolean
     play_cities?: Array<{ city_name: string; region?: string | null; country?: string | null }>
     allow_non_group_invites?: boolean
     shared_group_join_preference?: 'auto_join_saved_players' | 'approval_required_all' | 'auto_join_enabled_sports' | 'auto_join_all'

@@ -346,10 +346,16 @@ function ParticipantRow({
     }
   } else if (p.join_method === 'nominated') {
     const nominator = resolveActorName(p.nominated_by ?? p.created_by)
-    if (nominator) {
+    if (isOrganizer && nominator) {
       timelineEvents.push({
         key: 'nominated',
-        label: `Invited by ${nominator}`,
+        label: `Suggested by ${nominator}`,
+        at: p.created_at,
+      })
+    } else {
+      timelineEvents.push({
+        key: 'invited',
+        label: 'Invited',
         at: p.created_at,
       })
     }

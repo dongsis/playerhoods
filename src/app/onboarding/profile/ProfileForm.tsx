@@ -8,7 +8,7 @@ import {
   getPrioritizedQuickCityGroups,
   sortCityNamesByProvincePriority,
 } from '@/lib/location-city-priority'
-import type { Profile, Sport, Venue } from '@/lib/types/database'
+import type { DiscoveryVolume, Profile, Sport, Venue } from '@/lib/types/database'
 import type { LocationCityOption } from '@/lib/api/location-municipalities'
 
 type PlayCityRecord = {
@@ -18,6 +18,31 @@ type PlayCityRecord = {
 }
 
 type VenueOption = Pick<Venue, 'id' | 'name' | 'abbreviation' | 'city' | 'province' | 'country' | 'location_text' | 'venue_kind'>
+
+const DISCOVERY_VOLUME_OPTIONS: Array<{
+  value: DiscoveryVolume
+  label: string
+  description: string
+}> = [
+  {
+    value: 'quiet',
+    label: 'Quiet',
+    description:
+      'Do not actively recommend me. Only players who already share a clear playing context with me can see my basic profile.',
+  },
+  {
+    value: 'playerhood',
+    label: 'My PlayerHood',
+    description:
+      'Help me grow my playing circle through real playing connections. PlayerHoods will not show who suggested whom or reveal mutual players.',
+  },
+  {
+    value: 'recommended',
+    label: 'Recommended',
+    description:
+      'PlayerHoods can recommend me to suitable players based on sport, level, area, and playing preferences. Recommended does not mean public.',
+  },
+]
 
 interface Props {
   existing: Profile | null
@@ -167,8 +192,8 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
   const [selectedSportIds, setSelectedSportIds] = useState<number[]>([])
   const [selectedCities, setSelectedCities] = useState<PlayCityRecord[]>([])
   const [selectedVenues, setSelectedVenues] = useState<VenueOption[]>([])
-  const [cityDiscovery, setCityDiscovery] = useState(true)
-  const [clubDiscovery, setClubDiscovery] = useState(true)
+  const [discoveryVolume, setDiscoveryVolume] = useState<DiscoveryVolume>('recommended')
+  const [acceptingNewInvites, setAcceptingNewInvites] = useState(true)
   const [cityInput, setCityInput] = useState('')
   const [clubInput, setClubInput] = useState('')
   const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false)
@@ -332,8 +357,10 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
           country: city.country,
         })),
         club_or_venue_ids: selectedVenues.map((venue) => venue.id),
-        visible_in_city_discovery: cityDiscovery && selectedCities.length > 0,
-        visible_in_club_member_discovery: clubDiscovery && selectedVenues.length > 0,
+        visible_in_city_discovery: false,
+        visible_in_club_member_discovery: false,
+        discovery_volume: discoveryVolume,
+        accepting_new_invites: acceptingNewInvites,
       })
 
       if (!result.ok) {
@@ -609,103 +636,56 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
 
       <div className="space-y-5 border-t border-slate-100 pt-6">
         <div>
-          <h2 className="text-h2 text-[#1E293B]">Who can find me?</h2>
+          <h2 className="text-h2 text-[#1E293B]">Privacy &amp; Discovery</h2>
           <p className="text-body-sub mt-1 text-[#64748B]">
-            Choose where other players can find and save you. Your email and phone will not be shown.
+            Control how widely suitable players can discover your basic player profile and invite you to play.
           </p>
         </div>
 
-        <div className="flex items-start justify-between gap-4">
-          <div className="pr-4">
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedVenues.length > 0) setClubDiscovery((current) => !current)
-              }}
-              className={[
-                'text-left text-body-main font-semibold',
-                selectedVenues.length > 0 ? 'text-[#1E293B]' : 'cursor-not-allowed text-[#94A3B8]',
-              ].join(' ')}
+        <div className="space-y-3">
+          {DISCOVERY_VOLUME_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4 transition hover:border-[#CBD5E1]"
             >
-              Let members of my clubs find me
-            </button>
-            {selectedVenues.length === 0 ? (
-              <p className="mt-2 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
-                Add clubs or venues above so members of those places can find you.
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={selectedVenues.length > 0 && clubDiscovery}
-            disabled={selectedVenues.length === 0}
-            onClick={() => {
-              if (selectedVenues.length > 0) setClubDiscovery((current) => !current)
-            }}
-            className={[
-              'relative inline-flex h-6 w-11 shrink-0 rounded-full transition',
-              selectedVenues.length === 0
-                ? 'cursor-not-allowed bg-slate-200 opacity-60'
-                : clubDiscovery
-                  ? 'bg-[#C25E46]'
-                  : 'bg-slate-200',
-            ].join(' ')}
-          >
-            <span
-              className={[
-                'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition',
-                selectedVenues.length > 0 && clubDiscovery ? 'left-[22px]' : 'left-0.5',
-              ].join(' ')}
-            />
-          </button>
+              <input
+                type="radio"
+                name="discovery_volume"
+                value={option.value}
+                checked={discoveryVolume === option.value}
+                onChange={() => setDiscoveryVolume(option.value)}
+                disabled={loading}
+                className="mt-1 h-4 w-4 border-slate-300"
+              />
+              <span>
+                <span className="block text-body-main font-semibold text-[#1E293B]">{option.label}</span>
+                <span className="mt-1 block text-body-sub text-[#64748B]">{option.description}</span>
+              </span>
+            </label>
+          ))}
         </div>
 
-        <div className="flex items-start justify-between gap-4">
-          <div className="pr-4">
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedCities.length > 0) setCityDiscovery((current) => !current)
-              }}
-              className={[
-                'text-left text-body-main font-semibold',
-                selectedCities.length > 0 ? 'text-[#1E293B]' : 'cursor-not-allowed text-[#94A3B8]',
-              ].join(' ')}
-            >
-              Let players in my play cities find me
-            </button>
-            {selectedCities.length === 0 ? (
-              <p className="mt-2 inline-block rounded-xl bg-amber-50 px-3 py-2 text-body-sub text-amber-700">
-                Add at least one play city above so players in your cities can find you.
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={selectedCities.length > 0 && cityDiscovery}
-            disabled={selectedCities.length === 0}
-            onClick={() => {
-              if (selectedCities.length > 0) setCityDiscovery((current) => !current)
-            }}
-            className={[
-              'relative inline-flex h-6 w-11 shrink-0 rounded-full transition',
-              selectedCities.length === 0
-                ? 'cursor-not-allowed bg-slate-200 opacity-60'
-                : cityDiscovery
-                  ? 'bg-[#C25E46]'
-                  : 'bg-slate-200',
-            ].join(' ')}
-          >
-            <span
-              className={[
-                'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition',
-                selectedCities.length > 0 && cityDiscovery ? 'left-[22px]' : 'left-0.5',
-              ].join(' ')}
-            />
-          </button>
-        </div>
+        <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4">
+          <span className="min-w-0 flex-1">
+            <span className="block text-body-main font-semibold text-[#1E293B]">Accept New Invites</span>
+            <span className="mt-1 block text-body-sub text-[#64748B]">
+              {acceptingNewInvites
+                ? 'Players within your discovery volume can invite you to play. You always choose whether to join.'
+                : 'You will not receive new play invites or be recommended to new players. Your existing matches, groups, and activities are not affected.'}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={acceptingNewInvites}
+            onChange={(event) => setAcceptingNewInvites(event.target.checked)}
+            disabled={loading}
+            className="mt-1 h-5 w-5 rounded border-slate-300"
+          />
+        </label>
+
+        <p className="rounded-lg border border-[#E2E8F0] bg-white px-4 py-3 text-body-sub text-[#64748B]">
+          Recommended does not mean public. Your phone, email, and private contact details are never shown.
+        </p>
       </div>
 
       {errorMessages.submit ? (

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, UserPlayCity } from '@/lib/types/database'
+import type { Database, LookupVisibility, UserPlayCity } from '@/lib/types/database'
 
 type Client = SupabaseClient<Database>
 
@@ -15,9 +15,12 @@ export type EmailOrPhoneSearchRow = {
   user_id: string
   display_name: string | null
   avatar_url: string | null
-  match_type: 'email' | 'phone' | 'possible_match' | 'same_club_name'
+  primary_sport: string | null
+  visibility: Exclude<LookupVisibility, 'none'>
   is_saved: boolean
-  action_kind: 'direct_save' | 'save_request'
+  can_add: boolean
+  can_request_add: boolean
+  can_invite: boolean
   request_status: string | null
   next_eligible_at: string | null
 }
@@ -93,16 +96,12 @@ export async function searchPlayersByEmailOrPhone(
     user_id: row.user_id,
     display_name: row.display_name ?? null,
     avatar_url: row.avatar_url ?? null,
-    match_type:
-      row.match_type === 'phone'
-        ? 'phone'
-        : row.match_type === 'same_club_name'
-          ? 'same_club_name'
-          : row.match_type === 'possible_match'
-            ? 'possible_match'
-            : 'email',
+    primary_sport: row.primary_sport ?? null,
+    visibility: row.visibility === 'requestable' ? 'requestable' : 'visible',
     is_saved: row.is_saved,
-    action_kind: row.action_kind === 'save_request' ? 'save_request' : 'direct_save',
+    can_add: row.can_add,
+    can_request_add: row.can_request_add,
+    can_invite: row.can_invite,
     request_status: row.request_status ?? null,
     next_eligible_at: row.next_eligible_at ?? null,
   }))
