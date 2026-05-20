@@ -1064,6 +1064,7 @@ export function CreateMatchInline({
   const [customPlayersOpen, setCustomPlayersOpen] = useState(false)
   const [customCourtsOpen, setCustomCourtsOpen] = useState(false)
   const [courtPlanMenuOpen, setCourtPlanMenuOpen] = useState(false)
+  const [courtLabelEditorOpen, setCourtLabelEditorOpen] = useState(false)
   const [organizerNote, setOrganizerNote] = useState('')
   const [organizerNoteExpanded, setOrganizerNoteExpanded] = useState(false)
   const [venueOptionsExpanded, setVenueOptionsExpanded] = useState(false)
@@ -1585,15 +1586,17 @@ export function CreateMatchInline({
   useEffect(() => {
     if (courtPlanMode !== 'secured') {
       setCourtPlanMenuOpen(false)
+      setCourtLabelEditorOpen(false)
     }
   }, [courtPlanMode])
 
   useEffect(() => {
-    if (!courtPlanMenuOpen) return
+    if (!courtPlanMenuOpen && !courtLabelEditorOpen) return
 
     const handlePointerDown = (event: MouseEvent) => {
       if (!courtPlanMenuRef.current?.contains(event.target as Node)) {
         setCourtPlanMenuOpen(false)
+        setCourtLabelEditorOpen(false)
       }
     }
 
@@ -1601,7 +1604,7 @@ export function CreateMatchInline({
     return () => {
       document.removeEventListener('mousedown', handlePointerDown)
     }
-  }, [courtPlanMenuOpen])
+  }, [courtLabelEditorOpen, courtPlanMenuOpen])
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient()
@@ -1825,6 +1828,8 @@ export function CreateMatchInline({
 
   const createMatchFlow = async (mode: 'create' | 'invite') => {
     setError(null)
+    setCourtPlanMenuOpen(false)
+    setCourtLabelEditorOpen(false)
     setLoading(true)
     setSubmitMode(mode)
 
@@ -1970,17 +1975,8 @@ export function CreateMatchInline({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setCourtPlanMenuOpen(false)
+    setCourtLabelEditorOpen(false)
     setError(null)
-
-    const selectedCourtLabels = visibleCourtSlots
-      .filter((slot) => slot.enabled)
-      .map((slot) => {
-        if (courts.length > 0) {
-          return courts.find((court) => court.id === slot.courtId)?.court_code ?? ''
-        }
-        return slot.manualLabel.trim()
-      })
-      .filter((label) => label.length > 0)
 
     if (!venueId) {
       setError('Please choose a venue.')
@@ -2045,8 +2041,11 @@ export function CreateMatchInline({
         : [...currentSelected, courtId]
 
       setError((currentError) =>
-        currentError?.startsWith('You can select up to ') ? null : currentError,
+        currentError?.startsWith('You can select up to ') || currentError === 'Please choose at least one court.'
+          ? null
+          : currentError,
       )
+      setCourtLabelEditorOpen(true)
 
       return Array.from({ length: normalizedCount }, (_, index) => ({
         enabled: index < nextSelected.length,
@@ -2926,11 +2925,14 @@ export function CreateMatchInline({
           {courtPlanMode === 'secured' ? (
             <div>
               <label className={DS_LABEL}>Court Booked</label>
-              <div className="space-y-2">
-                <div ref={courtPlanMenuRef} className="relative">
+              <div ref={courtPlanMenuRef} className="space-y-2">
+                <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setCourtPlanMenuOpen((open) => !open)}
+                    onClick={() => {
+                      setCourtPlanMenuOpen((open) => !open)
+                      if (selectedCourtLabels.length > 0) setCourtLabelEditorOpen(true)
+                    }}
                     className={[
                       'flex w-full items-center justify-between rounded-md border bg-white px-3 py-1.5 text-xs outline-none transition',
                       courtPlanMenuOpen
@@ -2974,7 +2976,7 @@ export function CreateMatchInline({
                     </div>
                   ) : null}
                 </div>
-                {visibleCourtSlots.some((slot) => slot.enabled && slot.courtId) ? (
+                {courtLabelEditorOpen && visibleCourtSlots.some((slot) => slot.enabled && slot.courtId) ? (
                   <div className="space-y-2 rounded-md border border-[#E2E8F0] bg-white p-2.5">
                     {visibleCourtSlots.map((slot, index) => {
                       if (!slot.enabled || !slot.courtId) return null
@@ -2984,7 +2986,13 @@ export function CreateMatchInline({
                           key={`court-slot-${index}`}
                           type="text"
                           value={slot.manualLabel || optionLabel}
-                          onChange={(e) => updateCourtSlot(index, { manualLabel: e.target.value })}
+                          onFocus={() => setCourtLabelEditorOpen(true)}
+                          onChange={(e) => {
+                            updateCourtSlot(index, { manualLabel: e.target.value })
+                            setError((currentError) =>
+                              currentError === 'Please choose at least one court.' ? null : currentError,
+                            )
+                          }}
                           placeholder={`crt ${index + 1}`}
                           className="w-full rounded-md border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
                         />
@@ -3109,12 +3117,6 @@ export function CreateMatchInline({
                   <div className="mb-4 grid gap-2">
                     {selectionMode === 'invite' && (
                       <>
-                        <NeedMorePlayersPrompt
-                          onAdd={() => {
-                            setError(null)
-                            setContactAddPanelOpen(true)
-                          }}
-                        />
                         {filteredInviteOptions.map((candidate) => renderInviteCandidateButton(candidate))}
                         {filteredInviteGroups.map((group) =>
                           renderGroupSelector(
@@ -3129,17 +3131,17 @@ export function CreateMatchInline({
                             'indigo',
                           ),
                         )}
-                      </>
-                    )}
-
-                    {selectionMode === 'request' && (
-                      <>
                         <NeedMorePlayersPrompt
                           onAdd={() => {
                             setError(null)
                             setContactAddPanelOpen(true)
                           }}
                         />
+                      </>
+                    )}
+
+                    {selectionMode === 'request' && (
+                      <>
                         {filteredRequestUsers.map((candidate) => renderRequestScopeCandidateButton(candidate))}
                         {filteredRequestGroups.map((group) =>
                           renderGroupSelector(
@@ -3154,6 +3156,12 @@ export function CreateMatchInline({
                             'green',
                           ),
                         )}
+                        <NeedMorePlayersPrompt
+                          onAdd={() => {
+                            setError(null)
+                            setContactAddPanelOpen(true)
+                          }}
+                        />
                       </>
                     )}
 
