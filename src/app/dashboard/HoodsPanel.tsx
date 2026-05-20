@@ -3443,11 +3443,14 @@ export function HoodsPanel({
                 type="button"
                 onClick={() => {
                   clearMessage()
+                  if (!onParseScreenshots || !onImportScreenshotContacts) {
+                    setError('Smart Import is not available right now. Please refresh and try again.')
+                    return
+                  }
                   setContactComposerMode('screenshot')
                   setError(null)
                 }}
-                disabled={!onParseScreenshots || !onImportScreenshotContacts}
-                className="text-body-main inline-flex items-center gap-2 rounded-2xl bg-[#075BD7] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#064FC0] disabled:cursor-not-allowed disabled:bg-[#94A3B8]"
+                className="text-body-main inline-flex items-center gap-2 rounded-2xl bg-[#075BD7] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#064FC0]"
               >
                 <ContactToolIcon kind="spark" />
                 Smart Import

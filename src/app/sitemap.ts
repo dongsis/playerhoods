@@ -6,12 +6,6 @@ import { getAbsoluteUrl } from '@/lib/site-url'
 export const revalidate = 86400
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const supabase = createSupabasePublicServerClient()
-  const venueRows = await listPublicVenueSitemapRows(supabase).catch((error) => {
-    console.error('Failed to build venue sitemap entries', error)
-    return []
-  })
-
   const staticEntries: MetadataRoute.Sitemap = [
     {
       url: getAbsoluteUrl('/'),
@@ -24,6 +18,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     },
   ]
+
+  const supabaseUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return staticEntries
+  }
+
+  const supabase = createSupabasePublicServerClient()
+  const venueRows = await listPublicVenueSitemapRows(supabase).catch((error) => {
+    console.error('Failed to build venue sitemap entries', error)
+    return []
+  })
 
   const venueEntries: MetadataRoute.Sitemap = venueRows
     .filter((row) => row.canonical_path)
