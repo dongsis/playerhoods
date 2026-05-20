@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 
 const DEV_QA_ENABLED =
-  process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ENABLE_QA_FLOWS === 'true'
+  process.env.NODE_ENV !== 'production' ||
+  (process.env.ENABLE_QA_FLOWS === 'true' && process.env.VERCEL_ENV !== 'production')
 
 type QaState = {
   label: string
