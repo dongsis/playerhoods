@@ -934,6 +934,19 @@ function isPersonStarred(person: Pick<HoodPerson, 'isSaved'>): boolean {
   return person.isSaved
 }
 
+function BookmarkIcon({ filled = false, className = '' }: { filled?: boolean; className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className || 'h-4 w-4'} fill={filled ? 'currentColor' : 'none'} aria-hidden="true">
+      <path
+        d="M5.75 3.25h8.5c.55 0 1 .45 1 1v12.1c0 .38-.42.61-.74.4L10 13.82l-4.51 2.93a.48.48 0 0 1-.74-.4V4.25c0-.55.45-1 1-1Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function getVisibleSourceBadges(person: HoodPerson): SourceBadge[] {
   if (!person.userId) return person.sourceBadges
   return person.sourceBadges.filter((badge) => badge !== 'My Contact' && badge !== 'Linked')
@@ -1297,8 +1310,8 @@ function HoodPersonDrawer({
               onClick={() => void onSaveToggle(person)}
               className="text-body-sub inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
             >
-              <span className={isStarred ? 'text-[#EAB308]' : 'text-slate-300'}>
-                {isStarred ? '?' : '?'}
+              <span className={isStarred ? 'text-[#B7D93D]' : 'text-slate-300'}>
+                <BookmarkIcon filled={isStarred} className="h-4 w-4" />
               </span>
               {isContactDetail
                 ? (isStarred ? 'Unstar contact' : 'Star contact')
@@ -1475,7 +1488,7 @@ function HoodCard({
 
   return (
     <article
-      className="relative w-full max-w-[230px] justify-self-start rounded-[22px] border border-slate-200 bg-white p-2.5 shadow-[0_14px_30px_-28px_rgba(15,23,42,0.28)] transition hover:border-slate-300"
+      className="relative w-full min-w-0 justify-self-stretch rounded-[22px] border border-slate-200 bg-white p-3 shadow-[0_14px_30px_-28px_rgba(15,23,42,0.28)] transition hover:border-slate-300"
       data-hood-menu-root
       data-hood-invite-root
     >
@@ -1501,10 +1514,10 @@ function HoodCard({
                 />
               ) : null}
             </div>
-            <div className="min-w-0 flex-1 pt-0.5">
-              <div className="flex flex-wrap items-center gap-1.5">
+            <div className="min-w-0 flex-1 pr-1 pt-0.5">
+              <div className="flex min-w-0 flex-col items-start gap-1">
                 <div className="relative min-w-0 max-w-full">
-                  <h3 className="text-title-main truncate leading-none text-slate-900">{person.displayName}</h3>
+                  <h3 className="text-title-main break-words leading-tight text-slate-900">{person.displayName}</h3>
                 </div>
                 {person.isLinked ? (
                   <span className="rounded-full border border-sky-100 bg-sky-50 px-1.5 py-[1px] text-[9px] font-black uppercase tracking-[0.08em] text-sky-700">
@@ -1527,22 +1540,20 @@ function HoodCard({
               }}
               className={[
                 'inline-flex h-7 w-7 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60',
-                isStarred || person.saveRequestStatus === 'pending'
-                  ? 'border-[#FACC15] bg-white text-[#D97706] hover:border-[#EAB308] hover:bg-white'
+                isStarred
+                  ? 'border-[#B7D93D] bg-[#F7FFD8] text-[#8FB000] hover:border-[#9FC227] hover:bg-[#F2FFC1]'
                   : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
               ].join(' ')}
               aria-label={starButtonLabel}
               title={starButtonLabel}
             >
-              <span
-                aria-hidden="true"
+              <BookmarkIcon
+                filled={isStarred}
                 className={[
-                  'text-[12px] leading-none transition',
-                  isStarred || person.saveRequestStatus === 'pending' ? 'text-[#EAB308]' : 'text-slate-300',
+                  'h-4 w-4 transition',
+                  isStarred ? 'text-[#8FB000]' : 'text-slate-300',
                 ].join(' ')}
-              >
-                {isStarred ? '?' : person.saveActionKind === 'save_request' ? '!' : '?'}
-              </span>
+              />
             </button>
           )}
           <button

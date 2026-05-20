@@ -14,6 +14,32 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-20 - MR-20260520-hood-card-bookmark-polish
+
+**Type:** Mini Release
+**Code Commit:** Pending at write time
+**Migration:** None
+**Status:** Pending Vercel Production deployment
+
+### Summary
+
+This mini release polishes Hood player cards:
+
+- Lets player names use the available card width instead of being constrained by the old narrow card cap.
+- Replaces placeholder save glyphs with bookmark icons.
+- Shows saved players with a tennis-colored filled bookmark.
+- Shows unsaved/requestable players with a gray bookmark.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Passed | `npm run verify:build` |
+
+### Rollback
+
+- Revert the release commit and redeploy the previous known-good production commit.
+
 ## 2026-05-20 - MR-20260520-smart-import-rpc-overload-cleanup
 
 **Type:** Mini Release
