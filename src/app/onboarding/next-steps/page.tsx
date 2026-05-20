@@ -9,7 +9,6 @@ import {
   keepSeparateOnboardingIdentityLinkAction,
   savePeopleYouMayKnowSuggestionAction,
 } from './actions'
-import { LegalAgreementCard } from './LegalAgreementCard'
 import { OnboardingIdentityLinkStep } from './OnboardingIdentityLinkStep'
 import { PeopleYouMayKnowPanel } from './PeopleYouMayKnowPanel'
 
@@ -49,18 +48,10 @@ export default async function OnboardingNextStepsPage({ searchParams }: Props) {
   }
 
   if (!hasLegalAgreement) {
-    const legalContinueHref = `/onboarding/next-steps?next=${encodeURIComponent(continueHref)}`
-
-    return (
-      <div className="space-y-4">
-        {notice === 'email-verified' ? (
-          <div className="mx-auto max-w-[920px] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
-            Email verified. Welcome to PlayerHoods.
-          </div>
-        ) : null}
-        <LegalAgreementCard continueHref={legalContinueHref} />
-      </div>
-    )
+    const profileParams = new URLSearchParams()
+    profileParams.set('next', continueHref)
+    if (notice) profileParams.set('notice', notice)
+    redirect(`/onboarding/profile?${profileParams.toString()}`)
   }
 
   const identityLinkCandidates = await getIdentityLinkCandidates(supabase).catch(() => [])

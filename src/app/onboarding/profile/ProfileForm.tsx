@@ -10,7 +10,7 @@ import {
   getPrioritizedQuickCityGroups,
   sortCityNamesByProvincePriority,
 } from '@/lib/location-city-priority'
-import type { DiscoveryVolume, Profile, Sport, Venue } from '@/lib/types/database'
+import type { DiscoveryVolume, Profile, Sport, UserPlayCity, UserSport, Venue } from '@/lib/types/database'
 import type { LocationCityOption } from '@/lib/api/location-municipalities'
 
 type PlayCityRecord = {
@@ -52,6 +52,9 @@ interface Props {
   sports: Sport[]
   venues: VenueOption[]
   cityOptions: LocationCityOption[]
+  initialSports: UserSport[]
+  initialPlayCities: UserPlayCity[]
+  initialVenues: VenueOption[]
 }
 
 function normalizeQuery(value: string) {
@@ -170,7 +173,7 @@ const CloseIcon = ({ className }: { className?: string }) => (
   </Icon>
 )
 
-export function ProfileForm({ existing, next, sports, venues, cityOptions }: Props) {
+export function ProfileForm({ existing, next, sports, venues, cityOptions, initialSports, initialPlayCities, initialVenues }: Props) {
   const initialDisplayName = useMemo(
     () => existing?.display_name?.trim() ?? '',
     [existing],
@@ -202,11 +205,17 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
   }, [cityOptions])
 
   const [displayName, setDisplayName] = useState(initialDisplayName)
-  const [selectedSportIds, setSelectedSportIds] = useState<number[]>([])
-  const [selectedCities, setSelectedCities] = useState<PlayCityRecord[]>([])
-  const [selectedVenues, setSelectedVenues] = useState<VenueOption[]>([])
-  const [discoveryVolume, setDiscoveryVolume] = useState<DiscoveryVolume>('recommended')
-  const [acceptingNewInvites, setAcceptingNewInvites] = useState(true)
+  const [selectedSportIds, setSelectedSportIds] = useState<number[]>(() => initialSports.map((sport) => sport.sport_id))
+  const [selectedCities, setSelectedCities] = useState<PlayCityRecord[]>(() =>
+    initialPlayCities.map((city) => ({
+      city_name: city.city_name,
+      region: city.region,
+      country: city.country,
+    })),
+  )
+  const [selectedVenues, setSelectedVenues] = useState<VenueOption[]>(initialVenues)
+  const [discoveryVolume, setDiscoveryVolume] = useState<DiscoveryVolume>(existing?.discovery_volume ?? 'recommended')
+  const [acceptingNewInvites, setAcceptingNewInvites] = useState(existing?.accepting_new_invites ?? true)
   const [legalConfirmed, setLegalConfirmed] = useState(
     Boolean(
       existing?.age_confirmed_at &&
@@ -343,6 +352,8 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
   const removeVenue = (venueId: string) => {
     setSelectedVenues((current) => current.filter((venue) => venue.id !== venueId))
   }
+
+  const canContinue = legalConfirmed && !loading
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -764,8 +775,8 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
 
           <button
             type="submit"
-            disabled={loading}
-            className="text-body-main inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#071A44] px-5 font-semibold text-white shadow-sm transition hover:bg-[#0B255D] disabled:cursor-wait disabled:bg-[#94A3B8]"
+            disabled={!canContinue}
+            className="text-body-main inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#071A44] px-5 font-semibold text-white shadow-sm transition hover:bg-[#0B255D] disabled:cursor-not-allowed disabled:bg-[#94A3B8] disabled:text-white/90"
           >
             {loading ? 'Saving...' : 'Continue to PlayerHoods'}
           </button>

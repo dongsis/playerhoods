@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
-import { listSports } from '@/lib/api/sports'
+import { getMySports, listSports } from '@/lib/api/sports'
 import { listLocationCityOptions } from '@/lib/api/location-municipalities'
 import { listVenueOptions } from '@/lib/api/venues'
+import { getMyPlayCities } from '@/lib/api/discovery'
+import { getMyVenueRelationships } from '@/lib/api/identities'
 import type { Profile } from '@/lib/types/database'
 import { ProfileForm } from './ProfileForm'
 
@@ -17,7 +19,7 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
   const { next, notice } = await searchParams
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: profile }, sportsResult, venueOptions, cityOptions] = await Promise.all([
+  const [{ data: profile }, sportsResult, venueOptions, cityOptions, mySports, myPlayCities, myVenueRelationships] = await Promise.all([
     supabase
       .from('profiles')
       .select('*')
@@ -26,13 +28,25 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
     listSports(supabase),
     listVenueOptions(supabase),
     listLocationCityOptions(supabase, { countryCode: 'CA', provinceCode: 'ON' }),
+    getMySports(supabase).catch(() => []),
+    getMyPlayCities(supabase, user.id).catch(() => []),
+    getMyVenueRelationships(supabase, user.id).catch(() => []),
   ])
 
-  if (profile?.onboarding_completed) {
+  const hasLegalAgreement = Boolean(
+    profile?.age_confirmed_at &&
+      profile?.terms_accepted_at &&
+      profile?.privacy_accepted_at &&
+      profile?.responsible_use_accepted_at,
+  )
+  const initialVenueIds = new Set(myVenueRelationships.map((relationship) => relationship.venue_id))
+  const initialVenues = venueOptions.filter((venue) => initialVenueIds.has(venue.id))
+
+  if (profile?.onboarding_completed && hasLegalAgreement) {
     redirect(next || '/dashboard')
   }
 
-  if (profile?.onboarding_profile_completed) {
+  if (profile?.onboarding_profile_completed && hasLegalAgreement) {
     redirect(`/onboarding/next-steps${next ? `?next=${encodeURIComponent(next)}` : ''}`)
   }
 
@@ -59,6 +73,9 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
             sports={sportsResult.filter((sport) => sport.is_active)}
             venues={venueOptions}
             cityOptions={cityOptions}
+            initialSports={mySports}
+            initialPlayCities={myPlayCities}
+            initialVenues={initialVenues}
           />
         </div>
       </section>

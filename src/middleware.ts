@@ -167,15 +167,15 @@ export async function middleware(request: NextRequest) {
         return applyNoStoreHeaders(redirectResponse)
       }
 
-      if (pathname.startsWith('/onboarding/profile') && profile?.onboarding_profile_completed) {
+      if (pathname.startsWith('/onboarding/profile') && profile?.onboarding_profile_completed && hasLegalAgreement) {
         const redirectResponse = NextResponse.redirect(
           new URL(`/onboarding/next-steps?next=${encodeURIComponent(safeNext)}`, request.url),
         )
-        redirectResponse.headers.set('x-ph-middleware', 'onboarding-legal-step')
+        redirectResponse.headers.set('x-ph-middleware', 'onboarding-next-step')
         return applyNoStoreHeaders(redirectResponse)
       }
 
-      if (pathname.startsWith('/onboarding/next-steps') && !profile?.onboarding_profile_completed) {
+      if (pathname.startsWith('/onboarding/next-steps') && (!profile?.onboarding_profile_completed || !hasLegalAgreement)) {
         const redirectResponse = NextResponse.redirect(
           new URL(`/onboarding/profile?next=${encodeURIComponent(safeNext)}`, request.url),
         )
@@ -187,7 +187,7 @@ export async function middleware(request: NextRequest) {
         `${pathname}${request.nextUrl.search || ''}`,
         '/dashboard',
       )
-      const destination = profile?.onboarding_profile_completed
+      const destination = profile?.onboarding_profile_completed && hasLegalAgreement
         ? `/onboarding/next-steps?next=${encodeURIComponent(next)}`
         : `/onboarding/profile?next=${encodeURIComponent(next)}`
       const redirectResponse = NextResponse.redirect(new URL(destination, request.url))
