@@ -38,62 +38,142 @@ const FALLBACK_ROSTER_INSIGHT = {
 
 type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
 
-function getStarterTarget(format: StarterMatchFormat) {
-  return format === 'doubles' ? 3 : 1
-}
-
-function StarterPeopleIcon({ count }: { count: number }) {
-  return (
-    <div className="relative flex h-20 w-20 items-center justify-center rounded-[22px] border border-[#CFE0F3] bg-[#F8FBFF] text-[#2563EB] shadow-[0_12px_28px_rgba(37,99,235,0.08)]">
-      <svg viewBox="0 0 48 48" className="h-11 w-11" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="18" cy="17" r="6" />
-        <circle cx="31" cy="19" r="5" />
-        <path d="M8 37c2.4-7 7.5-10.5 13-10.5S31.6 30 34 37" />
-        <path d="M29 30.5c2.2-2.3 5.1-3.3 8.5-2.5 2.8.7 5.1 2.8 6.5 6" />
-      </svg>
-      {count > 0 ? (
-        <span className="absolute -bottom-1 -right-1 flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-white bg-[#22C55E] px-2 text-[12px] font-black leading-none text-white shadow-[0_8px_20px_rgba(34,197,94,0.28)]">
-          {count}
-        </span>
-      ) : null}
-    </div>
-  )
-}
-
 type FirstMatchStarterCardProps = {
   contactCount: number
   firstMatchCreated: boolean
   preferredFormat: StarterMatchFormat
   onPreferredFormatChange: (format: StarterMatchFormat) => void
+  venueName?: string | null
   onAddContact?: () => void
   onStartMatch: () => void
   onDismiss: () => void
 }
 
+function StarterPlayingCircleIllustration({ count }: { count: number }) {
+  const activeCount = Math.min(Math.max(count, 0), 4)
+  return (
+    <div className="relative h-28 w-28 shrink-0 rounded-[30px] border border-[#D7E6F7] bg-gradient-to-br from-[#F8FBFF] via-white to-[#EEF6FF] shadow-[0_18px_42px_rgba(37,99,235,0.10)]">
+      <div className="absolute inset-x-5 bottom-5 h-10 rounded-[14px] border border-[#D8E6F6] bg-white/90 shadow-sm" />
+      <div className="absolute inset-x-7 bottom-8 h-10 rounded-[14px] border border-[#D8E6F6] bg-white/95 shadow-sm" />
+      <div className="absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-[#9BC2F4]" />
+      {[
+        'left-5 top-5',
+        'right-5 top-5',
+        'left-6 bottom-6',
+        'right-6 bottom-6',
+      ].map((position, index) => (
+        <span
+          key={position}
+          className={[
+            'absolute flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-black shadow-sm',
+            position,
+            index < activeCount ? 'bg-[#2563EB] text-white' : 'bg-[#EAF2FC] text-[#8AA0BC]',
+          ].join(' ')}
+        >
+          {index + 1}
+        </span>
+      ))}
+      <span className="absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D7F223] text-[#0B1F44] shadow-[0_10px_20px_rgba(215,242,35,0.28)]">
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="7" />
+          <path d="M7 8c3 1.8 7 1.8 10 0" />
+          <path d="M7 16c3-1.8 7-1.8 10 0" />
+        </svg>
+      </span>
+    </div>
+  )
+}
+
 function FirstMatchStarterCard({
   contactCount,
   firstMatchCreated,
-  preferredFormat,
   onPreferredFormatChange,
+  venueName,
   onAddContact,
   onStartMatch,
   onDismiss,
 }: FirstMatchStarterCardProps) {
-  const target = getStarterTarget(preferredFormat)
-  const ready = contactCount >= target
-  const progress = Math.min(100, Math.round((contactCount / target) * 100))
-  const formatLabel = preferredFormat === 'doubles' ? 'doubles' : 'singles'
+  const hasVenue = Boolean(venueName?.trim())
+  const savedCount = Math.max(contactCount, 0)
+  const progressTarget = savedCount >= 3 ? 3 : savedCount >= 1 ? 3 : 1
+  const progress = Math.min(100, Math.round((Math.min(savedCount, progressTarget) / progressTarget) * 100))
+  const state = savedCount >= 3 ? 'ready' : savedCount === 2 ? 'two' : savedCount === 1 ? 'one' : 'zero'
 
-  const title = firstMatchCreated
-    ? 'Your first match is live'
-    : ready
-      ? 'Your Hood is ready'
-      : 'Build your first match list'
-  const body = firstMatchCreated
-    ? 'Keep inviting your saved players as your playing circle grows.'
-    : ready
-      ? `You've saved ${contactCount} Player Card${contactCount === 1 ? '' : 's'}. Now invite them to your first match.`
-      : `Save ${Math.max(target - contactCount, 0)} more regular player${target - contactCount === 1 ? '' : 's'} to start a ${formatLabel} match faster.`
+  const copy = (() => {
+    if (firstMatchCreated) {
+      return {
+        kicker: 'Your local playing circle starts here.',
+        title: 'Your first match is live',
+        body: 'Keep inviting your saved players as your playing circle grows.',
+        primary: 'Create Match',
+        secondary: 'Add More Contacts',
+        helper: 'Less chasing. More playing.',
+      }
+    }
+
+    if (state === 'zero') {
+      return {
+        kicker: hasVenue ? `You're joining the ${venueName} playing community.` : "Glad you're here. Let's build your playing circle.",
+        title: hasVenue ? `Welcome to your ${venueName} PlayerHood` : 'Welcome to PlayerHoods',
+        body: hasVenue
+          ? 'Start with someone you already play with here. Add them as a player card, then create your first match.'
+          : 'Your PlayerHood starts with someone you already play with. Add one regular player as a player card to create your first match.',
+        primary: '+ Add My Contact',
+        secondary: 'Create Match',
+        helper: hasVenue ? 'Private by default. You choose who to invite.' : 'Add 1 player for singles. Add 3 players for doubles.',
+      }
+    }
+
+    if (state === 'one') {
+      return {
+        kicker: 'Your playing circle is taking shape.',
+        title: 'Nice - your first player is saved',
+        body: 'You can create a singles match now, or add two more players for doubles.',
+        primary: 'Create Singles Match',
+        secondary: 'Add 2 More for Doubles',
+        helper: "You're always in control of who gets invited.",
+      }
+    }
+
+    if (state === 'two') {
+      return {
+        kicker: 'Almost there.',
+        title: 'Almost ready for doubles',
+        body: 'Create a singles match now, or add one more player to start a doubles match.',
+        primary: 'Create Singles Match',
+        secondary: 'Add 1 More for Doubles',
+        helper: "You're always in control of who gets invited.",
+      }
+    }
+
+    return {
+      kicker: 'Your playing circle is ready.',
+      title: "You're ready to start playing",
+      body: "Create a singles or doubles match from your saved players. We'll help handle invites and confirmations.",
+      primary: 'Create Match',
+      secondary: 'Add More Contacts',
+      helper: 'Less chasing. More playing.',
+    }
+  })()
+
+  const handlePrimary = () => {
+    if (firstMatchCreated) {
+      onStartMatch()
+      return
+    }
+    if (state === 'zero') {
+      onAddContact?.()
+      return
+    }
+    if (state === 'one' || state === 'two') {
+      onPreferredFormatChange('singles')
+    }
+    onStartMatch()
+  }
+
+  const handleSecondary = () => {
+    onAddContact?.()
+  }
 
   return (
     <section className="relative overflow-hidden rounded-[28px] border border-[#D8E6F6] bg-white px-5 py-5 shadow-[0_20px_48px_rgba(15,23,42,0.06)] sm:px-7">
@@ -107,33 +187,14 @@ function FirstMatchStarterCard({
       </button>
       <div className="flex flex-col gap-5 pr-9 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1">
-          <h2 className="text-h2 font-black tracking-[-0.03em] text-[#0F172A]">{title}</h2>
-          <p className="mt-2 max-w-2xl text-body-main text-[#536783]">{body}</p>
-
-          {!ready && !firstMatchCreated ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {(['singles', 'doubles'] as const).map((format) => (
-                <button
-                  key={format}
-                  type="button"
-                  onClick={() => onPreferredFormatChange(format)}
-                  className={[
-                    'rounded-full border px-4 py-2 text-body-main font-bold transition',
-                    preferredFormat === format
-                      ? 'border-[#0B2A5B] bg-[#0B2A5B] text-white shadow-[0_10px_24px_rgba(11,42,91,0.18)]'
-                      : 'border-[#D8E6F6] bg-[#F8FBFF] text-[#536783] hover:border-[#B8CCE5] hover:text-[#0F172A]',
-                  ].join(' ')}
-                >
-                  {format === 'singles' ? 'Singles' : 'Doubles'}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#7A8AA6]">{copy.kicker}</p>
+          <h2 className="mt-2 text-h2 font-black tracking-[-0.03em] text-[#0F172A]">{copy.title}</h2>
+          <p className="mt-2 max-w-2xl text-body-main leading-6 text-[#536783]">{copy.body}</p>
 
           <div className="mt-4">
             <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#7186A4]">
-              <span>{contactCount} / {target} Player Card{target === 1 ? '' : 's'} Saved</span>
-              {ready ? <span className="text-[#16A34A]">Done</span> : null}
+              <span>{Math.min(savedCount, progressTarget)} / {progressTarget} Player Card{progressTarget === 1 ? '' : 's'} Saved</span>
+              {savedCount >= progressTarget ? <span className="text-[#16A34A]">Done</span> : null}
             </div>
             <div className="h-2 w-full max-w-[520px] overflow-hidden rounded-full bg-[#E7EEF7]">
               <div className="h-full rounded-full bg-[#22C55E]" style={{ width: `${progress}%` }} />
@@ -141,36 +202,27 @@ function FirstMatchStarterCard({
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            {ready || firstMatchCreated ? (
-              <button
-                type="button"
-                onClick={onStartMatch}
-                className="rounded-[12px] bg-[#2563EB] px-5 py-3 text-body-main font-black text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)] transition hover:bg-[#1D4ED8]"
-              >
-                Start a Match&nbsp; &gt;
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={onAddContact}
-                  className="rounded-[12px] bg-[#0B2A5B] px-5 py-3 text-body-main font-black text-white shadow-[0_12px_24px_rgba(11,42,91,0.18)] transition hover:bg-[#12386F]"
-                >
-                  + Add My Contact
-                </button>
-                <button
-                  type="button"
-                  onClick={onStartMatch}
-                  className="rounded-[12px] border border-[#D8E6F6] bg-white px-5 py-3 text-body-main font-black text-[#536783] transition hover:border-[#B8CCE5] hover:text-[#0F172A]"
-                >
-                  Create Match
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              onClick={handlePrimary}
+              className="rounded-[12px] bg-[#0B2A5B] px-5 py-3 text-body-main font-black text-white shadow-[0_12px_24px_rgba(11,42,91,0.18)] transition hover:bg-[#12386F]"
+            >
+              {copy.primary}
+            </button>
+            <button
+              type="button"
+              onClick={handleSecondary}
+              disabled={state === 'zero' && !firstMatchCreated}
+              className="rounded-[12px] border border-[#D8E6F6] bg-white px-5 py-3 text-body-main font-black text-[#536783] transition hover:border-[#B8CCE5] hover:text-[#0F172A] disabled:cursor-not-allowed disabled:bg-[#F8FBFF] disabled:text-[#AAB8CC]"
+            >
+              {copy.secondary}
+            </button>
           </div>
+
+          <p className="mt-3 text-body-sub font-semibold text-[#7A8AA6]">{copy.helper}</p>
         </div>
         <div className="hidden shrink-0 items-center gap-4 sm:flex">
-          <StarterPeopleIcon count={contactCount} />
+          <StarterPlayingCircleIllustration count={savedCount} />
         </div>
       </div>
     </section>
@@ -1279,6 +1331,7 @@ interface Props {
   onViewedMatch?: (matchId: string) => void
   dismissedAlertMatchIds?: Set<string>
   onDismissAlert?: (matchId: string) => void
+  starterVenueName?: string | null
   starterCard?: {
     contactCount: number
     preferredFormat: StarterMatchFormat
@@ -1297,6 +1350,7 @@ export function MatchesPanel({
   onViewedMatch,
   dismissedAlertMatchIds,
   onDismissAlert,
+  starterVenueName,
   starterCard,
 }: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'calendar' | 'history'>('upcoming')
@@ -1387,6 +1441,7 @@ export function MatchesPanel({
       firstMatchCreated={starterCard.firstMatchCreated}
       preferredFormat={starterCard.preferredFormat}
       onPreferredFormatChange={starterCard.onPreferredFormatChange}
+      venueName={starterVenueName}
       onAddContact={starterCard.onAddContact}
       onStartMatch={openCreateMatch}
       onDismiss={starterCard.onDismiss}

@@ -215,6 +215,7 @@ type Props = {
     source_file_name?: string | null
   }>) => Promise<{ created: number; skipped: number }>
   onOpenProfile: () => void
+  openContactComposerSignal?: number
   onStarterStatusChange?: (status: {
     contactCount: number
     preferredFormat: StarterMatchFormat
@@ -1761,6 +1762,7 @@ export function HoodsPanel({
   onParseScreenshots,
   onImportScreenshotContacts,
   onOpenProfile,
+  openContactComposerSignal,
   onStarterStatusChange,
 }: Props) {
   const router = useRouter()
@@ -1852,6 +1854,12 @@ export function HoodsPanel({
       // Ignore localStorage failures.
     }
   }, [userId])
+
+  useEffect(() => {
+    if (!openContactComposerSignal) return
+    setContactToolsOpen(true)
+    setContactComposerMode('manual')
+  }, [openContactComposerSignal])
 
   useEffect(() => {
     try {
@@ -3456,7 +3464,7 @@ export function HoodsPanel({
                 Smart Import
               </button>
               <p className="text-body-main max-w-sm text-[#94A3B8]">
-                We'll extract names, emails, and phones for you.
+                Upload or paste a screenshot from email, chat, or a contact list.
               </p>
               <div className="grid w-full max-w-md grid-cols-3 gap-4 pt-4">
                 {[
@@ -3494,9 +3502,10 @@ export function HoodsPanel({
               <div>
                 <h3 className="text-h2 text-[#1E293B]">Smart Import</h3>
                 <p className="text-body-sub mt-1 max-w-xl text-[#64748B]">
-                  Upload a screenshot of a chat group, email header, or contact list. We'll extract names, emails, and phones for you.
-                  This information is securely saved in PlayerHoods and will never be shown to other users under any circumstances.
-                  We won't send messages or invite anyone until you send a match.
+                  Upload or paste a screenshot from a chat group, email header, or contact list. We&apos;ll extract possible names, emails, and phone numbers for you to review before saving them as Contact Players.
+                </p>
+                <p className="text-body-sub mt-2 max-w-xl font-semibold text-[#475569]">
+                  Nothing is sent or invited automatically. You choose which contacts to save.
                 </p>
               </div>
               <button

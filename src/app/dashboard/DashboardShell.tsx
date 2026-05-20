@@ -291,6 +291,7 @@ export function DashboardShell({
   const [starterContactCount, setStarterContactCount] = useState(0)
   const [starterFormat, setStarterFormat] = useState<StarterMatchFormat>('unknown')
   const [starterDismissedAt, setStarterDismissedAt] = useState<number | null>(null)
+  const [openContactComposerSignal, setOpenContactComposerSignal] = useState(0)
 
   const refreshDashboardLive = useCallback(async () => {
     try {
@@ -410,6 +411,10 @@ export function DashboardShell({
     () => liveItems.some((item) => item.match.organizer_id === userId),
     [liveItems, userId],
   )
+  const starterVenueName = useMemo(() => {
+    const primaryVenue = myVenueMemberships.find((membership) => membership.venue_id === profile.primary_venue_id)
+    return (primaryVenue ?? myVenueMemberships[0])?.venue?.name?.trim() || null
+  }, [myVenueMemberships, profile.primary_venue_id])
   const starterTarget = getStarterTarget(starterFormat)
   const starterDismissedRecently = starterDismissedAt !== null && Date.now() - starterDismissedAt < STARTER_DISMISS_MS
   const shouldShowStarterCard = !starterDismissedRecently
@@ -563,6 +568,7 @@ export function DashboardShell({
           items={liveItems}
           userId={userId}
           defaultVenueId={profile.primary_venue_id ?? ''}
+          starterVenueName={starterVenueName}
           onCancelMatch={onCancelMatch}
           starterCard={shouldShowStarterCard ? {
             contactCount: starterContactCount,
@@ -570,7 +576,10 @@ export function DashboardShell({
             firstMatchCreated,
             onPreferredFormatChange: handleStarterFormatChange,
             onDismiss: handleStarterDismiss,
-            onAddContact: () => setActiveTab('hoods'),
+            onAddContact: () => {
+              setActiveTab('hoods')
+              setOpenContactComposerSignal((value) => value + 1)
+            },
           } : null}
           dismissedAlertMatchIds={suppressedMatchIds}
           onViewedMatch={matchId =>
@@ -595,6 +604,7 @@ export function DashboardShell({
             onParseScreenshots={onParseContactScreenshots}
             onImportScreenshotContacts={onImportScreenshotContacts}
             onOpenProfile={() => setActiveTab('profile')}
+            openContactComposerSignal={openContactComposerSignal}
             onStarterStatusChange={({ contactCount, preferredFormat }) => {
               setStarterContactCount(contactCount)
               setStarterFormat(preferredFormat)
