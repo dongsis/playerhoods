@@ -83,6 +83,10 @@ const suites = [
     file: 'tests/test_runner_privacy_invite_notification_formation.sql',
     functionName: 'test_runner_privacy_invite_notification_formation',
   },
+  {
+    file: 'tests/test_runner_qa_core_business_logic.sql',
+    functionName: 'test_runner_qa_core_business_logic',
+  },
 ]
 
 for (const suite of suites) {
