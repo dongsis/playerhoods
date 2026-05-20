@@ -133,10 +133,10 @@ export function NavIcon({ tab, className = 'h-[18px] w-[18px]' }: { tab: DashTab
 }
 
 const tabs: { key: DashTab; label: string }[] = [
-  { key: 'inbox', label: 'Inbox' },
   { key: 'matches', label: 'Matches' },
   { key: 'hoods', label: 'Hoods' },
   { key: 'groups', label: 'Groups' },
+  { key: 'inbox', label: 'Inbox' },
   { key: 'venues', label: 'Venues' },
   { key: 'gear', label: 'Gear' },
   { key: 'profile', label: 'My Profile' },

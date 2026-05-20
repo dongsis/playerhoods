@@ -135,7 +135,7 @@ interface Props {
 }
 
 const DASH_TABS: DashTab[] = ['inbox', 'matches', 'hoods', 'groups', 'venues', 'gear', 'profile', 'admin']
-const MOBILE_DASH_TABS: DashTab[] = ['inbox', 'matches', 'hoods', 'groups', 'profile']
+const MOBILE_DASH_TABS: DashTab[] = ['matches', 'hoods', 'groups', 'inbox', 'profile']
 
 function isDashTab(value: string | null): value is DashTab {
   return value !== null && DASH_TABS.includes(value as DashTab)
