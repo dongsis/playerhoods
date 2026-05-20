@@ -1,9 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import { completeFirstOnboardingAction } from './actions'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
+import { SUPPORT_EMAIL } from '@/lib/legal'
 import {
   getPrioritizedQuickCityGroups,
   sortCityNamesByProvincePriority,
@@ -54,6 +56,17 @@ interface Props {
 
 function normalizeQuery(value: string) {
   return value.trim().toLowerCase()
+}
+
+function normalizeSearchText(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function normalizeCityName(value: string) {
@@ -194,6 +207,14 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
   const [selectedVenues, setSelectedVenues] = useState<VenueOption[]>([])
   const [discoveryVolume, setDiscoveryVolume] = useState<DiscoveryVolume>('recommended')
   const [acceptingNewInvites, setAcceptingNewInvites] = useState(true)
+  const [legalConfirmed, setLegalConfirmed] = useState(
+    Boolean(
+      existing?.age_confirmed_at &&
+        existing?.terms_accepted_at &&
+        existing?.privacy_accepted_at &&
+        existing?.responsible_use_accepted_at,
+    ),
+  )
   const [cityInput, setCityInput] = useState('')
   const [clubInput, setClubInput] = useState('')
   const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false)
@@ -232,29 +253,28 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
   )
 
   const availableFilteredVenues = useMemo(() => {
-    const query = normalizeQuery(clubInput)
-    const selectedCityNames = new Set(selectedCities.map((city) => city.city_name))
+    const query = normalizeSearchText(clubInput)
+    const queryTokens = query ? query.split(' ') : []
+    const selectedCityNames = new Set(selectedCities.map((city) => normalizeCityName(city.city_name).toLowerCase()))
     return venues
       .filter((venue) => {
-      const venueCity = normalizeCityName(venue.city ?? '')
-      if (!query && !selectedCityNames.has(venueCity)) return false
-      if (selectedVenues.some((selectedVenue) => selectedVenue.id === venue.id)) return false
-      const searchBlob = [
-        getVenueDisplayName(venue as Venue),
-        venue.name,
-        venue.abbreviation ?? '',
-        venue.city ?? '',
-        venue.province ?? '',
-        venue.country ?? '',
-        venue.location_text ?? '',
-      ]
-        .join(' ')
-        .toLowerCase()
-      return !query || searchBlob.includes(query)
-    })
+        const venueCity = normalizeCityName(venue.city ?? '').toLowerCase()
+        if (!query && (!venueCity || !selectedCityNames.has(venueCity))) return false
+        if (selectedVenues.some((selectedVenue) => selectedVenue.id === venue.id)) return false
+        const searchBlob = normalizeSearchText([
+          getVenueDisplayName(venue as Venue),
+          venue.name,
+          venue.abbreviation ?? '',
+          venue.city ?? '',
+          venue.province ?? '',
+          venue.country ?? '',
+          venue.location_text ?? '',
+        ].join(' '))
+        return queryTokens.length === 0 || queryTokens.every((token) => searchBlob.includes(token))
+      })
       .sort((left, right) => {
-        const leftInSelectedCity = selectedCityNames.has(normalizeCityName(left.city ?? ''))
-        const rightInSelectedCity = selectedCityNames.has(normalizeCityName(right.city ?? ''))
+        const leftInSelectedCity = selectedCityNames.has(normalizeCityName(left.city ?? '').toLowerCase())
+        const rightInSelectedCity = selectedCityNames.has(normalizeCityName(right.city ?? '').toLowerCase())
         if (leftInSelectedCity !== rightInSelectedCity) return leftInSelectedCity ? -1 : 1
         return getVenueDisplayName(left as Venue).localeCompare(getVenueDisplayName(right as Venue))
       })
@@ -344,6 +364,14 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
       return
     }
 
+    if (!legalConfirmed) {
+      setErrorMessages((current) => ({
+        ...current,
+        legal: 'Please confirm before continuing.',
+      }))
+      return
+    }
+
     setLoading(true)
     setErrorMessages({})
 
@@ -361,6 +389,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
         visible_in_club_member_discovery: false,
         discovery_volume: discoveryVolume,
         accepting_new_invites: acceptingNewInvites,
+        legal_confirmed: legalConfirmed,
       })
 
       if (!result.ok) {
@@ -599,9 +628,9 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
             </div>
 
             {isClubDropdownOpen ? (
-              <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
+              <div className="mt-2 w-full overflow-hidden rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
                 {availableFilteredVenues.length > 0 ? (
-                  <div className="max-h-[300px] overflow-y-scroll pr-1 [scrollbar-gutter:stable] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#CBD5E1] [&::-webkit-scrollbar-track]:bg-transparent">
+                  <div className="max-h-[min(48vh,380px)] overscroll-contain overflow-y-auto pr-1 [scrollbar-gutter:stable] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#CBD5E1] [&::-webkit-scrollbar-track]:bg-transparent">
                     {availableFilteredVenues.map((venue) => (
                       <div
                         key={venue.id}
@@ -667,7 +696,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
 
         <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4">
           <span className="min-w-0 flex-1">
-            <span className="block text-body-main font-semibold text-[#1E293B]">Accept New Invites</span>
+            <span className="block text-body-main font-semibold text-[#1E293B]">Allow New Invites</span>
             <span className="mt-1 block text-body-sub text-[#64748B]">
               {acceptingNewInvites
                 ? 'Players within your discovery volume can invite you to play. You always choose whether to join.'
@@ -694,15 +723,54 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions }: Pro
         </div>
       ) : null}
 
-      <div className="pt-2">
-        <button
-          type="submit"
-          disabled={loading}
-          className="ph-button-primary w-full justify-center py-4 text-sm disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {loading ? 'Saving...' : 'Save and start'}
-        </button>
-      </div>
+      <section className="rounded-[24px] border border-[#DCE7F3] bg-white px-5 py-5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.16)]">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-h2 text-[#0B1F44]">Almost done</h2>
+            <label className="mt-4 flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={legalConfirmed}
+                onChange={(event) => {
+                  setLegalConfirmed(event.target.checked)
+                  if (event.target.checked) {
+                    setErrorMessages((current) => ({ ...current, legal: '' }))
+                  }
+                }}
+                disabled={loading}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-[#075BD7] focus:ring-[#075BD7]"
+              />
+              <span className="text-body-main font-semibold leading-6 text-[#1E293B]">
+                I confirm that I am 18 or older and agree to the PlayerHoods Terms, Privacy Notice, and responsible use rules.
+              </span>
+            </label>
+
+            {errorMessages.legal ? (
+              <p className="mt-3 text-body-main font-semibold text-rose-600">{errorMessages.legal}</p>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-4 text-body-sub font-semibold text-[#64748B]">
+              <Link href="/terms" className="underline underline-offset-2 hover:text-[#1E293B]">
+                Terms of Use
+              </Link>
+              <Link href="/privacy" className="underline underline-offset-2 hover:text-[#1E293B]">
+                Privacy Notice
+              </Link>
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-2 hover:text-[#1E293B]">
+                Contact
+              </a>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="text-body-main inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#071A44] px-5 font-semibold text-white shadow-sm transition hover:bg-[#0B255D] disabled:cursor-wait disabled:bg-[#94A3B8]"
+          >
+            {loading ? 'Saving...' : 'Continue to PlayerHoods'}
+          </button>
+        </div>
+      </section>
     </form>
   )
 }

@@ -2,11 +2,16 @@
 
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { LEGAL_AGREEMENT_VERSION } from '@/lib/legal'
 import {
   BasicProfileValidationError,
   normalizeCompleteFirstOnboardingInput,
   type CompleteFirstOnboardingInput,
 } from '@/lib/profile/basic-profile'
+
+type CompleteFirstOnboardingActionInput = CompleteFirstOnboardingInput & {
+  legal_confirmed?: boolean
+}
 
 function mapOnboardingError(error: unknown) {
   const code =
@@ -40,6 +45,8 @@ function mapOnboardingError(error: unknown) {
       return 'One of the selected venues does not match your chosen play cities.'
     case 'relationship_not_allowed_for_venue_kind':
       return 'One of the selected venues can be saved, but not joined as a club membership.'
+    case 'legal_confirmation_required':
+      return 'Please confirm before continuing.'
     case 'not_authenticated':
       return 'Please log in again.'
     default:
@@ -47,8 +54,12 @@ function mapOnboardingError(error: unknown) {
   }
 }
 
-export async function completeFirstOnboardingAction(input: CompleteFirstOnboardingInput) {
+export async function completeFirstOnboardingAction(input: CompleteFirstOnboardingActionInput) {
   try {
+    if (!input.legal_confirmed) {
+      throw new BasicProfileValidationError('legal_confirmation_required', 'Please confirm before continuing.')
+    }
+
     const normalized = normalizeCompleteFirstOnboardingInput(input)
     const supabase = await createSupabaseServerClient()
 
@@ -69,6 +80,15 @@ export async function completeFirstOnboardingAction(input: CompleteFirstOnboardi
     })
 
     if (discoveryError) throw discoveryError
+
+    const { error: legalError } = await supabase.rpc('rpc_complete_onboarding_legal_agreement', {
+      p_age_confirmation_version: LEGAL_AGREEMENT_VERSION,
+      p_terms_version: LEGAL_AGREEMENT_VERSION,
+      p_privacy_version: LEGAL_AGREEMENT_VERSION,
+      p_responsible_use_version: LEGAL_AGREEMENT_VERSION,
+    })
+
+    if (legalError) throw legalError
 
     revalidatePath('/dashboard')
     revalidatePath('/onboarding/profile')

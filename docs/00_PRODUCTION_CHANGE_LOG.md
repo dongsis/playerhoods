@@ -14,12 +14,38 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
-## 2026-05-20 - MR-20260520-hood-card-bookmark-polish
+## 2026-05-20 - MR-20260520-onboarding-venue-search-scroll
 
 **Type:** Mini Release
 **Code Commit:** Pending at write time
 **Migration:** None
 **Status:** Pending Vercel Production deployment
+
+### Summary
+
+This mini release fixes onboarding profile venue selection:
+
+- Loads venue options through paginated API reads instead of the old single Supabase page.
+- Allows venue search to match normalized name, abbreviation, city, province, country, and location text.
+- Lets typed name searches include venues even when the venue city field is missing or incomplete.
+- Changes the venue results panel from an absolute overlay to an in-flow scrollable panel so users can scroll to the end.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Passed | `npm run verify:build` |
+
+### Rollback
+
+- Revert the release commit and redeploy the previous known-good production commit.
+
+## 2026-05-20 - MR-20260520-hood-card-bookmark-polish
+
+**Type:** Mini Release
+**Code Commit:** `fd1af91`
+**Migration:** None
+**Status:** GitHub and Vercel Production deployed
 
 ### Summary
 

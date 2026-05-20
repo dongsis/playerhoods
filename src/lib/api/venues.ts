@@ -54,12 +54,47 @@ export async function isVenueAdmin(supabase: Client, venueId: string): Promise<b
 // ============================================================================
 
 export async function getAllVenues(supabase: Client): Promise<Venue[]> {
-  const { data, error } = await supabase
-    .from('venues')
-    .select('*')
-    .order('name', { ascending: true })
-  if (error) throw error
-  return data as Venue[]
+  const pageSize = 1000
+  const rows: Venue[] = []
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('venues')
+      .select('*')
+      .order('name', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+
+    const page = (data ?? []) as Venue[]
+    rows.push(...page)
+
+    if (page.length < pageSize) break
+  }
+
+  return rows
+}
+
+export type VenueOptionRow = Pick<Venue, 'id' | 'name' | 'abbreviation' | 'city' | 'province' | 'country' | 'location_text' | 'venue_kind'>
+
+export async function listVenueOptions(supabase: Client): Promise<VenueOptionRow[]> {
+  const pageSize = 1000
+  const rows: VenueOptionRow[] = []
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('venues')
+      .select('id, name, abbreviation, city, province, country, location_text, venue_kind')
+      .order('name', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+
+    const page = (data ?? []) as VenueOptionRow[]
+    rows.push(...page)
+
+    if (page.length < pageSize) break
+  }
+
+  return rows
 }
 
 export async function getVenue(supabase: Client, venueId: string): Promise<Venue> {

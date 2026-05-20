@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import { listSports } from '@/lib/api/sports'
 import { listLocationCityOptions } from '@/lib/api/location-municipalities'
-import type { Profile, Venue } from '@/lib/types/database'
+import { listVenueOptions } from '@/lib/api/venues'
+import type { Profile } from '@/lib/types/database'
 import { ProfileForm } from './ProfileForm'
 
 interface Props {
@@ -16,18 +17,14 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
   const { next, notice } = await searchParams
   const supabase = await createSupabaseServerClient()
 
-  const [{ data: profile }, sportsResult, venuesResult, cityOptions] = await Promise.all([
+  const [{ data: profile }, sportsResult, venueOptions, cityOptions] = await Promise.all([
     supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single(),
     listSports(supabase),
-    supabase
-      .from('venues')
-      .select('id, name, abbreviation, city, province, country, location_text, venue_kind')
-      .not('city', 'is', null)
-      .order('name', { ascending: true }),
+    listVenueOptions(supabase),
     listLocationCityOptions(supabase, { countryCode: 'CA', provinceCode: 'ON' }),
   ])
 
@@ -37,10 +34,6 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
 
   if (profile?.onboarding_profile_completed) {
     redirect(`/onboarding/next-steps${next ? `?next=${encodeURIComponent(next)}` : ''}`)
-  }
-
-  if (venuesResult.error) {
-    throw venuesResult.error
   }
 
   return (
@@ -64,7 +57,7 @@ export default async function OnboardingProfilePage({ searchParams }: Props) {
             existing={(profile as Profile | null) ?? null}
             next={next || '/dashboard'}
             sports={sportsResult.filter((sport) => sport.is_active)}
-            venues={((venuesResult.data ?? []) as Pick<Venue, 'id' | 'name' | 'abbreviation' | 'city' | 'province' | 'country' | 'location_text' | 'venue_kind'>[])}
+            venues={venueOptions}
             cityOptions={cityOptions}
           />
         </div>
