@@ -14,6 +14,50 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-20 - MR-20260520-smart-import-rpc-overload-cleanup
+
+**Type:** Mini Release
+**Code Commit:** `994d999`
+**Migration:** `20260520160000_drop_ambiguous_match_rpc_overloads.sql`
+**Status:** GitHub, Supabase Remote, and Vercel Production deployed
+
+### Summary
+
+This mini release ships the Smart Import simplification and SQL regression cleanup:
+
+- Converts Smart Import into a single state-based flow: Import contacts, auto extract, review extracted contacts, save selected.
+- Removes the separate Extract Contacts action and duplicate file/preview sections.
+- Hides Windows/Mac screenshot instructions behind help.
+- Replaces red parse failures with a friendly retry/manual-add state.
+- Drops ambiguous legacy one-argument match participant RPC overloads while keeping canonical two-argument signatures.
+- Updates SQL regression coverage for the Privacy / Invite / Formation MVP expectations.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| GitHub main | `994d999` | Pushed to `origin/main` |
+| Vercel Preview | Not deployed | Not used for this mini release |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-1ewmv86ec-nancys-projects-128e326c.vercel.app` reported Ready and aliases include `https://www.playerhoods.com` |
+| Supabase Local | Applied | Local SQL regression runners passed against local Supabase |
+| Supabase Remote | Applied | `npx.cmd supabase db push --linked --yes` applied migration `20260520160000` |
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Passed | `npm run verify:build` |
+| SQL regression | Passed | `npm run verify:sql` returned all runners passing, 107/107 total |
+| Remote DB migration | Passed | `npx.cmd supabase migration list --linked` shows `20260520160000` in Local and Remote |
+| Vercel Production | Passed | `vercel inspect` reported deployment Ready |
+| Production login smoke | Passed | `https://playerhoods-codex.vercel.app/login` and `https://www.playerhoods.com/login` returned HTTP 200 |
+| Authenticated Smart Import flow | Not run | Production test-account credentials were not used in this deployment task |
+
+### Rollback
+
+- Revert code commit `994d999` and redeploy the previous known-good production commit.
+- If the RPC overload cleanup must be reverted, apply a forward migration restoring the legacy one-argument overloads only after confirming the ambiguity risk is acceptable.
+
 ## 2026-05-14 - MR-20260514-starter-card-match-flow
 
 **Type:** Mini Release
