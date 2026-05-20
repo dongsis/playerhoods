@@ -913,6 +913,19 @@ BEGIN
     PERFORM public.rpc_match_org_approve_participant(v_mp.id);
     PERFORM public.rpc_match_rebalance_roster(v_mid);
 
+    -- Privacy / Invite MVP gates registered-player admission. This test is
+    -- about waiting-list promotion, so seed LEO as an invite-eligible player
+    -- instead of exercising the privacy gate.
+    INSERT INTO public.user_sports (user_id, sport_id)
+    VALUES (ORG_UID, 1), (LEO_UID, 1)
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO public.user_play_cities (user_id, city_name, region, country)
+    VALUES
+      (ORG_UID, 'Toronto', 'Ontario', 'Canada'),
+      (LEO_UID, 'Toronto', 'Ontario', 'Canada')
+    ON CONFLICT DO NOTHING;
+
     SELECT * INTO v_mp FROM public.rpc_match_admit_user(v_mid, LEO_UID);
 
     PERFORM set_config(
@@ -1416,15 +1429,21 @@ BEGIN
     FROM public.match_participant_actions a
     WHERE a.match_participant_id = v_mp.id;
 
-    SELECT * INTO v_mp FROM public.rpc_match_remove_participant(v_mp.id);
-
-    IF v_cnt = (SELECT count(*) FROM public.match_participant_actions a WHERE a.match_participant_id = v_mp.id) AND v_mp.removed_at IS NOT NULL THEN
-      INSERT INTO _v2_results VALUES ('H05 Remove idempotent', true, 'ok', v_mid);
-    ELSE
-      INSERT INTO _v2_results VALUES ('H05 Remove idempotent', false, 'action_count changed or removed_at null', v_mid);
-    END IF;
+    BEGIN
+      PERFORM public.rpc_match_remove_participant(v_mp.id);
+      INSERT INTO _v2_results VALUES ('H05 Remove rejects second remove without side effects', false, 'expected participant_already_removed', v_mid);
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM = 'participant_already_removed'
+        AND v_cnt = (SELECT count(*) FROM public.match_participant_actions a WHERE a.match_participant_id = v_mp.id)
+        AND v_mp.removed_at IS NOT NULL
+      THEN
+        INSERT INTO _v2_results VALUES ('H05 Remove rejects second remove without side effects', true, 'ok', v_mid);
+      ELSE
+        INSERT INTO _v2_results VALUES ('H05 Remove rejects second remove without side effects', false, 'exception='||SQLERRM||' action_count changed or removed_at null', v_mid);
+      END IF;
+    END;
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO _v2_results VALUES ('H05 Remove idempotent', false, 'exception: '||SQLERRM, v_mid);
+    INSERT INTO _v2_results VALUES ('H05 Remove rejects second remove without side effects', false, 'exception: '||SQLERRM, v_mid);
   END;
 
   -- =========================================================
@@ -1524,7 +1543,28 @@ BEGIN
       json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text,
       true
     );
-    SELECT * INTO v_mp FROM public.rpc_match_admit_user(v_mid, OUTSIDER_UID);
+
+    -- This negative test is about proxy authorization, not admission privacy.
+    -- Insert the target participant directly so the Privacy / Invite MVP gate
+    -- does not mask the proxy permission assertion.
+    INSERT INTO public.match_participants (
+      match_id,
+      user_id,
+      join_method,
+      status,
+      org_approved_at,
+      org_approved_by,
+      created_by
+    ) VALUES (
+      v_mid,
+      OUTSIDER_UID,
+      'invited',
+      'pending',
+      now(),
+      ORG_UID,
+      ORG_UID
+    )
+    RETURNING * INTO v_mp;
 
     PERFORM set_config(
       'request.jwt.claims',
@@ -1895,7 +1935,7 @@ BEGIN
   -- K. Re-entry / removed then re-enter
   -- =========================================================
 
-  -- K01 Removed user readmit does not silently reactivate a removed row
+  -- K01 Explicit re-admit creates a new active row after prior removal
   BEGIN
     PERFORM set_config(
       'request.jwt.claims',
@@ -1924,16 +1964,16 @@ BEGIN
     ORDER BY mp.created_at DESC
     LIMIT 1;
 
-    IF v_mp.removed_at IS NOT NULL AND v_mp.status::text = 'removed' THEN
-      INSERT INTO _v2_results VALUES ('K01 Removed user re-admit leaves row removed', true, 'ok', v_mid);
+    IF v_mp.removed_at IS NULL AND v_mp.status::text = 'pending' THEN
+      INSERT INTO _v2_results VALUES ('K01 Removed user re-admit creates new pending row', true, 'ok', v_mid);
     ELSE
-      INSERT INTO _v2_results VALUES ('K01 Removed user re-admit leaves row removed', false, 'status='||coalesce(v_mp.status::text,'NULL')||' removed_at='||coalesce(v_mp.removed_at::text,'NULL'), v_mid);
+      INSERT INTO _v2_results VALUES ('K01 Removed user re-admit creates new pending row', false, 'status='||coalesce(v_mp.status::text,'NULL')||' removed_at='||coalesce(v_mp.removed_at::text,'NULL'), v_mid);
     END IF;
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO _v2_results VALUES ('K01 Removed user re-admit leaves row removed', false, 'exception: '||SQLERRM, v_mid);
+    INSERT INTO _v2_results VALUES ('K01 Removed user re-admit creates new pending row', false, 'exception: '||SQLERRM, v_mid);
   END;
 
-  -- K02 Removed user re-request_join does not recreate an active row automatically
+  -- K02 Explicit re-request creates a new active row after prior request removal
   BEGIN
     PERFORM set_config(
       'request.jwt.claims',
@@ -1971,13 +2011,13 @@ BEGIN
     FROM public.match_participants mp
     WHERE mp.match_id = v_mid AND mp.user_id = REAL_UID AND mp.removed_at IS NULL;
 
-    IF v_cnt = 0 THEN
-      INSERT INTO _v2_results VALUES ('K02 Removed user re-request_join leaves no active row', true, 'ok', v_mid);
+    IF v_cnt = 1 THEN
+      INSERT INTO _v2_results VALUES ('K02 Removed user re-request_join creates one active row', true, 'ok', v_mid);
     ELSE
-      INSERT INTO _v2_results VALUES ('K02 Removed user re-request_join leaves no active row', false, 'active_rows='||v_cnt, v_mid);
+      INSERT INTO _v2_results VALUES ('K02 Removed user re-request_join creates one active row', false, 'active_rows='||v_cnt, v_mid);
     END IF;
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO _v2_results VALUES ('K02 Removed user re-request_join leaves no active row', false, 'exception: '||SQLERRM, v_mid);
+    INSERT INTO _v2_results VALUES ('K02 Removed user re-request_join creates one active row', false, 'exception: '||SQLERRM, v_mid);
   END;
 
   -- K03 Re-entry without an explicit Match Proxy binding remains blocked

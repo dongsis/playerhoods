@@ -8,7 +8,26 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_viewer uuid := gen_random_uuid();
+  v_quiet uuid := gen_random_uuid();
+  v_visible uuid := gen_random_uuid();
+  v_no_invites uuid := gen_random_uuid();
+  v_blocked uuid := gen_random_uuid();
+  v_quiet_email text;
+  v_visible_email text;
+  v_no_invites_email text;
+  v_blocked_email text;
+  v_delivery_count_before integer;
+  v_delivery_count_after integer;
+  v_request_id uuid;
+  v_direct_add_id uuid;
 BEGIN
+  v_quiet_email := 'qa-p0-quiet-' || replace(v_quiet::text, '-', '') || '@example.test';
+  v_visible_email := 'qa-p0-visible-' || replace(v_visible::text, '-', '') || '@example.test';
+  v_no_invites_email := 'qa-p0-noinvites-' || replace(v_no_invites::text, '-', '') || '@example.test';
+  v_blocked_email := 'qa-p0-blocked-' || replace(v_blocked::text, '-', '') || '@example.test';
+
   CREATE TEMP TABLE IF NOT EXISTS _notification_mvp_results(
     test_name text,
     ok boolean,
@@ -79,6 +98,149 @@ BEGIN
       'can_invite_user',
       'can_recommend_user'
     );
+
+  INSERT INTO auth.users (id, email, email_confirmed_at)
+  VALUES
+    (v_viewer, 'qa-p0-viewer-' || replace(v_viewer::text, '-', '') || '@example.test', now()),
+    (v_quiet, v_quiet_email, now()),
+    (v_visible, v_visible_email, now()),
+    (v_no_invites, v_no_invites_email, now()),
+    (v_blocked, v_blocked_email, now());
+
+  INSERT INTO public.profiles (
+    id,
+    first_name,
+    last_name,
+    display_name,
+    availability_status,
+    discovery_volume,
+    accepting_new_invites
+  ) VALUES
+    (v_viewer, '', '', 'QA P0 Viewer', 'available', 'recommended', true),
+    (v_quiet, '', '', 'QA P0 Quiet', 'available', 'quiet', true),
+    (v_visible, '', '', 'QA P0 Visible', 'available', 'recommended', true),
+    (v_no_invites, '', '', 'QA P0 No Invites', 'available', 'recommended', false),
+    (v_blocked, '', '', 'QA P0 Blocked', 'available', 'recommended', true);
+
+  INSERT INTO public.user_sports (user_id, sport_id)
+  VALUES
+    (v_viewer, 1),
+    (v_quiet, 1),
+    (v_visible, 1),
+    (v_no_invites, 1),
+    (v_blocked, 1);
+
+  INSERT INTO public.user_play_cities (user_id, city_name, region, country)
+  VALUES
+    (v_viewer, 'Toronto', 'Ontario', 'Canada'),
+    (v_quiet, 'Toronto', 'Ontario', 'Canada'),
+    (v_visible, 'Toronto', 'Ontario', 'Canada'),
+    (v_no_invites, 'Toronto', 'Ontario', 'Canada'),
+    (v_blocked, 'Toronto', 'Ontario', 'Canada');
+
+  INSERT INTO public.user_blocks (blocker_user_id, blocked_user_id)
+  VALUES (v_blocked, v_viewer);
+
+  INSERT INTO _notification_mvp_results(test_name, ok, details)
+  SELECT
+    'Quiet player is hidden from passive recommendation',
+    public.get_lookup_visibility(v_viewer, v_quiet, 'passive_recommendation') = 'none'
+      and public.can_recommend_user(v_viewer, v_quiet) = false
+      and public.can_invite_user(v_viewer, v_quiet, null, 'passive_recommendation') = false,
+    'visibility=' || public.get_lookup_visibility(v_viewer, v_quiet, 'passive_recommendation');
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_viewer::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  INSERT INTO _notification_mvp_results(test_name, ok, details)
+  SELECT
+    'Quiet exact email lookup returns requestable only',
+    count(*) = 1,
+    'matching_rows=' || count(*)::text
+  FROM public.rpc_player_search_by_contact_info(v_quiet_email) row
+  WHERE row.user_id = v_quiet
+    AND row.visibility = 'requestable'
+    AND row.can_request_add = true
+    AND row.can_add = false
+    AND row.can_invite = false;
+
+  SELECT count(*)::integer
+  INTO v_delivery_count_before
+  FROM public.notification_deliveries;
+
+  SELECT request_id
+  INTO v_request_id
+  FROM public.rpc_user_save_request_create(v_quiet, 'contact_lookup')
+  LIMIT 1;
+
+  SELECT count(*)::integer
+  INTO v_delivery_count_after
+  FROM public.notification_deliveries;
+
+  INSERT INTO _notification_mvp_results(test_name, ok, details)
+  SELECT
+    'Request to Add creates save request without match participant or delivery',
+    v_request_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM public.user_save_requests usr
+        WHERE usr.id = v_request_id
+          AND usr.requester_user_id = v_viewer
+          AND usr.target_user_id = v_quiet
+          AND usr.status = 'pending'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.match_participants mp
+        WHERE mp.user_id = v_quiet
+          AND mp.created_by = v_viewer
+      )
+      AND v_delivery_count_after = v_delivery_count_before,
+    'request_id=' || coalesce(v_request_id::text, 'null')
+      || ', delivery_delta=' || (v_delivery_count_after - v_delivery_count_before)::text;
+
+  SELECT id
+  INTO v_direct_add_id
+  FROM public.rpc_invite_circle_save_user(v_visible, 'manual')
+  LIMIT 1;
+
+  INSERT INTO _notification_mvp_results(test_name, ok, details)
+  SELECT
+    'Visible recommended player can be silently direct-added',
+    v_direct_add_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM public.user_invite_circle uic
+        WHERE uic.id = v_direct_add_id
+          AND uic.owner_user_id = v_viewer
+          AND uic.target_user_id = v_visible
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.notifications n
+        WHERE n.recipient_user_id = v_visible
+          AND n.actor_user_id = v_viewer
+      ),
+    'save_id=' || coalesce(v_direct_add_id::text, 'null');
+
+  INSERT INTO _notification_mvp_results(test_name, ok, details)
+  SELECT
+    'Accept New Invites off remains visible but not recommendable or invitable',
+    public.get_lookup_visibility(v_viewer, v_no_invites, 'passive_recommendation') = 'visible'
+      AND public.can_recommend_user(v_viewer, v_no_invites) = false
+      AND public.can_invite_user(v_viewer, v_no_invites, null, 'passive_recommendation') = false,
+    'visibility=' || public.get_lookup_visibility(v_viewer, v_no_invites, 'passive_recommendation');
+
+  INSERT INTO _notification_mvp_results(test_name, ok, details)
+  SELECT
+    'Block overrides exact lookup add request and invite',
+    public.get_lookup_visibility(v_viewer, v_blocked, 'exact_contact_lookup') = 'none'
+      AND public.can_request_add(v_viewer, v_blocked, 'exact_contact_lookup') = false
+      AND public.can_invite_user(v_viewer, v_blocked, null, 'exact_contact_lookup') = false,
+    'visibility=' || public.get_lookup_visibility(v_viewer, v_blocked, 'exact_contact_lookup');
 
   INSERT INTO _notification_mvp_results(test_name, ok, details)
   SELECT
@@ -196,6 +358,30 @@ BEGIN
     'critical change predicate includes time',
     public.notification_is_critical_change('{"start_time":{"old":"09:00","new":"10:00"}}'::jsonb) = true,
     'start_time=true';
+
+  DELETE FROM public.notifications
+  WHERE recipient_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked)
+     OR actor_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
+  DELETE FROM public.user_save_requests
+  WHERE requester_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked)
+     OR target_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
+  DELETE FROM public.user_invite_circle
+  WHERE owner_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked)
+     OR target_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
+  DELETE FROM public.user_lookup_visibility_grants
+  WHERE viewer_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked)
+     OR target_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
+  DELETE FROM public.user_blocks
+  WHERE blocker_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked)
+     OR blocked_user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
+  DELETE FROM public.user_play_cities
+  WHERE user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
+  DELETE FROM public.user_sports
+  WHERE user_id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
+  DELETE FROM public.profiles
+  WHERE id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
+  DELETE FROM auth.users
+  WHERE id IN (v_viewer, v_quiet, v_visible, v_no_invites, v_blocked);
 
   RETURN QUERY
   SELECT r.test_name, r.ok, r.details

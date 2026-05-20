@@ -1,12 +1,17 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { ContactPlayerResolved } from '@/lib/api/roster'
 
 type EditableDraft = ContactImportDraft & {
   selected: boolean
+}
+
+type PreviewFile = {
+  name: string
+  url: string
 }
 
 type Props = {
@@ -21,6 +26,9 @@ type Props = {
   }>) => Promise<{ created: number; skipped: number }>
   onImported: () => Promise<void> | void
 }
+
+const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const SUPPORTED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp)$/i
 
 function cleanText(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim()
@@ -114,6 +122,10 @@ function detectPossibleDuplicate(
 
 function sanitizePathPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, '-')
+}
+
+function isSupportedScreenshotFile(file: File): boolean {
+  return SUPPORTED_IMAGE_TYPES.has(file.type) || (!file.type && SUPPORTED_IMAGE_EXTENSIONS.test(file.name))
 }
 
 function UploadIcon() {
@@ -258,8 +270,9 @@ export function ContactScreenshotImportSection({
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [files, setFiles] = useState<File[]>([])
+  const [previewFiles, setPreviewFiles] = useState<PreviewFile[]>([])
   const [drafts, setDrafts] = useState<EditableDraft[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [retryMessage, setRetryMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -276,8 +289,41 @@ export function ContactScreenshotImportSection({
     [drafts],
   )
 
-  const step = drafts.length > 0 ? 'review' : 'upload'
+  const step = parsing ? 'extracting' : drafts.length > 0 ? 'review' : retryMessage ? 'retry' : 'import'
   const allSelectableSelected = selectableDraftIds.length > 0 && drafts.every((draft) => draft.missing_fields.length > 0 || draft.selected)
+
+  useEffect(() => {
+    const nextPreviewFiles = files.map((file) => ({
+      name: file.name,
+      url: URL.createObjectURL(file),
+    }))
+
+    setPreviewFiles(nextPreviewFiles)
+
+    return () => {
+      nextPreviewFiles.forEach((item) => URL.revokeObjectURL(item.url))
+    }
+  }, [files])
+
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      const clipboardFiles = Array.from(event.clipboardData?.items ?? [])
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file))
+
+      if (clipboardFiles.length === 0) return
+
+      const hasImage = clipboardFiles.some((file) => file.type.startsWith('image/') || SUPPORTED_IMAGE_EXTENSIONS.test(file.name))
+      if (!hasImage) return
+
+      event.preventDefault()
+      handleFileSelection(clipboardFiles, 'pasted')
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [])
 
   const updateDraft = (id: string, updater: (draft: EditableDraft) => EditableDraft) => {
     setDrafts((previous) =>
@@ -300,31 +346,44 @@ export function ContactScreenshotImportSection({
     setFiles([])
     setDrafts([])
     setEditingDraftId(null)
+    setRetryMessage(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleFileSelection = (nextFiles: File[]) => {
-    setFiles(nextFiles)
+  const handleFileSelection = (nextFiles: File[], source: 'uploaded' | 'dropped' | 'pasted' = 'uploaded') => {
+    const supportedFiles = nextFiles.filter(isSupportedScreenshotFile)
+    const rejectedCount = nextFiles.length - supportedFiles.length
+
+    setFiles(supportedFiles)
     setDrafts([])
     setEditingDraftId(null)
-    setError(null)
-    setNotice(null)
+    setRetryMessage(rejectedCount > 0 ? 'That file type is not supported yet. Try a JPG, PNG, or WEBP screenshot, or add the contact manually.' : null)
+    setNotice(
+      supportedFiles.length > 0
+        ? `${supportedFiles.length} screenshot${supportedFiles.length === 1 ? '' : 's'} ${source}. Extracting contacts now.`
+        : null,
+    )
+    if (fileInputRef.current) fileInputRef.current.value = ''
+
+    if (supportedFiles.length > 0) {
+      void handleParseFiles(supportedFiles)
+    }
   }
 
-  const handleParse = async () => {
-    if (files.length === 0) {
-      setError('Choose at least one screenshot to parse.')
+  const handleParseFiles = async (filesToParse = files) => {
+    if (filesToParse.length === 0) {
+      setRetryMessage('Choose a screenshot first. Smart Import works with JPG, PNG, and WEBP images.')
       return
     }
 
     setParsing(true)
-    setError(null)
+    setRetryMessage(null)
     setNotice(null)
     const supabase = createSupabaseBrowserClient()
     const uploaded: ContactScreenshotUpload[] = []
 
     try {
-      for (const [index, file] of files.entries()) {
+      for (const [index, file] of filesToParse.entries()) {
         const path = `${userId}/${Date.now()}-${index}-${sanitizePathPart(file.name)}`
         const { error: uploadError } = await supabase.storage
           .from('contact-imports')
@@ -346,16 +405,16 @@ export function ContactScreenshotImportSection({
       }))
       setDrafts(nextDrafts)
       setEditingDraftId(nextDrafts.find((draft) => draft.missing_fields.length > 0)?.id ?? null)
-      setNotice(
-        nextDrafts.length > 0
-          ? `Parsed ${nextDrafts.length} contact candidate${nextDrafts.length === 1 ? '' : 's'}. Review and confirm before importing.`
-          : 'No contact candidates were found. Try a clearer screenshot or add contacts manually.',
-      )
+      if (nextDrafts.length > 0) {
+        setNotice(`Found ${nextDrafts.length} contact candidate${nextDrafts.length === 1 ? '' : 's'}. Review and confirm before saving.`)
+      } else {
+        setRetryMessage('We could not find contact details in that screenshot. Try a clearer crop, paste another screenshot, or add the contact manually.')
+      }
     } catch (err: unknown) {
       if (uploaded.length > 0) {
         await supabase.storage.from('contact-imports').remove(uploaded.map((item) => item.storage_path))
       }
-      setError(getFriendlyImportError(err, 'Could not parse screenshot. Please try again or add the contact manually.'))
+      setRetryMessage(getFriendlyImportError(err, 'We could not read that screenshot. Try a clearer crop, paste another screenshot, or add the contact manually.'))
     } finally {
       setParsing(false)
     }
@@ -363,13 +422,13 @@ export function ContactScreenshotImportSection({
 
   const handleImport = async () => {
     setImporting(true)
-    setError(null)
+    setRetryMessage(null)
     setNotice(null)
 
     try {
       const selectedDrafts = drafts.filter((draft) => draft.selected && draft.missing_fields.length === 0)
       if (selectedDrafts.length === 0) {
-        setError('Select at least one valid contact to import.')
+        setRetryMessage('Select at least one complete contact to save, or edit a row to add the missing name, phone, or email.')
         setImporting(false)
         return
       }
@@ -385,93 +444,51 @@ export function ContactScreenshotImportSection({
 
       setNotice(
         result.skipped > 0
-          ? `Imported ${result.created} contact${result.created === 1 ? '' : 's'} and skipped ${result.skipped}.`
-          : `Imported ${result.created} contact${result.created === 1 ? '' : 's'}.`,
+          ? `Saved ${result.created} Contact Player${result.created === 1 ? '' : 's'} and skipped ${result.skipped}.`
+          : `Saved ${result.created} Contact Player${result.created === 1 ? '' : 's'}.`,
       )
       resetFlow()
       await onImported()
     } catch (err: unknown) {
-      setError(getFriendlyImportError(err, 'Could not import contacts. Please review the selected contacts and try again.'))
+      setRetryMessage(getFriendlyImportError(err, 'We could not save those contacts yet. Review the selected rows and try again.'))
     } finally {
       setImporting(false)
     }
   }
 
   return (
-    <div className="overflow-hidden bg-white">
-      <div className="px-1 pb-6">
-        {step === 'upload' ? (
-          <div className="space-y-8">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              onChange={(event) => handleFileSelection(Array.from(event.target.files ?? []))}
-              className="hidden"
-            />
+    <div className="bg-white px-1 pb-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        onChange={(event) => handleFileSelection(Array.from(event.target.files ?? []), 'uploaded')}
+        className="hidden"
+      />
 
-            <div
-              onDragOver={(event) => {
-                event.preventDefault()
-                setIsDragging(true)
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault()
-                setIsDragging(false)
-                handleFileSelection(Array.from(event.dataTransfer.files ?? []).filter((file) => file.type.startsWith('image/')))
-              }}
-              className={[
-                'flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-[28px] border-2 border-dashed px-6 py-9 text-center transition',
-                isDragging
-                  ? 'border-[#2D6CDF] bg-[#EFF6FF]'
-                  : 'border-[#DCE6F2] bg-[#F8FBFF] hover:border-[#93C5FD] hover:bg-[#EFF6FF]',
-              ].join(' ')}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-[#2D6CDF] shadow-sm">
-                <UploadIcon />
-              </span>
-              <div className="mt-4 min-w-0">
-                <div className="text-base font-black text-[#1E293B]">
-                  {files.length > 0 ? `${files.length} screenshot${files.length === 1 ? '' : 's'} selected` : 'Select Screenshot'}
-                </div>
-                <div className="mt-2 text-xs font-semibold text-[#94A3B8]">
-                  {files.length > 0
-                    ? files.map((file) => file.name).join(', ')
-                    : 'JPG, PNG, or WEBP'}
-                </div>
-              </div>
-            </div>
-
-            <ImportExampleCards />
-
-            {files.length > 0 ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#DBEAFE] bg-[#F8FBFF] p-4">
-                <div className="flex min-w-0 items-center gap-3 text-[#64748B]">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EAF2FF] text-[#075BD7]">
-                    <UploadIcon />
-                  </span>
-                  <span className="min-w-0 truncate text-sm font-semibold">{files.map((file) => file.name).join(', ')}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleParse}
-                  disabled={parsing}
-                  className="rounded-xl bg-[#0B1F44] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#16325F] disabled:cursor-wait disabled:bg-slate-300"
-                >
-                  {parsing ? 'Analyzing...' : 'Parse Screenshot'}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="space-y-6">
+      <div
+        onDragOver={(event) => {
+          event.preventDefault()
+          setIsDragging(true)
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault()
+          setIsDragging(false)
+          handleFileSelection(Array.from(event.dataTransfer.files ?? []), 'dropped')
+        }}
+        className={[
+          'overflow-hidden rounded-[28px] border bg-white transition',
+          isDragging ? 'border-[#2D6CDF] shadow-[0_20px_60px_-36px_rgba(45,108,223,0.8)]' : 'border-[#DCE6F2]',
+        ].join(' ')}
+      >
+        {step === 'review' ? (
+          <div className="space-y-6 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
-                  Success
+                  Review extracted contacts
                 </span>
                 <span className="text-sm text-slate-500">
                   {drafts.length} contact candidate{drafts.length === 1 ? '' : 's'} found
@@ -481,12 +498,11 @@ export function ContactScreenshotImportSection({
                 type="button"
                 onClick={() => {
                   resetFlow()
-                  setError(null)
                   setNotice(null)
                 }}
                 className="text-sm font-medium text-blue-600 hover:underline"
               >
-                Upload again
+                Import another screenshot
               </button>
             </div>
 
@@ -656,56 +672,151 @@ export function ContactScreenshotImportSection({
                 )
               })}
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-slate-100 bg-slate-50 px-4 py-4">
+              <div className="text-sm italic text-slate-500">
+                {selectedCount} contacts selected to save
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  className="rounded-lg px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
+                  onClick={() => {
+                    resetFlow()
+                    setNotice(null)
+                  }}
+                  disabled={parsing || importing}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={importing || selectedCount === 0 || selectableDraftIds.length === 0}
+                  onClick={handleImport}
+                  className={[
+                    'inline-flex items-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold shadow-sm transition-all',
+                    selectedCount > 0 && selectableDraftIds.length > 0 && !importing
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'cursor-not-allowed bg-slate-200 text-slate-400',
+                  ].join(' ')}
+                >
+                  <span>{importing ? 'Saving...' : `Save selected (${selectedCount})`}</span>
+                  <span aria-hidden="true">{'>'}</span>
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        ) : null}
 
-      {step === 'review' ? (
-      <div className="flex items-center justify-between gap-4 border-t border-slate-100 bg-slate-50 px-6 py-4">
-        <div className="text-sm italic text-slate-500">
-          {selectedCount} contacts selected for import
-        </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            className="rounded-lg px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
-            onClick={() => {
-              resetFlow()
-              setError(null)
-              setNotice(null)
-            }}
-            disabled={parsing || importing}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={step !== 'review' || importing || selectedCount === 0 || selectableDraftIds.length === 0}
-            onClick={handleImport}
-            className={[
-              'inline-flex items-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold shadow-sm transition-all',
-              step === 'review' && selectedCount > 0 && selectableDraftIds.length > 0 && !importing
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'cursor-not-allowed bg-slate-200 text-slate-400',
-            ].join(' ')}
-          >
-            <span>{importing ? 'Importing...' : `Import Selected (${selectedCount})`}</span>
-            <span aria-hidden="true">›</span>
-          </button>
-        </div>
-      </div>
-      ) : null}
+        {step !== 'review' ? (
+          <div className="space-y-5 p-5">
+            <div className="grid gap-5 md:grid-cols-[1.05fr_0.95fr] md:items-center">
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#334155]">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={parsing}
+                    className="rounded-2xl border border-[#BFDBFE] bg-white px-4 py-3 text-[#075BD7] transition hover:bg-[#EFF6FF] disabled:cursor-wait disabled:text-[#94A3B8]"
+                  >
+                    Upload screenshot
+                  </button>
+                  <span className="rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-[#475569]">
+                    Paste screenshot
+                  </span>
+                  <span className="rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-[#475569]">
+                    Drag image here
+                  </span>
+                </div>
 
-      {notice ? (
-        <div className="border-t border-emerald-100 bg-emerald-50 px-6 py-3 text-sm text-emerald-700">
-          {notice}
-        </div>
-      ) : null}
-      {error ? (
-        <div className="border-t border-rose-100 bg-rose-50 px-6 py-3 text-sm text-rose-700">
-          {error}
-        </div>
-      ) : null}
+                <div className={[
+                  'rounded-[24px] border-2 border-dashed px-5 py-7 text-center transition',
+                  isDragging ? 'border-[#2D6CDF] bg-[#EFF6FF]' : 'border-[#DCE6F2] bg-[#F8FBFF]',
+                ].join(' ')}>
+                  <span className="mx-auto flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-[#2D6CDF] shadow-sm">
+                    <UploadIcon />
+                  </span>
+                  <div className="mt-4 text-base font-black text-[#1E293B]">
+                    {step === 'extracting'
+                      ? 'Extracting contacts...'
+                      : step === 'retry'
+                        ? 'Try another screenshot'
+                        : 'Import contacts'}
+                  </div>
+                  <p className="mx-auto mt-2 max-w-md text-xs font-semibold leading-5 text-[#64748B]">
+                    {step === 'extracting'
+                      ? 'Looking for names, emails, and phone numbers. Nothing is saved or invited automatically.'
+                      : step === 'retry'
+                        ? 'A tighter crop around the email header, chat list, or contact table usually works best.'
+                        : 'Upload, paste, or drop a screenshot. We will extract contacts automatically, then you choose what to save.'}
+                  </p>
+                  {files.length > 0 ? (
+                    <p className="mt-3 truncate text-xs font-semibold text-[#94A3B8]">
+                      {files.map((file) => file.name).join(', ')}
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-xs font-semibold text-[#94A3B8]">JPG, PNG, WEBP</p>
+                  )}
+                </div>
+
+                {step === 'retry' ? (
+                  <div className="rounded-[20px] border border-[#BFDBFE] bg-[#F8FBFF] p-4 text-sm leading-6 text-[#475569]">
+                    <p className="font-bold text-[#0B1F44]">No contacts saved yet.</p>
+                    <p className="mt-1">{retryMessage}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="rounded-xl bg-[#0B1F44] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16325F]"
+                      >
+                        Retry import
+                      </button>
+                      <span className="rounded-xl border border-[#DCE6F2] bg-white px-4 py-2 text-sm font-semibold text-[#64748B]">
+                        Or use Add My Contact manually
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                <details className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]">
+                  <summary className="cursor-pointer font-black text-[#334155]">Need help taking a screenshot?</summary>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <p><strong>Windows:</strong> Press Win + Shift + S, select the email header or contact list, then come back here and press Ctrl + V.</p>
+                    <p><strong>Mac:</strong> Press Command + Shift + 4, select the area, then upload or paste the screenshot.</p>
+                  </div>
+                </details>
+              </div>
+
+              <div className="space-y-3">
+                {previewFiles.length > 0 ? (
+                  <div className="grid gap-3">
+                    {previewFiles.map((file) => (
+                      <figure key={`${file.name}-${file.url}`} className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF]">
+                        <img src={file.url} alt={`Preview of ${file.name}`} className="h-48 w-full object-contain" />
+                        <figcaption className="truncate border-t border-[#E2E8F0] bg-white px-3 py-2 text-xs font-semibold text-[#64748B]">
+                          {file.name}
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : (
+                  <ImportExampleCards />
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {notice ? (
+          <div className="border-t border-emerald-100 bg-emerald-50 px-5 py-3 text-sm text-emerald-700">
+            {notice}
+          </div>
+        ) : null}
+        {retryMessage && step === 'review' ? (
+          <div className="border-t border-[#BFDBFE] bg-[#F8FBFF] px-5 py-3 text-sm text-[#475569]">
+            {retryMessage}
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

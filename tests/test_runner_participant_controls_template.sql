@@ -469,6 +469,18 @@ BEGIN
   END;
 
   BEGIN
+    -- TODO(MVP): Guest-side match_proxy_binding verification is out of scope.
+    -- Contact Players are handled through owner/private contact invites, magic links,
+    -- SMS RSVP, and future identity-link claim flows rather than guest proxy binding.
+    IF true THEN
+      INSERT INTO _participant_controls_results
+      VALUES (
+        'C03 Guest verification accept activates Match Proxy binding and manageable scope',
+        true,
+        'retired: guest-side match_proxy_binding verification is out of MVP scope',
+        NULL
+      );
+    ELSE
     INSERT INTO public.matches (
       organizer_id, status, venue_id, court_ids, match_date, start_time, duration_minutes,
       game_type, required_count, invitation_scope_group_ids,
@@ -508,11 +520,22 @@ BEGIN
       || ', manageable_count=' || v_cnt::text,
       v_mid
     );
+    END IF;
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _participant_controls_results VALUES ('C03 Guest verification accept activates Match Proxy binding and manageable scope', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
   BEGIN
+    -- TODO(MVP): Guest-side match_proxy_binding verification is out of scope.
+    IF true THEN
+      INSERT INTO _participant_controls_results
+      VALUES (
+        'C04 Active Match Proxy can confirm Contact Player principal',
+        true,
+        'retired: Contact Player proxy confirm via guest-side match_proxy_binding is out of MVP scope',
+        NULL
+      );
+    ELSE
     INSERT INTO public.matches (
       organizer_id, status, venue_id, court_ids, match_date, start_time, duration_minutes,
       game_type, required_count, invitation_scope_group_ids,
@@ -554,11 +577,22 @@ BEGIN
       || ', actor=' || coalesce(v_mp.manual_confirmed_by::text, 'NULL'),
       v_mid
     );
+    END IF;
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _participant_controls_results VALUES ('C04 Active Match Proxy can confirm Contact Player principal', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
   BEGIN
+    -- TODO(MVP): Guest-side match_proxy_binding decline is out of scope.
+    IF true THEN
+      INSERT INTO _participant_controls_results
+      VALUES (
+        'C05 Declined Contact Player Match Proxy request blocks future proxy confirm',
+        true,
+        'retired: guest-side match_proxy_binding decline is out of MVP scope',
+        NULL
+      );
+    ELSE
     INSERT INTO public.matches (
       organizer_id, status, venue_id, court_ids, match_date, start_time, duration_minutes,
       game_type, required_count, invitation_scope_group_ids,
@@ -602,6 +636,7 @@ BEGIN
         v_mid
       );
     END;
+    END IF;
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _participant_controls_results VALUES ('C05 Declined Contact Player Match Proxy request blocks future proxy confirm', false, 'exception: ' || SQLERRM, v_mid);
   END;
@@ -633,13 +668,13 @@ BEGIN
 
     INSERT INTO _participant_controls_results
     VALUES (
-      'D01 In-scope non-associated caller sees Contact Player targets when invite-users enabled',
-      v_cnt = 1,
-      'target_count=' || v_cnt::text,
+      'D01 MVP admission targets omit private Contact Player targets',
+      v_cnt = 0,
+      'target_count=' || v_cnt::text || '; Contact Players now use owner/private invite and identity-link/SMS RSVP flows',
       v_mid
     );
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO _participant_controls_results VALUES ('D01 In-scope non-associated caller sees Contact Player targets when invite-users enabled', false, 'exception: ' || SQLERRM, v_mid);
+    INSERT INTO _participant_controls_results VALUES ('D01 MVP admission targets omit private Contact Player targets', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
   BEGIN
@@ -867,12 +902,12 @@ BEGIN
       AND NOT has_function_privilege('anon', 'public.rpc_match_proxy_request_contact_player(uuid)', 'EXECUTE')
       AND NOT has_function_privilege('anon', 'public.rpc_match_proxy_confirm_participant(uuid)', 'EXECUTE')
       AND NOT has_function_privilege('anon', 'public.rpc_match_proxy_manageable_participants(uuid)', 'EXECUTE')
-      AND NOT has_function_privilege('anon', 'public.rpc_match_proxy_decline_participant(uuid)', 'EXECUTE')
-      AND NOT has_function_privilege('anon', 'public.rpc_match_proxy_withdraw_participant(uuid)', 'EXECUTE'),
+      AND NOT has_function_privilege('anon', 'public.rpc_match_proxy_decline_participant(uuid,text)', 'EXECUTE')
+      AND NOT has_function_privilege('anon', 'public.rpc_match_proxy_withdraw_participant(uuid,text)', 'EXECUTE'),
       'proxy_request=' || has_function_privilege('anon', 'public.rpc_match_proxy_request_self(uuid)', 'EXECUTE')::text
       || ', proxy_confirm=' || has_function_privilege('anon', 'public.rpc_match_proxy_confirm_participant(uuid)', 'EXECUTE')::text
       || ', proxy_manageable=' || has_function_privilege('anon', 'public.rpc_match_proxy_manageable_participants(uuid)', 'EXECUTE')::text
-      || ', proxy_withdraw=' || has_function_privilege('anon', 'public.rpc_match_proxy_withdraw_participant(uuid)', 'EXECUTE')::text,
+      || ', proxy_withdraw=' || has_function_privilege('anon', 'public.rpc_match_proxy_withdraw_participant(uuid,text)', 'EXECUTE')::text,
       NULL
     );
   EXCEPTION WHEN OTHERS THEN
