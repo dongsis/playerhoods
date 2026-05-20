@@ -20,6 +20,7 @@ export async function middleware(request: NextRequest) {
   const isShortInvitationRoute = pathname.startsWith('/i/')
   const isShortStopRoute = pathname.startsWith('/stop/')
   const isSeoFileRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
+  const isDevHelperRoute = pathname.startsWith('/dev/')
   const isCanonicalLocalAuthRoute = isLoginRoute || isAuthCallback || isResetPasswordRoute
 
   if (shouldUseCanonicalLocalAuthHost(requestHost) && isCanonicalLocalAuthRoute) {
@@ -75,6 +76,11 @@ export async function middleware(request: NextRequest) {
 
   if (isSeoFileRoute) {
     response.headers.set('x-ph-middleware', 'seo-file')
+    return response
+  }
+
+  if (isDevHelperRoute) {
+    response.headers.set('x-ph-middleware', 'dev-helper')
     return response
   }
 
