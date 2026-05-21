@@ -547,7 +547,7 @@ function ReviewMatchModal({
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-[480px] overflow-hidden rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_18px_44px_-18px_rgba(15,23,42,0.18)]"
+        className="w-full max-w-[480px] overflow-hidden rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_18px_44px_-18px_rgba(15,23,42,0.18)] md:max-w-none"
       >
         <div className="border-b border-[#F1F5F9] px-6 pb-4 pt-6">
           <h3 className="text-h2 text-[#1E293B]">{recurring ? 'Review Recurring Match' : 'Review Match'}</h3>

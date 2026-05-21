@@ -521,7 +521,9 @@ export function DashboardShell({
     }
   }, [firstMatchCreated, inboxBadge, liveItems, playersData.pendingGroupInvites.length, starterContactCount, starterDismissedRecently, starterTarget, suppressedMatchIds])
 
-  const mainWidthClass = activeTab === 'profile' || activeTab === 'gear' || activeTab === 'hoods' || activeTab === 'groups'
+  const mainWidthClass = activeTab === 'matches'
+    ? 'max-w-[1360px]'
+    : activeTab === 'profile' || activeTab === 'gear' || activeTab === 'hoods' || activeTab === 'groups'
     ? 'max-w-6xl'
     : 'max-w-3xl'
   const shouldLeftAlignMain = activeTab === 'groups'

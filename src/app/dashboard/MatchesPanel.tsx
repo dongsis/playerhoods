@@ -1574,7 +1574,7 @@ export function MatchesPanel({
 
       <div className="hidden space-y-8 md:block">
         {renderStarterCard()}
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.92fr)]">
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.72fr)] xl:grid-cols-[minmax(0,1.4fr)_minmax(380px,0.74fr)]">
           <section className="min-w-0">
             <CreateMatchInline defaultVenueId={defaultVenueId} expandSignal={mobileCreateExpandSignal} />
           </section>
