@@ -1079,6 +1079,66 @@ BEGIN
     INSERT INTO _participant_controls_results VALUES ('E02 Registered email accept creates participant-side pending row only', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, venue_id, court_ids, match_date, start_time, duration_minutes,
+      game_type, required_count, invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants, created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[], current_date, '12:15'::time, 90,
+      'tr_tpl_E03_guest_decline_invalid_system_actor', 4, ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    ) RETURNING id INTO v_mid;
+
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text, true);
+    SELECT * INTO v_guest
+    FROM public.rpc_roster_guest_create('TR template E03 linked guest', 'tr-e03@test.local', NULL, 'participant-controls-template');
+
+    SELECT * INTO v_mp
+    FROM public.rpc_match_nominate_guest(v_mid, v_guest.id);
+
+    SELECT * INTO v_inv
+    FROM public.email_invitations
+    WHERE match_participant_id = v_mp.id
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    IF v_inv.id IS NULL THEN
+      RAISE EXCEPTION 'email_invitation_not_created';
+    END IF;
+
+    PERFORM public.rpc_email_invitation_decline_as_guest(v_inv.id, 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid);
+
+    SELECT * INTO v_inv
+    FROM public.email_invitations
+    WHERE id = v_inv.id;
+
+    SELECT * INTO v_mp
+    FROM public.match_participants
+    WHERE id = v_mp.id;
+
+    INSERT INTO _participant_controls_results
+    VALUES (
+      'E03 Guest email decline falls back from invalid system actor to organizer',
+      v_inv.status = 'declined'
+      AND v_mp.removed_at IS NOT NULL
+      AND v_mp.removed_by = ORG_UID
+      AND EXISTS (
+        SELECT 1
+        FROM public.email_invitation_events eie
+        WHERE eie.invitation_id = v_inv.id
+          AND eie.event_type = 'invitation_declined'
+          AND eie.actor_user_id = ORG_UID
+      ),
+      'invitation_status=' || coalesce(v_inv.status, 'NULL')
+      || ', removed_by=' || coalesce(v_mp.removed_by::text, 'NULL')
+      || ', removed_at=' || coalesce(v_mp.removed_at::text, 'NULL'),
+      v_mid
+    );
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _participant_controls_results VALUES ('E03 Guest email decline falls back from invalid system actor to organizer', false, 'exception: ' || SQLERRM, v_mid);
+  END;
+
   -- =========================================================
   -- H. Hoods Proxy dashboard + Invite Group
   -- =========================================================
