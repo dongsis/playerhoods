@@ -88,6 +88,10 @@ function getVenueMetaLine(venue: VenueOption): string {
   return parts.join(' • ') || 'Location not set'
 }
 
+function getVenueFullName(venue: VenueOption): string {
+  return venue.name?.trim() || getVenueDisplayName(venue as Venue)
+}
+
 function buildErrorMessage(error: unknown): string {
   const message =
     error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
@@ -285,7 +289,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
         const leftInSelectedCity = selectedCityNames.has(normalizeCityName(left.city ?? '').toLowerCase())
         const rightInSelectedCity = selectedCityNames.has(normalizeCityName(right.city ?? '').toLowerCase())
         if (leftInSelectedCity !== rightInSelectedCity) return leftInSelectedCity ? -1 : 1
-        return getVenueDisplayName(left as Venue).localeCompare(getVenueDisplayName(right as Venue))
+        return getVenueFullName(left).localeCompare(getVenueFullName(right))
       })
   }, [clubInput, selectedCities, selectedVenues, venues])
 
@@ -599,7 +603,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                     <TrophyIcon className="h-4 w-4" />
                   </div>
                   <div>
-                    <div className="text-title-main text-[#1E293B]">{getVenueDisplayName(venue as Venue)}</div>
+                    <div className="text-title-main text-[#1E293B]">{getVenueFullName(venue)}</div>
                     <div className="text-body-sub text-[#64748B]">{getVenueMetaLine(venue)}</div>
                   </div>
                 </div>
@@ -607,7 +611,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                   type="button"
                   onClick={() => removeVenue(venue.id)}
                   className="rounded-full p-1 text-[#94A3B8] transition hover:bg-white hover:text-rose-500"
-                  aria-label={`Remove ${getVenueDisplayName(venue as Venue)}`}
+                  aria-label={`Remove ${getVenueFullName(venue)}`}
                 >
                   <CloseIcon className="h-4 w-4" />
                 </button>
@@ -648,7 +652,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                         className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 last:border-b-0"
                       >
                         <div className="min-w-0">
-                          <div className="text-body-main truncate font-semibold text-[#1E293B]">{getVenueDisplayName(venue as Venue)}</div>
+                          <div className="text-body-main truncate font-semibold text-[#1E293B]">{getVenueFullName(venue)}</div>
                           <div className="text-body-sub text-[#64748B]">{getVenueMetaLine(venue)}</div>
                         </div>
                         <button
