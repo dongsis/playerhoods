@@ -2809,11 +2809,15 @@ export function ProfilePanel({
           <div className="relative shrink-0" data-venue-menu-root={menuKey}>
             <button
               type="button"
-              aria-haspopup="menu"
-              aria-expanded={isMenuOpen}
+              aria-haspopup={usesMemberRelationship ? 'menu' : undefined}
+              aria-expanded={usesMemberRelationship ? isMenuOpen : undefined}
               onClick={() => {
                 setJoinError(null)
-                setOpenVenueMenuId((prev) => (prev === menuKey ? null : menuKey))
+                if (usesMemberRelationship) {
+                  setOpenVenueMenuId((prev) => (prev === menuKey ? null : menuKey))
+                  return
+                }
+                handleQuickJoinVenue(venue.id, 'save')
               }}
               disabled={isJoiningVenue || !normalizedDisplayName}
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -2823,39 +2827,29 @@ export function ProfilePanel({
               {isBusy ? '...' : '+'}
             </button>
 
-          {isMenuOpen ? (
-            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[190px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
-              {usesMemberRelationship ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickJoinVenue(venue.id, 'member')}
-                    disabled={isJoiningVenue}
-                    className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    I'm a member
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickJoinVenue(venue.id, 'save')}
-                    disabled={isJoiningVenue}
-                    className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Save this venue
-                  </button>
-                </>
-              ) : (
+            {usesMemberRelationship && isMenuOpen ? (
+              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[200px] rounded-2xl border border-[#071A44] bg-[#071A44] p-2 shadow-[0_20px_46px_-20px_rgba(7,26,68,0.72)]">
+                <div className="px-3 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">
+                  Add venue as
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleQuickJoinVenue(venue.id, 'member')}
+                  disabled={isJoiningVenue}
+                  className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  I'm a member
+                </button>
                 <button
                   type="button"
                   onClick={() => handleQuickJoinVenue(venue.id, 'save')}
                   disabled={isJoiningVenue}
-                  className="text-body-main flex w-full items-center rounded-xl px-3 py-2 text-left text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="text-body-main mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Save venue
+                  Save this venue
                 </button>
-              )}
-            </div>
-          ) : null}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
