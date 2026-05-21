@@ -236,7 +236,7 @@ function CompactLocationEditor({
   const [isOpen, setIsOpen] = useState(false)
   const [cityInput, setCityInput] = useState('')
   const [draftCities, setDraftCities] = useState(
-    playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean),
+    normalizeCityList(playCities.map((city) => city.city_name?.trim?.() ?? '')),
   )
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -244,8 +244,16 @@ function CompactLocationEditor({
   const dropdownRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    setDraftCities(playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean))
+    const nextCities = normalizeCityList(playCities.map((city) => city.city_name?.trim?.() ?? ''))
+    setDraftCities(nextCities)
   }, [playCities])
+
+  useEffect(() => {
+    if (hasCityName(draftCities, cityInput)) {
+      setCityInput('')
+      setIsDropdownOpen(false)
+    }
+  }, [cityInput, draftCities])
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -262,7 +270,7 @@ function CompactLocationEditor({
   const citySummary = draftCities.length > 0 ? draftCities.join(', ') : 'Click to add city'
   const isDirty =
     JSON.stringify(draftCities) !==
-    JSON.stringify(playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean))
+    JSON.stringify(normalizeCityList(playCities.map((city) => city.city_name?.trim?.() ?? '')))
   const cityMetaMap = useMemo(() => {
     const map = new Map<string, { region: string | null; country: string | null }>()
     for (const city of availableCities) {
@@ -296,7 +304,7 @@ function CompactLocationEditor({
   const filteredCities = useMemo(() => {
     const query = normalizeCityName(cityInput).toLowerCase()
     return cityOptions.filter((city) => {
-      if (draftCities.some((entry) => entry.toLowerCase() === city.toLowerCase())) return false
+      if (hasCityName(draftCities, city)) return false
       return !query || city.toLowerCase().includes(query)
     })
   }, [cityInput, cityOptions, draftCities])
@@ -312,12 +320,14 @@ function CompactLocationEditor({
   const addCity = (value: string) => {
     const nextCity = normalizeCityName(value)
     if (!nextCity) return
-    if (draftCities.some((city) => city.toLowerCase() === nextCity.toLowerCase())) {
+    if (hasCityName(draftCities, nextCity)) {
       setError('That city is already listed.')
+      setCityInput('')
+      setIsDropdownOpen(false)
       return
     }
     setError(null)
-    setDraftCities((current) => [...current, nextCity])
+    setDraftCities((current) => normalizeCityList([...current, nextCity]))
     setCityInput('')
     setIsDropdownOpen(false)
   }
@@ -328,11 +338,12 @@ function CompactLocationEditor({
   }
 
   const handleSave = () => {
+    const uniqueCities = normalizeCityList(draftCities)
     setError(null)
     startTransition(async () => {
       try {
         const result = await onSave({
-          play_cities: draftCities.map((city_name) => ({
+          play_cities: uniqueCities.map((city_name) => ({
             city_name,
             region: cityMetaMap.get(city_name.toLowerCase())?.region ?? region,
             country: cityMetaMap.get(city_name.toLowerCase())?.country ?? country,
@@ -401,7 +412,13 @@ function CompactLocationEditor({
               type="text"
               value={cityInput}
               onChange={(event) => {
-                setCityInput(event.target.value)
+                const nextInput = event.target.value
+                if (hasCityName(draftCities, nextInput)) {
+                  setCityInput('')
+                  setIsDropdownOpen(false)
+                  return
+                }
+                setCityInput(nextInput)
                 setIsDropdownOpen(true)
               }}
               onFocus={() => setIsDropdownOpen(true)}
@@ -513,6 +530,23 @@ function normalizeVenueSearchText(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ')
+}
+
+function normalizeCityList(values: string[]): string[] {
+  const byName = new Map<string, string>()
+  for (const value of values) {
+    const city = normalizeCityName(value)
+    if (!city) continue
+    const key = city.toLowerCase()
+    if (!byName.has(key)) byName.set(key, city)
+  }
+  return Array.from(byName.values())
+}
+
+function hasCityName(values: string[], cityName: string): boolean {
+  const normalized = normalizeCityName(cityName).toLowerCase()
+  if (!normalized) return false
+  return values.some((value) => normalizeCityName(value).toLowerCase() === normalized)
 }
 
 function isOrderedSubsequence(query: string, target: string): boolean {
@@ -713,7 +747,7 @@ function BasicLocationEditor({
 }) {
   const [cityInput, setCityInput] = useState('')
   const [draftCities, setDraftCities] = useState(
-    playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean),
+    normalizeCityList(playCities.map((city) => city.city_name?.trim?.() ?? '')),
   )
   const [selectedRegion, setSelectedRegion] = useState(
     normalizeProvinceForCitySuggestions(region || DEFAULT_PLAY_REGION),
@@ -735,8 +769,16 @@ function BasicLocationEditor({
   const dropdownRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    setDraftCities(playCities.map((city) => city.city_name?.trim?.() ?? '').filter(Boolean))
+    const nextCities = normalizeCityList(playCities.map((city) => city.city_name?.trim?.() ?? ''))
+    setDraftCities(nextCities)
   }, [playCities])
+
+  useEffect(() => {
+    if (hasCityName(draftCities, cityInput)) {
+      setCityInput('')
+      setIsDropdownOpen(false)
+    }
+  }, [cityInput, draftCities])
 
   useEffect(() => {
     setSelectedRegion(normalizeProvinceForCitySuggestions(region || DEFAULT_PLAY_REGION))
@@ -840,7 +882,7 @@ function BasicLocationEditor({
   const filteredCities = useMemo(() => {
     const query = normalizeCityName(cityInput).toLowerCase()
     return cityOptions.filter((city) => {
-      if (draftCities.some((entry) => entry.toLowerCase() === city.toLowerCase())) return false
+      if (hasCityName(draftCities, city)) return false
       return !query || city.toLowerCase().includes(query)
     })
   }, [cityInput, cityOptions, draftCities])
@@ -854,11 +896,12 @@ function BasicLocationEditor({
   )
 
   const saveCities = (nextCities: string[]) => {
+    const uniqueCities = normalizeCityList(nextCities)
     setError(null)
     startTransition(async () => {
       try {
         const result = await onSave({
-          play_cities: nextCities.map((city_name) => ({
+          play_cities: uniqueCities.map((city_name) => ({
             city_name,
             region: cityMetaMap.get(city_name.toLowerCase())?.region ?? selectedRegion,
             country: cityMetaMap.get(city_name.toLowerCase())?.country ?? country,
@@ -880,8 +923,12 @@ function BasicLocationEditor({
   const addCity = (value: string) => {
     const nextCity = normalizeCityName(value)
     if (!nextCity) return
-    if (draftCities.some((city) => city.toLowerCase() === nextCity.toLowerCase())) return
-    const nextCities = [...draftCities, nextCity]
+    if (hasCityName(draftCities, nextCity)) {
+      setCityInput('')
+      setIsDropdownOpen(false)
+      return
+    }
+    const nextCities = normalizeCityList([...draftCities, nextCity])
     setDraftCities(nextCities)
     setCityInput('')
     setIsDropdownOpen(false)
@@ -957,7 +1004,13 @@ function BasicLocationEditor({
             <input
               value={cityInput}
               onChange={(event) => {
-                setCityInput(event.target.value)
+                const nextInput = event.target.value
+                if (hasCityName(draftCities, nextInput)) {
+                  setCityInput('')
+                  setIsDropdownOpen(false)
+                  return
+                }
+                setCityInput(nextInput)
                 setIsDropdownOpen(true)
               }}
               onFocus={() => setIsDropdownOpen(true)}

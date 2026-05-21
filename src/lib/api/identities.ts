@@ -14,6 +14,75 @@ type Client = SupabaseClient<Database>
 
 export type VenueMembership = VenueUserRelationship & { venue: Venue }
 
+function normalizeVenueCity(venue: Pick<Venue, 'city' | 'province' | 'country'> | null | undefined) {
+  const cityName = venue?.city?.trim()
+  if (!cityName) return null
+
+  return {
+    city_name: cityName,
+    region: venue?.province?.trim() || null,
+    country: venue?.country?.trim() || 'Canada',
+  }
+}
+
+async function addVenueCityToPlayCities(
+  supabase: Client,
+  userId: string,
+  venueId: string,
+): Promise<void> {
+  const { data: venue, error: venueError } = await supabase
+    .from('venues')
+    .select('city, province, country')
+    .eq('id', venueId)
+    .maybeSingle()
+
+  if (venueError) throw venueError
+
+  const city = normalizeVenueCity(venue as Pick<Venue, 'city' | 'province' | 'country'> | null)
+  if (!city) return
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('user_play_cities')
+    .select('id, city_name, region, country')
+    .eq('user_id', userId)
+
+  if (existingError) throw existingError
+
+  const alreadyAdded = ((existingRows ?? []) as Array<{
+    city_name: string
+    region: string | null
+    country: string
+  }>).some((row) => (
+    row.city_name.trim().toLowerCase() === city.city_name.toLowerCase()
+  ))
+
+  if (alreadyAdded) return
+
+  const { error: insertError } = await supabase
+    .from('user_play_cities')
+    .insert({
+      user_id: userId,
+      city_name: city.city_name,
+      region: city.region,
+      country: city.country,
+    })
+
+  if (insertError && !insertError.message.toLowerCase().includes('duplicate')) {
+    throw insertError
+  }
+}
+
+async function addVenueCityToCurrentUserPlayCities(
+  supabase: Client,
+  venueId: string,
+): Promise<void> {
+  const { data, error } = await supabase.auth.getUser()
+  if (error) throw error
+  const userId = data.user?.id
+  if (!userId) throw new Error('not_authenticated')
+  await addVenueCityToPlayCities(supabase, userId, venueId)
+}
+
 // ============================================================================
 // Profile identity RPCs
 // ============================================================================
@@ -133,6 +202,8 @@ export async function joinVenue(
     p_venue_id: venueId,
   })
   if (error) throw error
+
+  await addVenueCityToCurrentUserPlayCities(supabase, venueId)
 }
 
 /** Leave a venue the current user has joined. */
@@ -262,7 +333,7 @@ export async function getMyVenuePreferences(
 /** Add a starred relationship for the current user. */
 export async function addVenuePreference(
   supabase: Client,
-  _userId: string,
+  userId: string,
   venueId: string,
 ): Promise<void> {
   const next = await supabase.rpc('rpc_venue_relationship_set', {
@@ -270,6 +341,8 @@ export async function addVenuePreference(
     p_relationship_type: 'starred',
   })
   if (next.error) throw next.error
+
+  await addVenueCityToPlayCities(supabase, userId, venueId)
 }
 
 // ============================================================================
