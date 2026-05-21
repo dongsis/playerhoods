@@ -2618,21 +2618,26 @@ export function CreateMatchInline({
         <button
           type="button"
           onClick={() => setCreateExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between px-5 py-5 text-left transition hover:bg-[#FFF8F5] md:px-6"
+          className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[#FFF8F5] md:px-7 md:py-6"
         >
-          <div className="flex items-center gap-3">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#C25E46] text-lg font-bold leading-none text-white shadow-[0_8px_18px_rgba(194,94,70,0.24)]">
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F9733D] to-[#C25E46] text-[30px] font-medium leading-none text-white shadow-[0_14px_28px_rgba(194,94,70,0.28)] md:h-14 md:w-14 md:text-[34px]">
               +
             </span>
-            <div>
-              <p className="text-label text-[#C25E46]">{createExpanded ? 'Hide Create Match' : 'Create a Match'}</p>
+            <div className="min-w-0">
+              <p className="text-[18px] font-black uppercase tracking-[0.04em] text-[#0B1F47] md:text-[22px]">
+                {createExpanded ? 'Hide Create Match' : 'Create a Match'}
+              </p>
+              <p className="mt-1 text-[13px] font-semibold text-[#536783] md:text-[15px]">
+                More Games for Players. Less Work for Hosts.
+              </p>
             </div>
           </div>
           <span
-            className={`text-body-main text-[#C25E46] transition-transform ${createExpanded ? 'rotate-180' : ''}`}
+            className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F8FAFC] text-[20px] font-bold text-[#94A3B8] transition-transform ${createExpanded ? 'rotate-180' : ''}`}
             aria-hidden="true"
           >
-            v
+            ›
           </span>
         </button>
 

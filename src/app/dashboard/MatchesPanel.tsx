@@ -1574,152 +1574,154 @@ export function MatchesPanel({
 
       <div className="hidden space-y-8 md:block">
         {renderStarterCard()}
-        <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
-        <div className="flex items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
-          <div>
-            <h2 className="text-h2 font-semibold tracking-tight text-[#0F172A]">Match Board</h2>
-          </div>
-          <div className="inline-flex rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
-            {subTabBtn('upcoming', 'Upcoming', incoming.length)}
-            {subTabBtn('calendar', 'Calendar')}
-            {subTabBtn('history', 'History', history.length)}
-          </div>
-        </div>
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.92fr)]">
+          <section className="min-w-0">
+            <CreateMatchInline defaultVenueId={defaultVenueId} expandSignal={mobileCreateExpandSignal} />
+          </section>
 
-        <div className="mt-5 space-y-8">
-          {subTab === 'upcoming' ? (
-            <>
-              {(visibleActionNeeded.length > 0 || visibleCancelled.length > 0 || visibleRemoved.length > 0) ? (
-                <section>
-                  <SectionHeading
-                    label="Action Needed"
-                    count={
-                      visibleActionNeeded.length
-                      + visibleCancelled.length
-                      + visibleRemoved.length
-                    }
-                  />
-                  <div className="space-y-2">
-                    {visibleActionNeeded.map((item) => (
-                      <MatchRow
-                        key={item.match.id}
-                        item={item}
-                        userId={userId}
-                        detailItems={items}
-                        onViewed={onViewedMatch}
-                        variant="incoming"
-                      />
-                    ))}
-                    {visibleCancelled.map((item) => (
-                      <MatchRow
-                        key={item.match.id}
-                        item={item}
-                        userId={userId}
-                        detailItems={items}
-                        onViewed={onViewedMatch}
-                        onDismissAlert={onDismissAlert}
-                        showAcknowledge={isDismissibleAlert(item, now)}
-                        variant="incoming"
-                      />
-                    ))}
-                    {visibleRemoved.map((item) => (
-                      <MatchRow
-                        key={item.match.id}
-                        item={item}
-                        userId={userId}
-                        detailItems={items}
-                        onViewed={onViewedMatch}
-                        onDismissAlert={onDismissAlert}
-                        showAcknowledge={isDismissibleAlert(item, now)}
-                        variant="incoming"
-                      />
-                    ))}
-                  </div>
-                </section>
-              ) : null}
+          <section className="min-w-0 rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
+              <div>
+                <h2 className="text-h2 font-semibold tracking-tight text-[#0F172A]">Match Board</h2>
+              </div>
+              <div className="inline-flex rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
+                {subTabBtn('upcoming', 'Upcoming', incoming.length)}
+                {subTabBtn('calendar', 'Calendar')}
+                {subTabBtn('history', 'History', history.length)}
+              </div>
+            </div>
 
-              <section>
-                <SectionHeading label="My Matches" count={incoming.length} />
-                {incoming.length === 0 ? (
-                  <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
-                    No upcoming matches.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {incoming.map((item) => {
-                      const isOrg = item.match.organizer_id === userId
-                      const hoursLeft = item.match.start_at_utc
-                        ? (new Date(item.match.start_at_utc).getTime() - Date.now()) / 3_600_000
-                        : null
-                      const expiring =
-                        isOrg
-                        && !item.isFormed
-                        && hoursLeft !== null
-                        && hoursLeft > 0
-                        && hoursLeft < 12
-
-                      return (
-                        <div key={item.match.id}>
-                          <MatchRow item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="incoming" />
-                          {expiring && onCancelMatch ? (
-                            <ExpiryBanner item={item} hoursLeft={hoursLeft} onCancel={onCancelMatch} />
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                {lookingFor.length === 0 ? (
-                  <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
-                    No open matches right now.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {lookingFor.map((item) => (
-                      <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} variant="incoming" />
-                    ))}
-                  </div>
-                )}
-              </section>
-            </>
-          ) : subTab === 'calendar' ? (
-            <WeeklyCalendar items={items} userId={userId} />
-          ) : (
-            <section>
-              <SectionHeading label="History" count={history.length} />
-              {history.length === 0 ? (
-                <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
-                  No match history.
-                </div>
-              ) : (
+            <div className="mt-5 space-y-8">
+              {subTab === 'upcoming' ? (
                 <>
-                  <div className="space-y-2">
-                    {history.slice(0, historyShown).map((item) => (
-                      <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="history" />
-                    ))}
-                  </div>
-                  {historyShown < history.length ? (
-                    <button
-                      onClick={() => setHistoryShown((n) => n + PAGE_SIZE)}
-                      className="text-body-main mt-4 w-full rounded-full border border-[#E2E8F0] py-2.5 font-semibold text-[#64748B] transition-colors hover:bg-[#F8FAFC]"
-                    >
-                      Load more ({history.length - historyShown} remaining)
-                    </button>
+                  {(visibleActionNeeded.length > 0 || visibleCancelled.length > 0 || visibleRemoved.length > 0) ? (
+                    <section>
+                      <SectionHeading
+                        label="Action Needed"
+                        count={
+                          visibleActionNeeded.length
+                          + visibleCancelled.length
+                          + visibleRemoved.length
+                        }
+                      />
+                      <div className="space-y-2">
+                        {visibleActionNeeded.map((item) => (
+                          <MatchRow
+                            key={item.match.id}
+                            item={item}
+                            userId={userId}
+                            detailItems={items}
+                            onViewed={onViewedMatch}
+                            variant="incoming"
+                          />
+                        ))}
+                        {visibleCancelled.map((item) => (
+                          <MatchRow
+                            key={item.match.id}
+                            item={item}
+                            userId={userId}
+                            detailItems={items}
+                            onViewed={onViewedMatch}
+                            onDismissAlert={onDismissAlert}
+                            showAcknowledge={isDismissibleAlert(item, now)}
+                            variant="incoming"
+                          />
+                        ))}
+                        {visibleRemoved.map((item) => (
+                          <MatchRow
+                            key={item.match.id}
+                            item={item}
+                            userId={userId}
+                            detailItems={items}
+                            onViewed={onViewedMatch}
+                            onDismissAlert={onDismissAlert}
+                            showAcknowledge={isDismissibleAlert(item, now)}
+                            variant="incoming"
+                          />
+                        ))}
+                      </div>
+                    </section>
                   ) : null}
-                </>
-              )}
-            </section>
-          )}
-        </div>
-      </section>
 
-      <section className="pt-1">
-        <CreateMatchInline defaultVenueId={defaultVenueId} expandSignal={mobileCreateExpandSignal} />
-      </section>
+                  <section>
+                    <SectionHeading label="My Matches" count={incoming.length} />
+                    {incoming.length === 0 ? (
+                      <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
+                        No upcoming matches.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {incoming.map((item) => {
+                          const isOrg = item.match.organizer_id === userId
+                          const hoursLeft = item.match.start_at_utc
+                            ? (new Date(item.match.start_at_utc).getTime() - Date.now()) / 3_600_000
+                            : null
+                          const expiring =
+                            isOrg
+                            && !item.isFormed
+                            && hoursLeft !== null
+                            && hoursLeft > 0
+                            && hoursLeft < 12
+
+                          return (
+                            <div key={item.match.id}>
+                              <MatchRow item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="incoming" />
+                              {expiring && onCancelMatch ? (
+                                <ExpiryBanner item={item} hoursLeft={hoursLeft} onCancel={onCancelMatch} />
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </section>
+
+                  <section>
+                    <SectionHeading label="Looking for Players" count={lookingFor.length} />
+                    {lookingFor.length === 0 ? (
+                      <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
+                        No open matches right now.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {lookingFor.map((item) => (
+                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} variant="incoming" />
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </>
+              ) : subTab === 'calendar' ? (
+                <WeeklyCalendar items={items} userId={userId} />
+              ) : (
+                <section>
+                  <SectionHeading label="History" count={history.length} />
+                  {history.length === 0 ? (
+                    <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
+                      No match history.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        {history.slice(0, historyShown).map((item) => (
+                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="history" />
+                        ))}
+                      </div>
+                      {historyShown < history.length ? (
+                        <button
+                          onClick={() => setHistoryShown((n) => n + PAGE_SIZE)}
+                          className="text-body-main mt-4 w-full rounded-full border border-[#E2E8F0] py-2.5 font-semibold text-[#64748B] transition-colors hover:bg-[#F8FAFC]"
+                        >
+                          Load more ({history.length - historyShown} remaining)
+                        </button>
+                      ) : null}
+                    </>
+                  )}
+                </section>
+              )}
+            </div>
+          </section>
+        </div>
       </div>
 
       <div className="md:hidden">
