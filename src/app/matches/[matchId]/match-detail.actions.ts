@@ -18,6 +18,7 @@ import {
   notifyMatchCourtPlanUpdated,
 } from '@/lib/notifications/match-court'
 import { NotificationService } from '@/lib/notifications/notification-service'
+import { drainQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
 import type { MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
 
 export type MatchUpdateInput = {
@@ -219,6 +220,7 @@ export async function confirmMatchAndNotifyAction(matchId: string) {
   }
 
   await NotificationService.confirmMatchAndNotify(supabase, matchId)
+  await drainQueuedNotificationDeliveries(supabase, { batchSize: 10, maxBatches: 5 })
   revalidateMatchSurfaces(matchId)
 }
 

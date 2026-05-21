@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { addContactPlayerToGroup, addMemberToGroup, type GroupAddMemberResult } from '@/lib/api/groups'
@@ -14,7 +14,7 @@ import { createGroupAction } from './actions'
 
 type Props = {
   sports: Sport[]
-  venues: Venue[]
+  venues: (Venue & { is_primary?: boolean })[]
   invitableUsers: { id: string; display_name: string }[]
   contacts: { guest_id: string; display_name: string }[]
 }
@@ -45,7 +45,9 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [sportId, setSportId] = useState('')
-  const [venueId, setVenueId] = useState('')
+  const initialVenueIds = useMemo(() => venues.filter((venue) => venue.is_primary).map((venue) => venue.id), [venues])
+  const [selectedVenueIds, setSelectedVenueIds] = useState<string[]>(initialVenueIds)
+  const [primaryVenueId, setPrimaryVenueId] = useState(initialVenueIds[0] ?? '')
   const [levelMin, setLevelMin] = useState('')
   const [levelMax, setLevelMax] = useState('')
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
@@ -66,6 +68,30 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
     )
   }
 
+  const venueById = useMemo(() => new Map(venues.map((venue) => [venue.id, venue])), [venues])
+  const selectedVenues = selectedVenueIds
+    .map((venueId) => venueById.get(venueId))
+    .filter((venue): venue is Venue & { is_primary?: boolean } => Boolean(venue))
+  const availableVenues = venues.filter((venue) => !selectedVenueIds.includes(venue.id))
+
+  const addVenue = (venueId: string) => {
+    setSelectedVenueIds((current) => {
+      if (current.includes(venueId)) return current
+      if (!primaryVenueId) setPrimaryVenueId(venueId)
+      return [...current, venueId]
+    })
+  }
+
+  const removeVenue = (venueId: string) => {
+    setSelectedVenueIds((current) => {
+      const next = current.filter((id) => id !== venueId)
+      if (primaryVenueId === venueId) {
+        setPrimaryVenueId(next[0] ?? '')
+      }
+      return next
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
@@ -82,9 +108,14 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
         name,
         description,
         primary_sport_id: sportId ? Number(sportId) : null,
-        venue_id: venueId || null,
+        venue_id: primaryVenueId || selectedVenueIds[0] || null,
         recommended_level_min: levelMin ? Number(levelMin) : null,
         recommended_level_max: levelMax ? Number(levelMax) : null,
+        locations: selectedVenueIds.map((venueId) => ({
+          kind: 'venue',
+          venue_id: venueId,
+          is_primary: venueId === (primaryVenueId || selectedVenueIds[0]),
+        })),
       })
 
       const supabase = createSupabaseBrowserClient()
@@ -211,22 +242,92 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
                     </select>
                   </div>
                 </div>
-                <label htmlFor="venue" className="ph-kicker mb-2 mt-4 block">
-                  Club / Venue
-                </label>
-                <select
-                  id="venue"
-                  value={venueId}
-                  onChange={(e) => setVenueId(e.target.value)}
-                  className="ph-input"
-                >
-                  <option value="">No club venue</option>
-                  {venues.map((venue) => (
-                    <option key={venue.id} value={venue.id}>
-                      {getVenueDisplayName(venue)}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-4">
+                  <div className="ph-kicker mb-2">Club / Venue</div>
+                  <div className="rounded-[18px] border border-[#D9E2EC] bg-[#F8FAFC] p-3">
+                    {selectedVenues.length === 0 ? (
+                      <div className="text-body-sub rounded-[14px] border border-dashed border-[#D9E2EC] bg-white px-3 py-3 text-[#94A3B8]">
+                        No group venues selected yet. Add one from your venues below.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {selectedVenues.map((venue) => {
+                          const isPrimary = venue.id === (primaryVenueId || selectedVenueIds[0])
+                          return (
+                            <div
+                              key={venue.id}
+                              className="flex flex-col gap-3 rounded-[16px] border border-[#E2E8F0] bg-white px-3 py-3 md:flex-row md:items-center md:justify-between"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-body-main font-semibold text-[#1E293B]">{getVenueDisplayName(venue)}</span>
+                                  {isPrimary ? (
+                                    <span className="rounded-full bg-[#EAF3FF] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#0B5BD3]">
+                                      Primary
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="text-body-sub mt-1 text-[#64748B]">
+                                  {[venue.location_text, [venue.city, venue.province].filter(Boolean).join(', ')].filter(Boolean)[0] ?? 'Venue'}
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 flex-wrap gap-2">
+                                {!isPrimary ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPrimaryVenueId(venue.id)}
+                                    className="rounded-full border border-[#D9E2EC] bg-white px-3 py-1.5 text-[12px] font-bold text-[#0B1F4D]"
+                                  >
+                                    Set primary
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => removeVenue(venue.id)}
+                                  className="rounded-full border border-[#FECACA] bg-white px-3 py-1.5 text-[12px] font-bold text-[#B91C1C]"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    <div className="mt-3">
+                      <div className="text-label mb-2 text-[#94A3B8]">Add from my venues</div>
+                      {availableVenues.length === 0 ? (
+                        <div className="text-body-sub rounded-[14px] border border-dashed border-[#D9E2EC] bg-white px-3 py-3 text-[#94A3B8]">
+                          All of your venues are already included.
+                        </div>
+                      ) : (
+                        <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                          {availableVenues.map((venue) => (
+                            <button
+                              key={venue.id}
+                              type="button"
+                              onClick={() => addVenue(venue.id)}
+                              className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#E2E8F0] bg-white px-3 py-2.5 text-left transition hover:border-[#CBD5E1]"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate text-body-main font-semibold text-[#1E293B]">
+                                  {getVenueDisplayName(venue)}
+                                </span>
+                                <span className="block truncate text-body-sub text-[#64748B]">
+                                  {[venue.location_text, [venue.city, venue.province].filter(Boolean).join(', ')].filter(Boolean)[0] ?? 'Venue'}
+                                </span>
+                              </span>
+                              <span className="shrink-0 rounded-full bg-[#EFF6FF] px-3 py-1 text-[12px] font-black text-[#0B5BD3]">
+                                + Add
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

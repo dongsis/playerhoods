@@ -1,6 +1,7 @@
 'use server'
 
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import type { GroupLocationInput } from '@/lib/api/groups'
 
 interface GroupResult {
   id: string
@@ -24,6 +25,7 @@ export async function createGroupAction(input: {
   icon_key?: string | null
   recommended_level_min?: number | null
   recommended_level_max?: number | null
+  locations?: GroupLocationInput[]
 }): Promise<GroupResult> {
   const supabase = await createSupabaseServerClient()
 
@@ -49,6 +51,25 @@ export async function createGroupAction(input: {
   const group = data as GroupResult
   if (!group.id) {
     throw new Error(`Invalid group data returned: ${JSON.stringify(data)}`)
+  }
+
+  if (input.locations && input.locations.length > 0) {
+    const { error: locationsError } = await supabase.rpc('rpc_group_locations_replace', {
+      p_group_id: group.id,
+      p_locations: input.locations,
+    })
+    if (locationsError) throw locationsError
+    const primaryVenueLocation = input.locations.find((location) => location.kind === 'venue' && location.is_primary)
+    const firstVenueLocation = input.locations.find((location) => location.kind === 'venue')
+    const primaryVenueId =
+      primaryVenueLocation && primaryVenueLocation.kind === 'venue'
+        ? primaryVenueLocation.venue_id
+        : firstVenueLocation && firstVenueLocation.kind === 'venue'
+          ? firstVenueLocation.venue_id
+          : null
+    if (primaryVenueId) {
+      group.venue_id = primaryVenueId
+    }
   }
 
   return group

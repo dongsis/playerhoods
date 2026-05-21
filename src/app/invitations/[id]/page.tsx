@@ -50,7 +50,7 @@ function getInvitationPageErrorMessage(code: string | undefined): string | null 
 function getInvitationPageNotice(code: string | undefined): string | null {
   switch (code) {
     case 'accepted':
-      return 'Invitation accepted.'
+      return "You're in."
     case 'declined':
       return 'Invitation declined.'
     default:
@@ -60,7 +60,11 @@ function getInvitationPageNotice(code: string | undefined): string | null {
 
 function formatGameType(value: string | null | undefined): string {
   if (!value) return 'Match'
-  return value.replace(/_/g, ' ')
+  const label = value
+    .replace(/_/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+  return /\bmatch\b/i.test(label) ? label : `${label} match`
 }
 
 function formatDate(value: string | null | undefined): string | null {
@@ -73,6 +77,28 @@ function formatDate(value: string | null | undefined): string | null {
     day: 'numeric',
     year: 'numeric',
   }).format(date)
+}
+
+function formatTime(value: string | null | undefined): string | null {
+  if (!value) return null
+  const parts = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!parts) return value
+  const date = new Date(Date.UTC(2026, 0, 1, Number(parts[1]), Number(parts[2])))
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(date)
+}
+
+function formatPersonName(value: string | null | undefined): string {
+  const name = value?.trim()
+  if (!name) return 'Someone'
+  return name
+    .split(/\s+/)
+    .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : part))
+    .join(' ')
 }
 
 export default async function InvitationPage({ params, searchParams }: Props) {
@@ -118,186 +144,526 @@ export default async function InvitationPage({ params, searchParams }: Props) {
     )
   }
 
+  const inviterName = formatPersonName(inv.inviter_display_name)
   const matchType = formatGameType(inv.match_summary?.game_type)
   const matchDate = formatDate(inv.match_summary?.match_date)
-  const matchTime = inv.match_summary?.start_time ?? null
+  const matchTime = formatTime(inv.match_summary?.start_time)
   const venueName = inv.match_summary?.club_name ?? null
+  const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' · ')
   const matchHref = user && inv.related_type === 'match'
     ? `/matches/${inv.related_id}`
     : `/i/${id}/match`
   const pageError = getInvitationPageErrorMessage(pageParams.error)
-  const pageNotice = inv.status === 'accepted' && pageParams.notice === 'accepted'
+  const pageNotice = (inv.status === 'accepted' && pageParams.notice === 'accepted') || (inv.status === 'declined' && pageParams.notice === 'declined')
     ? null
     : getInvitationPageNotice(pageParams.notice)
 
   return (
-    <div style={{ maxWidth: 480, margin: '1.5rem auto', padding: '0 1rem' }}>
-      <div style={{ marginBottom: '1rem' }}>
-        <BrandLogo variant="horizontal" />
-      </div>
-      <h1 style={{ marginBottom: '0.5rem', fontSize: '1.25rem' }}>Match invitation</h1>
+    <div className="invitation-page">
+      <style>{`
+        .invitation-page {
+          min-height: 100vh;
+          background: #edf5ff;
+          color: #06183d;
+          padding: 32px 18px 48px;
+        }
 
-      {pageError ? (
-        <div style={{ padding: '0.75rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, marginBottom: '1rem' }}>
-          <p style={{ margin: 0, color: '#991b1b', fontSize: '0.9rem' }}>{pageError}</p>
-        </div>
-      ) : null}
+        .invitation-shell {
+          width: min(100%, 940px);
+          margin: 0 auto;
+        }
 
-      {pageNotice ? (
-        <div style={{ padding: '0.75rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, marginBottom: '1rem' }}>
-          <p style={{ margin: 0, color: '#166534', fontSize: '0.9rem' }}>{pageNotice}</p>
-        </div>
-      ) : null}
+        .invitation-brand {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 22px;
+        }
 
-      <div style={{ padding: '1rem', border: '1px solid #e0e0e0', borderRadius: 8, marginBottom: '1rem', background: '#fff' }}>
-        <p style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#555' }}>
-          <strong>{inv.inviter_display_name}</strong> invited you to join a match.
-        </p>
-        <dl style={{ display: 'grid', gap: '0.45rem', margin: 0, fontSize: '0.9rem' }}>
-          <div>
-            <dt style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Match</dt>
-            <dd style={{ margin: 0, fontWeight: 700 }}>{matchType}</dd>
+        .invitation-brand-copy {
+          display: grid;
+          gap: 3px;
+        }
+
+        .invitation-brand-title {
+          font-size: 0.95rem;
+          font-weight: 800;
+          line-height: 1.1;
+        }
+
+        .invitation-brand-subtitle {
+          color: #5c6f91;
+          font-size: 0.85rem;
+          font-weight: 650;
+        }
+
+        .invitation-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 320px;
+          gap: 22px;
+          align-items: start;
+        }
+
+        .invitation-card,
+        .invitation-value-panel {
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid #d5e2f2;
+          border-radius: 28px;
+          box-shadow: 0 18px 44px rgba(17, 42, 84, 0.08);
+        }
+
+        .invitation-card {
+          padding: 30px;
+        }
+
+        .invitation-kicker {
+          color: #7c8eaa;
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.16em;
+          margin: 0 0 14px;
+          text-transform: uppercase;
+        }
+
+        .invitation-title {
+          font-size: clamp(2rem, 4vw, 3.4rem);
+          line-height: 0.98;
+          margin: 0;
+          letter-spacing: 0;
+        }
+
+        .invitation-subtext {
+          color: #405474;
+          font-size: 1rem;
+          font-weight: 650;
+          line-height: 1.55;
+          margin: 14px 0 0;
+          max-width: 560px;
+        }
+
+        .invitation-summary {
+          display: grid;
+          gap: 10px;
+          margin: 24px 0;
+          padding: 18px;
+          border: 1px solid #d9e6f4;
+          border-radius: 20px;
+          background: #f8fbff;
+        }
+
+        .invitation-summary-type {
+          font-size: 1.15rem;
+          font-weight: 850;
+        }
+
+        .invitation-summary-venue {
+          color: #0b1f4d;
+          font-size: 1rem;
+          font-weight: 800;
+        }
+
+        .invitation-summary-time {
+          color: #526784;
+          font-size: 0.95rem;
+          font-weight: 700;
+        }
+
+        .invitation-note {
+          color: #50627f;
+          font-size: 0.95rem;
+          line-height: 1.55;
+          margin: 0 0 22px;
+        }
+
+        .invitation-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .invitation-button {
+          align-items: center;
+          border-radius: 999px;
+          display: inline-flex;
+          font-size: 0.92rem;
+          font-weight: 850;
+          justify-content: center;
+          min-height: 46px;
+          padding: 0 18px;
+          text-decoration: none;
+        }
+
+        .invitation-button-primary {
+          background: #06183d;
+          color: #fff;
+          box-shadow: 0 12px 24px rgba(6, 24, 61, 0.16);
+        }
+
+        .invitation-button-blue {
+          background: #0b5bd3;
+          color: #fff;
+          box-shadow: 0 12px 24px rgba(11, 91, 211, 0.16);
+        }
+
+        .invitation-button-secondary {
+          border: 1px solid #c8d7eb;
+          color: #16335f;
+          background: #fff;
+        }
+
+        .invitation-account-card {
+          margin-top: 24px;
+          padding: 20px;
+          border: 1px solid #d9e6f4;
+          border-radius: 22px;
+          background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        }
+
+        .invitation-account-card h2 {
+          font-size: 1.25rem;
+          margin: 0;
+        }
+
+        .invitation-account-card p {
+          color: #405474;
+          font-size: 0.95rem;
+          font-weight: 650;
+          line-height: 1.55;
+          margin: 8px 0 16px;
+        }
+
+        .invitation-status-alert {
+          border-radius: 18px;
+          font-size: 0.92rem;
+          font-weight: 750;
+          margin-bottom: 16px;
+          padding: 12px 14px;
+        }
+
+        .invitation-status-error {
+          background: #fee2e2;
+          border: 1px solid #fca5a5;
+          color: #991b1b;
+        }
+
+        .invitation-status-notice {
+          background: #ecfdf5;
+          border: 1px solid #a7f3d0;
+          color: #047857;
+        }
+
+        .invitation-form-copy {
+          color: #405474;
+          font-size: 0.95rem;
+          font-weight: 650;
+          line-height: 1.55;
+          margin: 0 0 14px;
+        }
+
+        .invitation-form-button {
+          border: none;
+          border-radius: 999px;
+          cursor: pointer;
+          font-size: 0.92rem;
+          font-weight: 850;
+          min-height: 46px;
+          padding: 0 18px;
+        }
+
+        .invitation-form-button-accept {
+          background: #0b5bd3;
+          color: #fff;
+        }
+
+        .invitation-form-button-decline {
+          background: #fff;
+          border: 1px solid #c8d7eb;
+          color: #16335f;
+        }
+
+        .invitation-value-panel {
+          padding: 24px;
+        }
+
+        .invitation-value-panel h2 {
+          font-size: 1.25rem;
+          margin: 0 0 18px;
+        }
+
+        .invitation-value-list {
+          display: grid;
+          gap: 16px;
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+
+        .invitation-value-item {
+          display: grid;
+          gap: 4px;
+          padding-left: 18px;
+          position: relative;
+        }
+
+        .invitation-value-item::before {
+          background: #c7e500;
+          border-radius: 999px;
+          content: "";
+          height: 8px;
+          left: 0;
+          position: absolute;
+          top: 8px;
+          width: 8px;
+        }
+
+        .invitation-value-item strong {
+          font-size: 0.95rem;
+        }
+
+        .invitation-value-item span {
+          color: #526784;
+          font-size: 0.86rem;
+          line-height: 1.45;
+        }
+
+        .invitation-footer {
+          color: #72819a;
+          font-size: 0.78rem;
+          font-weight: 650;
+          margin-top: 18px;
+        }
+
+        .invitation-footer a {
+          color: #526784;
+        }
+
+        @media (max-width: 760px) {
+          .invitation-page {
+            padding: 20px 12px 34px;
+          }
+
+          .invitation-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .invitation-card {
+            padding: 22px;
+            border-radius: 24px;
+          }
+
+          .invitation-brand {
+            justify-content: center;
+            text-align: center;
+          }
+
+          .invitation-brand-subtitle {
+            font-size: 0.78rem;
+          }
+
+          .invitation-title {
+            font-size: 2rem;
+          }
+
+          .invitation-value-panel {
+            display: none;
+          }
+
+          .invitation-actions,
+          .invitation-account-card .invitation-actions {
+            display: grid;
+          }
+
+          .invitation-button,
+          .invitation-form-button {
+            width: 100%;
+          }
+        }
+      `}</style>
+
+      <div className="invitation-shell">
+        <div className="invitation-brand">
+          <BrandLogo variant="horizontal" />
+          <div className="invitation-brand-copy">
+            <div className="invitation-brand-title">PlayerHoods</div>
+            <div className="invitation-brand-subtitle">See who&apos;s in. Keep playing.</div>
           </div>
-          <div>
-            <dt style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Date and time</dt>
-            <dd style={{ margin: 0, fontWeight: 700 }}>{[matchDate, matchTime].filter(Boolean).join(' at ') || 'Time to be confirmed'}</dd>
-          </div>
-          <div>
-            <dt style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Venue</dt>
-            <dd style={{ margin: 0, fontWeight: 700 }}>{venueName ?? 'Venue to be confirmed'}</dd>
-          </div>
-        </dl>
-      </div>
-
-      {inv.status === 'accepted' && (
-        <div style={{ padding: '1rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, marginBottom: '1rem' }}>
-          <h2 style={{ margin: 0, color: '#166534', fontSize: '1rem' }}>
-            Invitation accepted. You're in this match.
-          </h2>
-          <p style={{ margin: '0.45rem 0 0', color: '#166534', fontSize: '0.85rem' }}>
-            Save {inv.inviter_display_name} as a player contact after you join.
-          </p>
-          {inv.related_type === 'match' && (
-            <Link href={matchHref} style={{ display: 'inline-block', marginTop: '0.75rem', padding: '0.55rem 0.9rem', background: '#0B1F4D', color: 'white', borderRadius: 999, fontSize: '0.85rem', fontWeight: 700, textDecoration: 'none' }}>
-              View match
-            </Link>
-          )}
-          <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #bbf7d0' }}>
-            <h3 style={{ margin: 0, color: '#0B1F4D', fontSize: '0.95rem' }}>Create your PlayerHoods account</h3>
-            <p style={{ margin: '0.35rem 0 0', color: '#475569', fontSize: '0.82rem' }}>
-              Manage this match, get updates, save players for next time, and join future matches faster.
-            </p>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-              <Link href={`/login?mode=register&next=${encodeURIComponent(matchHref)}`} style={{ padding: '0.5rem 0.85rem', background: '#0369a1', color: 'white', borderRadius: 999, fontSize: '0.82rem', fontWeight: 700, textDecoration: 'none' }}>
-                Create account
-              </Link>
-              <Link href={matchHref} style={{ padding: '0.5rem 0.85rem', border: '1px solid #cbd5e1', color: '#0B1F4D', borderRadius: 999, fontSize: '0.82rem', fontWeight: 700, textDecoration: 'none' }}>
-                Maybe later
-              </Link>
-            </div>
-          </div>
         </div>
-      )}
 
-      {inv.status === 'declined' && (
-        <div style={{ padding: '0.75rem', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, marginBottom: '1rem' }}>
-          <p style={{ margin: 0, color: '#92400e', fontSize: '0.9rem' }}>
-            You declined this invitation.
-          </p>
-          <p style={{ margin: '0.6rem 0 0', color: '#92400e', fontSize: '0.82rem' }}>
-            You can join PlayerHoods later.
-          </p>
-        </div>
-      )}
+        <div className="invitation-grid">
+          <main className="invitation-card">
+            <p className="invitation-kicker">Match Invitation</p>
 
-      {isExpired && inv.status === 'pending' && (
-        <div style={{ padding: '0.75rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, marginBottom: '1rem' }}>
-          <p style={{ margin: 0, color: '#991b1b', fontSize: '0.9rem' }}>This invitation has expired.</p>
-        </div>
-      )}
-
-      {inv.status === 'pending' && !isExpired && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {user && relevantIdentityLinkCandidates.length > 0 ? (
-            <IdentityLinkReviewCard
-              title="Link your contact profile"
-              body="We found matches linked to your contact information."
-              candidates={relevantIdentityLinkCandidates}
-              acceptLabel="Link and continue"
-              keepSeparateLabel="Keep separate for now"
-              onAccept={async (guestId) => {
-                'use server'
-                return acceptInvitationIdentityLinkAndContinueAction(id, guestId, inv.related_id, inv.related_type)
-              }}
-              onKeepSeparate={async (guestId) => {
-                'use server'
-                return keepSeparateInvitationIdentityLinkAction(id, guestId, inv.related_id, inv.related_type)
-              }}
-            />
-          ) : user ? (
-            <>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
-                {inv.caller_email_matches
-                  ? 'You are signed in. Accept or decline here.'
-                  : 'This invitation is tied to a different email. Sign in with the invited account, or open the link while signed out.'}
-              </p>
-              {inv.caller_email_matches ? (
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <form action={acceptAuthenticatedAction}>
-                    <button
-                      type="submit"
-                      style={{ padding: '0.5rem 1rem', background: '#0369a1', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
-                    >
-                      Accept invitation
-                    </button>
-                  </form>
-                  <form action={declineAuthenticatedAction}>
-                    <button
-                      type="submit"
-                      style={{ padding: '0.5rem 1rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
-                    >
-                      Decline
-                    </button>
-                  </form>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: '#555' }}>
-                You can accept or decline here.
-              </p>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <form action={acceptAction}>
-                  <button
-                    type="submit"
-                    style={{ padding: '0.5rem 1rem', background: '#0369a1', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
-                  >
-                    Accept invitation
-                  </button>
-                </form>
-                <form action={declineAction}>
-                  <button
-                    type="submit"
-                    style={{ padding: '0.5rem 1rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
-                  >
-                    Decline
-                  </button>
-                </form>
+            {pageError ? (
+              <div className="invitation-status-alert invitation-status-error">
+                {pageError}
               </div>
-              <p style={{ margin: 0, fontSize: '0.82rem' }}>
-                <Link href="/login?mode=register" style={{ color: '#0369a1' }}>
-                  Join PlayerHoods later
-                </Link>
-              </p>
-            </>
-          )}
-        </div>
-      )}
+            ) : null}
 
-      <p style={{ marginTop: '1.5rem', fontSize: '0.8rem', color: '#888' }}>
-        <Link href="/">PlayerHoods</Link>
-      </p>
+            {pageNotice ? (
+              <div className="invitation-status-alert invitation-status-notice">
+                {pageNotice}
+              </div>
+            ) : null}
+
+            {inv.status === 'accepted' ? (
+              <>
+                <h1 className="invitation-title">You&apos;re in.</h1>
+                <p className="invitation-subtext">
+                  {inviterName} will be notified that you accepted.
+                </p>
+              </>
+            ) : inv.status === 'declined' ? (
+              <>
+                <h1 className="invitation-title">Invitation declined.</h1>
+                <p className="invitation-subtext">
+                  {inviterName} will be notified that you can&apos;t make it.
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 className="invitation-title">{inviterName} invited you to play</h1>
+                <p className="invitation-subtext">
+                  Confirm whether you can join this match.
+                </p>
+              </>
+            )}
+
+            <section className="invitation-summary" aria-label="Match summary">
+              <div className="invitation-summary-type">{matchType}</div>
+              <div className="invitation-summary-venue">{venueName ?? 'Venue to be confirmed'}</div>
+              <div className="invitation-summary-time">{matchDateTime || 'Time to be confirmed'}</div>
+            </section>
+
+            {inv.status === 'accepted' && (
+              <>
+                <p className="invitation-note">
+                  We&apos;ll only contact you again if the match is confirmed and you&apos;re selected to play, or if key details change.
+                </p>
+                {inv.related_type === 'match' && (
+                  <div className="invitation-actions">
+                    <Link href={matchHref} className="invitation-button invitation-button-primary">
+                      View match details
+                    </Link>
+                  </div>
+                )}
+                <section className="invitation-account-card">
+                  <h2>Make next time easier</h2>
+                  <p>
+                    Create a free PlayerHoods account to keep this match, save players you play with, and confirm future invites faster.
+                  </p>
+                  <div className="invitation-actions">
+                    <Link href={`/login?mode=register&next=${encodeURIComponent(matchHref)}`} className="invitation-button invitation-button-blue">
+                      Create free account
+                    </Link>
+                    <Link href={matchHref} className="invitation-button invitation-button-secondary">
+                      Maybe later
+                    </Link>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {inv.status === 'declined' && (
+              <div className="invitation-actions">
+                <Link href={matchHref} className="invitation-button invitation-button-secondary">
+                  View invitation
+                </Link>
+              </div>
+            )}
+
+            {isExpired && inv.status === 'pending' && (
+              <div className="invitation-status-alert invitation-status-error">
+                This invitation has expired.
+              </div>
+            )}
+
+            {inv.status === 'pending' && !isExpired && (
+              <div>
+                {user && relevantIdentityLinkCandidates.length > 0 ? (
+                  <IdentityLinkReviewCard
+                    title="Link your contact profile"
+                    body="We found matches linked to your contact information."
+                    candidates={relevantIdentityLinkCandidates}
+                    acceptLabel="Link and continue"
+                    keepSeparateLabel="Keep separate for now"
+                    onAccept={async (guestId) => {
+                      'use server'
+                      return acceptInvitationIdentityLinkAndContinueAction(id, guestId, inv.related_id, inv.related_type)
+                    }}
+                    onKeepSeparate={async (guestId) => {
+                      'use server'
+                      return keepSeparateInvitationIdentityLinkAction(id, guestId, inv.related_id, inv.related_type)
+                    }}
+                  />
+                ) : user ? (
+                  <>
+                    <p className="invitation-form-copy">
+                      {inv.caller_email_matches
+                        ? 'You are signed in. Accept or decline here.'
+                        : 'This invitation is tied to a different email. Sign in with the invited account, or open the link while signed out.'}
+                    </p>
+                    {inv.caller_email_matches ? (
+                      <div className="invitation-actions">
+                        <form action={acceptAuthenticatedAction}>
+                          <button type="submit" className="invitation-form-button invitation-form-button-accept">
+                            Accept invitation
+                          </button>
+                        </form>
+                        <form action={declineAuthenticatedAction}>
+                          <button type="submit" className="invitation-form-button invitation-form-button-decline">
+                            Decline
+                          </button>
+                        </form>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <p className="invitation-form-copy">
+                      You can accept or decline here. No account is required.
+                    </p>
+                    <div className="invitation-actions">
+                      <form action={acceptAction}>
+                        <button type="submit" className="invitation-form-button invitation-form-button-accept">
+                          Accept invitation
+                        </button>
+                      </form>
+                      <form action={declineAction}>
+                        <button type="submit" className="invitation-form-button invitation-form-button-decline">
+                          Decline
+                        </button>
+                      </form>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </main>
+
+          <aside className="invitation-value-panel" aria-label="Why PlayerHoods">
+            <h2>Why PlayerHoods?</h2>
+            <ul className="invitation-value-list">
+              <li className="invitation-value-item">
+                <strong>No group chat chaos</strong>
+                <span>Confirm who&apos;s in without endless messages.</span>
+              </li>
+              <li className="invitation-value-item">
+                <strong>Private by default</strong>
+                <span>Your phone, email, and player contacts are not shown to others.</span>
+              </li>
+              <li className="invitation-value-item">
+                <strong>Only useful updates</strong>
+                <span>We notify you only when it matters.</span>
+              </li>
+            </ul>
+          </aside>
+        </div>
+
+        <p className="invitation-footer">
+          Private match coordination. No group chat chaos. <Link href="/">PlayerHoods</Link>
+        </p>
+      </div>
     </div>
   )
 }

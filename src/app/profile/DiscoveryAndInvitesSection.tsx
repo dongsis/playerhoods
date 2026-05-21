@@ -162,7 +162,7 @@ export function DiscoveryAndInvitesSection({
       <section className="space-y-4 px-1">
         <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4">
           <span className="min-w-0 flex-1">
-            <span className="block text-body-main font-semibold text-[#1E293B]">Accept New Invites</span>
+            <span className="block text-body-main font-semibold text-[#1E293B]">Allow New Invites</span>
             <span className="mt-1 block text-body-sub text-[#64748B]">
               {acceptInvites
                 ? 'Players within your discovery volume can invite you to play. You always choose whether to join.'

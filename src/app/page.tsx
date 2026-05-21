@@ -229,9 +229,9 @@ export default function HomePage() {
             aria-hidden="true"
             className="h-full w-full object-cover object-[center_14%]"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-white/18 via-white/66 to-white/14" />
-          <div className="absolute inset-0 bg-gradient-to-b from-white/14 via-white/48 to-[#F0F7FF]/58" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.46)_0%,rgba(255,255,255,0.2)_44%,rgba(255,255,255,0)_78%)]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-white/46 to-white/8" />
+          <div className="absolute inset-0 bg-gradient-to-b from-white/8 via-white/32 to-[#F0F7FF]/46" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.12)_44%,rgba(255,255,255,0)_78%)]" />
         </div>
 
         <div className="relative z-10">
@@ -650,15 +650,19 @@ function HeroSection() {
           <p className="mb-4 text-xs font-black uppercase text-[#6F7E00]">
             Tennis and pickleball, organized around real players
           </p>
-          <h1 className="max-w-3xl text-4xl font-black leading-[1.02] md:text-6xl">
-            Build your player network.
+          <h1 className="max-w-4xl text-4xl font-black leading-[1.02] md:text-6xl">
+            Find your courts.
+            <span className="block">
+              Join more games.
+            </span>
             <span className="block text-white drop-shadow-[0_2px_14px_rgba(7,26,68,0.55)]">
-              Enjoy the net.
+              Host with less work.
             </span>
           </h1>
           <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-[#243A56] drop-shadow-[0_1px_10px_rgba(255,255,255,0.55)] md:text-lg">
-            4000+ Tennis and Pickleball clubs and Public listed across Canada. Find your club.
-            Add your favorite venues. Build a Hood of players you can invite whenever it's time to play.
+            PlayerHoods covers 4,000+ tennis and pickleball courts and clubs across Canada,
+            helping players find games, organize matches, and build trusted player circles
+            around the places they already play.
           </p>
         </div>
 

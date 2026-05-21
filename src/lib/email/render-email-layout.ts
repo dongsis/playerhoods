@@ -18,6 +18,7 @@ export type RenderEmailLayoutInput = {
   secondaryLinkLabel?: string
   secondaryLinkUrl?: string
   footerNote?: string
+  footerNoteHtml?: string
   siteUrl?: string
 }
 
@@ -255,7 +256,7 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
       </div>
     </div>
     <div class="ph-footer">
-      ${input.footerNote ? `<div class="ph-footer-note">${escapeHtml(input.footerNote)}</div>` : ''}
+      ${input.footerNoteHtml ? `<div class="ph-footer-note">${input.footerNoteHtml}</div>` : input.footerNote ? `<div class="ph-footer-note">${escapeHtml(input.footerNote)}</div>` : ''}
       <div>
         <a href="${escapeHtml(termsUrl)}">Terms of Use</a>
         <a href="${escapeHtml(privacyUrl)}">Privacy Notice</a>

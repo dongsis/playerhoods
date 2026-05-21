@@ -32,6 +32,7 @@ const raw =
 const SITE_URL = raw && raw !== 'undefined' ? raw : 'http://localhost:3000'
 const smsRaw = process.env.NEXT_PUBLIC_SMS_SITE_URL ?? raw
 const SMS_SITE_URL = smsRaw && smsRaw !== 'undefined' ? smsRaw : SITE_URL
+const DEFAULT_INVITE_FROM = process.env.EMAIL_INVITE_FROM ?? process.env.EMAIL_FROM ?? 'Playerhoods <invites@send.playerhoods.com>'
 
 export type DeliveryRow = {
   id: string
@@ -63,6 +64,122 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     replyCode: (payload.reply_code as string) ?? null,
     magicLinkPath: (payload.magic_link_path as string) ?? null,
     changeSet: (payload.change_set as Record<string, unknown>) ?? null,
+  }
+}
+
+function extractEmailAddress(from: string): string {
+  const bracketMatch = from.match(/<([^>]+)>/)
+  return (bracketMatch?.[1] ?? from).trim()
+}
+
+function sanitizeSenderName(value: string): string {
+  return value.replace(/[\r\n"<>]/g, '').trim() || 'Someone'
+}
+
+function inviteSenderFrom(organizerName: string): string {
+  return `${sanitizeSenderName(organizerName)} via Playerhoods <${extractEmailAddress(DEFAULT_INVITE_FROM)}>`
+}
+
+function invitationSubject(organizerName: string, venueName: string | null | undefined): string {
+  const name = sanitizeSenderName(organizerName)
+  const venue = venueName?.trim()
+  return venue ? `${name} invited you to play at ${venue}` : `${name} invited you to play`
+}
+
+function emailUnsubscribeHeaders(unsubscribeUrl: string | null | undefined): Record<string, string> | undefined {
+  if (!unsubscribeUrl) return undefined
+  return {
+    'List-Unsubscribe': `<${unsubscribeUrl}>`,
+  }
+}
+
+async function getProfileDisplayName(supabase: SupabaseClient, userId: string | null | undefined): Promise<string | null> {
+  if (!userId) return null
+  const { data } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('id', userId)
+    .maybeSingle()
+  const displayName = (data as { display_name?: string | null } | null)?.display_name?.trim()
+  return displayName || null
+}
+
+async function getMatchOrganizerName(supabase: SupabaseClient, matchId: string | null | undefined): Promise<string | null> {
+  if (!matchId) return null
+  const { data: match } = await supabase
+    .from('matches')
+    .select('organizer_id')
+    .eq('id', matchId)
+    .maybeSingle()
+  const organizerId = (match as { organizer_id?: string | null } | null)?.organizer_id
+  return getProfileDisplayName(supabase, organizerId)
+}
+
+async function enrichInvitationContext(
+  supabase: SupabaseClient,
+  invitationId: string,
+  fallback: {
+    inviterDisplayName: string
+    matchSummary: { game_type: string | null; match_date: string | null; start_time?: string | null; club_name: string | null } | null
+  },
+): Promise<typeof fallback> {
+  if (!invitationId) return fallback
+
+  const { data: invitation } = await supabase
+    .from('email_invitations')
+    .select('inviter_user_id, related_type, related_id')
+    .eq('id', invitationId)
+    .maybeSingle()
+
+  const invitationRow = invitation as {
+    inviter_user_id?: string | null
+    related_type?: string | null
+    related_id?: string | null
+  } | null
+
+  const inviterDisplayName =
+    (await getProfileDisplayName(supabase, invitationRow?.inviter_user_id)) ??
+    fallback.inviterDisplayName
+
+  if (fallback.matchSummary?.club_name && fallback.matchSummary.match_date && fallback.matchSummary.start_time) {
+    return { inviterDisplayName, matchSummary: fallback.matchSummary }
+  }
+
+  if (invitationRow?.related_type !== 'match' || !invitationRow.related_id) {
+    return { inviterDisplayName, matchSummary: fallback.matchSummary }
+  }
+
+  const { data: match } = await supabase
+    .from('matches')
+    .select('game_type, match_date, start_time, venue_id')
+    .eq('id', invitationRow.related_id)
+    .maybeSingle()
+
+  const matchRow = match as {
+    game_type?: string | null
+    match_date?: string | null
+    start_time?: string | null
+    venue_id?: string | null
+  } | null
+
+  let venueName = fallback.matchSummary?.club_name ?? null
+  if (!venueName && matchRow?.venue_id) {
+    const { data: venue } = await supabase
+      .from('venues')
+      .select('name')
+      .eq('id', matchRow.venue_id)
+      .maybeSingle()
+    venueName = (venue as { name?: string | null } | null)?.name ?? null
+  }
+
+  return {
+    inviterDisplayName,
+    matchSummary: {
+      game_type: matchRow?.game_type ?? fallback.matchSummary?.game_type ?? null,
+      match_date: matchRow?.match_date ?? fallback.matchSummary?.match_date ?? null,
+      start_time: matchRow?.start_time ?? fallback.matchSummary?.start_time ?? null,
+      club_name: venueName,
+    },
   }
 }
 
@@ -103,17 +220,27 @@ export async function processQueuedNotificationDeliveries(
     let subject = ''
     let html = ''
     let smsBody = ''
+    let emailFrom: string | undefined
+    let emailHeaders: Record<string, string> | undefined
 
     const templateType = payload.template_type ?? (payload.invitation_id ? 'invitation' : 'guest_nominated')
 
     if (templateType === 'invitation') {
       const ms = payload.match_summary
-      const matchSummary = ms
+      const fallbackMatchSummary = ms
         ? { game_type: ms.game_type ?? null, match_date: ms.match_date ?? null, start_time: ms.start_time ?? null, club_name: ms.club_name ?? null }
         : null
-      const inviterDisplayName = (payload.inviter_display_name as string) ?? 'Someone'
-      subject = `${inviterDisplayName} invited you to a match`
       const invitationId = (payload.invitation_id as string) ?? ''
+      const context = await enrichInvitationContext(supabase, invitationId, {
+        inviterDisplayName: (payload.inviter_display_name as string) ?? 'Someone',
+        matchSummary: fallbackMatchSummary,
+      })
+      const inviterDisplayName = context.inviterDisplayName
+      const matchSummary = context.matchSummary
+      const unsubscribeUrl = `${SITE_URL}/unsubscribe?invitation=${encodeURIComponent(invitationId)}&channel=email&scope=contact_invites`
+      subject = invitationSubject(inviterDisplayName, matchSummary?.club_name)
+      emailFrom = inviteSenderFrom(inviterDisplayName)
+      emailHeaders = emailUnsubscribeHeaders(unsubscribeUrl)
       const replyCode =
         d.channel === 'sms' && invitationId
           ? await NotificationService.createOrGetSmsReplyCodeForInvitation(supabase as never, invitationId, 'invite').catch(() => null)
@@ -124,7 +251,7 @@ export async function processQueuedNotificationDeliveries(
         invitationId,
         matchSummary,
         siteUrl: SITE_URL,
-        unsubscribeUrl: `${SITE_URL}/unsubscribe?invitation=${encodeURIComponent(invitationId)}&channel=email&scope=contact_invites`,
+        unsubscribeUrl,
       })
       smsBody = renderInvitationSms({
         inviterDisplayName,
@@ -142,7 +269,8 @@ export async function processQueuedNotificationDeliveries(
     } else if (templateType === 'guest_org_approved') {
       const m = buildMatchInfo(payload)
       const inviterDisplayName = (payload.nominator_display_name as string) ?? 'Someone'
-      subject = `${inviterDisplayName} invited you to a match`
+      subject = invitationSubject(inviterDisplayName, m.venueName)
+      emailFrom = inviteSenderFrom(inviterDisplayName)
       html = guestOrgApprovedEmail(m, inviterDisplayName)
       smsBody = renderGuestOrgApprovedSms(m, inviterDisplayName)
     } else if (templateType === 'guest_delegate_confirmed') {
@@ -157,13 +285,20 @@ export async function processQueuedNotificationDeliveries(
       smsBody = renderGameFormedSms(m)
     } else if (templateType === 'match_invite') {
       const m = buildMatchInfo(payload)
-      subject = "You're invited to a PlayerHoods match"
-      html = playerhoodsMatchInviteEmail(m)
+      const organizerDisplayName = (payload.inviter_display_name as string) ?? (await getMatchOrganizerName(supabase, m.matchId)) ?? 'Someone'
+      subject = invitationSubject(organizerDisplayName, m.venueName)
+      emailFrom = inviteSenderFrom(organizerDisplayName)
+      html = playerhoodsMatchInviteEmail(m, organizerDisplayName)
       smsBody = renderMatchInviteSms(m)
     } else if (templateType === 'confirmed_lineup') {
       const m = buildMatchInfo(payload)
-      subject = "Game on - you're confirmed to play"
-      html = confirmedLineupEmail(m)
+      const organizerDisplayName = (payload.inviter_display_name as string) ?? (await getMatchOrganizerName(supabase, m.matchId)) ?? 'Someone'
+      const venue = m.venueName ? sanitizeSenderName(m.venueName) : null
+      subject = venue
+        ? `Game on: ${sanitizeSenderName(organizerDisplayName)} confirmed your match at ${venue}`
+        : `Game on: ${sanitizeSenderName(organizerDisplayName)} confirmed your match`
+      emailFrom = inviteSenderFrom(organizerDisplayName)
+      html = confirmedLineupEmail(m, organizerDisplayName)
       smsBody = renderConfirmedLineupSms(m)
     } else if (templateType === 'critical_update') {
       const m = buildMatchInfo(payload)
@@ -182,7 +317,10 @@ export async function processQueuedNotificationDeliveries(
     const result =
       d.channel === 'sms'
         ? await sendSms(d.destination, smsBody)
-        : await sendEmail(d.destination, subject, html)
+        : await sendEmail(d.destination, subject, html, {
+            from: emailFrom,
+            headers: emailHeaders,
+          })
 
     if (result.ok) {
       await supabase.rpc('rpc_update_delivery_result', {

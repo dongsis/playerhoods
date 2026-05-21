@@ -7,18 +7,11 @@ export type InvitationEmailData = {
   matchSummary?: {
     game_type: string | null
     match_date: string | null
+    start_time?: string | null
     club_name: string | null
   } | null
   siteUrl: string
   unsubscribeUrl?: string | null
-}
-
-function formatInvitationHeading(): string {
-  return 'Match Invitation'
-}
-
-function formatInvitationBody(inviterDisplayName: string): string {
-  return `<strong>${escapeHtml(inviterDisplayName)}</strong> has invited you to join a <strong>match</strong>.`
 }
 
 function formatMatchFormatLabel(gameType: string | null | undefined): string {
@@ -42,30 +35,31 @@ function formatClubLabel(clubName: string | null | undefined): string {
 export function renderInvitationEmail(data: InvitationEmailData): string {
   const base = data.siteUrl && data.siteUrl !== 'undefined' ? data.siteUrl : 'http://localhost:3000'
   const viewUrl = `${base}/invitations/${data.invitationId}`
-  const registerUrl = `${base}/login`
   const unsubscribeUrl = data.unsubscribeUrl ?? `${base}/unsubscribe?invitation=${encodeURIComponent(data.invitationId)}&channel=email&scope=contact_invites`
   const formatLabel = formatMatchFormatLabel(data.matchSummary?.game_type)
   const dateLabel = formatMatchDateLabel(data.matchSummary?.match_date)
+  const timeLabel = data.matchSummary?.start_time?.trim() || 'TBD'
   const clubLabel = formatClubLabel(data.matchSummary?.club_name)
+  const inviterName = data.inviterDisplayName.trim() || 'Someone'
+  const escapedInviter = escapeHtml(inviterName)
+  const escapedVenue = escapeHtml(clubLabel)
 
   return renderEmailLayout({
-    eyebrow: 'Invitation',
-    title: formatInvitationHeading(),
-    introHtml: formatInvitationBody(data.inviterDisplayName),
+    title: `${inviterName} invited you to play`,
+    introHtml: `Hi,<br><br><strong>${escapedInviter}</strong> invited you to play at <strong>${escapedVenue}</strong>.<br><br>Please confirm whether you can join:`,
     details: [
-      { label: 'Format', value: formatLabel },
       { label: 'Date', value: dateLabel },
-      { label: 'Club', value: clubLabel },
+      { label: 'Time', value: timeLabel },
+      { label: 'Venue', value: clubLabel },
+      { label: 'Match', value: formatLabel },
     ],
     ctaLabel: 'Respond to invitation',
     ctaUrl: viewUrl,
     ctaHint: 'No account is required to respond.',
-    secondaryTitle: 'Why PlayerHoods',
+    secondaryTitle: 'Notification note',
     secondaryBody:
-      "PlayerHoods helps players organize matches without scattered group chats. Respond quickly, keep your playing schedule in one place, and join the community whenever you're ready.",
-    secondaryLinkLabel: 'Create an account for a smoother experience',
-    secondaryLinkUrl: registerUrl,
-    footerNote: `This invitation was sent to ${data.targetEmail}. To stop contact invitation emails, unsubscribe here: ${unsubscribeUrl}`,
+      `Playerhoods is helping ${inviterName} organize this match. You will not receive more messages unless the match is confirmed and you are selected to play, or if the match is cancelled or key details change.`,
+    footerNoteHtml: `You received this because ${escapedInviter} invited you to this match. If you do not want to receive match invitations by email, you can <a href="${escapeHtml(unsubscribeUrl)}">unsubscribe here</a>.`,
     siteUrl: data.siteUrl,
   })
 }

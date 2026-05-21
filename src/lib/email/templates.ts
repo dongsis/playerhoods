@@ -24,11 +24,37 @@ function matchLink(m: MatchInfo): string {
   return `${base}/matches/${m.matchId}`
 }
 
+function formatEmailDate(value: string | null | undefined): string {
+  if (!value) return 'TBD'
+  const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!parts) return value
+  const date = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])))
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date)
+}
+
+function formatEmailTime(value: string | null | undefined): string {
+  if (!value) return 'TBD'
+  const parts = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!parts) return value
+  const date = new Date(Date.UTC(2026, 0, 1, Number(parts[1]), Number(parts[2])))
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(date)
+}
+
 function buildMatchDetails(m: MatchInfo): EmailDetail[] {
   return [
     { label: 'Sport', value: m.gameType || 'Match' },
-    { label: 'When', value: [m.matchDate, m.startTime].filter(Boolean).join(' ') || 'TBD' },
-    { label: 'Where', value: m.venueName || 'TBD' },
+    { label: 'Date', value: formatEmailDate(m.matchDate) },
+    { label: 'Time', value: formatEmailTime(m.startTime) },
+    { label: 'Venue', value: m.venueName || 'TBD' },
   ]
 }
 
@@ -143,32 +169,39 @@ export function matchInvitationEmail(m: MatchInfo, inviterName: string): string 
   })
 }
 
-export function playerhoodsMatchInviteEmail(m: MatchInfo): string {
+export function playerhoodsMatchInviteEmail(m: MatchInfo, organizerName = 'Someone'): string {
+  const venueName = m.venueName || 'the venue'
+  const inviterName = organizerName.trim() || 'Someone'
+
   return renderEmailLayout({
-    eyebrow: 'Invitation',
-    title: "You're invited to a match",
-    introHtml: 'You are invited to a match.',
+    title: `${inviterName} invited you to play`,
+    introHtml: `Hi,<br><br><strong>${escapeHtml(inviterName)}</strong> invited you to play at <strong>${escapeHtml(venueName)}</strong>.<br><br>Please confirm whether you can join:`,
     details: buildMatchDetails(m),
-    ctaLabel: 'Accept or decline',
+    ctaLabel: 'Respond to invitation',
     ctaUrl: matchLink(m),
+    ctaHint: 'No account is required to respond.',
     secondaryTitle: 'Notification note',
-    secondaryBody: "We'll only notify you again if the match is confirmed and you're selected to play.",
-    footerNote: 'This message relates to a PlayerHoods match invitation.',
+    secondaryBody:
+      `Playerhoods is helping ${inviterName} organize this match. You will not receive more messages unless the match is confirmed and you are selected to play, or if the match is cancelled or key details change.`,
+    footerNote: `You received this because ${inviterName} invited you to this match.`,
     siteUrl: m.siteUrl,
   })
 }
 
-export function confirmedLineupEmail(m: MatchInfo): string {
+export function confirmedLineupEmail(m: MatchInfo, organizerName = 'Someone'): string {
+  const venueName = m.venueName || 'the venue'
+  const inviterName = organizerName.trim() || 'Someone'
+
   return renderEmailLayout({
-    eyebrow: 'Game on',
-    title: "You're confirmed to play",
-    introHtml: 'The match is confirmed, and you are in the lineup.',
+    title: "Game on. You're confirmed to play.",
+    introHtml: `Hi,<br><br><strong>${escapeHtml(inviterName)}</strong> confirmed the match at <strong>${escapeHtml(venueName)}</strong>. You're in the lineup.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match',
+    ctaLabel: 'View match details',
     ctaUrl: matchLink(m),
     secondaryTitle: 'Notification note',
-    secondaryBody: "We'll only notify you again if the match is cancelled or key details change.",
-    footerNote: 'You are receiving this email because you are confirmed for a PlayerHoods match.',
+    secondaryBody:
+      'Playerhoods will only contact you again if the match is cancelled or key details change.',
+    footerNote: `You received this because ${inviterName} confirmed you in the lineup for this match.`,
     siteUrl: m.siteUrl,
   })
 }

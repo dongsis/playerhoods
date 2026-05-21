@@ -14,7 +14,7 @@ export async function sendEmail(
   to: string,
   subject: string,
   html: string,
-  options?: { replyTo?: string }
+  options?: { from?: string; replyTo?: string; headers?: Record<string, string> }
 ): Promise<SendEmailResult> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
@@ -25,10 +25,11 @@ export async function sendEmail(
   try {
     const resend = new Resend(apiKey)
     const { data, error } = await resend.emails.send({
-      from: FROM,
+      from: options?.from ?? FROM,
       to,
       subject,
       html,
+      ...(options?.headers && { headers: options.headers }),
       ...(options?.replyTo && { reply_to: options.replyTo }),
     })
 
