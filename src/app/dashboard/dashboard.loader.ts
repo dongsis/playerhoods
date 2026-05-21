@@ -6,8 +6,8 @@ import { getUnreadNotificationCount } from '@/lib/api/notifications'
 import { getAllPlayersGroupedByVenue, type PlayersData } from '@/lib/api/players'
 import { getMyPlayCities } from '@/lib/api/discovery'
 import { getIdentityLinkCandidates, reconcileIdentityGuestParticipants } from '@/lib/api/identity-links'
-import { getMyVenueMemberships, getJoinableVenues, getMyVenuePreferences, type VenueMembership } from '@/lib/api/identities'
-import { isSuperAdmin, getMyAdminVenues, listVenueSports } from '@/lib/api/venues'
+import { getMyVenueMemberships, getMyVenuePreferences, type VenueMembership } from '@/lib/api/identities'
+import { getAllVenues, isSuperAdmin, getMyAdminVenues, listVenueSports } from '@/lib/api/venues'
 import { listSports, getMySports } from '@/lib/api/sports'
 import { getInviteCircleList, type InviteCircleRow } from '@/lib/api/play-network'
 import { listLocationCityOptions, type LocationCityOption } from '@/lib/api/location-municipalities'
@@ -120,7 +120,7 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     supabase.from('v_user_verified_emails').select('*').eq('user_id', user.id),
     getIdentityLinkCandidates(supabase).catch(() => [] as IdentityLinkCandidate[]),
     getMyVenueMemberships(supabase, user.id).catch(() => [] as VenueMembership[]),
-    getJoinableVenues(supabase, user.id).catch(() => [] as Venue[]),
+    getAllVenues(supabase).catch(() => [] as Venue[]),
     listVenueSports(supabase).catch(() => [] as VenueSport[]),
     listSports(supabase).catch(() => [] as Sport[]),
     getMySports(supabase).catch(() => [] as UserSport[]),

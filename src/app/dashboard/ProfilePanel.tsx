@@ -497,9 +497,10 @@ const VENUE_KIND_FILTER_OPTIONS: Array<{ value: 'all' | VenueKind; label: string
   { value: 'private_facility', label: 'Private Facility' },
 ]
 
-type VenueSportFilter = 'tennis' | 'pickleball'
+type VenueSportFilter = 'all' | 'tennis' | 'pickleball'
 
 const VENUE_SPORT_FILTER_OPTIONS: Array<{ value: VenueSportFilter; label: string }> = [
+  { value: 'all', label: 'All Sports' },
   { value: 'tennis', label: 'Tennis' },
   { value: 'pickleball', label: 'Pickleball' },
 ]
@@ -1605,7 +1606,7 @@ export function ProfilePanel({
   const [venueCitySearch, setVenueCitySearch] = useState('')
   const [venueNameSearch, setVenueNameSearch] = useState('')
   const [venueTypeFilter, setVenueTypeFilter] = useState<'all' | VenueKind>('all')
-  const [venueSportFilter, setVenueSportFilter] = useState<VenueSportFilter>('tennis')
+  const [venueSportFilter, setVenueSportFilter] = useState<VenueSportFilter>('all')
   const [openVenueMenuId, setOpenVenueMenuId] = useState<string | null>(null)
   const [venueActionError, setVenueActionError] = useState<string | null>(null)
   const [pendingVenueAction, setPendingVenueAction] = useState<{ id: string; kind: 'primary' | 'delete' | 'remove_saved' } | null>(null)
@@ -1652,6 +1653,7 @@ export function ProfilePanel({
 
   const normalizedDisplayName = profile.display_name?.trim() ?? ''
   const joinedVenueIds = new Set(myVenueMemberships.map((membership) => membership.venue_id))
+  const savedVenueIds = new Set(myVenuePrefs.map((venue) => venue.id))
   const publicVenuePrefs = myVenuePrefs.filter(venue => !joinedVenueIds.has(venue.id))
   const defaultJoinVenueId =
     profile.primary_venue_id && joinableVenues.some(venue => venue.id === profile.primary_venue_id)
@@ -1701,7 +1703,6 @@ export function ProfilePanel({
   const filteredJoinableVenues = useMemo(() => {
     const cityQuery = venueCitySearch.trim().toLowerCase()
     const nameQuery = venueNameSearch.trim().toLowerCase()
-    const savedVenueIds = new Set(publicVenuePrefs.map((venue) => venue.id))
 
     if (!cityQuery && !nameQuery) {
       return []
@@ -1709,7 +1710,6 @@ export function ProfilePanel({
 
     return joinableVenues
       .map((venue) => {
-        if (savedVenueIds.has(venue.id)) return null
         const matchesType = venueTypeFilter === 'all' || venue.venue_kind === venueTypeFilter
         const venueNameValues = [
           getVenueDisplayName(venue),
@@ -1735,7 +1735,8 @@ export function ProfilePanel({
         const hasTennis = tennisSportId != null && venueSportIds.has(tennisSportId)
         const hasPickleball = pickleballSportId != null && venueSportIds.has(pickleballSportId)
         const matchesSport =
-          (venueSportFilter === 'tennis' && hasTennis)
+          venueSportFilter === 'all'
+          || (venueSportFilter === 'tennis' && hasTennis)
           || (venueSportFilter === 'pickleball' && hasPickleball)
         if (!matchesType || !matchesName || !matchesCity || !matchesSport) return null
 
@@ -1750,7 +1751,7 @@ export function ProfilePanel({
         return getVenueDisplayName(a.venue).localeCompare(getVenueDisplayName(b.venue))
       })
       .map((entry) => entry.venue)
-  }, [joinableVenues, pickleballSportId, publicVenuePrefs, tennisSportId, venueCitySearch, venueNameSearch, venueSportFilter, venueSportIdsByVenueId, venueTypeFilter])
+  }, [joinableVenues, pickleballSportId, tennisSportId, venueCitySearch, venueNameSearch, venueSportFilter, venueSportIdsByVenueId, venueTypeFilter])
   const hasVenueDiscoveryQuery = venueCitySearch.trim().length > 0 || venueNameSearch.trim().length > 0
 
   useEffect(() => {
@@ -2515,8 +2516,19 @@ export function ProfilePanel({
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {filteredJoinableVenues.map((venue) => renderJoinableVenueCard(venue))}
+          {hasVenueDiscoveryQuery && filteredJoinableVenues.length > 0 ? (
+            <div className="mt-3 flex items-center justify-between gap-3 px-1">
+              <p className="text-body-sub text-slate-500">
+                Showing {filteredJoinableVenues.length} venue{filteredJoinableVenues.length === 1 ? '' : 's'}.
+              </p>
+              <p className="text-label text-slate-400">Joined and saved venues stay searchable.</p>
+            </div>
+          ) : null}
+
+          <div className="mt-4 max-h-[min(68vh,820px)] overflow-y-auto pr-1 [scrollbar-gutter:stable] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#CBD5E1] [&::-webkit-scrollbar-track]:bg-transparent">
+            <div className="grid gap-3 md:grid-cols-2">
+              {filteredJoinableVenues.map((venue) => renderJoinableVenueCard(venue))}
+            </div>
           </div>
 
           {joinableVenues.length === 0 ? (
@@ -2710,6 +2722,8 @@ export function ProfilePanel({
     const usesMemberRelationship = venueUsesMemberRelationship(venue.venue_kind)
     const isMenuOpen = openVenueMenuId === menuKey
     const isBusy = isJoiningVenue && joiningVenueId === venue.id
+    const isJoined = joinedVenueIds.has(venue.id)
+    const isSaved = savedVenueIds.has(venue.id)
 
     return (
       <div
@@ -2730,22 +2744,31 @@ export function ProfilePanel({
           </p>
         </Link>
 
-        <div className="relative shrink-0" data-venue-menu-root={menuKey}>
-          <button
-            type="button"
-            aria-haspopup="menu"
-            aria-expanded={isMenuOpen}
-            onClick={() => {
-              setJoinError(null)
-              setOpenVenueMenuId((prev) => (prev === menuKey ? null : menuKey))
-            }}
-            disabled={isJoiningVenue || !normalizedDisplayName}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueDisplayName(venue)}`}
-            title={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueDisplayName(venue)}`}
-          >
-            {isBusy ? '...' : '+'}
-          </button>
+        {isJoined || isSaved ? (
+          <span className={`text-label shrink-0 rounded-full border px-3 py-1.5 font-semibold ${
+            isJoined
+              ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+              : 'border-sky-100 bg-sky-50 text-sky-700'
+          }`}>
+            {isJoined ? 'Joined' : 'Saved'}
+          </span>
+        ) : (
+          <div className="relative shrink-0" data-venue-menu-root={menuKey}>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={isMenuOpen}
+              onClick={() => {
+                setJoinError(null)
+                setOpenVenueMenuId((prev) => (prev === menuKey ? null : menuKey))
+              }}
+              disabled={isJoiningVenue || !normalizedDisplayName}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueDisplayName(venue)}`}
+              title={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueDisplayName(venue)}`}
+            >
+              {isBusy ? '...' : '+'}
+            </button>
 
           {isMenuOpen ? (
             <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-[190px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
@@ -2780,7 +2803,8 @@ export function ProfilePanel({
               )}
             </div>
           ) : null}
-        </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -3364,10 +3388,10 @@ export function ProfilePanel({
                 ))}
               </div>
 
-              {joinableVenues.length === 0 ? (
-                <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
-                  You have already joined all available venues.
-                </div>
+          {joinableVenues.length === 0 ? (
+            <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
+              No venues are available right now.
+            </div>
               ) : !hasVenueDiscoveryQuery ? (
                 <div className="text-body-main mt-6 rounded-[24px] border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-slate-400">
                   Start typing a city or venue name to search.
