@@ -223,9 +223,6 @@ function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
           </span>
           <span className="min-w-0">
             <h4 className="text-title-main text-[#0B1F44]">Need more players?</h4>
-            <p className="text-body-sub mt-1 text-[#64748B]">
-              Add people you already play with and invite them to this match.
-            </p>
           </span>
         </div>
         <button
