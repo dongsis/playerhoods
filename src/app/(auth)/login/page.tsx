@@ -1126,7 +1126,7 @@ const helperTextStyle: React.CSSProperties = {
 }
 
 const inlineLegalLinkStyle: React.CSSProperties = {
-  color: '#C25E46',
+  color: '#0d6efd',
   fontWeight: 700,
   textDecoration: 'underline',
   textUnderlineOffset: '2px',

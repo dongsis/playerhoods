@@ -1141,7 +1141,7 @@ function AccordionSection({
         </div>
         <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-lg font-medium transition ${
           isOpen
-            ? 'border-[#C25E46] bg-[#C25E46] text-white'
+            ? 'border-[#0d6efd] bg-[#0d6efd] text-white'
             : 'border-[#E2E8F0] bg-[#F8FBFF] text-[#64748B]'
         }`}>
           {isOpen ? '−' : '+'}

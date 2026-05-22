@@ -122,7 +122,7 @@ export default function QaFlowsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#EFF6FF] px-5 py-8 text-slate-900">
+    <main className="min-h-screen bg-[#eff6ff] px-5 py-8 text-slate-900">
       <div className="mx-auto max-w-7xl">
         <header className="mb-8 rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
           <div className="text-xs font-black uppercase tracking-[0.24em] text-blue-600">PlayerHoods QA</div>

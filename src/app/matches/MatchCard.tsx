@@ -34,12 +34,12 @@ function StatusBadge({
     tone === 'green'
       ? 'bg-[#ECFDF5] text-[#22C55E] ring-[#DCFCE7]'
       : tone === 'blue'
-        ? 'bg-[#EFF6FF] text-[#3B82F6] ring-[#DBEAFE]'
+        ? 'bg-[#eff6ff] text-[#0d6efd] ring-[#dbeafe]'
         : tone === 'red'
           ? 'bg-[#FEF2F2] text-[#EF4444] ring-[#FECACA]'
           : tone === 'slate'
             ? 'bg-[#F8FAFC] text-[#64748B] ring-[#E2E8F0]'
-            : 'bg-[#FFF7ED] text-[#F97316] ring-[#FFEDD5]'
+            : 'bg-[#eff6ff] text-[#F97316] ring-[#FFEDD5]'
 
   return (
     <span
@@ -189,7 +189,7 @@ export function MatchCard({ item, userId }: Props) {
                   <ParticipantDetailTrigger
                     participant={participant}
                     items={[item]}
-                    className="min-w-0 max-w-full text-left transition hover:text-[#C25E46]"
+                    className="min-w-0 max-w-full text-left transition hover:text-[#0d6efd]"
                     label={`View details for ${participant.display_name}`}
                   >
                     <span className="inline-flex min-w-0 max-w-full items-center gap-1">
@@ -236,7 +236,7 @@ export function MatchCard({ item, userId }: Props) {
               style={{
                 backgroundColor:
                   cta.kind === 'accept' || cta.kind === 'approve'
-                    ? '#C25E46'
+                    ? '#0d6efd'
                     : CTA_COLOR[cta.kind],
               }}
             >
@@ -250,7 +250,7 @@ export function MatchCard({ item, userId }: Props) {
 
           <Link
             href={detailsHref}
-            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#C25E46]/30 hover:bg-[#FFF8F5]"
+            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#0d6efd]/30 hover:bg-[#eff6ff]"
           >
             Details
           </Link>

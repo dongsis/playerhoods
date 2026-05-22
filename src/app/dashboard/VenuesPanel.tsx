@@ -28,7 +28,7 @@ export function VenuesPanel({ myVenueMemberships, myVenuePrefs, isAdmin, myAdmin
           <div className="space-y-2">
             <Link
               href="/admin/venues"
-              className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-4 transition-colors hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]"
+              className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-4 transition-colors hover:border-[#0d6efd]/35 hover:bg-[#eff6ff]"
             >
               <div>
                 <div className="text-sm font-semibold text-[#1E293B]">Open Venue Admin</div>
@@ -36,14 +36,14 @@ export function VenuesPanel({ myVenueMemberships, myVenuePrefs, isAdmin, myAdmin
                   Manage venue details, courts, and admin access.
                 </div>
               </div>
-              <span className="text-xs text-[#94A3B8] group-hover:text-[#C25E46]">→</span>
+              <span className="text-xs text-[#94A3B8] group-hover:text-[#0d6efd]">→</span>
             </Link>
 
             {myAdminVenues.map(({ venue }) => (
               <Link
                 key={`admin-${venue.id}`}
                 href={`/admin/venues/${venue.id}`}
-                className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-3 transition-colors hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]"
+                className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-3 transition-colors hover:border-[#0d6efd]/35 hover:bg-[#eff6ff]"
               >
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-[#1E293B]">{getVenueDisplayName(venue)}</div>
@@ -74,7 +74,7 @@ export function VenuesPanel({ myVenueMemberships, myVenuePrefs, isAdmin, myAdmin
               <Link
                 key={venue.id}
                 href={`/app/venues/${venue.id}`}
-                className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-3 transition-colors hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
+                className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-3 transition-colors hover:border-[#0d6efd]/35 hover:bg-[#F8FBFF]"
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -89,7 +89,7 @@ export function VenuesPanel({ myVenueMemberships, myVenuePrefs, isAdmin, myAdmin
                     <div className="mt-0.5 text-xs text-[#64748B]">{venue.location_text}</div>
                   ) : null}
                 </div>
-                <span className="text-xs text-[#94A3B8] group-hover:text-[#C25E46]">→</span>
+                <span className="text-xs text-[#94A3B8] group-hover:text-[#0d6efd]">→</span>
               </Link>
             ))}
           </div>
@@ -109,7 +109,7 @@ export function VenuesPanel({ myVenueMemberships, myVenuePrefs, isAdmin, myAdmin
               <Link
                 key={venue.id}
                 href={`/app/venues/${venue.id}`}
-                className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-3 transition-colors hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
+                className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-3 transition-colors hover:border-[#0d6efd]/35 hover:bg-[#F8FBFF]"
               >
                 <div>
                   <span className="text-sm font-semibold text-[#1E293B]">{getVenueDisplayName(venue)}</span>
@@ -117,7 +117,7 @@ export function VenuesPanel({ myVenueMemberships, myVenuePrefs, isAdmin, myAdmin
                     <div className="mt-0.5 text-xs text-[#64748B]">{venue.location_text}</div>
                   ) : null}
                 </div>
-                <span className="text-xs text-[#94A3B8] group-hover:text-[#C25E46]">→</span>
+                <span className="text-xs text-[#94A3B8] group-hover:text-[#0d6efd]">→</span>
               </Link>
             ))}
           </div>
@@ -131,10 +131,10 @@ export function VenuesPanel({ myVenueMemberships, myVenuePrefs, isAdmin, myAdmin
         <div className="space-y-2">
           <Link
             href="/venues"
-            className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-3 transition-colors hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
+            className="group flex items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-3 transition-colors hover:border-[#0d6efd]/35 hover:bg-[#F8FBFF]"
           >
             <span className="text-sm font-semibold text-[#1E293B]">Browse all venues</span>
-            <span className="text-xs text-[#94A3B8] group-hover:text-[#C25E46]">→</span>
+            <span className="text-xs text-[#94A3B8] group-hover:text-[#0d6efd]">→</span>
           </Link>
         </div>
       </section>

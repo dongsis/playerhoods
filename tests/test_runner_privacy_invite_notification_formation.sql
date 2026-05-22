@@ -349,6 +349,23 @@ BEGIN
 
   INSERT INTO _notification_mvp_results(test_name, ok, details)
   SELECT
+    'Contact Player invite targets are private-owner scoped',
+    to_regprocedure('public.can_user_have_private_contact_person_scope(uuid,uuid)') IS NOT NULL
+      and position('gc.created_by = v_uid' in pg_get_functiondef('public.rpc_match_contact_person_targets(uuid,text)'::regprocedure)) > 0
+      and position('public.can_user_have_private_contact_person_scope(v_uid, pr.person_id)' in pg_get_functiondef('public.rpc_match_contact_person_targets(uuid,text)'::regprocedure)) > 0,
+    'contact target list must not expose other group members private contacts';
+
+  INSERT INTO _notification_mvp_results(test_name, ok, details)
+  SELECT
+    'Contact Player invite RPC requires private contact scope',
+    position('can_user_have_private_contact_person_scope(v_uid, p_person_id)' in pg_get_functiondef('public.rpc_match_invite_contact_person(uuid,uuid)'::regprocedure)) > 0
+      and position('from public.user_roster_guests urg' in lower(pg_get_functiondef('public.rpc_match_invite_contact_person(uuid,uuid)'::regprocedure))) > 0
+      and position('from public.group_contacts gc' in lower(pg_get_functiondef('public.rpc_match_invite_contact_person(uuid,uuid)'::regprocedure))) > 0
+      and position('gc.created_by = v_uid' in pg_get_functiondef('public.rpc_match_invite_contact_person(uuid,uuid)'::regprocedure)) > 0,
+    'contact invite must use caller-owned/private channels only';
+
+  INSERT INTO _notification_mvp_results(test_name, ok, details)
+  SELECT
     'critical change predicate ignores notes',
     public.notification_is_critical_change('{"organizer_note":{"old":"a","new":"b"}}'::jsonb) = false,
     'organizer_note=false';

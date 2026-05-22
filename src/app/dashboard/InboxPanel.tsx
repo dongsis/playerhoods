@@ -71,7 +71,7 @@ function getNotificationTone(kind: string): string {
     return 'bg-[#ECFDF5] text-[#22C55E] ring-[#DCFCE7]'
   }
   if (kind === 'invited' || kind === 'nominated' || kind === 'waiting_list_promoted') {
-    return 'bg-[#EFF6FF] text-[#3B82F6] ring-[#DBEAFE]'
+    return 'bg-[#eff6ff] text-[#0d6efd] ring-[#dbeafe]'
   }
   return 'bg-[#F8FAFC] text-[#64748B] ring-[#E2E8F0]'
 }
@@ -229,7 +229,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
             return (
               <li
                 key={request.request_id}
-                className="rounded-[24px] border border-[#DBEAFE] bg-[#F8FBFF] px-4 py-4"
+                className="rounded-[24px] border border-[#dbeafe] bg-[#F8FBFF] px-4 py-4"
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex min-w-0 gap-3">
@@ -242,7 +242,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
                     />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-label inline-flex items-center rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#3B82F6] ring-1 ring-[#DBEAFE]">
+                        <span className="text-label inline-flex items-center rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd] ring-1 ring-[#dbeafe]">
                           PlayerHood request
                         </span>
                         <span className="text-body-sub text-gray-400">{formatTime(request.created_at)}</span>
@@ -285,7 +285,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
             return (
               <li
                 key={share.share_id}
-                className="rounded-[24px] border border-[#DBEAFE] bg-[#F8FBFF] px-4 py-4"
+                className="rounded-[24px] border border-[#dbeafe] bg-[#F8FBFF] px-4 py-4"
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex min-w-0 gap-3">
@@ -298,7 +298,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
                     />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-label inline-flex items-center rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#3B82F6] ring-1 ring-[#DBEAFE]">
+                        <span className="text-label inline-flex items-center rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd] ring-1 ring-[#dbeafe]">
                           Intro shared
                         </span>
                         <span className="text-body-sub text-gray-400">{formatTime(share.created_at)}</span>
@@ -344,7 +344,7 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
               key={n.id}
               className={[
                 'flex items-start gap-3 rounded-[24px] border px-4 py-3 transition-colors',
-                n.read_at ? 'border-[#E2E8F0] bg-white' : 'border-[#DBEAFE] bg-[#F8FBFF]',
+                n.read_at ? 'border-[#E2E8F0] bg-white' : 'border-[#dbeafe] bg-[#F8FBFF]',
               ].join(' ')}
             >
               <div className="flex-1 min-w-0">

@@ -64,7 +64,7 @@ export default async function AdminVenuesPage() {
                 <Link
                   key={venue.id}
                   href={`/admin/venues/${venue.id}`}
-                  className="block rounded-[20px] border border-[#E2E8F0] bg-white px-5 py-4 text-inherit no-underline shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]"
+                  className="block rounded-[20px] border border-[#E2E8F0] bg-white px-5 py-4 text-inherit no-underline shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition hover:border-[#0d6efd]/35 hover:bg-[#eff6ff]"
                 >
                   <div className="text-sm font-bold text-[#1E293B]">{getVenueDisplayName(venue)}</div>
                   {metaParts.length > 0 ? (

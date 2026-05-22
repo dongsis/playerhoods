@@ -1,4 +1,5 @@
 import { DashboardShell } from './DashboardShell'
+import type { ReactNode } from 'react'
 import type { DashboardPageViewModel } from './dashboard.view-model'
 import type { GearImageInput, GearItemInput, GearShowcaseEntryInput, GearStringJobInput } from '@/lib/api/gear'
 import type { DiscoveryVolume, GearImage, GearItem, GearShowcaseEntry, GearStringJob } from '@/lib/types/database'
@@ -9,6 +10,8 @@ import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './
 type DashboardPageViewProps = {
   viewModel: DashboardPageViewModel
   notice?: string | null
+  selectedMatchId?: string | null
+  selectedMatchDetail?: ReactNode
   onUpdateProfile: (formData: FormData) => Promise<void>
   onAcceptIdentityLink: (guestId: string) => Promise<IdentityLinkActionResult>
   onKeepSeparateIdentityLink: (guestId: string) => Promise<IdentityLinkActionResult>
@@ -71,6 +74,8 @@ type DashboardPageViewProps = {
 export function DashboardPageView({
   viewModel,
   notice,
+  selectedMatchId,
+  selectedMatchDetail,
   onUpdateProfile,
   onAcceptIdentityLink,
   onKeepSeparateIdentityLink,
@@ -107,6 +112,8 @@ export function DashboardPageView({
       userId={viewModel.userId}
       items={viewModel.items}
       notice={notice ?? null}
+      selectedMatchId={selectedMatchId ?? null}
+      selectedMatchDetail={selectedMatchDetail}
       userEmail={viewModel.userEmail}
       inboxUnreadCount={viewModel.inboxUnreadCount}
       playersData={viewModel.playersData}

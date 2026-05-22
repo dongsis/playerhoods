@@ -195,8 +195,8 @@ function CardButton({
       onClick={onClick}
       className={`text-body-main rounded-2xl px-4 py-2.5 font-medium transition ${
         active
-          ? 'bg-[#C25E46] text-white shadow-[0_12px_24px_-16px_rgba(194,94,70,0.55)]'
-          : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]'
+          ? 'bg-[#0d6efd] text-white shadow-[0_12px_24px_-16px_rgba(13, 110, 253, 0.55)]'
+          : 'border border-[#E2E8F0] bg-white text-[#475569] hover:border-[#0d6efd]/35 hover:bg-[#F8FBFF]'
       }`}
     >
       {children}
@@ -1129,16 +1129,16 @@ export function GearPanel({
                 ))}
               </div>
               <div className="flex flex-wrap gap-2">
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${section === 'owned' ? 'owned gear' : 'wishlist'}...`} className="text-body-main h-11 min-w-[220px] rounded-2xl border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]" />
-                <button type="button" onClick={() => setComposer({ collection: section === 'wishlist' ? 'wishlist' : 'owned', mode: 'manual' })} className="text-body-main rounded-2xl bg-[#C25E46] px-4 py-2.5 font-semibold text-white transition hover:bg-[#A64F3A]">Add manually</button>
-                {section === 'wishlist' && <button type="button" onClick={() => setComposer({ collection: 'wishlist', mode: 'link' })} className="text-body-main rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-2.5 font-medium text-[#475569] transition hover:border-[#C25E46]/35">Add from link</button>}
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${section === 'owned' ? 'owned gear' : 'wishlist'}...`} className="text-body-main h-11 min-w-[220px] rounded-2xl border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#0d6efd]" />
+                <button type="button" onClick={() => setComposer({ collection: section === 'wishlist' ? 'wishlist' : 'owned', mode: 'manual' })} className="text-body-main rounded-2xl bg-[#0d6efd] px-4 py-2.5 font-semibold text-white transition hover:bg-[#0b5ed7]">Add manually</button>
+                {section === 'wishlist' && <button type="button" onClick={() => setComposer({ collection: 'wishlist', mode: 'link' })} className="text-body-main rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-2.5 font-medium text-[#475569] transition hover:border-[#0d6efd]/35">Add from link</button>}
                 {section === 'owned' && (category === 'all' || category === 'rackets') && <button type="button" onClick={() => setComposer({ collection: 'owned', mode: 'photos', initialDraft: { ...buildDraftFromItem(undefined, 'owned'), category: 'rackets', gear_type: 'Tennis Racquet' } })} className="text-body-main rounded-2xl bg-emerald-50 px-4 py-2.5 font-medium text-emerald-700">Add racquet from photos</button>}
               </div>
             </div>
             {composer?.mode === 'link' && section === 'wishlist' && (
               <div className="mt-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] p-4">
                 <div className="flex flex-wrap gap-3">
-                  <input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="Paste a product link" className="text-body-main h-11 min-w-[320px] flex-1 rounded-2xl border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]" />
+                  <input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="Paste a product link" className="text-body-main h-11 min-w-[320px] flex-1 rounded-2xl border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#0d6efd]" />
                   <button type="button" disabled={linkLoading || !linkUrl.trim()} onClick={async () => {
                     setLinkLoading(true)
                     setLinkError(null)
@@ -1172,7 +1172,7 @@ export function GearPanel({
                     } finally {
                       setLinkLoading(false)
                     }
-                  }} className="text-body-main rounded-2xl bg-[#C25E46] px-4 py-2.5 font-semibold text-white disabled:opacity-50">
+                  }} className="text-body-main rounded-2xl bg-[#0d6efd] px-4 py-2.5 font-semibold text-white disabled:opacity-50">
                     {linkLoading ? 'Importing...' : 'Generate draft'}
                   </button>
                 </div>

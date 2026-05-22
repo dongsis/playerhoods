@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState, useTransition } from 'react'
+import { useCallback, useMemo, useState, useTransition, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { MatchListItem } from '@/lib/api/matches'
@@ -67,7 +67,7 @@ function StarterPlayingCircleIllustration({ count }: { count: number }) {
           className={[
             'absolute flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-black shadow-sm',
             position,
-            index < activeCount ? 'bg-[#2563EB] text-white' : 'bg-[#EAF2FC] text-[#8AA0BC]',
+            index < activeCount ? 'bg-[#0d6efd] text-white' : 'bg-[#EAF2FC] text-[#8AA0BC]',
           ].join(' ')}
         >
           {index + 1}
@@ -428,7 +428,7 @@ function ParticipantRosterSummary({
                   <ParticipantDetailTrigger
                     participant={participant}
                     items={detailItems}
-                    className="min-w-0 max-w-full text-left transition hover:text-[#C25E46]"
+                    className="min-w-0 max-w-full text-left transition hover:text-[#0d6efd]"
                     label={`View details for ${participant.display_name}`}
                   >
                     <span className="inline-flex min-w-0 max-w-full items-center gap-1">
@@ -480,12 +480,12 @@ function StatusBadge({
     tone === 'green'
       ? 'bg-[#ECFDF5] text-[#22C55E] ring-[#DCFCE7]'
       : tone === 'blue'
-        ? 'bg-[#EFF6FF] text-[#3B82F6] ring-[#DBEAFE]'
+        ? 'bg-[#eff6ff] text-[#0d6efd] ring-[#dbeafe]'
         : tone === 'red'
           ? 'bg-[#FEF2F2] text-[#EF4444] ring-[#FECACA]'
           : tone === 'slate'
             ? 'bg-[#F8FAFC] text-[#64748B] ring-[#E2E8F0]'
-            : 'bg-[#FFF7ED] text-[#F97316] ring-[#FFEDD5]'
+            : 'bg-[#eff6ff] text-[#F97316] ring-[#FFEDD5]'
 
   return (
     <span className={`text-label inline-flex items-center rounded-full px-2.5 py-1 ring-1 ${toneClass} ${className ?? ''}`}>
@@ -543,10 +543,8 @@ function MatchRow({
   const needsReconfirmRequested = isRequested && myParticipant?.org_approved_at !== null && !hasUserAccepted
   const isCancelled = match.status === 'cancelled'
   const visibleRosterMeta = isOrganizer ? compactRosterMeta : []
-  const hostRequestPrompt =
-    isOrganizer && !isHistoryRow && !isCancelled && pendingRequestApprovals.length > 0
-      ? `${pendingRequestApprovals.length} request${pendingRequestApprovals.length === 1 ? '' : 's'} to review`
-      : null
+  const hostRequestCount =
+    isOrganizer && !isHistoryRow && !isCancelled ? pendingRequestApprovals.length : 0
   const isRemoved = myParticipant?.status === 'removed'
   const wasConfirmedByOther =
     myParticipant?.status === 'confirmed'
@@ -670,13 +668,13 @@ function MatchRow({
 
       {!isHistoryRow && !isCancelled && (isInvited || (isParticipantInvite && !hasUserAccepted) || needsReconfirmRequested) ? (
         <div className="shrink-0 flex items-center gap-2">
-          <span className="text-label rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#3B82F6] ring-1 ring-[#DBEAFE] whitespace-nowrap">
+          <span className="text-label rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd] ring-1 ring-[#dbeafe] whitespace-nowrap">
             {isParticipantInvite ? 'Invited' : isInvited ? 'Invited' : 'Needs confirm'}
           </span>
           <button
             onClick={handleConfirm}
             disabled={isPending}
-            className="text-body-sub whitespace-nowrap rounded-full bg-[#C25E46] px-3 py-1.5 font-semibold text-white hover:bg-[#aa503a] disabled:opacity-50"
+            className="text-body-sub whitespace-nowrap rounded-full bg-[#0d6efd] px-3 py-1.5 font-semibold text-white hover:bg-[#0b5ed7] disabled:opacity-50"
           >
             {isPending ? '...' : 'Confirm'}
           </button>
@@ -685,13 +683,13 @@ function MatchRow({
       ) : null}
 
       {!isHistoryRow && !isCancelled && isParticipantInvite && hasUserAccepted ? (
-        <span className="text-label shrink-0 rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#3B82F6] ring-1 ring-[#DBEAFE] whitespace-nowrap">
+        <span className="text-label shrink-0 rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd] ring-1 ring-[#dbeafe] whitespace-nowrap">
           Invited and waiting for approval
         </span>
       ) : null}
 
       {!isHistoryRow && !isCancelled && isRequested && !needsReconfirmRequested ? (
-        <span className="text-label shrink-0 rounded-full bg-[#FFF7ED] px-2.5 py-1 text-[#F97316] ring-1 ring-[#FFEDD5] whitespace-nowrap">
+        <span className="text-label shrink-0 rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#F97316] ring-1 ring-[#FFEDD5] whitespace-nowrap">
           Request pending
         </span>
       ) : null}
@@ -703,7 +701,7 @@ function MatchRow({
       ) : null}
 
       {!isHistoryRow && !isCancelled && myParticipant?.status === 'waiting_list' ? (
-        <span className="text-label shrink-0 rounded-full bg-[#FFF7ED] px-2.5 py-1 text-[#F97316] ring-1 ring-[#FFEDD5] whitespace-nowrap">
+        <span className="text-label shrink-0 rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#F97316] ring-1 ring-[#FFEDD5] whitespace-nowrap">
           Waiting list
         </span>
       ) : null}
@@ -714,9 +712,12 @@ function MatchRow({
         </span>
       ) : null}
 
-      {hostRequestPrompt ? (
-        <span className="text-label shrink-0 rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[#2563EB] ring-1 ring-[#BFDBFE] whitespace-nowrap">
-          {hostRequestPrompt}
+      {hostRequestCount > 0 ? (
+        <span
+          className="ph-request-glow text-label shrink-0 rounded-full bg-[#0d6efd] px-3 py-1.5 text-white ring-1 ring-[#93C5FD] whitespace-nowrap"
+          title={`${hostRequestCount} request${hostRequestCount === 1 ? '' : 's'} to review`}
+        >
+          Request
         </span>
       ) : null}
 
@@ -730,9 +731,9 @@ function MatchRow({
           </button>
         ) : null}
         <Link
-          href={`/matches/${match.id}`}
+          href={`/dashboard?matchId=${match.id}`}
           onClick={() => onViewed?.(match.id)}
-          className="text-body-sub font-semibold text-[#1E293B] hover:text-[#C25E46] whitespace-nowrap"
+          className="text-body-sub font-semibold text-[#1E293B] hover:text-[#0d6efd] whitespace-nowrap"
         >
           Details →
         </Link>
@@ -1058,20 +1059,20 @@ function WeeklyCalendar({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setWeekAnchor(startOfWeek(new Date()))}
-            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#C25E46] hover:text-[#C25E46]"
+            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
           >
             Today
           </button>
           <button
             onClick={() => setWeekAnchor((current) => addDays(current, -7))}
-            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#C25E46] hover:text-[#C25E46]"
+            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
             aria-label="Previous week"
           >
             {'<'}
           </button>
           <button
             onClick={() => setWeekAnchor((current) => addDays(current, 7))}
-            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#C25E46] hover:text-[#C25E46]"
+            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
             aria-label="Next week"
           >
             {'>'}
@@ -1096,7 +1097,7 @@ function WeeklyCalendar({
                     <span
                       className={[
                         'text-h2 inline-flex h-9 min-w-9 items-center justify-center rounded-full px-2',
-                        isToday ? 'bg-[#2563EB] text-white' : 'text-[#1E293B]',
+                        isToday ? 'bg-[#0d6efd] text-white' : 'text-[#1E293B]',
                       ].join(' ')}
                     >
                       {formatCalendarDayNumber(day)}
@@ -1148,16 +1149,16 @@ function WeeklyCalendar({
                     return (
                       <Link
                         key={entry.id}
-                        href={`/matches/${entry.id}`}
+                        href={`/dashboard?matchId=${entry.id}`}
                         className={[
                           'absolute left-1 right-1 overflow-hidden rounded-[11px] border px-1.5 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:z-10 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]',
                           entry.tone === 'green'
                             ? 'border-[#BBF7D0] bg-[#F0FDF4]'
                             : entry.tone === 'amber'
-                              ? 'border-[#FED7AA] bg-[#FFF7ED]'
+                              ? 'border-[#FED7AA] bg-[#eff6ff]'
                               : entry.tone === 'slate'
                                 ? 'border-[#CBD5E1] bg-[#F8FAFC]'
-                                : 'border-[#BFDBFE] bg-[#EFF6FF]',
+                                : 'border-[#bfdbfe] bg-[#eff6ff]',
                         ].join(' ')}
                         style={{ top, height }}
                       >
@@ -1232,9 +1233,9 @@ function MobileStatusBadge({
     tone === 'green'
       ? 'border-[#BBF7D0] bg-[#F0FDF4] text-[#16A34A]'
       : tone === 'orange'
-        ? 'border-[#F4C7B8] bg-[#FFF7ED] text-[#C25E46]'
+        ? 'border-[#F4C7B8] bg-[#eff6ff] text-[#0d6efd]'
         : tone === 'blue'
-          ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]'
+          ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#0d6efd]'
           : 'border-[#D7E1EE] bg-white text-[#64748B]'
 
   return (
@@ -1265,12 +1266,12 @@ function MobileMatchCard({
 
   return (
     <Link
-      href={`/matches/${item.match.id}`}
+      href={`/dashboard?matchId=${item.match.id}`}
       className="block rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_14px_34px_rgba(15,23,42,0.06)] transition hover:border-[#D6DEE9]"
     >
       <div className="flex gap-4">
         <div className="flex h-[104px] w-[86px] shrink-0 flex-col items-center justify-center rounded-[24px] bg-[#F8FAFC] text-center">
-          <span className="text-[12px] font-black uppercase tracking-[0.16em] text-[#C25E46]">{weekday}</span>
+          <span className="text-[12px] font-black uppercase tracking-[0.16em] text-[#0d6efd]">{weekday}</span>
           <span className="mt-1 text-[14px] font-bold uppercase tracking-[0.12em] text-[#64748B]">{month}</span>
           <span className="mt-1 text-[34px] font-black leading-none text-[#1E293B]">{day}</span>
         </div>
@@ -1312,7 +1313,7 @@ function MobileMatchCard({
                   </div>
                 </div>
               </div>
-              <span className="shrink-0 text-[15px] font-extrabold tracking-[-0.02em] text-[#C25E46]">
+              <span className="shrink-0 text-[15px] font-extrabold tracking-[-0.02em] text-[#0d6efd]">
                 {'Details ->'}
               </span>
             </div>
@@ -1327,6 +1328,8 @@ interface Props {
   items: MatchListItem[]
   userId: string
   defaultVenueId?: string
+  selectedMatchId?: string | null
+  selectedMatchDetail?: ReactNode
   onCancelMatch?: (matchId: string) => Promise<void>
   onViewedMatch?: (matchId: string) => void
   dismissedAlertMatchIds?: Set<string>
@@ -1346,6 +1349,8 @@ export function MatchesPanel({
   items,
   userId,
   defaultVenueId,
+  selectedMatchId,
+  selectedMatchDetail,
   onCancelMatch,
   onViewedMatch,
   dismissedAlertMatchIds,
@@ -1357,6 +1362,7 @@ export function MatchesPanel({
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
   const [mobileCreateExpandSignal, setMobileCreateExpandSignal] = useState(0)
   const [desktopCreateExpanded, setDesktopCreateExpanded] = useState(false)
+  const hasSelectedMatchDetail = Boolean(selectedMatchId && selectedMatchDetail)
 
   const now = useMemo(() => new Date().toISOString(), [])
 
@@ -1416,7 +1422,7 @@ export function MatchesPanel({
       className={[
         'text-body-main rounded-full px-4 py-2 font-semibold transition',
         subTab === key
-          ? 'bg-[#C25E46] text-white shadow-[0_8px_18px_rgba(194,94,70,0.24)]'
+          ? 'bg-[#0d6efd] text-white shadow-[0_8px_18px_rgba(13, 110, 253, 0.24)]'
           : 'text-[#64748B] hover:text-[#1E293B]',
       ].join(' ')}
     >
@@ -1496,7 +1502,7 @@ export function MatchesPanel({
             <section className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <SectionHeading label="My Matches" count={incoming.length} />
-                {incoming.length > 0 ? <span className="text-body-main font-bold text-[#C25E46]">View all -&gt;</span> : null}
+                {incoming.length > 0 ? <span className="text-body-main font-bold text-[#0d6efd]">View all -&gt;</span> : null}
               </div>
               {incoming.length === 0 ? (
                 <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-body-main text-[#94A3B8]">
@@ -1568,9 +1574,9 @@ export function MatchesPanel({
           <button
             type="button"
             onClick={openCreateMatch}
-            className="flex w-full items-center justify-center gap-4 rounded-full bg-[#C25E46] px-6 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-white shadow-[0_24px_40px_rgba(194,94,70,0.28)]"
+            className="flex w-full items-center justify-center gap-4 rounded-full bg-[#0d6efd] px-6 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-white shadow-[0_24px_40px_rgba(13, 110, 253, 0.28)]"
           >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-[28px] font-medium leading-none text-[#C25E46]">+</span>
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-[28px] font-medium leading-none text-[#0d6efd]">+</span>
             Create Match
           </button>
         </div>
@@ -1581,17 +1587,23 @@ export function MatchesPanel({
         <div
           className={[
             'grid items-start gap-6 transition-[grid-template-columns] duration-300',
-            desktopCreateExpanded
-              ? 'lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.72fr)] xl:grid-cols-[minmax(0,1.4fr)_minmax(380px,0.74fr)]'
-              : 'lg:grid-cols-[minmax(430px,640px)_minmax(0,1fr)]',
+            hasSelectedMatchDetail
+              ? 'lg:grid-cols-[minmax(720px,1.25fr)_minmax(500px,0.86fr)] xl:grid-cols-[minmax(820px,1.32fr)_minmax(520px,0.82fr)]'
+              : desktopCreateExpanded
+              ? 'lg:grid-cols-[minmax(680px,1.2fr)_minmax(430px,0.86fr)] xl:grid-cols-[minmax(760px,1.25fr)_minmax(500px,0.86fr)]'
+              : 'lg:grid-cols-[minmax(430px,640px)_minmax(520px,1fr)]',
           ].join(' ')}
         >
           <section className="min-w-0">
+            {hasSelectedMatchDetail ? (
+              selectedMatchDetail
+            ) : (
             <CreateMatchInline
               defaultVenueId={defaultVenueId}
               expandSignal={mobileCreateExpandSignal}
               onExpandedChange={handleCreateExpandedChange}
             />
+            )}
           </section>
 
           <section className="min-w-0 rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">

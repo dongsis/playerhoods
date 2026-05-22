@@ -129,10 +129,10 @@ const DS_CARD = 'rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_12px_
 const DS_SECTION_TITLE = 'text-h2 text-[#1E293B]'
 const DS_LABEL = 'text-label mb-1 block'
 const DS_FIELD =
-  'text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10'
+  'text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10'
 const DS_OPTION_BUTTON =
-  'text-body-main rounded-xl border px-4 py-2.5 font-semibold transition focus:outline-none focus:ring-4 focus:ring-[#C25E46]/10'
-const DS_OPTION_SELECTED = 'border-[#2F74FF] bg-[#EEF5FF] text-[#075BD7] shadow-[0_10px_22px_-20px_rgba(7,91,215,0.8)]'
+  'text-body-main rounded-xl border px-4 py-2.5 font-semibold transition focus:outline-none focus:ring-4 focus:ring-[#0d6efd]/10'
+const DS_OPTION_SELECTED = 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] shadow-[0_10px_22px_-20px_rgba(13,110,253,0.8)]'
 const DS_OPTION_UNSELECTED = 'border-[#E2E8F0] bg-white text-[#52647E] hover:border-[#BFD4EA] hover:bg-[#F8FBFF]'
 
 const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
@@ -219,7 +219,7 @@ function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
     <div className="w-full rounded-2xl border border-dashed border-[#7FB2FF] bg-[#F8FBFF] px-4 py-3">
       <div className="flex flex-col items-start gap-3">
         <div className="flex items-start gap-3 self-stretch">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D7E3F4] bg-white text-[#075BD7]">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D7E3F4] bg-white text-[#0d6efd]">
             <ContactAddIcon kind="people" />
           </span>
           <span className="min-w-0">
@@ -698,7 +698,7 @@ function ReviewMatchModal({
               type="button"
               onClick={onConfirm}
               disabled={posting}
-              className="text-h2 w-full rounded-2xl bg-[#C25E46] py-4 text-white transition hover:-translate-y-[1px] hover:bg-[#AA523D] hover:shadow-[0_10px_15px_-3px_rgba(194,94,70,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="text-h2 w-full rounded-2xl bg-[#0d6efd] py-4 text-white transition hover:-translate-y-[1px] hover:bg-[#0b5ed7] hover:shadow-[0_10px_15px_-3px_rgba(13, 110, 253, 0.3)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {posting ? (recurring ? 'Creating...' : 'Posting...') : (recurring ? 'Create Recurring Match' : 'Post Match Now')}
             </button>
@@ -1003,11 +1003,11 @@ function MiniCalendar({
                 className={[
                   'flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-medium transition-all',
                   isSelected
-                    ? 'border border-[#3B82F6] bg-[#EFF6FF] text-[#075BD7]'
+                    ? 'border border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
                     : isPast
                       ? 'text-[#CBD5E1]'
                       : isToday
-                        ? 'border border-[#FED7AA] bg-[#FFF7ED] text-[#EA580C]'
+                        ? 'border border-[#FED7AA] bg-[#eff6ff] text-[#EA580C]'
                         : 'text-[#0B2136] hover:bg-[#F8FAFC]',
                 ].join(' ')}
               >
@@ -1967,7 +1967,7 @@ export function CreateMatchInline({
         return
       }
 
-      router.push(`/matches/${match.id}`)
+      router.push(`/dashboard?matchId=${match.id}`)
     } catch (err: unknown) {
       setError(normalizeCreateError(err))
     } finally {
@@ -2139,7 +2139,7 @@ export function CreateMatchInline({
     try {
       const inviteOk = await applySelectedInvites()
       if (!inviteOk) return
-      router.push(`/matches/${createdMatchId}`)
+      router.push(`/dashboard?matchId=${createdMatchId}`)
       router.refresh()
     } finally {
       setOpenMatchLoading(false)
@@ -2178,8 +2178,8 @@ export function CreateMatchInline({
             : 'border-gray-200 bg-white text-gray-600'
     const stateClasses = isSelected
       ? availabilityWarning
-        ? `${availabilityClasses} ring-2 ring-orange-200`
-        : 'border-orange-200 bg-orange-50 text-orange-600 ring-2 ring-orange-100'
+        ? `${availabilityClasses} ring-2 ring-[#0d6efd]/20`
+        : 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] ring-2 ring-[#0d6efd]/15'
       : contactUnavailable
         ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-75'
         : availabilityClasses
@@ -2199,7 +2199,7 @@ export function CreateMatchInline({
             : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`
         }
         className={[
-          'relative inline-flex items-center gap-1.5 rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600',
+          'relative inline-flex items-center gap-1.5 rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]',
           contactUnavailable ? 'cursor-not-allowed hover:translate-y-0 hover:border-gray-200 hover:bg-gray-50 hover:text-gray-400' : '',
           compact ? 'px-3 py-2 text-[11px]' : 'px-3 py-2 text-[11px]',
           stateClasses,
@@ -2335,7 +2335,7 @@ export function CreateMatchInline({
     const toneClasses =
       tone === 'green'
         ? 'border-green-100 bg-green-50 text-green-700'
-        : 'border-orange-100 bg-orange-50 text-orange-700'
+        : 'border-[#0d6efd]/15 bg-[#eff6ff] text-[#0d6efd]'
 
     return (
       <div key={key}>
@@ -2454,7 +2454,7 @@ export function CreateMatchInline({
             type="button"
             onClick={handleInviteSelected}
             disabled={selectedPostCreateInviteIds.size === 0 || inviteLoading}
-            className="text-body-main rounded-xl bg-orange-500 px-5 py-2.5 font-medium text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-body-main rounded-xl bg-[#0d6efd] px-5 py-2.5 font-medium text-white transition hover:bg-[#0b5ed7] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {inviteLoading ? 'Inviting...' : `Invite selected (${selectedPostCreateInviteIds.size})`}
           </button>
@@ -2506,7 +2506,7 @@ export function CreateMatchInline({
                 key: 'card' as const,
                 title: 'Save as player card',
                 body: 'Add someone not on PlayerHoods yet.',
-                tone: 'bg-[#EAF2FF] text-[#075BD7]',
+                tone: 'bg-[#eff6ff] text-[#0d6efd]',
               },
               {
                 key: 'invite' as const,
@@ -2560,7 +2560,7 @@ export function CreateMatchInline({
                   value={contactDisplayName}
                   onChange={(event) => setContactDisplayName(event.target.value)}
                   placeholder="Player's full name"
-                  className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                 />
               </label>
 
@@ -2572,7 +2572,7 @@ export function CreateMatchInline({
                     value={contactEmail}
                     onChange={(event) => setContactEmail(event.target.value)}
                     placeholder="email@example.com"
-                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                   />
                 </label>
                 <label className="text-label text-[#536179]">
@@ -2582,7 +2582,7 @@ export function CreateMatchInline({
                     value={contactPhone}
                     onChange={(event) => setContactPhone(event.target.value)}
                     placeholder="+1 234 567 890"
-                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                   />
                 </label>
               </div>
@@ -2594,7 +2594,7 @@ export function CreateMatchInline({
                   onChange={(event) => setContactNotes(event.target.value)}
                   placeholder="Add details like skill level or preferred times..."
                   rows={3}
-                  className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                 />
               </label>
 
@@ -2608,7 +2608,7 @@ export function CreateMatchInline({
                 <button
                   type="submit"
                   disabled={creatingContact}
-                  className="text-body-main inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-[#075BD7] px-5 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#064FC0] disabled:cursor-wait disabled:bg-[#94A3B8]"
+                  className="text-body-main inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-[#0d6efd] px-5 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7] disabled:cursor-wait disabled:bg-[#94A3B8]"
                 >
                   <span className="text-lg leading-none">+</span>
                   {creatingContact ? 'Saving...' : 'Save Contact'}
@@ -2649,7 +2649,7 @@ export function CreateMatchInline({
                     <div className="mt-3 rounded-lg bg-[#F1F5F9] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
                       {heading}
                     </div>
-                    <div className="mt-2 truncate rounded-md bg-[#EAF2FF] px-2 py-1 text-[10px] font-semibold text-[#075BD7]">
+                    <div className="mt-2 truncate rounded-md bg-[#eff6ff] px-2 py-1 text-[10px] font-semibold text-[#0d6efd]">
                       {body}
                     </div>
                     <p className="mt-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#64748B]">{label}</p>
@@ -2673,10 +2673,10 @@ export function CreateMatchInline({
         <button
           type="button"
           onClick={() => setCreateExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[#FFF8F5] md:px-7 md:py-6"
+          className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[#eff6ff] md:px-7 md:py-6"
         >
           <div className="flex min-w-0 items-center gap-4">
-            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F9733D] to-[#C25E46] text-[30px] font-medium leading-none text-white shadow-[0_14px_28px_rgba(194,94,70,0.28)] md:h-14 md:w-14 md:text-[34px]">
+            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0d6efd] text-[30px] font-medium leading-none text-white shadow-[0_14px_28px_rgba(13,110,253,0.24)] md:h-14 md:w-14 md:text-[34px]">
               +
             </span>
             <div className="min-w-0">
@@ -2699,7 +2699,7 @@ export function CreateMatchInline({
         {createExpanded ? (
           <div className="space-y-6 border-t border-[#F1F5F9] px-5 pb-6 pt-6 md:px-6">
       {starterHint ? (
-        <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-body-main font-semibold text-[#1D4ED8]">
+        <div className="rounded-2xl border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3 text-body-main font-semibold text-[#0b5ed7]">
           You can start now and add more players later.
         </div>
       ) : null}
@@ -2715,12 +2715,12 @@ export function CreateMatchInline({
             ].map((item, index) => (
               <div key={item.label} className="flex flex-col items-center gap-2 text-center">
                 <div className="flex w-full items-center">
-                  <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-[15px] font-black ${index === 0 ? 'border-[#C25E46] bg-[#C25E46] text-white' : 'border-[#D7E1EE] bg-white text-[#94A3B8]'}`}>
+                  <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-[15px] font-black ${index === 0 ? 'border-[#0d6efd] bg-[#0d6efd] text-white' : 'border-[#D7E1EE] bg-white text-[#94A3B8]'}`}>
                     {item.step}
                   </span>
-                  {index < 3 ? <span className={`ml-2 h-px flex-1 ${index === 0 ? 'bg-[#C25E46]' : 'bg-[#D7E1EE]'}`} /> : null}
+                  {index < 3 ? <span className={`ml-2 h-px flex-1 ${index === 0 ? 'bg-[#0d6efd]' : 'bg-[#D7E1EE]'}`} /> : null}
                 </div>
-                <span className={`text-[12px] font-semibold ${index === 0 ? 'text-[#C25E46]' : 'text-[#64748B]'}`}>{item.label}</span>
+                <span className={`text-[12px] font-semibold ${index === 0 ? 'text-[#0d6efd]' : 'text-[#64748B]'}`}>{item.label}</span>
               </div>
             ))}
           </div>
@@ -2794,7 +2794,7 @@ export function CreateMatchInline({
                       const nextValue = Number.parseInt(e.target.value, 10)
                       setRequiredCount(Number.isNaN(nextValue) ? fallbackValue : Math.max(1, nextValue))
                     }}
-                    className="h-10 w-20 rounded-xl border border-[#E2E8F0] bg-white px-3 text-center text-sm font-bold text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
+                    className="h-10 w-20 rounded-xl border border-[#E2E8F0] bg-white px-3 text-center text-sm font-bold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                   />
                 ) : null}
               </div>
@@ -2973,7 +2973,7 @@ export function CreateMatchInline({
                       const nextValue = Number.parseInt(e.target.value, 10)
                       setCourtCount(Number.isNaN(nextValue) ? 1 : Math.min(6, Math.max(1, nextValue)))
                     }}
-                    className="h-10 w-20 rounded-xl border border-[#3B82F6] bg-[#EFF6FF] px-3 text-center text-sm font-black text-[#075BD7] outline-none transition focus:border-[#3B82F6] focus:ring-4 focus:ring-[#3B82F6]/10"
+                    className="h-10 w-20 rounded-xl border border-[#0d6efd] bg-[#eff6ff] px-3 text-center text-sm font-black text-[#0d6efd] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                   />
                 ) : null}
               </div>
@@ -2993,7 +2993,7 @@ export function CreateMatchInline({
                     className={[
                       'flex w-full items-center justify-between rounded-md border bg-white px-3 py-1.5 text-xs outline-none transition',
                       courtPlanMenuOpen
-                        ? 'border-[#C25E46] ring-2 ring-[#C25E46]/10'
+                        ? 'border-[#0d6efd] ring-2 ring-[#0d6efd]/10'
                         : 'border-[#E2E8F0] hover:border-[#F4C7B8]',
                     ].join(' ')}
                   >
@@ -3023,7 +3023,7 @@ export function CreateMatchInline({
                                 type="checkbox"
                                 checked={checked}
                                 onChange={() => toggleCourtSelection(court.id)}
-                                className="h-3.5 w-3.5 rounded border-[#94A3B8] text-[#C25E46] focus:ring-[#C25E46]"
+                                className="h-3.5 w-3.5 rounded border-[#94A3B8] text-[#0d6efd] focus:ring-[#0d6efd]"
                               />
                               <span className="whitespace-nowrap">{court.label}</span>
                             </label>
@@ -3051,7 +3051,7 @@ export function CreateMatchInline({
                             )
                           }}
                           placeholder={`crt ${index + 1}`}
-                          className="w-full rounded-md border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
+                          className="w-full rounded-md border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-2 focus:ring-[#0d6efd]/10"
                         />
                       )
                     })}
@@ -3083,7 +3083,7 @@ export function CreateMatchInline({
               <select
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className="text-body-main w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-[#475569] outline-none transition focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
+                className="text-body-main w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-[#475569] outline-none transition focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]"
               >
                 <option value="">Select start time</option>
                 {TIME_SLOTS.map((slot) => (
@@ -3099,7 +3099,7 @@ export function CreateMatchInline({
               <select
                 value={durationMinutes}
                 onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10))}
-                className="text-body-main w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-[#475569] outline-none transition focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
+                className="text-body-main w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-[#475569] outline-none transition focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]"
               >
                 {[30, 45, 60, 90, 120].map((minutes) => (
                   <option key={minutes} value={minutes}>
@@ -3119,14 +3119,14 @@ export function CreateMatchInline({
             <h3 className={DS_SECTION_TITLE}>Players</h3>
           </div>
           <div className="text-label rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-[#94A3B8]">
-            Players Needed: <span className="text-[#C25E46]">{requiredCount}</span>
+            Players Needed: <span className="text-[#0d6efd]">{requiredCount}</span>
           </div>
         </div>
 
         <div className="flex flex-col gap-6 md:flex-row">
           <div className="w-full space-y-3 md:w-1/4">
             <div className="text-label mb-1 flex items-center text-[#94A3B8]">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
               Add By
             </div>
             <button
@@ -3135,8 +3135,8 @@ export function CreateMatchInline({
               className={[
                 'flex h-[48px] w-full items-center gap-2.5 rounded-xl border-2 px-3 text-left transition active:scale-[0.98]',
                 selectionMode === 'invite'
-                  ? 'border-[#C25E46] bg-[#FFF8F5] text-[#C25E46] ring-2 ring-[#C25E46]/15'
-                  : 'border-[#E2E8F0] bg-white text-[#C25E46] hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]',
+                  ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] ring-2 ring-[#0d6efd]/15'
+                  : 'border-[#E2E8F0] bg-white text-[#0d6efd] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff]',
               ].join(' ')}
             >
               <span className="text-base">+</span>
@@ -3159,7 +3159,7 @@ export function CreateMatchInline({
 
           <div className="w-full md:flex-1">
             <div className="text-label mb-4 flex items-center text-[#94A3B8]">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
               Select Target
             </div>
             <div className="flex min-h-[200px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
@@ -3236,7 +3236,7 @@ export function CreateMatchInline({
 
                   {shouldShowHoodPanelButton ? (
                     <div className="mt-auto">
-                      <button type="button" className="text-label w-full rounded-xl border border-[#E2E8F0] bg-white py-2 text-[#64748B] transition hover:border-[#C25E46]/30 hover:text-[#C25E46]">
+                      <button type="button" className="text-label w-full rounded-xl border border-[#E2E8F0] bg-white py-2 text-[#64748B] transition hover:border-[#0d6efd]/30 hover:text-[#0d6efd]">
                         Hood Panel
                       </button>
                     </div>
@@ -3248,7 +3248,7 @@ export function CreateMatchInline({
 
           <div className="w-full md:w-1/3">
             <div className="text-label mb-4 flex items-center text-[#94A3B8]">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
               Summary
             </div>
             <div className="min-h-[200px] rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
@@ -3262,7 +3262,7 @@ export function CreateMatchInline({
                   {(selectedInvitePlayers.length > 0 || selectedInvitedGroups.length > 0) && (
                     <div>
                       <div className="mb-2 flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                         <span className="text-label">Invited</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -3275,7 +3275,7 @@ export function CreateMatchInline({
                               next.delete(member.key)
                               return next
                             })}
-                            className="text-body-sub flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 font-semibold text-orange-700"
+                            className="text-body-sub flex items-center rounded-lg border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-1 font-semibold text-[#0d6efd]"
                           >
                             <ParticipantQuickPreviewTrigger
                               target={{
@@ -3385,14 +3385,14 @@ export function CreateMatchInline({
             <SportSectionIcon sport={selectedSport} />
             <h3 className={DS_SECTION_TITLE}>Host Note</h3>
             {organizerNote.trim() && !organizerNoteExpanded ? (
-              <span className="text-body-sub rounded-full border border-[#C25E46]/15 bg-[#FFF8F5] px-2 py-0.5 font-bold text-[#C25E46]">
+              <span className="text-body-sub rounded-full border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-0.5 font-bold text-[#0d6efd]">
                 Saved
               </span>
             ) : null}
           </div>
           <div className="flex items-center gap-2">
             {!organizerNoteExpanded && !organizerNote.trim() ? (
-              <span className="text-body-main font-medium text-[#C25E46]">+ Add Note</span>
+              <span className="text-body-main font-medium text-[#0d6efd]">+ Add Note</span>
             ) : null}
             <span
               className={`text-sm text-[#94A3B8] transition-transform ${organizerNoteExpanded ? 'rotate-180' : ''}`}
@@ -3418,8 +3418,8 @@ export function CreateMatchInline({
                         className={[
                           'text-body-main rounded-md border px-2 py-1 font-medium shadow-sm transition active:scale-95',
                           organizerNoteSentences.has(item.full)
-                            ? 'border-[#C25E46]/35 bg-[#FFF8F5] text-[#C25E46]'
-                            : 'border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#C25E46]/45 hover:text-[#C25E46]',
+                            ? 'border-[#0d6efd]/35 bg-[#eff6ff] text-[#0d6efd]'
+                            : 'border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#0d6efd]/45 hover:text-[#0d6efd]',
                         ].join(' ')}
                       >
                         {item.chip}
@@ -3436,7 +3436,7 @@ export function CreateMatchInline({
                 value={organizerNote}
                 onChange={(e) => setOrganizerNote(e.target.value)}
                 placeholder="Anything else for the group?"
-                className="text-body-main h-[100px] w-full resize-none rounded-xl border border-[#E2E8F0] bg-white p-3 leading-relaxed text-[#1E293B] shadow-inner outline-none transition placeholder:text-[#CBD5E1] focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
+                className="text-body-main h-[100px] w-full resize-none rounded-xl border border-[#E2E8F0] bg-white p-3 leading-relaxed text-[#1E293B] shadow-inner outline-none transition placeholder:text-[#CBD5E1] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
               />
               {organizerNote.trim() ? (
                 <button
@@ -3452,7 +3452,7 @@ export function CreateMatchInline({
             <button
               type="button"
               onClick={() => setOrganizerNoteExpanded(false)}
-              className="text-body-main flex w-full items-center justify-center border-t border-[#E2E8F0] pt-2 font-medium text-[#94A3B8] transition hover:text-[#C25E46]"
+              className="text-body-main flex w-full items-center justify-center border-t border-[#E2E8F0] pt-2 font-medium text-[#94A3B8] transition hover:text-[#0d6efd]"
             >
               Confirm
             </button>
@@ -3471,7 +3471,7 @@ export function CreateMatchInline({
               <button
                 type="submit"
                 disabled={loading}
-                className="text-h2 w-full rounded-2xl bg-[#C25E46] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(194,94,70,0.7)] transition hover:bg-[#AA523D] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                className="text-h2 w-full rounded-2xl bg-[#0d6efd] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(13, 110, 253, 0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading && submitMode === 'create'
                   ? (matchMode === 'recurring' ? 'Creating...' : 'Posting...')

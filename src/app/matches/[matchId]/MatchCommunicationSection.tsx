@@ -18,7 +18,7 @@ function IconMessageCircle({ size = 12, color = '#1E293B' }: { size?: number; co
   )
 }
 
-function IconInfo({ size = 10, color = '#C25E46' }: { size?: number; color?: string }) {
+function IconInfo({ size = 10, color = '#0d6efd' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
@@ -37,7 +37,7 @@ function IconSend({ size = 14, color = '#cbd5e1' }: { size?: number; color?: str
   )
 }
 
-function IconEdit({ size = 10, color = '#C25E46' }: { size?: number; color?: string }) {
+function IconEdit({ size = 10, color = '#0d6efd' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M4 20H8L18 10C18.5 9.5 18.5 8.6 18 8.1L15.9 6C15.4 5.5 14.5 5.5 14 6L4 16V20Z" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
@@ -249,16 +249,16 @@ export function MatchCommunicationSection({
       {(hasOrganizerNote || canEditOrganizerNote) ? (
         <div
           style={{
-            background: hasOrganizerNote || isEditingNote ? '#FFF8F5' : '#fff',
+            background: hasOrganizerNote || isEditingNote ? '#eff6ff' : '#fff',
             padding: '0.7rem 1rem',
-            borderBottom: '1px solid rgba(194,94,70,0.12)',
+            borderBottom: '1px solid rgba(13, 110, 253, 0.12)',
           }}
         >
           {isEditingNote ? (
             <div style={{ display: 'grid', gap: '0.7rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.32rem' }}>
                 <IconInfo />
-                <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#C25E46' }}>
+                <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#0d6efd' }}>
                   Host Note
                 </span>
               </div>
@@ -329,7 +329,7 @@ export function MatchCommunicationSection({
                   style={{
                     border: 'none',
                     borderRadius: '999px',
-                    background: '#C25E46',
+                    background: '#0d6efd',
                     color: '#fff',
                     padding: '0.35rem 0.9rem',
                     fontSize: '0.74rem',
@@ -345,7 +345,7 @@ export function MatchCommunicationSection({
             <div style={{ display: 'grid', gap: '0.18rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <IconInfo />
-                <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#C25E46' }}>
+                <span style={{ fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#0d6efd' }}>
                   Host Note
                 </span>
                 {canEditOrganizerNote ? (
@@ -356,7 +356,7 @@ export function MatchCommunicationSection({
                       marginLeft: 'auto',
                       border: 'none',
                       background: 'transparent',
-                      color: '#C25E46',
+                      color: '#0d6efd',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '0.2rem',
@@ -379,10 +379,10 @@ export function MatchCommunicationSection({
               type="button"
               onClick={() => setIsEditingNote(true)}
               style={{
-                border: '1px dashed #C25E46',
+                border: '1px dashed #0d6efd',
                 borderRadius: '999px',
                 background: '#fff',
-                color: '#C25E46',
+                color: '#0d6efd',
                 padding: '0.38rem 0.8rem',
                 fontSize: '0.72rem',
                 fontWeight: 700,
@@ -437,7 +437,7 @@ export function MatchCommunicationSection({
                           fontSize: '0.58rem',
                           fontWeight: 800,
                           textTransform: 'uppercase',
-                        color: isMine ? '#C25E46' : '#1E293B',
+                        color: isMine ? '#0d6efd' : '#1E293B',
                         }}
                       >
                         {isMine ? 'You' : message.author_name}
@@ -451,10 +451,10 @@ export function MatchCommunicationSection({
                       style={{
                         borderRadius: isMine ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
                         padding: '0.5rem 0.7rem',
-                        background: isMine ? '#C25E46' : '#F8FAFC',
+                        background: isMine ? '#0d6efd' : '#F8FAFC',
                         color: isMine ? '#fff' : '#475569',
                         border: isMine ? 'none' : '1px solid #E2E8F0',
-                        boxShadow: isMine ? '0 8px 18px rgba(194,94,70,0.18)' : 'none',
+                        boxShadow: isMine ? '0 8px 18px rgba(13, 110, 253, 0.18)' : 'none',
                       }}
                     >
                       <p style={{ margin: 0, fontSize: '0.76rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
@@ -515,7 +515,7 @@ export function MatchCommunicationSection({
               }}
               aria-label="Send message"
             >
-              <IconSend color={composerValue.trim() ? '#C25E46' : '#CBD5E1'} />
+              <IconSend color={composerValue.trim() ? '#0d6efd' : '#CBD5E1'} />
             </button>
           </div>
         </div>
@@ -583,9 +583,9 @@ const organizerPresetChipStyle = {
 
 const organizerPresetChipActiveStyle = {
   ...organizerPresetChipStyle,
-  border: '1px solid rgba(194, 94, 70, 0.35)',
-  background: '#FFF8F5',
-  color: '#C25E46',
+  border: '1px solid rgba(13, 110, 253, 0.35)',
+  background: '#eff6ff',
+  color: '#0d6efd',
 } as const
 
 const organizerNoteTextareaStyle = {

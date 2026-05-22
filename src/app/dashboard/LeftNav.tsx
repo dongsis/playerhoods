@@ -202,12 +202,12 @@ export function LeftNav({ active, onTab, isAdmin, badges, badgeTooltips }: Props
             <span className="flex-1">{tab.label}</span>
             {showDotBadge ? (
               <span
-                className="h-2 w-2 rounded-full bg-[#2563EB]"
+                className="h-2 w-2 rounded-full bg-[#0d6efd]"
                 title={badgeTooltips?.[tab.key]}
                 aria-label={badgeTooltips?.[tab.key] ?? 'Next step available'}
               />
             ) : badge > 0 && (
-              <span className="text-body-sub flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#3B82F6] px-1 font-bold leading-none text-white">
+              <span className="text-body-sub flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#0d6efd] px-1 font-bold leading-none text-white">
                 {badge > 99 ? '99+' : badge}
               </span>
             )}

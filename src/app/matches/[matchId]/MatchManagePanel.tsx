@@ -6,6 +6,8 @@ import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuic
 import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
+import { saveContactPlayer } from '@/lib/api/play-network'
+import { createRosterGuest } from '@/lib/api/roster'
 import { processDeliveriesAction } from './process-deliveries-action'
 import {
   hostAddContactPersonAsConfirmed,
@@ -198,10 +200,10 @@ function SummaryRosterRow({
 }) {
   const previewItems = items.slice(0, 4)
   const overflow = items.length > previewItems.length ? ` +${items.length - previewItems.length}` : ''
-  const toneDotClass = tone === 'orange' ? 'bg-orange-400' : tone === 'green' ? 'bg-green-400' : 'bg-teal-500'
+  const toneDotClass = tone === 'orange' ? 'bg-[#0d6efd]' : tone === 'green' ? 'bg-green-400' : 'bg-teal-500'
   const toneChipClass =
     tone === 'orange'
-      ? 'border-orange-100 bg-orange-50 text-orange-700'
+      ? 'border-[#0d6efd]/15 bg-[#eff6ff] text-[#0d6efd]'
       : tone === 'green'
         ? 'border-green-100 bg-green-50 text-green-700'
         : 'border-[#D6F5EC] bg-[#F2FBF8] text-[#0F766E]'
@@ -289,7 +291,7 @@ function ActionCard({
 }) {
   const selectedClasses =
     accent === 'orange'
-      ? 'border-[#C25E46] bg-[#FFF8F5] text-[#C25E46] ring-2 ring-[#C25E46]/15'
+      ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] ring-2 ring-[#0d6efd]/15'
       : accent === 'green'
         ? 'border-[#22C55E] bg-[#F0FDF4] text-[#15803D] ring-2 ring-[#22C55E]/15'
         : 'border-[#1E293B] bg-[#1E293B] text-white ring-2 ring-[#1E293B]/10'
@@ -305,7 +307,7 @@ function ActionCard({
           : accent === 'green'
             ? 'border-[#E2E8F0] bg-white text-[#15803D] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4]'
             : accent === 'orange'
-              ? 'border-[#E2E8F0] bg-white text-[#C25E46] hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]'
+              ? 'border-[#E2E8F0] bg-white text-[#0d6efd] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff]'
               : 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#1E293B]/25 hover:bg-[#F8FAFC]',
       ].join(' ')}
     >
@@ -339,8 +341,8 @@ function InviteModeButton({
             ? 'border-[#22C55E] bg-[#F0FDF4] text-[#15803D] ring-2 ring-[#22C55E]/15'
             : 'border-[#E2E8F0] bg-white text-[#15803D] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4]'
           : selected
-            ? 'border-[#C25E46] bg-[#FFF8F5] text-[#C25E46] ring-2 ring-[#C25E46]/15'
-            : 'border-[#E2E8F0] bg-white text-[#C25E46] hover:border-[#C25E46]/35 hover:bg-[#FFF8F5]',
+            ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] ring-2 ring-[#0d6efd]/15'
+            : 'border-[#E2E8F0] bg-white text-[#0d6efd] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff]',
       ].join(' ')}
     >
       <span className="text-base">+</span>
@@ -361,8 +363,8 @@ function SelectableTargetRow({
       className={[
         'flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition',
         item.selected
-          ? 'border-[#C25E46]/35 bg-[#FFF8F5] shadow-sm'
-          : 'border-[#E2E8F0] bg-white hover:border-[#C25E46]/20 hover:bg-[#F8FAFC]',
+          ? 'border-[#0d6efd]/35 bg-[#eff6ff] shadow-sm'
+          : 'border-[#E2E8F0] bg-white hover:border-[#0d6efd]/20 hover:bg-[#F8FAFC]',
       ].join(' ')}
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-500">
@@ -413,7 +415,7 @@ function SelectableTargetRow({
         className={[
           'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
           item.selected
-            ? 'border-[#C25E46] bg-[#C25E46] text-white'
+            ? 'border-[#0d6efd] bg-[#0d6efd] text-white'
             : 'border-[#E2E8F0] bg-white text-transparent',
         ].join(' ')}
         aria-hidden="true"
@@ -442,11 +444,11 @@ function SelectableInviteChip({
   const selectedClass =
     mode === 'request'
       ? 'border-[#22C55E] bg-[#F0FDF4] text-[#15803D]'
-      : 'border-[#C25E46] bg-[#FFF8F5] text-[#C25E46]'
+      : 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
   const hoverClass =
     mode === 'request'
       ? 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4] hover:text-[#15803D]'
-      : 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#C25E46]/35 hover:bg-[#FFF8F5] hover:text-[#C25E46]'
+      : 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]'
   const availabilityDotClass = item.kind === 'user' ? getAvailabilityStatusDotClass(item.availabilityStatus) : null
   const confirmLabel = item.kind === 'contact' ? 'Add & Confirm' : 'Add as Confirmed'
 
@@ -647,6 +649,14 @@ export function MatchManagePanel({
   const [success, setSuccess] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [availabilityLookup, setAvailabilityLookup] = useState<Record<string, AvailabilityStatus | null>>({})
+  const [localContactCandidates, setLocalContactCandidates] = useState<CandidateItem[]>([])
+  const [contactComposerOpen, setContactComposerOpen] = useState(false)
+  const [contactDisplayName, setContactDisplayName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+  const [contactNotes, setContactNotes] = useState('')
+  const [contactCreateError, setContactCreateError] = useState<string | null>(null)
+  const [isCreatingContact, setIsCreatingContact] = useState(false)
 
   useEffect(() => {
     const userIds = Array.from(
@@ -804,6 +814,7 @@ export function MatchManagePanel({
               personId: target.person_id,
               isLinkedContact: target.eligible_via === 'registered_user_path',
             })),
+            ...localContactCandidates,
             ...(isOrganizer
               ? candidateGroups.map((group) => ({
                   key: `group:${group.id}`,
@@ -855,6 +866,7 @@ export function MatchManagePanel({
     candidateGroups,
     candidateUsers,
     contactTargets,
+    localContactCandidates,
     currentGroupInviteIds,
     currentInviteUserIds,
     currentRequestGroupIds,
@@ -867,6 +879,76 @@ export function MatchManagePanel({
     revokedRequestUserIds,
     search,
   ])
+
+  const handleCreateContactForMatch = async () => {
+    const displayName = contactDisplayName.trim()
+    const email = contactEmail.trim().toLowerCase()
+    const phone = contactPhone.trim()
+    const notes = contactNotes.trim()
+
+    setContactCreateError(null)
+    setError(null)
+    setSuccess(null)
+
+    if (!displayName) {
+      setContactCreateError('Enter a player name.')
+      return
+    }
+
+    if (!email && !phone) {
+      setContactCreateError('Email or phone required.')
+      return
+    }
+
+    setIsCreatingContact(true)
+
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const newGuest = await createRosterGuest(supabase, {
+        display_name: displayName,
+        email: email || null,
+        phone: phone || null,
+        notes: notes || null,
+      })
+      await saveContactPlayer(supabase, newGuest.id, { source: 'manual' })
+
+      const personId = newGuest.person_id
+      if (!personId) {
+        throw new Error('Contact was saved, but could not be added to this match yet.')
+      }
+
+      const candidate: CandidateItem = {
+        key: `contact-person:${personId}`,
+        id: personId,
+        name: newGuest.display_name || displayName,
+        kind: 'contact',
+        availabilityStatus: null,
+        sourceLabel: 'Contact',
+        avatarUrl: null,
+        guestId: newGuest.id,
+        personId,
+      }
+
+      setLocalContactCandidates((prev) => {
+        if (prev.some((item) => item.key === candidate.key)) return prev
+        return [...prev, candidate]
+      })
+      stageAdd(candidate, 'invite')
+      setInviteMode('invite')
+      setSearch('')
+      setContactDisplayName('')
+      setContactEmail('')
+      setContactPhone('')
+      setContactNotes('')
+      setContactComposerOpen(false)
+      setSuccess(`${candidate.name} was saved and added to pending invites.`)
+    } catch (createError) {
+      const message = (createError as { message?: string })?.message ?? 'Failed to save contact.'
+      setContactCreateError(message)
+    } finally {
+      setIsCreatingContact(false)
+    }
+  }
 
   const removeCandidates = useMemo<RemoveRowItem[]>(() => {
     if (removeMode === 'confirmed') {
@@ -1166,6 +1248,7 @@ export function MatchManagePanel({
 
       setPendingAdds([])
       setPendingRemovals([])
+      setLocalContactCandidates([])
       setSearch('')
       setConfirmOpen(false)
       setSuccess('Changes applied.')
@@ -1446,7 +1529,7 @@ export function MatchManagePanel({
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
             <div className="space-y-3 lg:col-span-3">
               <div className="text-label mb-1 flex items-center text-[#94A3B8]">
-                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
+                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                 {panelMode === 'invite' ? 'Add By' : 'Action'}
               </div>
               {panelMode === 'invite' ? (
@@ -1495,12 +1578,111 @@ export function MatchManagePanel({
 
             <div className="lg:col-span-4">
               <div className="text-label mb-4 flex items-center text-[#94A3B8]">
-                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
+                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                 Select Target
               </div>
               <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
                 {panelMode === 'invite' ? (
                   <div className="relative mb-6">
+                    <div className="mb-4 rounded-2xl border border-dashed border-blue-200 bg-white/80 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="text-title-main text-slate-900">Need more players?</div>
+                          <p className="text-body-sub mt-1 max-w-[260px] text-slate-500">
+                            Add people you already play with and invite them to this match.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setContactCreateError(null)
+                            setContactComposerOpen((open) => !open)
+                          }}
+                          className="text-body-main inline-flex shrink-0 items-center justify-center rounded-full border border-blue-100 bg-white px-4 py-2 font-bold text-slate-900 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
+                        >
+                          <span className="mr-2 text-lg leading-none">+</span>
+                          Add My Contact
+                        </button>
+                      </div>
+
+                      {contactComposerOpen ? (
+                        <form
+                          className="mt-4 space-y-3 border-t border-blue-50 pt-4"
+                          onSubmit={(event) => {
+                            event.preventDefault()
+                            void handleCreateContactForMatch()
+                          }}
+                        >
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="text-label text-slate-500">
+                              Name
+                              <input
+                                type="text"
+                                value={contactDisplayName}
+                                onChange={(event) => setContactDisplayName(event.target.value)}
+                                placeholder="Player's full name"
+                                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                              />
+                            </label>
+                            <label className="text-label text-slate-500">
+                              Email
+                              <input
+                                type="email"
+                                value={contactEmail}
+                                onChange={(event) => setContactEmail(event.target.value)}
+                                placeholder="email@example.com"
+                                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                              />
+                            </label>
+                            <label className="text-label text-slate-500">
+                              Phone
+                              <input
+                                type="tel"
+                                value={contactPhone}
+                                onChange={(event) => setContactPhone(event.target.value)}
+                                placeholder="+1 234 567 890"
+                                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                              />
+                            </label>
+                            <label className="text-label text-slate-500">
+                              Notes
+                              <input
+                                type="text"
+                                value={contactNotes}
+                                onChange={(event) => setContactNotes(event.target.value)}
+                                placeholder="Optional"
+                                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                              />
+                            </label>
+                          </div>
+                          {contactCreateError ? (
+                            <p className="text-body-sub rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-red-600">
+                              {contactCreateError}
+                            </p>
+                          ) : null}
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setContactComposerOpen(false)
+                                setContactCreateError(null)
+                              }}
+                              disabled={isCreatingContact}
+                              className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={isCreatingContact}
+                              className="text-body-main rounded-xl bg-blue-600 px-4 py-2 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {isCreatingContact ? 'Saving...' : 'Save & Add'}
+                            </button>
+                          </div>
+                        </form>
+                      ) : null}
+                    </div>
                     <input
                       type="text"
                       value={search}
@@ -1510,7 +1692,7 @@ export function MatchManagePanel({
                           ? 'Search saved registered players or groups...'
                           : 'Search saved registered players, contacts, or groups...'
                       }
-                      className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-[#C25E46] focus:ring-4 focus:ring-[#C25E46]/10"
+                      className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                     />
                     {inviteMode === 'invite' && isOrganizer ? (
                       <p className="text-body-sub mt-2 text-slate-400">
@@ -1569,7 +1751,7 @@ export function MatchManagePanel({
 
             <div className="flex flex-col lg:col-span-5">
               <div className="text-label mb-4 flex items-center text-[#94A3B8]">
-                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#C25E46]" />
+                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                 {panelMode === 'remove' ? 'Pending Actions' : 'Summary'}
               </div>
               <div className="flex min-h-[420px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
@@ -1607,8 +1789,8 @@ export function MatchManagePanel({
                     </div>
 
                     <div className="mt-auto border-t border-[#E2E8F0] pt-6">
-                      <div className="text-label mb-3 flex items-center gap-2 text-orange-500">
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+                      <div className="text-label mb-3 flex items-center gap-2 text-[#0d6efd]">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                         <span>Pending Additions</span>
                       </div>
 
@@ -1621,7 +1803,7 @@ export function MatchManagePanel({
                           {inviteChanges.map((change) => (
                             <div
                               key={change.key}
-                              className="flex items-center justify-between gap-3 rounded-xl border border-orange-100 bg-white px-4 py-3 shadow-sm"
+                              className="flex items-center justify-between gap-3 rounded-xl border border-[#0d6efd]/15 bg-white px-4 py-3 shadow-sm"
                             >
                               <div className="min-w-0">
                                 <div className="text-title-main break-words text-slate-700">{change.name}</div>
@@ -1700,7 +1882,7 @@ export function MatchManagePanel({
                   className={`text-label rounded-2xl px-5 py-4 text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     panelMode === 'remove'
                       ? 'bg-orange-600 hover:bg-orange-700'
-                      : 'bg-[#C25E46] hover:bg-[#AA523D]'
+                      : 'bg-[#0d6efd] hover:bg-[#0b5ed7]'
                   }`}
                 >
                   {isApplying

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
@@ -29,6 +29,8 @@ interface Props {
   userId: string
   items: MatchListItem[]
   notice?: string | null
+  selectedMatchId?: string | null
+  selectedMatchDetail?: ReactNode
   userEmail?: string | null
   playersData: PlayersData
   inviteCircle: InviteCircleRow[]
@@ -190,14 +192,14 @@ function MobileBottomNav({
               className={[
                 'relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[20px] px-2 py-2.5 transition',
                 isActive
-                  ? 'bg-[#FFF8F5] text-[#C25E46]'
+                  ? 'bg-[#eff6ff] text-[#0d6efd]'
                   : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#1E293B]',
               ].join(' ')}
             >
               <span
                 className={[
                   'inline-flex h-9 w-9 items-center justify-center rounded-full transition',
-                  isActive ? 'bg-[#C25E46] text-white shadow-[0_10px_20px_rgba(194,94,70,0.18)]' : 'bg-[#F8FAFC] text-current',
+                  isActive ? 'bg-[#0d6efd] text-white shadow-[0_10px_20px_rgba(13, 110, 253, 0.18)]' : 'bg-[#F8FAFC] text-current',
                 ].join(' ')}
               >
                 <NavIcon tab={tab} className="h-[18px] w-[18px]" />
@@ -220,6 +222,8 @@ export function DashboardShell({
   userId,
   items,
   notice,
+  selectedMatchId,
+  selectedMatchDetail,
   userEmail,
   inboxUnreadCount,
   playersData,
@@ -431,6 +435,7 @@ export function DashboardShell({
       nextParams.delete('tab')
     } else {
       nextParams.set('tab', activeTab)
+      nextParams.delete('matchId')
     }
     const nextQuery = nextParams.toString()
     const currentQuery = searchParams.toString()
@@ -522,7 +527,7 @@ export function DashboardShell({
   }, [firstMatchCreated, inboxBadge, liveItems, playersData.pendingGroupInvites.length, starterContactCount, starterDismissedRecently, starterTarget, suppressedMatchIds])
 
   const mainWidthClass = activeTab === 'matches'
-    ? 'max-w-[1360px]'
+    ? 'max-w-[1500px]'
     : activeTab === 'profile' || activeTab === 'gear' || activeTab === 'hoods' || activeTab === 'groups'
     ? 'max-w-6xl'
     : 'max-w-3xl'
@@ -571,6 +576,8 @@ export function DashboardShell({
           userId={userId}
           defaultVenueId={profile.primary_venue_id ?? ''}
           starterVenueName={starterVenueName}
+          selectedMatchId={selectedMatchId ?? null}
+          selectedMatchDetail={selectedMatchDetail}
           onCancelMatch={onCancelMatch}
           starterCard={shouldShowStarterCard ? {
             contactCount: starterContactCount,

@@ -174,14 +174,14 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
             {showBackToDashboard ? (
               <Link
                 href="/dashboard"
-                className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#475569] transition hover:border-[#C25E46]/35 hover:bg-[#F8FBFF]"
+                className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#475569] transition hover:border-[#0d6efd]/35 hover:bg-[#F8FBFF]"
               >
                 Back to dashboard
               </Link>
             ) : null}
             <Link
               href="/groups/new"
-              className="text-body-main rounded-full bg-[#C25E46] px-4 py-2 font-semibold text-white transition hover:bg-[#A64F3A]"
+              className="text-body-main rounded-full bg-[#0d6efd] px-4 py-2 font-semibold text-white transition hover:bg-[#0b5ed7]"
             >
               + New Group
             </Link>
@@ -198,7 +198,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Find a group..."
-              className="text-body-main w-full rounded-[18px] border border-[#D7E2F0] bg-white py-3 pl-11 pr-4 text-[#1E293B] outline-none transition placeholder:text-[#94A3B8] focus:border-[#C25E46] focus:ring-2 focus:ring-[#C25E46]/10"
+              className="text-body-main w-full rounded-[18px] border border-[#D7E2F0] bg-white py-3 pl-11 pr-4 text-[#1E293B] outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-2 focus:ring-[#0d6efd]/10"
             />
           </label>
         </div>
@@ -210,7 +210,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
             onClick={() => setSelectedSportId('all')}
             className={`text-body-sub rounded-full px-4 py-2 font-semibold transition ${
               selectedSportId === 'all'
-                ? 'bg-[#C25E46] text-white'
+                ? 'bg-[#0d6efd] text-white'
                 : 'bg-[#F8FBFF] text-[#94A3B8] hover:bg-[#EEF4FB] hover:text-[#475569]'
             }`}
           >
@@ -247,7 +247,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
 
       {pendingInvites.length > 0 ? (
         <section className="rounded-[30px] border border-[#FDE68A] bg-[#FFFBEB] p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.12)]">
-          <div className="text-label text-[#C25E46]">Pending</div>
+          <div className="text-label text-[#0d6efd]">Pending</div>
           <div className="mt-3 space-y-3">
             {pendingInvites.map((invite) => (
               <div
@@ -261,7 +261,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
                       {invite.primarySportId ? sportNameById.get(invite.primarySportId) ?? 'Shared Group' : 'Shared Group'}
                     </div>
                   </div>
-                  <span className="text-label rounded-full bg-[#FFF7ED] px-2.5 py-1 text-[#C25E46]">
+                  <span className="text-label rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd]">
                     {invite.pendingKind === 'approval_request' ? 'Approval' : 'Invite'}
                   </span>
                 </div>
@@ -276,7 +276,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
                     type="button"
                     onClick={() => void handlePendingDecision(invite, 'accept')}
                     disabled={pendingActionKey === `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:accept`}
-                    className="text-body-main rounded-full bg-[#C25E46] px-4 py-2 font-semibold text-white transition hover:bg-[#A64F3A] disabled:opacity-60"
+                    className="text-body-main rounded-full bg-[#0d6efd] px-4 py-2 font-semibold text-white transition hover:bg-[#0b5ed7] disabled:opacity-60"
                   >
                     {pendingActionKey === `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:accept`
                       ? 'Working...'
@@ -288,7 +288,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
                     type="button"
                     onClick={() => void handlePendingDecision(invite, 'decline')}
                     disabled={pendingActionKey === `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:decline`}
-                    className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#475569] transition hover:border-[#C25E46]/35 hover:bg-[#F8FBFF] disabled:opacity-60"
+                    className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#475569] transition hover:border-[#0d6efd]/35 hover:bg-[#F8FBFF] disabled:opacity-60"
                   >
                     {pendingActionKey === `${invite.pendingKind}:${invite.requestId ?? invite.groupId}:decline`
                       ? 'Working...'
@@ -344,7 +344,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
                     <h2 className="text-title-main truncate text-[#1E293B]">
                       {group.name}
                     </h2>
-                    <span className="text-label rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[#C25E46]">
+                    <span className="text-label rounded-full bg-[#eff6ff] px-2 py-0.5 text-[#0d6efd]">
                       {sportName}
                     </span>
                   </div>

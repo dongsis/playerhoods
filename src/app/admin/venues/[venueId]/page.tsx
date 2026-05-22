@@ -210,7 +210,7 @@ export default async function VenueAdminDetailPage({ params }: Props) {
             href={venue.website_url}
             target="_blank"
             rel="noreferrer"
-            className="mt-3 inline-block text-sm font-medium text-[#2563EB] hover:underline"
+            className="mt-3 inline-block text-sm font-medium text-[#0d6efd] hover:underline"
           >
             Visit website
           </a>

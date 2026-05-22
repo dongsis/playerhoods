@@ -47,20 +47,20 @@ export default async function MatchesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/dashboard"
-            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#C25E46]/30 hover:bg-[#FFF8F5]"
+            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#0d6efd]/30 hover:bg-[#eff6ff]"
           >
             Dashboard
           </Link>
           <Link
             href="/profile"
-            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#C25E46]/30 hover:bg-[#FFF8F5]"
+            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#0d6efd]/30 hover:bg-[#eff6ff]"
           >
             Profile
           </Link>
           {isAdmin ? (
             <Link
               href="/admin/venues"
-              className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#C25E46]/30 hover:bg-[#FFF8F5]"
+              className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#0d6efd]/30 hover:bg-[#eff6ff]"
             >
               Venue Admin
             </Link>

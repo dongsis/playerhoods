@@ -14,7 +14,7 @@ import type { MatchLineupSnapshot } from '@/lib/match-lineup'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
 import { AutoRefresh } from '@/app/components/AutoRefresh'
 
-function IconCalendar({ size = 12, color = '#C25E46' }: { size?: number; color?: string }) {
+function IconCalendar({ size = 12, color = '#0d6efd' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="3" y="5" width="18" height="16" rx="3" stroke={color} strokeWidth="1.8" />
@@ -23,7 +23,7 @@ function IconCalendar({ size = 12, color = '#C25E46' }: { size?: number; color?:
   )
 }
 
-function IconMapPin({ size = 12, color = '#C25E46' }: { size?: number; color?: string }) {
+function IconMapPin({ size = 12, color = '#0d6efd' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M12 21C15.5 17.4 18 14.7 18 11.5A6 6 0 0 0 6 11.5C6 14.7 8.5 17.4 12 21Z" stroke={color} strokeWidth="1.8" />
@@ -51,7 +51,7 @@ function IconMessageCircle({ size = 12, color = '#1E293B' }: { size?: number; co
   )
 }
 
-function IconInfo({ size = 10, color = '#C25E46' }: { size?: number; color?: string }) {
+function IconInfo({ size = 10, color = '#0d6efd' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
@@ -72,6 +72,7 @@ function IconSend({ size = 14, color = '#cbd5e1' }: { size?: number; color?: str
 
 type MatchDetailPageViewProps = {
   viewModel: MatchDetailPageViewModel
+  embedded?: boolean
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>
   onUpdateOrganizerNote: (organizerNote: string | null) => Promise<void>
   onPostMessage: (body: string) => Promise<void>
@@ -86,11 +87,12 @@ type MatchDetailPageViewProps = {
 
 function MatchHeaderSection({
   viewModel,
+  embedded = false,
   onUpdateMatchDetails,
   onCancelMatch,
   onSaveCourtPlan,
   onConfirmMatch,
-}: Pick<MatchDetailPageViewProps, 'viewModel' | 'onUpdateMatchDetails' | 'onCancelMatch' | 'onSaveCourtPlan' | 'onConfirmMatch'>) {
+}: Pick<MatchDetailPageViewProps, 'viewModel' | 'embedded' | 'onUpdateMatchDetails' | 'onCancelMatch' | 'onSaveCourtPlan' | 'onConfirmMatch'>) {
   const {
     match,
     sportName,
@@ -122,8 +124,8 @@ function MatchHeaderSection({
     courtState.status === 'secured'
       ? { background: '#F0FDF4', color: '#166534', dot: '#22C55E' }
       : courtState.status === 'walk_in'
-        ? { background: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6' }
-        : { background: '#FFF7ED', color: '#C25E46', dot: '#F97316' }
+        ? { background: '#eff6ff', color: '#0b5ed7', dot: '#0d6efd' }
+        : { background: '#eff6ff', color: '#0d6efd', dot: '#F97316' }
   const showUpdateCourtInfo =
     Boolean(userId)
     && match.status === 'active'
@@ -132,6 +134,18 @@ function MatchHeaderSection({
 
   return (
     <>
+      {embedded ? (
+        <nav className="mb-3 flex items-center justify-between gap-4">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#94A3B8] transition hover:text-[#0d6efd]"
+          >
+            &lt; Matches
+          </Link>
+        </nav>
+      ) : null}
+
+      {!embedded ? (
       <div className="mb-4 flex items-center justify-between md:hidden">
         <Link
           href="/dashboard"
@@ -143,9 +157,11 @@ function MatchHeaderSection({
         <h2 className="text-h2 text-[#1E293B]">Match Detail</h2>
         <span className="h-11 w-11" />
       </div>
+      ) : null}
 
+      {!embedded ? (
       <nav style={{ marginBottom: '1rem', fontSize: '0.85rem' }} className="hidden items-center justify-between gap-4 md:flex">
-        <BrandLogo variant="horizontal" href="/dashboard" imageClassName="h-10 w-[176px]" />
+        <BrandLogo variant="horizontal" href="/dashboard" imageClassName="h-12 w-[218px]" />
         <Link
           href="/dashboard"
           style={{
@@ -162,6 +178,7 @@ function MatchHeaderSection({
           &lt; Matches
         </Link>
       </nav>
+      ) : null}
 
       <header style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'grid', gap: '0.8rem' }}>
@@ -216,7 +233,7 @@ function MatchHeaderSection({
                       marginTop: '0.35rem',
                       fontSize: '0.72rem',
                       fontWeight: 700,
-                      color: '#3B82F6',
+                      color: '#0d6efd',
                       textDecoration: 'none',
                     }}
                   >
@@ -281,10 +298,10 @@ function MatchHeaderSection({
             ) : null}
 
             {showReadyToConfirm ? (
-              <div className="mb-4 rounded-[18px] border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3">
+              <div className="mb-4 rounded-[18px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#2563EB]">Ready to confirm</p>
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#0d6efd]">Ready to confirm</p>
                     <p className="mt-1 text-[14px] font-semibold text-[#0F172A]">
                       {confirmedCount} of {match.required_count} players confirmed
                     </p>
@@ -629,6 +646,7 @@ function MatchActivitySection({ viewModel }: Pick<MatchDetailPageViewProps, 'vie
 
 export function MatchDetailPageView({
   viewModel,
+  embedded = false,
   onUpdateMatchDetails,
   onUpdateOrganizerNote,
   onPostMessage,
@@ -665,10 +683,19 @@ export function MatchDetailPageView({
   const pageMaxWidth = showToolsSection ? '920px' : '720px'
 
   return (
-    <div style={{ maxWidth: pageMaxWidth, margin: '0 auto', padding: '0.75rem 1rem 1.5rem', background: '#F0F7FF' }} className="pb-24 md:pb-6">
+    <div
+      style={{
+        maxWidth: embedded ? 'none' : pageMaxWidth,
+        margin: embedded ? 0 : '0 auto',
+        padding: embedded ? 0 : '0.75rem 1rem 1.5rem',
+        background: embedded ? 'transparent' : '#F0F7FF',
+      }}
+      className="pb-24 md:pb-6"
+    >
       <AutoRefresh />
       <MatchHeaderSection
         viewModel={viewModel}
+        embedded={embedded}
         onUpdateMatchDetails={onUpdateMatchDetails}
         onCancelMatch={onCancelMatch}
         onSaveCourtPlan={onSaveCourtPlan}
@@ -698,7 +725,7 @@ export function MatchDetailPageView({
       {showToolsSection ? (
         <>
           <details className="mb-4 md:hidden">
-            <summary className="flex cursor-pointer list-none items-center justify-center gap-3 rounded-[24px] border border-[#E2E8F0] bg-white px-5 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-[#C25E46] shadow-[0_16px_36px_rgba(15,23,42,0.06)] marker:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-center gap-3 rounded-[24px] border border-[#E2E8F0] bg-white px-5 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-[#0d6efd] shadow-[0_16px_36px_rgba(15,23,42,0.06)] marker:hidden">
               <span className="text-[28px] leading-none">+</span>
               Invite Players
             </summary>

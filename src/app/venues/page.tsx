@@ -37,7 +37,7 @@ export default async function VenuesPage({ searchParams }: Props) {
           <span>Home</span>
         </Link>
 
-        <BrandLogo variant="horizontal" imageClassName="h-11 w-[188px]" />
+        <BrandLogo variant="horizontal" imageClassName="h-12 w-[218px]" />
       </nav>
 
       <VenueSearch

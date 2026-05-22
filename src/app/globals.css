@@ -4,9 +4,13 @@
 
 :root {
   --font-family-sans: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --ph-brand-clay: #c25e46;
+  --ph-brand-blue: #0d6efd;
+  --ph-brand-blue-hover: #0b5ed7;
+  --ph-brand-clay: var(--ph-brand-blue);
   --ph-brand-deep: #1e293b;
-  --ph-brand-sky: #f0f7ff;
+  --ph-brand-selected: #eff6ff;
+  --ph-brand-tennis: #d4f524;
+  --ph-brand-sky: #f8fafc;
   --ph-success: #22c55e;
   --ph-warning: #f97316;
   --ph-danger: #ef4444;
@@ -96,8 +100,8 @@
   select:focus,
   textarea:focus {
     outline: none;
-    border-color: var(--ph-brand-clay);
-    box-shadow: 0 0 0 4px rgba(194, 94, 70, 0.1);
+    border-color: var(--ph-brand-blue);
+    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1);
   }
 
   button {
@@ -110,7 +114,7 @@
   }
 
   ::selection {
-    background: rgba(194, 94, 70, 0.16);
+    background: rgba(13, 110, 253, 0.16);
     color: var(--ph-brand-deep);
   }
 }
@@ -208,12 +212,12 @@
   }
 
   .ph-link {
-    color: var(--ph-brand-clay);
+    color: var(--ph-brand-blue);
     text-decoration: none;
   }
 
   .ph-link:hover {
-    color: #aa523d;
+    color: var(--ph-brand-blue-hover);
   }
 
   .ph-button-primary {
@@ -223,17 +227,17 @@
     gap: 0.5rem;
     border: none;
     border-radius: var(--ph-pill-radius);
-    background: var(--ph-brand-clay);
+    background: var(--ph-brand-blue);
     color: #fff;
     padding: 0.75rem 1.25rem;
     font-size: var(--text-body-main-size);
     font-weight: 700;
     line-height: var(--text-body-main-line-height);
-    box-shadow: 0 12px 28px rgba(194, 94, 70, 0.28);
+    box-shadow: 0 12px 28px rgba(13, 110, 253, 0.22);
   }
 
   .ph-button-primary:hover {
-    background: #aa523d;
+    background: var(--ph-brand-blue-hover);
   }
 
   .ph-button-secondary {
@@ -278,5 +282,26 @@
     padding: 2rem 1rem;
     font-size: var(--text-body-main-size);
     line-height: var(--text-body-main-line-height);
+  }
+}
+
+@layer utilities {
+  @keyframes ph-request-glow {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 rgba(37, 99, 235, 0.28),
+        0 10px 22px rgba(37, 99, 235, 0.22);
+    }
+
+    50% {
+      box-shadow:
+        0 0 0 7px rgba(37, 99, 235, 0),
+        0 14px 30px rgba(37, 99, 235, 0.34);
+    }
+  }
+
+  .ph-request-glow {
+    animation: ph-request-glow 1.8s ease-in-out infinite;
   }
 }

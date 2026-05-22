@@ -318,7 +318,7 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
                                   {[venue.location_text, [venue.city, venue.province].filter(Boolean).join(', ')].filter(Boolean)[0] ?? 'Venue'}
                                 </span>
                               </span>
-                              <span className="shrink-0 rounded-full bg-[#EFF6FF] px-3 py-1 text-[12px] font-black text-[#0B5BD3]">
+                              <span className="shrink-0 rounded-full bg-[#eff6ff] px-3 py-1 text-[12px] font-black text-[#0B5BD3]">
                                 + Add
                               </span>
                             </button>
@@ -367,7 +367,7 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
                             className={[
                               'flex cursor-pointer items-center gap-3 rounded-[16px] border px-3 py-2.5 transition',
                               checked
-                                ? 'border-[#C25E46]/35 bg-[#FFF7ED]'
+                                ? 'border-[#0d6efd]/35 bg-[#eff6ff]'
                                 : 'border-[#E2E8F0] bg-white hover:border-[#CBD5E1]',
                             ].join(' ')}
                           >
@@ -375,7 +375,7 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleUser(user.id)}
-                              className="h-4 w-4 rounded border-[#CBD5E1] text-[#C25E46] focus:ring-[#C25E46]/20"
+                              className="h-4 w-4 rounded border-[#CBD5E1] text-[#0d6efd] focus:ring-[#0d6efd]/20"
                             />
                             <span className="text-body-main text-[#1E293B]">{user.display_name}</span>
                           </label>
@@ -401,7 +401,7 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
                             className={[
                               'flex cursor-pointer items-center gap-3 rounded-[16px] border px-3 py-2.5 transition',
                               checked
-                                ? 'border-[#C25E46]/35 bg-[#FFF7ED]'
+                                ? 'border-[#0d6efd]/35 bg-[#eff6ff]'
                                 : 'border-[#E2E8F0] bg-white hover:border-[#CBD5E1]',
                             ].join(' ')}
                           >
@@ -409,7 +409,7 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleContact(contact.guest_id)}
-                              className="h-4 w-4 rounded border-[#CBD5E1] text-[#C25E46] focus:ring-[#C25E46]/20"
+                              className="h-4 w-4 rounded border-[#CBD5E1] text-[#0d6efd] focus:ring-[#0d6efd]/20"
                             />
                             <span className="text-body-main text-[#1E293B]">{contact.display_name}</span>
                           </label>

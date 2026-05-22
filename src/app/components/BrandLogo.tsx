@@ -10,7 +10,7 @@ const LOGO_SRC: Record<BrandLogoVariant, string> = {
 
 const SIZE_CLASS: Record<BrandLogoVariant, string> = {
   mark: 'h-11 w-11',
-  horizontal: 'h-11 w-[190px]',
+  horizontal: 'h-12 w-[218px]',
   stacked: 'h-16 w-[150px]',
 }
 

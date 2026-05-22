@@ -41,7 +41,7 @@ export default function GlobalAppError({
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="rounded-full bg-[#C25E46] px-6 py-3 text-[0.78rem] font-black uppercase tracking-[0.08em] text-white shadow-[0_12px_28px_rgba(194,94,70,0.28)] transition hover:bg-[#B6533B]"
+              className="rounded-full bg-[#0d6efd] px-6 py-3 text-[0.78rem] font-black uppercase tracking-[0.08em] text-white shadow-[0_12px_28px_rgba(13, 110, 253, 0.28)] transition hover:bg-[#0b5ed7]"
             >
               Reload page
             </button>

@@ -143,19 +143,19 @@ export default function HomePage() {
     <main className="min-h-screen bg-[#F0F7FF] text-[#12213A]">
       <nav className="sticky top-0 z-50 w-full border-b border-[#D8E4F2] bg-white/95 shadow-sm backdrop-blur">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <BrandLogo variant="horizontal" imageClassName="h-12 w-[205px]" />
+          <BrandLogo variant="horizontal" imageClassName="h-12 w-[218px]" />
 
           <div className="hidden items-center gap-7 md:flex">
-            <a href="#players" className="text-sm font-bold text-[#30445F] hover:text-[#C25E46]">
+            <a href="#players" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
               For Players
             </a>
-            <a href="#benefits" className="text-sm font-bold text-[#30445F] hover:text-[#C25E46]">
+            <a href="#benefits" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
               Benefits
             </a>
-            <a href="#clubs" className="text-sm font-bold text-[#30445F] hover:text-[#C25E46]">
+            <a href="#clubs" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
               Club Tools
             </a>
-            <a href="/venues" className="text-sm font-bold text-[#30445F] hover:text-[#C25E46]">
+            <a href="/venues" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
               Venues
             </a>
           </div>
@@ -164,14 +164,14 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => openAuth('login')}
-              className="text-sm font-bold text-[#071A44] hover:text-[#C25E46]"
+              className="text-sm font-bold text-[#071A44] hover:text-[#0d6efd]"
             >
               Sign In
             </button>
             <button
               type="button"
               onClick={() => openAuth('register')}
-              className="rounded-full bg-[#C25E46] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-[#A94F3B]"
+              className="rounded-full bg-[#0d6efd] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-[#0b5ed7]"
             >
               Join Free
             </button>
@@ -212,7 +212,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => openAuth('register')}
-                className="mt-2 rounded-lg bg-[#C25E46] px-3 py-3 text-center font-black text-white"
+                className="mt-2 rounded-lg bg-[#0d6efd] px-3 py-3 text-center font-black text-white"
               >
                 Join Free
               </button>
@@ -247,7 +247,7 @@ export default function HomePage() {
                 key={benefit.title}
                 className="rounded-lg border border-[#D8E4F2] bg-[#F8FBFF] p-6 shadow-[0_16px_34px_-30px_rgba(15,23,42,0.24)]"
               >
-                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-white text-[#C25E46] shadow-sm">
+                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-white text-[#0d6efd] shadow-sm">
                   <Icon name={benefit.icon} className="h-6 w-6" />
                 </div>
                 <h3 className="text-xl font-black text-[#071A44]">{benefit.title}</h3>
@@ -552,7 +552,7 @@ function HomeAuthOverlay({
               required
               autoComplete="email"
               placeholder="Enter your email"
-              className="mb-4 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#075BD7]"
+              className="mb-4 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#0d6efd]"
             />
 
             {mode !== 'forgot' ? (
@@ -566,7 +566,7 @@ function HomeAuthOverlay({
                   minLength={mode === 'register' ? MIN_PASSWORD_LENGTH : undefined}
                   autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                   placeholder="Enter your password"
-                  className="mb-2 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#075BD7]"
+                  className="mb-2 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#0d6efd]"
                 />
               </>
             ) : null}
@@ -576,7 +576,7 @@ function HomeAuthOverlay({
                 <button
                   type="button"
                   onClick={() => switchMode('forgot')}
-                  className="text-xs font-black text-[#075BD7] hover:text-[#C25E46]"
+                  className="text-xs font-black text-[#0d6efd] hover:text-[#0d6efd]"
                 >
                   Forgot password?
                 </button>
@@ -597,7 +597,7 @@ function HomeAuthOverlay({
                   minLength={MIN_PASSWORD_LENGTH}
                   autoComplete="new-password"
                   placeholder="Confirm your password"
-                  className="mb-4 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#075BD7]"
+                  className="mb-4 min-h-12 w-full rounded-lg border border-[#C8D7EA] px-4 text-sm font-semibold text-[#071A44] outline-none placeholder:text-[#9AA9BC] focus:border-[#0d6efd]"
                 />
               </>
             ) : null}
@@ -609,7 +609,7 @@ function HomeAuthOverlay({
               <button
                 type="submit"
                 disabled={loading}
-                className="min-h-12 w-full rounded-full bg-[#075BD7] px-5 text-sm font-black text-white shadow-[0_14px_30px_rgba(7,91,215,0.28)] transition hover:bg-[#064CB6] disabled:cursor-not-allowed disabled:opacity-60"
+                className="min-h-12 w-full rounded-full bg-[#0d6efd] px-5 text-sm font-black text-white shadow-[0_14px_30px_rgba(7,91,215,0.28)] transition hover:bg-[#0b5ed7] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading
                   ? mode === 'register'
@@ -631,7 +631,7 @@ function HomeAuthOverlay({
             <button
               type="button"
               onClick={() => switchMode(mode === 'register' || mode === 'forgot' ? 'login' : 'register')}
-              className="font-black text-[#075BD7] underline-offset-2 hover:text-[#C25E46] hover:underline"
+              className="font-black text-[#0d6efd] underline-offset-2 hover:text-[#0d6efd] hover:underline"
             >
               {mode === 'register' || mode === 'forgot' ? 'Back to sign in' : 'Create one'}
             </button>
@@ -752,7 +752,7 @@ function FeatureCarousel() {
       >
         <div className="grid min-h-[430px] gap-0 lg:grid-cols-[0.78fr_1fr]">
           <div className="order-2 flex flex-col justify-center px-6 py-6 sm:px-8 lg:order-1 lg:px-10">
-            <p className="text-xs font-black uppercase text-[#C25E46]">{activeSlide.imageTitle}</p>
+            <p className="text-xs font-black uppercase text-[#0d6efd]">{activeSlide.imageTitle}</p>
             <h2 className="mt-3 max-w-xl text-3xl font-black leading-tight text-[#071A44] md:text-4xl">
               {activeSlide.title}
             </h2>
@@ -777,8 +777,8 @@ function FeatureCarousel() {
                   }}
                   className={`rounded-full border px-3 py-2 text-xs font-black transition ${
                     current === index
-                      ? 'border-[#C25E46] bg-[#C25E46] text-white'
-                      : 'border-[#D8E4F2] bg-white text-[#52667F] hover:border-[#C25E46]/45 hover:text-[#071A44]'
+                      ? 'border-[#0d6efd] bg-[#0d6efd] text-white'
+                      : 'border-[#D8E4F2] bg-white text-[#52667F] hover:border-[#0d6efd]/45 hover:text-[#071A44]'
                   }`}
                   aria-label={`Show ${slide.label} slide`}
                   aria-current={current === index ? 'true' : undefined}
@@ -794,7 +794,7 @@ function FeatureCarousel() {
           </div>
         </div>
         <div className="h-1 bg-[#EAF1F8]">
-          <div className="h-full bg-[#C25E46] transition-all duration-500" style={{ width: progressWidth }} />
+          <div className="h-full bg-[#0d6efd] transition-all duration-500" style={{ width: progressWidth }} />
         </div>
       </div>
     </div>
@@ -836,7 +836,7 @@ function FlowIllustration() {
               <h3 className="mt-2 text-2xl font-black text-[#071A44]">Saturday 10:00 AM</h3>
               <p className="mt-1 text-sm font-semibold text-[#52667F]">Ontario Racquet Club</p>
             </div>
-            <span className="rounded-full bg-[#C25E46] px-3 py-1 text-xs font-black text-white">Doubles</span>
+            <span className="rounded-full bg-[#0d6efd] px-3 py-1 text-xs font-black text-white">Doubles</span>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             {statuses.map((status) => (

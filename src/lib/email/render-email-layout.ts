@@ -180,14 +180,14 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
       display: inline-block;
       padding: 13px 22px;
       border-radius: 999px;
-      background: #c25e46;
+      background: #0d6efd;
       color: #ffffff !important;
       font-size: 14px;
       font-weight: 800;
       letter-spacing: 0.08em;
       text-decoration: none;
       text-transform: uppercase;
-      box-shadow: 0 12px 28px rgba(194, 94, 70, 0.24);
+      box-shadow: 0 12px 28px rgba(13, 110, 253, 0.24);
     }
     .ph-cta-hint {
       margin-top: 10px;
@@ -217,7 +217,7 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
     .ph-secondary-link {
       display: inline-block;
       margin-top: 12px;
-      color: #c25e46;
+      color: #0d6efd;
       font-size: 13px;
       font-weight: 700;
       text-decoration: underline;

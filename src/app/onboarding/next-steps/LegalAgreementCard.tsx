@@ -44,7 +44,7 @@ export function LegalAgreementCard({
                 setConfirmed(event.target.checked)
                 if (event.target.checked) setError(null)
               }}
-              className="mt-1 h-4 w-4 rounded border-slate-300 text-[#075BD7] focus:ring-[#075BD7]"
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-[#0d6efd] focus:ring-[#0d6efd]"
             />
             <span className="text-body-main font-semibold leading-6 text-[#1E293B]">
               I confirm that I am 18 or older and agree to the PlayerHoods Terms, Privacy Notice, and responsible use rules.

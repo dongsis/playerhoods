@@ -13,6 +13,8 @@ import {
 import { MatchDetailPageView } from './MatchDetailPageView'
 import { loadMatchDetailPageData } from './match-detail.loader'
 import { buildMatchDetailPageViewModel } from './match-detail.view-model'
+import { getUser } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
 interface Props {
   params: Promise<{ matchId: string }>
@@ -20,6 +22,11 @@ interface Props {
 
 export default async function MatchDetailPage({ params }: Props) {
   const { matchId } = await params
+  const user = await getUser()
+  if (user) {
+    redirect(`/dashboard?matchId=${matchId}`)
+  }
+
   const loaderData = await loadMatchDetailPageData(matchId)
   const viewModel = buildMatchDetailPageViewModel(loaderData)
   const matchSnapshot = {

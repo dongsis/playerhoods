@@ -247,7 +247,7 @@ function StarterPeopleIcon({
   complete: boolean
 }) {
   return (
-    <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl border border-[#D7E2F0] bg-[#F8FBFF] text-[#2563EB] sm:h-28 sm:w-28">
+    <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl border border-[#D7E2F0] bg-[#F8FBFF] text-[#0d6efd] sm:h-28 sm:w-28">
       <svg viewBox="0 0 48 48" className="h-12 w-12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="18" cy="18" r="6" />
         <circle cx="32" cy="17" r="5" />
@@ -404,7 +404,7 @@ function FirstHoodStarterCard({
             </div>
             <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-[#EEF3F8]">
               <div
-                className={['h-full rounded-full transition-all duration-500', ready || firstMatchCreated ? 'bg-[#22C55E]' : 'bg-[#2563EB]'].join(' ')}
+                className={['h-full rounded-full transition-all duration-500', ready || firstMatchCreated ? 'bg-[#22C55E]' : 'bg-[#0d6efd]'].join(' ')}
                 style={{ width: `${ready || firstMatchCreated ? 100 : progressPercent}%` }}
               />
             </div>
@@ -415,7 +415,7 @@ function FirstHoodStarterCard({
               <button
                 type="button"
                 onClick={onAddContact}
-                className="text-body-main inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 font-bold text-white shadow-[0_16px_32px_-20px_rgba(37,99,235,0.9)] transition hover:bg-[#1D4ED8]"
+                className="text-body-main inline-flex items-center gap-2 rounded-xl bg-[#0d6efd] px-5 py-3 font-bold text-white shadow-[0_16px_32px_-20px_rgba(37,99,235,0.9)] transition hover:bg-[#0b5ed7]"
                 style={{ animation: 'starterContactGlow 6s ease-in-out infinite' }}
               >
                 <span className="text-lg leading-none">+</span>
@@ -428,7 +428,7 @@ function FirstHoodStarterCard({
               className={[
                 'text-body-main inline-flex items-center gap-2 rounded-xl px-5 py-3 font-bold transition',
                 ready || firstMatchCreated
-                  ? 'bg-[#2563EB] text-white shadow-[0_16px_32px_-20px_rgba(37,99,235,0.9)] hover:bg-[#1D4ED8]'
+                  ? 'bg-[#0d6efd] text-white shadow-[0_16px_32px_-20px_rgba(37,99,235,0.9)] hover:bg-[#0b5ed7]'
                   : 'bg-white text-[#7A8AA6] hover:bg-[#F8FBFF] hover:text-[#0B1F44]',
               ].join(' ')}
             >
@@ -3221,7 +3221,7 @@ export function HoodsPanel({
                   ? 'Search people'
                   : 'Search people'
               }
-              className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
+              className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#0d6efd]"
             />
           ) : null}
         </div>
@@ -3302,7 +3302,7 @@ export function HoodsPanel({
                 value={searchPeopleInput}
                 onChange={(event) => setSearchPeopleInput(event.target.value)}
                 placeholder="Enter exact email or phone"
-                className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#C25E46]"
+                className="text-body-main h-11 min-w-[240px] flex-1 rounded-full border border-[#E2E8F0] bg-white px-4 text-[#1E293B] outline-none transition focus:border-[#0d6efd]"
               />
               <button
                 type="submit"
@@ -3341,7 +3341,7 @@ export function HoodsPanel({
                 key: 'card' as const,
                 title: 'Save as player card',
                 body: 'Add someone not on PlayerHoods yet.',
-                tone: 'bg-[#EAF2FF] text-[#075BD7]',
+                tone: 'bg-[#eff6ff] text-[#0d6efd]',
               },
               {
                 key: 'invite' as const,
@@ -3395,7 +3395,7 @@ export function HoodsPanel({
                   value={contactDisplayName}
                   onChange={(event) => setContactDisplayName(event.target.value)}
                   placeholder="Player's full name"
-                  className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                 />
               </label>
 
@@ -3407,7 +3407,7 @@ export function HoodsPanel({
                     value={contactEmail}
                     onChange={(event) => setContactEmail(event.target.value)}
                     placeholder="email@example.com"
-                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                   />
                 </label>
                 <label className="text-label text-[#536179]">
@@ -3417,7 +3417,7 @@ export function HoodsPanel({
                     value={contactPhone}
                     onChange={(event) => setContactPhone(event.target.value)}
                     placeholder="+1 234 567 890"
-                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                   />
                 </label>
               </div>
@@ -3429,7 +3429,7 @@ export function HoodsPanel({
                   onChange={(event) => setContactNotes(event.target.value)}
                   placeholder="Add details like skill level or preferred times..."
                   rows={3}
-                  className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#075BD7] focus:ring-4 focus:ring-[#075BD7]/10"
+                  className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                 />
               </label>
 
@@ -3437,7 +3437,7 @@ export function HoodsPanel({
                 <button
                   type="submit"
                   disabled={creatingContact}
-                  className="text-body-main inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-[#075BD7] px-5 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#064FC0] disabled:cursor-wait disabled:bg-[#94A3B8]"
+                  className="text-body-main inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-[#0d6efd] px-5 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7] disabled:cursor-wait disabled:bg-[#94A3B8]"
                 >
                   <span className="text-lg leading-none">+</span>
                   {creatingContact ? 'Saving...' : 'Save Contact'}
@@ -3469,7 +3469,7 @@ export function HoodsPanel({
                   setContactComposerMode('screenshot')
                   setError(null)
                 }}
-                className="text-body-main inline-flex items-center gap-2 rounded-2xl bg-[#075BD7] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#064FC0]"
+                className="text-body-main inline-flex items-center gap-2 rounded-2xl bg-[#0d6efd] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7]"
               >
                 <ContactToolIcon kind="spark" />
                 Smart Import
@@ -3488,7 +3488,7 @@ export function HoodsPanel({
                     <div className="mt-3 rounded-lg bg-[#F1F5F9] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
                       {heading}
                     </div>
-                    <div className="mt-2 truncate rounded-md bg-[#EAF2FF] px-2 py-1 text-[10px] font-semibold text-[#075BD7]">
+                    <div className="mt-2 truncate rounded-md bg-[#eff6ff] px-2 py-1 text-[10px] font-semibold text-[#0d6efd]">
                       {body}
                     </div>
                     <p className="mt-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#64748B]">{label}</p>

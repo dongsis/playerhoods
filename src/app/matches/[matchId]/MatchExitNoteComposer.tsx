@@ -205,9 +205,9 @@ const chipStyle: CSSProperties = {
 
 const selectedChipStyle: CSSProperties = {
   ...chipStyle,
-  border: '1px solid #c25e46',
-  background: '#fff8f5',
-  color: '#c25e46',
+  border: '1px solid #0d6efd',
+  background: '#eff6ff',
+  color: '#0d6efd',
 }
 
 const noteTextareaStyle: CSSProperties = {

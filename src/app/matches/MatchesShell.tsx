@@ -266,20 +266,20 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
         <div className="flex items-center gap-2">
           <button
             onClick={() => setWeekAnchor(startOfWeek(new Date()))}
-            className="text-body-main rounded-full border border-[#D7DEE7] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#C25E46] hover:text-[#C25E46]"
+            className="text-body-main rounded-full border border-[#D7DEE7] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
           >
             Today
           </button>
           <button
             onClick={() => setWeekAnchor((current) => addDays(current, -7))}
-            className="text-body-main rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-medium text-[#64748B] transition hover:border-[#C25E46] hover:text-[#C25E46]"
+            className="text-body-main rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-medium text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
             aria-label="Previous week"
           >
             {'<'}
           </button>
           <button
             onClick={() => setWeekAnchor((current) => addDays(current, 7))}
-            className="text-body-main rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-medium text-[#64748B] transition hover:border-[#C25E46] hover:text-[#C25E46]"
+            className="text-body-main rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-medium text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
             aria-label="Next week"
           >
             {'>'}
@@ -304,7 +304,7 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
                     <span
                       className={[
                         'inline-flex h-9 min-w-9 items-center justify-center rounded-full px-2 text-xl font-extrabold',
-                        isToday ? 'bg-[#2563EB] text-white' : 'text-[#1E293B]',
+                        isToday ? 'bg-[#0d6efd] text-white' : 'text-[#1E293B]',
                       ].join(' ')}
                     >
                       {formatCalendarDayNumber(day)}
@@ -362,10 +362,10 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
                           entry.tone === 'green'
                             ? 'border-[#BBF7D0] bg-[#F0FDF4]'
                             : entry.tone === 'amber'
-                              ? 'border-[#FED7AA] bg-[#FFF7ED]'
+                              ? 'border-[#FED7AA] bg-[#eff6ff]'
                               : entry.tone === 'slate'
                                 ? 'border-[#CBD5E1] bg-[#F8FAFC]'
-                                : 'border-[#BFDBFE] bg-[#EFF6FF]',
+                                : 'border-[#bfdbfe] bg-[#eff6ff]',
                         ].join(' ')}
                         style={{ top, height }}
                       >
@@ -423,7 +423,7 @@ export function MatchesShell({ items, userId }: Props) {
       className={[
         'text-body-main rounded-full px-4 py-2 font-medium transition',
         tab === key
-          ? 'bg-[#C25E46] text-white shadow-[0_8px_18px_rgba(194,94,70,0.24)]'
+          ? 'bg-[#0d6efd] text-white shadow-[0_8px_18px_rgba(13, 110, 253, 0.24)]'
           : 'text-[#64748B] hover:text-[#1E293B]',
       ].join(' ')}
     >

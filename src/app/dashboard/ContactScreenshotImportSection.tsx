@@ -204,7 +204,7 @@ function ImportExampleCards() {
             <span className="truncate text-[8px] font-black text-[#334155]">Tennis Group (12)</span>
           </div>
           {[
-            ['RF', 'Roger Federer', 'bg-[#EAF2FF] text-[#075BD7]'],
+            ['RF', 'Roger Federer', 'bg-[#eff6ff] text-[#0d6efd]'],
             ['RN', 'Rafael Nadal', 'bg-[#EAFBF0] text-[#07823F]'],
             ['ND', 'Novak Djokovic', 'bg-[#FFF7D6] text-[#B7791F]'],
           ].map(([initials, name, tone]) => (
@@ -228,7 +228,7 @@ function ImportExampleCards() {
           </div>
           <div className="flex flex-wrap gap-1">
             {['serena@gmail.com', 'venus@tennis.com', 'andy.m@uk.co'].map((email) => (
-              <span key={email} className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-1.5 py-0.5 text-[7px] font-semibold text-[#075BD7]">
+              <span key={email} className="rounded-full border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-0.5 text-[7px] font-semibold text-[#0d6efd]">
                 {email}
               </span>
             ))}
@@ -716,7 +716,7 @@ export function ContactScreenshotImportSection({
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={parsing}
-                    className="rounded-2xl border border-[#BFDBFE] bg-white px-4 py-3 text-[#075BD7] transition hover:bg-[#EFF6FF] disabled:cursor-wait disabled:text-[#94A3B8]"
+                    className="rounded-2xl border border-[#bfdbfe] bg-white px-4 py-3 text-[#0d6efd] transition hover:bg-[#eff6ff] disabled:cursor-wait disabled:text-[#94A3B8]"
                   >
                     Upload screenshot
                   </button>
@@ -730,7 +730,7 @@ export function ContactScreenshotImportSection({
 
                 <div className={[
                   'rounded-[24px] border-2 border-dashed px-5 py-7 text-center transition',
-                  isDragging ? 'border-[#2D6CDF] bg-[#EFF6FF]' : 'border-[#DCE6F2] bg-[#F8FBFF]',
+                  isDragging ? 'border-[#2D6CDF] bg-[#eff6ff]' : 'border-[#DCE6F2] bg-[#F8FBFF]',
                 ].join(' ')}>
                   <span className="mx-auto flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-[#2D6CDF] shadow-sm">
                     <UploadIcon />
@@ -759,7 +759,7 @@ export function ContactScreenshotImportSection({
                 </div>
 
                 {step === 'retry' ? (
-                  <div className="rounded-[20px] border border-[#BFDBFE] bg-[#F8FBFF] p-4 text-sm leading-6 text-[#475569]">
+                  <div className="rounded-[20px] border border-[#bfdbfe] bg-[#F8FBFF] p-4 text-sm leading-6 text-[#475569]">
                     <p className="font-bold text-[#0B1F44]">No contacts saved yet.</p>
                     <p className="mt-1">{retryMessage}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -812,7 +812,7 @@ export function ContactScreenshotImportSection({
           </div>
         ) : null}
         {retryMessage && step === 'review' ? (
-          <div className="border-t border-[#BFDBFE] bg-[#F8FBFF] px-5 py-3 text-sm text-[#475569]">
+          <div className="border-t border-[#bfdbfe] bg-[#F8FBFF] px-5 py-3 text-sm text-[#475569]">
             {retryMessage}
           </div>
         ) : null}

@@ -473,8 +473,8 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                 className={[
                   'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-body-main font-semibold transition',
                   selected
-                    ? 'border-[#C25E46] bg-[#C25E46] text-white shadow-[0_10px_24px_rgba(194,94,70,0.24)]'
-                    : 'border-[#D7E0EC] bg-white text-[#475569] hover:border-[#C25E46]/40 hover:bg-[#F8FBFF]',
+                    ? 'border-[#0d6efd] bg-[#0d6efd] text-white shadow-[0_10px_24px_rgba(13, 110, 253, 0.24)]'
+                    : 'border-[#D7E0EC] bg-white text-[#475569] hover:border-[#0d6efd]/40 hover:bg-[#F8FBFF]',
                 ].join(' ')}
               >
                 {selected ? <CheckIcon className="h-3.5 w-3.5" /> : null}
@@ -519,7 +519,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
         ) : null}
 
         <div ref={cityDropdownRef} className="relative">
-          <div className="flex items-center rounded-2xl border border-[#D7E0EC] bg-white px-4 py-3 focus-within:border-[#C25E46]">
+          <div className="flex items-center rounded-2xl border border-[#D7E0EC] bg-white px-4 py-3 focus-within:border-[#0d6efd]">
             <SearchIcon className="mr-2 h-4 w-4 text-[#94A3B8]" />
             <input
               type="text"
@@ -545,7 +545,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                       type="button"
                       onClick={() => addCity(city)}
                       disabled={selectedCities.length >= 8 || loading}
-                      className="inline-flex h-8 shrink-0 items-center rounded-full border border-[#D7E0EC] bg-white px-3 text-body-sub font-semibold text-[#334155] transition hover:border-[#C25E46] hover:text-[#071A44] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 shrink-0 items-center rounded-full border border-[#D7E0EC] bg-white px-3 text-body-sub font-semibold text-[#334155] transition hover:border-[#0d6efd] hover:text-[#071A44] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {city}
                     </button>
@@ -599,7 +599,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                 className="flex items-center justify-between rounded-[20px] border border-[#D7E0EC] bg-[#F8FBFF] px-4 py-3"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#C25E46] shadow-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#0d6efd] shadow-sm">
                     <TrophyIcon className="h-4 w-4" />
                   </div>
                   <div>
@@ -626,7 +626,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
           </div>
         ) : (
           <div ref={clubDropdownRef} className="relative">
-            <div className="flex items-center rounded-2xl border border-[#D7E0EC] bg-white px-4 py-3 focus-within:border-[#C25E46]">
+            <div className="flex items-center rounded-2xl border border-[#D7E0EC] bg-white px-4 py-3 focus-within:border-[#0d6efd]">
               <BuildingIcon className="mr-2 h-4 w-4 text-[#94A3B8]" />
               <input
                 type="text"
@@ -753,7 +753,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                   }
                 }}
                 disabled={loading}
-                className="mt-1 h-4 w-4 rounded border-slate-300 text-[#075BD7] focus:ring-[#075BD7]"
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-[#0d6efd] focus:ring-[#0d6efd]"
               />
               <span className="text-body-main font-semibold leading-6 text-[#1E293B]">
                 I confirm that I am 18 or older and agree to the PlayerHoods Terms, Privacy Notice, and responsible use rules.
