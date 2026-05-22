@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import type { ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
@@ -2242,6 +2243,54 @@ export function CreateMatchInline({
     )
   }
 
+  const hideGroupTooltip = (groupId: string) => {
+    setTooltip((current) =>
+      current?.kind === 'group-members' && current.groupId === groupId ? null : current,
+    )
+  }
+
+  const renderGroupMemberTooltip = (group: Group, align: 'left' | 'right' = 'left') => {
+    const memberPreview = groupMembersById[group.id]
+
+    if (!(tooltip?.kind === 'group-members' && tooltip.groupId === group.id)) return null
+
+    return (
+      <div
+        className={[
+          'absolute top-[calc(100%+0.45rem)] z-30 min-w-[220px] max-w-[280px] rounded-xl border border-gray-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.14)]',
+          align === 'right' ? 'right-0' : 'left-0',
+        ].join(' ')}
+      >
+        <p className="text-title-main mb-1 text-gray-900">
+          {(memberPreview?.count ?? 0)} member{(memberPreview?.count ?? 0) === 1 ? '' : 's'}
+        </p>
+        {(memberPreview?.members.length
+          ? memberPreview.members.map((member) => member.name)
+          : ['No active members yet.']
+        ).map((line, index, lines) => (
+          <p
+            key={`${line}-${index}`}
+            className={index === lines.length - 1 ? 'text-body-sub leading-5 text-gray-600' : 'text-body-sub mb-1 leading-5 text-gray-600'}
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+    )
+  }
+
+  const renderGroupHoverShell = (group: Group, children: ReactNode, align: 'left' | 'right' = 'left') => (
+    <div
+      key={group.id}
+      className="relative inline-flex"
+      onMouseEnter={() => setTooltip({ kind: 'group-members', groupId: group.id })}
+      onMouseLeave={() => hideGroupTooltip(group.id)}
+    >
+      {children}
+      {renderGroupMemberTooltip(group, align)}
+    </div>
+  )
+
   const renderGroupSelector = (
     group: Group,
     selected: boolean,
@@ -2257,19 +2306,8 @@ export function CreateMatchInline({
           ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
           : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700'
 
-    const memberPreview = groupMembersById[group.id]
-
     return (
-      <div
-        key={group.id}
-        className="relative inline-flex"
-        onMouseEnter={() => setTooltip({ kind: 'group-members', groupId: group.id })}
-        onMouseLeave={() =>
-          setTooltip((current) =>
-            current?.kind === 'group-members' && current.groupId === group.id ? null : current,
-          )
-        }
-      >
+      renderGroupHoverShell(group, (
         <button
           type="button"
           onClick={onToggle}
@@ -2284,25 +2322,36 @@ export function CreateMatchInline({
             Group
           </span>
         </button>
+      ))
+    )
+  }
 
-        {tooltip?.kind === 'group-members' && tooltip.groupId === group.id && (
-          <div className="absolute left-0 top-[calc(100%+0.45rem)] z-30 min-w-[220px] max-w-[280px] rounded-xl border border-gray-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
-            <p className="text-title-main mb-1 text-gray-900">
-              {(memberPreview?.count ?? 0)} member{(memberPreview?.count ?? 0) === 1 ? '' : 's'}
-            </p>
-            {(memberPreview?.members.length
-              ? memberPreview.members.map((member) => member.name)
-              : ['No active members yet.']
-            ).map((line, index, lines) => (
-              <p
-                key={`${line}-${index}`}
-                className={index === lines.length - 1 ? 'text-body-sub leading-5 text-gray-600' : 'text-body-sub mb-1 leading-5 text-gray-600'}
-              >
-                {line}
-              </p>
-            ))}
-          </div>
-        )}
+  const renderSelectedGroupChip = (
+    group: Group,
+    tone: 'orange' | 'green',
+    onRemove: () => void,
+    key = group.id,
+  ) => {
+    const toneClasses =
+      tone === 'green'
+        ? 'border-green-100 bg-green-50 text-green-700'
+        : 'border-orange-100 bg-orange-50 text-orange-700'
+
+    return (
+      <div key={key}>
+        {renderGroupHoverShell(group, (
+          <button
+            type="button"
+            onClick={onRemove}
+            className={[
+              'text-body-sub flex items-center rounded-lg border px-2 py-1 font-semibold',
+              toneClasses,
+            ].join(' ')}
+          >
+            <span>{group.name}</span>
+            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+          </button>
+        ), 'right')}
       </div>
     )
   }
@@ -3241,17 +3290,13 @@ export function CreateMatchInline({
                             <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
                           </button>
                         ))}
-                        {selectedInvitedGroups.map((group) => (
-                          <button
-                            key={group.id}
-                            type="button"
-                            onClick={() => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id))}
-                            className="text-body-sub flex items-center rounded-lg border border-orange-100 bg-orange-50 px-2 py-1 font-semibold text-orange-700"
-                          >
-                            <span>{group.name}</span>
-                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-                          </button>
-                        ))}
+                        {selectedInvitedGroups.map((group) =>
+                          renderSelectedGroupChip(
+                            group,
+                            'orange',
+                            () => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
+                          ),
+                        )}
                       </div>
 
                       {selectedInviteWarnings.length > 0 ? (
@@ -3312,17 +3357,14 @@ export function CreateMatchInline({
                             <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
                           </button>
                         ))}
-                        {selectedScopeGroups.map((group) => (
-                          <button
-                            key={`summary-request-group-${group.id}`}
-                            type="button"
-                            onClick={() => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id))}
-                            className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-bold text-green-700"
-                          >
-                            <span>{group.name}</span>
-                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-                          </button>
-                        ))}
+                        {selectedScopeGroups.map((group) =>
+                          renderSelectedGroupChip(
+                            group,
+                            'green',
+                            () => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id)),
+                            `summary-request-group-${group.id}`,
+                          ),
+                        )}
                       </div>
                     </div>
                   )}
