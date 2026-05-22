@@ -10,6 +10,7 @@ import {
   renderGuestDelegateConfirmedSms,
   renderGuestParticipantInviteSms,
   renderGuestOrgApprovedSms,
+  renderHostOfflineConfirmationSms,
   renderInvitationSms,
   renderMatchInviteSms,
 } from '@/lib/notifications/channels/sms/render-notification-sms'
@@ -21,6 +22,7 @@ import {
   guestOrgApprovedEmail,
   guestDelegateConfirmedEmail,
   gameFormedEmail,
+  hostOfflineConfirmationEmail,
   playerhoodsMatchInviteEmail,
 } from '@/lib/email/templates'
 import { formatInvitationToken } from '@/lib/invitations/invitation-token'
@@ -53,6 +55,7 @@ function buildMatchInfo(payload: Record<string, unknown>): {
   replyCode: string | null
   magicLinkPath: string | null
   changeSet: Record<string, unknown> | null
+  isFormed: boolean
 } {
   return {
     matchId: (payload.match_id as string) ?? '',
@@ -64,6 +67,7 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     replyCode: (payload.reply_code as string) ?? null,
     magicLinkPath: (payload.magic_link_path as string) ?? null,
     changeSet: (payload.change_set as Record<string, unknown>) ?? null,
+    isFormed: Boolean(payload.is_formed),
   }
 }
 
@@ -300,6 +304,20 @@ export async function processQueuedNotificationDeliveries(
       emailFrom = inviteSenderFrom(organizerDisplayName)
       html = confirmedLineupEmail(m, organizerDisplayName)
       smsBody = renderConfirmedLineupSms(m)
+    } else if (templateType === 'host_managed_confirmation') {
+      const m = buildMatchInfo(payload)
+      const organizerDisplayName =
+        (payload.organizer_display_name as string)
+        ?? (payload.inviter_display_name as string)
+        ?? (await getMatchOrganizerName(supabase, m.matchId))
+        ?? 'Someone'
+      const venue = m.venueName ? sanitizeSenderName(m.venueName) : null
+      subject = venue
+        ? `${sanitizeSenderName(organizerDisplayName)} added you as confirmed at ${venue}`
+        : `${sanitizeSenderName(organizerDisplayName)} added you as confirmed`
+      emailFrom = inviteSenderFrom(organizerDisplayName)
+      html = hostOfflineConfirmationEmail(m, organizerDisplayName)
+      smsBody = renderHostOfflineConfirmationSms(m, organizerDisplayName)
     } else if (templateType === 'critical_update') {
       const m = buildMatchInfo(payload)
       subject = 'PlayerHoods match update'

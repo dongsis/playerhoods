@@ -19,6 +19,7 @@ type MatchSmsData = MatchInfo & {
   replyCode?: string | null
   magicLinkPath?: string | null
   changeSet?: Record<string, unknown> | null
+  isFormed?: boolean
 }
 
 const FALLBACK_SITE_URL = 'http://localhost:3000'
@@ -114,6 +115,15 @@ export function renderConfirmedLineupSms(match: MatchSmsData): string {
   const location = match.venueName ?? 'TBD'
   const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
   return `Game on. You're confirmed to play: ${date} at ${time}, ${location}.${outText} We'll only notify you again if the match is cancelled or key details change.`
+}
+
+export function renderHostOfflineConfirmationSms(match: MatchSmsData, hostName = 'Someone'): string {
+  const date = formatSmsDate(match.matchDate) ?? 'TBD'
+  const time = match.startTime ?? 'TBD'
+  const location = match.venueName ?? 'TBD'
+  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if anything changed.` : ''
+  const formedText = match.isFormed ? ' for a formed match' : ''
+  return `${hostName} added you as confirmed${formedText}: ${formatGameType(match.gameType)} at ${location} on ${date} ${time}.${outText} Details: ${matchLink(match)}`
 }
 
 function summarizeChangeSet(changeSet: Record<string, unknown> | null | undefined): string {

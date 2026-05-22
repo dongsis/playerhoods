@@ -125,16 +125,10 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
   const participantsForDisplay = isOrganizer
     ? participants
     : participants.filter((participant) =>
-        participant.id === myParticipant?.id ||
-        participant.status === 'confirmed' ||
-        participant.status === 'waiting_list' ||
-        (participant.guest_id !== null && participant.status === 'pending') ||
-        (
-          participant.user_id !== null &&
-          participant.status === 'pending' &&
-          (participant.join_method === 'invited' || participant.join_method === 'nominated') &&
-          !participant.participant_accepted_at
-        ))
+        participant.status === 'confirmed' &&
+        participant.removed_at === null &&
+        participant.participant_accepted_at !== null &&
+        participant.org_approved_at !== null)
 
   const hasActiveParticipantAccess = Boolean(
     myParticipant &&
@@ -146,6 +140,11 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     myParticipant.removed_at === null &&
     myParticipant.status === 'confirmed',
   )
+  const hasWaitingListParticipantAccess = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    myParticipant.status === 'waiting_list',
+  )
   const hasPreviewAccess = Boolean(
     user?.id &&
     !myParticipant &&
@@ -155,7 +154,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     user?.id &&
     (
       isOrganizer ||
-      (isFormed ? hasConfirmedParticipantAccess : (hasActiveParticipantAccess || hasPreviewAccess))
+      (isFormed ? (hasConfirmedParticipantAccess || hasWaitingListParticipantAccess) : (hasActiveParticipantAccess || hasPreviewAccess))
     ),
   )
   const savedLineup = parseMatchLineupSnapshot(match.lineup_snapshot)

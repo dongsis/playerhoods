@@ -7,6 +7,7 @@ import {
   requestJoinMatch,
   acceptMatchInvite,
   acceptGroupMatchInvite,
+  reconfirmMatchParticipation,
   userWithdraw,
 } from '@/lib/api/matches'
 import { MatchExitNoteComposer } from './MatchExitNoteComposer'
@@ -79,7 +80,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     border: '1px solid #cbd5e1',
     padding: '0.5rem 1rem',
   } as const
-  const declineActionLabel = 'Decline invite'
+  const declineActionLabel = "Can't Make It"
 
   const closeDeclineDialog = () => {
     setDeclineOpen(false)
@@ -105,7 +106,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
                 disabled={loading}
                 style={primaryButtonStyle}
               >
-                {loading ? 'Accepting...' : 'Accept Invite'}
+                {loading ? 'Joining...' : "I'm In"}
               </button>
               <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.4rem' }}>
                 Invited via {invitedGroupNames.join(', ')}.
@@ -137,14 +138,21 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     if (hasGroupInvite) {
       return (
         <div>
+          <p style={{ margin: '0 0 0.35rem', color: '#0f172a', fontWeight: 800 }}>You&apos;re invited to play</p>
+          <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.9rem' }}>
+            Let the host know if you can make it.
+          </p>
           <button
             data-testid="accept-group-invite"
             onClick={() => handleAction(() => acceptGroupMatchInvite(supabase, matchId))}
             disabled={loading}
             style={primaryButtonStyle}
           >
-            {loading ? 'Accepting...' : 'Accept Invite'}
+            {loading ? 'Joining...' : "I'm In"}
           </button>
+          <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
+            Message Host
+          </a>
           {error && <p style={{ color: 'red' }}>{error}</p>}
           <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
             Invited via {invitedGroupNames.join(', ')}.
@@ -155,6 +163,10 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     if (inScope) {
       return (
         <div>
+          <p style={{ margin: '0 0 0.35rem', color: '#0f172a', fontWeight: 800 }}>Want to join this match?</p>
+          <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.9rem' }}>
+            Send a request to the organizer. They&apos;ll let you know if there&apos;s a spot.
+          </p>
           <button
             data-testid="request-join"
             onClick={() => handleAction(() => requestJoinMatch(supabase, matchId))}
@@ -180,6 +192,20 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
       needsReconfirm || (!hasUserAccepted && (isInvited || isParticipantInvite))
 
     if (!showTopAcceptAction) {
+      if (isSelfRequested) {
+        return (
+          <div>
+            <p style={{ margin: '0 0 0.35rem', color: '#0f172a', fontWeight: 800 }}>Request sent</p>
+            <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.9rem' }}>
+              Waiting for the organizer to respond.
+            </p>
+            <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
+              Message Host
+            </a>
+            {error && <p style={{ color: 'red' }}>{error}</p>}
+          </div>
+        )
+      }
       return null
     }
 
@@ -192,7 +218,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
               disabled={loading}
               style={primaryButtonStyle}
             >
-              {loading ? 'Accepting...' : 'Accept Invite'}
+              {loading ? 'Joining...' : "I'm In"}
             </button>
             <button
               type="button"
@@ -203,7 +229,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
               disabled={loading}
               style={secondaryButtonStyle}
             >
-              Decline
+              Can&apos;t Make It
             </button>
           </>
         )}
@@ -228,15 +254,15 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
               {isInvited && (
                 <span>
                   {hasUserAccepted
-                    ? (mp.org_approved_at ? 'Confirmed.' : 'Accepted. Waiting for host confirmation.')
-                    : (mp.org_approved_at ? 'Host confirmed. Accept to join.' : 'Accept to join.')}
+                    ? (mp.org_approved_at ? 'Confirmed.' : 'Waiting for host confirmation.')
+                    : (mp.org_approved_at ? 'The host added you. Join when ready.' : 'Let the host know if you can make it.')}
                 </span>
               )}
               {isParticipantInvite && (
                 <span>
                   {hasUserAccepted
-                    ? (mp.org_approved_at ? 'Confirmed.' : 'You accepted. Waiting for host confirmation.')
-                    : (mp.org_approved_at ? 'Host confirmed. Accept to join.' : 'Accept to join.')}
+                    ? (mp.org_approved_at ? 'Confirmed.' : 'Waiting for host confirmation.')
+                    : (mp.org_approved_at ? 'The host added you. Join when ready.' : 'Let the host know if you can make it.')}
                 </span>
               )}
             </>
@@ -248,7 +274,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
             <div style={dialogCardStyle}>
               <h4 style={dialogTitleStyle}>{declineActionLabel}</h4>
               <p style={dialogBodyStyle}>
-                Add a note if you want. It will be saved and posted to match chat.
+                Add a note if you want. The host will see it with your response.
               </p>
               <MatchExitNoteComposer
                 mode="decline"
@@ -287,17 +313,106 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     return (
       <div>
         <p style={{ color: '#b45309', fontSize: '0.92rem', margin: '0 0 0.35rem' }}>
-          You&apos;re on the waiting list.
+          You&apos;re on the waitlist
         </p>
         <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
-          You&apos;ll be notified if a spot opens.
+          You&apos;re available, but the match is currently full. The organizer will let you know if a spot opens.
         </p>
+        <a href="#match-communication" style={{ ...secondaryButtonStyle, display: 'inline-flex', marginTop: '0.75rem', textDecoration: 'none' }}>
+          Message Host
+        </a>
       </div>
     )
   }
 
   if (isConfirmedDerived) {
-    return null
+    const isHostManagedConfirmation =
+      mp.confirmation_source === 'host_managed_offline'
+      || mp.confirmation_source === 'contact_owner_managed'
+      || mp.participant_accepted_via === 'host_offline_confirmation'
+
+    if (!isHostManagedConfirmation) {
+      return null
+    }
+
+    return (
+      <div>
+        <div
+          style={{
+            border: '1px solid #dbeafe',
+            borderRadius: '18px',
+            background: '#eff6ff',
+            padding: '0.9rem 1rem',
+          }}
+        >
+          <p style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>You&apos;re listed as confirmed</p>
+          <p style={{ margin: '0.35rem 0 0', color: '#475569', fontSize: '0.9rem', lineHeight: 1.45 }}>
+            The host added you because you already confirmed outside PlayerHoods. If anything changed, you can update your response.
+          </p>
+          <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => handleAction(() => reconfirmMatchParticipation(supabase, matchId))}
+              style={primaryButtonStyle}
+            >
+              I&apos;m In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null)
+                setDeclineOpen(true)
+              }}
+              disabled={loading}
+              style={secondaryButtonStyle}
+            >
+              Can&apos;t Make It
+            </button>
+            <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
+              Message Host
+            </a>
+          </div>
+        </div>
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        {declineOpen && (
+          <div style={dialogOverlayStyle}>
+            <div style={dialogCardStyle}>
+              <h4 style={dialogTitleStyle}>{declineActionLabel}</h4>
+              <p style={dialogBodyStyle}>
+                Add a note if you want. The host will see it with your response.
+              </p>
+              <MatchExitNoteComposer
+                mode="withdraw"
+                note={declineReason}
+                onNoteChange={setDeclineReason}
+              />
+              <div style={dialogActionsStyle}>
+                <button type="button" onClick={closeDeclineDialog} style={secondaryDialogButtonStyle}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    const note = declineReason.trim()
+                    closeDeclineDialog()
+                    handleAction(() => userWithdraw(supabase, matchId, note))
+                  }}
+                  style={{
+                    ...dangerDialogButtonStyle,
+                    opacity: loading ? 0.6 : 1,
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {loading ? 'Updating...' : declineActionLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
   }
 
   return null

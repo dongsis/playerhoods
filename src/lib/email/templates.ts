@@ -13,6 +13,7 @@ export type MatchInfo = {
   siteUrl: string
   magicLinkPath?: string | null
   changeSet?: Record<string, unknown> | null
+  isFormed?: boolean
 }
 
 function matchLink(m: MatchInfo): string {
@@ -202,6 +203,25 @@ export function confirmedLineupEmail(m: MatchInfo, organizerName = 'Someone'): s
     secondaryBody:
       'Playerhoods will only contact you again if the match is cancelled or key details change.',
     footerNote: `You received this because ${inviterName} confirmed you in the lineup for this match.`,
+    siteUrl: m.siteUrl,
+  })
+}
+
+export function hostOfflineConfirmationEmail(m: MatchInfo, organizerName = 'Someone'): string {
+  const venueName = m.venueName || 'the venue'
+  const hostName = organizerName.trim() || 'Someone'
+
+  return renderEmailLayout({
+    eyebrow: 'Match confirmation',
+    title: "You're listed as confirmed",
+    introHtml: `Hi,<br><br><strong>${escapeHtml(hostName)}</strong> added you as confirmed for <strong>${escapeHtml(m.gameType || 'a match')}</strong> at <strong>${escapeHtml(venueName)}</strong>. If anything changed, you can update your response anytime.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'View match',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'Need to change your response?',
+    secondaryBody:
+      "Open the match page if you can't make it or need to let the host know something changed.",
+    footerNote: `You received this because ${hostName} added you to this PlayerHoods match from offline coordination.`,
     siteUrl: m.siteUrl,
   })
 }

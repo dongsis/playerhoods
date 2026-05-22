@@ -645,6 +645,12 @@ export type MatchParticipant = {
   participant_accepted_at: string | null
   participant_accepted_via: string | null  // 'in_app' | 'manual' | 'delegate_manual' | 'email_invitation' | 'sms_invitation' | 'proxy' | null
   manual_confirmed_by: string | null
+  confirmation_source?: 'player_response' | 'host_managed_offline' | 'contact_owner_managed' | 'organizer_added' | 'system' | null
+  confirmed_by_user_id?: string | null
+  confirmed_by_host_id?: string | null
+  confirmed_by_host_at?: string | null
+  host_confirmed_at?: string | null
+  confirmation_note?: string | null
   waiting_list_at: string | null
   source_contact_id?: string | null
   migrated_from_guest_id?: string | null

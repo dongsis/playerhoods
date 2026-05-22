@@ -861,6 +861,55 @@ export async function inviteContactPersonToMatch(
   if (error) throw error
 }
 
+/** Host-managed offline confirmation for a saved registered player. */
+export async function hostAddUserAsConfirmed(
+  supabase: Client,
+  matchId: string,
+  userId: string,
+) {
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_host_add_user_confirmed',
+      args: { p_match_id: string; p_target_user_id: string }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_host_add_user_confirmed', {
+    p_match_id: matchId,
+    p_target_user_id: userId,
+  })
+  if (error) throw error
+}
+
+/** Host-managed offline confirmation for a visible Contact Player/person. */
+export async function hostAddContactPersonAsConfirmed(
+  supabase: Client,
+  matchId: string,
+  personId: string,
+) {
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_host_add_contact_person_confirmed',
+      args: { p_match_id: string; p_person_id: string }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_host_add_contact_person_confirmed', {
+    p_match_id: matchId,
+    p_person_id: personId,
+  })
+  if (error) throw error
+}
+
+/** Player acknowledgement after being added through host-managed offline confirmation. */
+export async function reconfirmMatchParticipation(supabase: Client, matchId: string) {
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_reconfirm_participation',
+      args: { p_match_id: string }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_reconfirm_participation', {
+    p_match_id: matchId,
+  })
+  if (error) throw error
+}
+
 /** Canonical Match Proxy confirm. Current authority source must be an explicit Match Proxy binding. */
 export async function proxyConfirmParticipant(
   supabase: Client,
@@ -1537,7 +1586,29 @@ export async function getMatchDetailData(
   }
 
   const match = matchRes.data as Match
-  const participants = (participantsRes.data ?? []) as MatchParticipant[]
+  const isOrganizerViewer = Boolean(userId && match.organizer_id === userId)
+  const participants = ((participantsRes.data ?? []) as MatchParticipant[]).map((participant) => {
+    const isSelfParticipant = Boolean(userId && participant.user_id === userId)
+    if (isOrganizerViewer || isSelfParticipant) return participant
+    if (
+      participant.confirmation_source === 'host_managed_offline'
+      || participant.confirmation_source === 'contact_owner_managed'
+      || participant.participant_accepted_via === 'host_offline_confirmation'
+    ) {
+      return {
+        ...participant,
+        participant_accepted_via: null,
+        manual_confirmed_by: null,
+        confirmation_source: null,
+        confirmed_by_user_id: null,
+        confirmed_by_host_id: null,
+        confirmed_by_host_at: null,
+        host_confirmed_at: null,
+        confirmation_note: null,
+      }
+    }
+    return participant
+  })
   const actions = actionsRes.error ? [] : ((actionsRes.data ?? []) as MatchParticipantAction[])
 
   // Fetch venue
@@ -1557,6 +1628,7 @@ export async function getMatchDetailData(
     match.organizer_id,
     ...participants.filter(p => p.user_id).map(p => p.user_id as string),
     ...actions.map(a => a.created_by),
+    ...participants.filter(p => p.confirmed_by_user_id).map(p => p.confirmed_by_user_id as string),
     ...(userId ? [userId] : []),
   ])]
   const guestIds = [...new Set(participants.filter(p => p.guest_id).map(p => p.guest_id as string))]
@@ -1770,6 +1842,11 @@ export async function getMatchDetailData(
     myParticipant.removed_at === null &&
     myParticipant.status === 'confirmed'
   )
+  const hasWaitingListParticipantAccess = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    myParticipant.status === 'waiting_list'
+  )
   const inScopePreviewAccess = Boolean(
     userId &&
     !myParticipant &&
@@ -1785,7 +1862,7 @@ export async function getMatchDetailData(
     userId &&
     (
       isOrganizer ||
-      (isFormed ? hasConfirmedParticipantAccess : (hasActiveParticipantAccess || inScopePreviewAccess))
+      (isFormed ? (hasConfirmedParticipantAccess || hasWaitingListParticipantAccess) : (hasActiveParticipantAccess || inScopePreviewAccess))
     ),
   )
   let messages: MatchMessageEnriched[] = []
@@ -1801,7 +1878,14 @@ export async function getMatchDetailData(
     if (messagesError) {
       logMatchDetailSoftFailure(matchId, 'match_messages', messagesError)
     } else {
-      const rawMessages = (messagesData ?? []) as MatchMessage[]
+      const rawMessages = ((messagesData ?? []) as MatchMessage[]).filter((message) => {
+        if (isOrganizer) return true
+        if (!userId) return false
+        if (isFormed) {
+          return match.formed_at !== null && message.created_at >= match.formed_at
+        }
+        return message.author_user_id === userId || message.author_user_id === match.organizer_id
+      })
       messages = rawMessages.map((message) => {
         const authorProfile = profileDisplayMap.get(message.author_user_id)
         return {
@@ -1823,12 +1907,55 @@ export async function getMatchDetailData(
   )
   const scopeGroups = ((scopeGroupsRes.data ?? []) as { id: string; name: string }[])
   const rosterInsight = deriveMatchRosterInsight(match, enriched)
+  const confirmedVisibleToParticipants = enriched
+    .filter((participant) =>
+      participant.status === 'confirmed' &&
+      participant.removed_at === null &&
+      participant.participant_accepted_at !== null &&
+      participant.org_approved_at !== null)
+    .map((participant) => {
+      if (isOrganizer || participant.id === myParticipant?.id) return participant
+      return {
+        ...participant,
+        user_id: null,
+        guest_id: null,
+        join_method: 'manual' as const,
+        nominated_by: null,
+        participant_accepted_at: null,
+        participant_accepted_via: null,
+        org_approved_at: null,
+        org_approved_by: null,
+        manual_confirmed_by: null,
+        manual_confirmed_by_name: null,
+        removed_at: null,
+        removed_by: null,
+        removal_note: null,
+        waiting_list_at: null,
+        source_contact_id: null,
+        migrated_from_guest_id: null,
+        source_person_id: null,
+        contact_claim_id: null,
+        replaced_by_participant_id: null,
+        migrated_at: null,
+        confirmation_source: null,
+        confirmed_by_user_id: null,
+        confirmed_by_host_id: null,
+        confirmed_by_host_at: null,
+        host_confirmed_at: null,
+        confirmation_note: null,
+        saved_by_viewer: false,
+        proxy_manageable_by_viewer: false,
+        contact_player_person_id: null,
+        linked_user_id: null,
+      }
+    })
+  const participantsForViewer = isOrganizer ? enriched : confirmedVisibleToParticipants
 
   return {
     match,
     venueTimezone: venue?.timezone ?? null,
     venueName: venue?.name ?? null,
-    participants: enriched,
+    participants: participantsForViewer,
     myParticipant,
     myParticipantNeedsReconfirm,
     isOrganizer,

@@ -149,6 +149,7 @@ export function MatchToolsSection({
           candidateGroups={candidateGroups}
           onUpdateMatchDetails={onUpdateMatchDetails}
           onRemoveParticipant={onRemoveParticipant}
+          onRequestPanelMode={setActiveTab}
         />
       ) : null}
 

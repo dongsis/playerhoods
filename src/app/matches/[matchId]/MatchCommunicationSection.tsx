@@ -52,6 +52,7 @@ type Props = {
   canAccessCommunication: boolean
   canPostCommunication: boolean
   canEditOrganizerNote: boolean
+  isOrganizer: boolean
   showFormedNotice: boolean
   onUpdateOrganizerNote: (organizerNote: string | null) => Promise<void>
   onPostMessage: (body: string) => Promise<void>
@@ -111,6 +112,7 @@ export function MatchCommunicationSection({
   canAccessCommunication,
   canPostCommunication,
   canEditOrganizerNote,
+  isOrganizer,
   showFormedNotice,
   onUpdateOrganizerNote,
   onPostMessage,
@@ -132,6 +134,17 @@ export function MatchCommunicationSection({
     () => [...messages].sort((left, right) => left.created_at.localeCompare(right.created_at)),
     [messages],
   )
+  const communicationTitle = showFormedNotice
+    ? 'Match Chat'
+    : isOrganizer
+      ? 'Player Messages'
+      : 'Message Host'
+  const communicationHelper = showFormedNotice
+    ? 'Confirmed players can chat together here.'
+    : isOrganizer
+      ? 'Before the match is formed, each player can message you directly.'
+      : 'Ask a question or send an update to the organizer.'
+  const inputPlaceholder = showFormedNotice ? 'Message match...' : 'Message host...'
 
   if (!canAccessCommunication) {
     return null
@@ -172,6 +185,7 @@ export function MatchCommunicationSection({
 
   return (
     <section
+      id="match-communication"
       style={{
         marginBottom: '1rem',
         background: '#fff',
@@ -201,8 +215,20 @@ export function MatchCommunicationSection({
             color: '#1E293B',
           }}
         >
-          Communication
+          {communicationTitle}
         </h2>
+      </div>
+
+      <div
+        style={{
+          padding: '0.6rem 1rem',
+          borderBottom: '1px solid #F1F5F9',
+          color: '#64748b',
+          fontSize: '0.74rem',
+          fontWeight: 600,
+        }}
+      >
+        {communicationHelper}
       </div>
 
       {showFormedNotice ? (
@@ -216,7 +242,7 @@ export function MatchCommunicationSection({
             fontWeight: 600,
           }}
         >
-          Match formed — only confirmed players can view and chat here.
+          Match formed - only confirmed players can view and chat here.
         </div>
       ) : null}
 
@@ -466,7 +492,7 @@ export function MatchCommunicationSection({
                   handleSendMessage()
                 }
               }}
-              placeholder="Chat..."
+              placeholder={inputPlaceholder}
               disabled={isSendingMessage}
               style={{
                 flex: 1,

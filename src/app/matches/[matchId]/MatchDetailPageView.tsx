@@ -415,6 +415,19 @@ function MatchParticipantsSection({
   viewModel,
   onRemoveParticipant,
 }: Pick<MatchDetailPageViewProps, 'viewModel' | 'onRemoveParticipant'>) {
+  const playersTitle = viewModel.isOrganizer
+    ? 'Players'
+    : viewModel.isFormed
+      ? 'Players'
+      : 'Players confirmed so far'
+  const playersHelper = viewModel.isOrganizer
+    ? 'Confirmed players count toward forming the match. Invited players confirm themselves. Join requests are added by the organizer.'
+    : viewModel.myParticipant?.status === 'waiting_list'
+      ? 'The organizer will let you know if a spot opens.'
+      : viewModel.isFormed
+        ? 'Confirmed players in this match.'
+        : 'Confirmed players count toward forming the match.'
+
   return (
     <section
       style={{
@@ -441,10 +454,10 @@ function MatchParticipantsSection({
           }}
         >
           <IconUsers />
-          Players
+          {playersTitle}
         </h2>
         <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>
-          Each spot is confirmed when both host and player confirm.
+          {playersHelper}
         </p>
       </div>
       <ParticipantGroups
@@ -478,6 +491,7 @@ function MatchChatSection({
       canAccessCommunication={viewModel.canAccessCommunication}
       canPostCommunication={viewModel.canPostCommunication}
       canEditOrganizerNote={viewModel.canEditOrganizerNote}
+      isOrganizer={viewModel.isOrganizer}
       showFormedNotice={viewModel.isFormed}
       onUpdateOrganizerNote={onUpdateOrganizerNote}
       onPostMessage={onPostMessage}

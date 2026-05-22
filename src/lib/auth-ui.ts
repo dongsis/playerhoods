@@ -50,7 +50,7 @@ export function maskEmail(email: string | null | undefined) {
 export function mapAuthErrorToUiMessage(action: AuthAction) {
   switch (action) {
     case 'login':
-      return 'Email or password is incorrect.'
+      return 'Email or password is incorrect. If you signed up with Google, use "Continue with Google".'
     case 'register':
       return 'We could not complete sign up right now. Please try again, or try signing in if you already have an account.'
     case 'forgot':

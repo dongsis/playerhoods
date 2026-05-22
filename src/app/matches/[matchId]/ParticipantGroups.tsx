@@ -290,6 +290,10 @@ function ParticipantRow({
   const canOpenDetails = Boolean(p.user_id || p.guest_id)
   const isPendingParticipant = p.status === 'pending'
   const isWaitingListParticipant = p.status === 'waiting_list'
+  const isHostManagedConfirmation =
+    p.confirmation_source === 'host_managed_offline'
+    || p.confirmation_source === 'contact_owner_managed'
+    || p.participant_accepted_via === 'host_offline_confirmation'
   const pendingState = isPendingParticipant ? getPendingState(p) : null
   // Approve: organizer only, pending, org not yet approved. Org and user confirm can happen in any order.
   const canApprove =
@@ -377,7 +381,13 @@ function ParticipantRow({
   }
 
   if (p.participant_accepted_at) {
-    if (
+    if (isOrganizer && isHostManagedConfirmation) {
+      timelineEvents.push({
+        key: 'host-offline-confirmed',
+        label: 'Added by host · Confirmed offline',
+        at: p.participant_accepted_at,
+      })
+    } else if (
       p.participant_accepted_via === 'delegate_manual'
       || p.participant_accepted_via === 'manual'
       || p.participant_accepted_via === 'proxy'
@@ -407,7 +417,7 @@ function ParticipantRow({
     const approver = resolveActorName(p.org_approved_by) ?? organizerName
     timelineEvents.push({
       key: 'organizer-approved',
-      label: `Host confirmed by ${approver}`,
+      label: `Host approved by ${approver}`,
       at: p.org_approved_at,
     })
   }
@@ -521,6 +531,26 @@ function ParticipantRow({
                 {badge}
               </span>
             ))}
+            {isOrganizer && isHostManagedConfirmation ? (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0.08rem 0.38rem',
+                  borderRadius: '999px',
+                  background: '#EFF6FF',
+                  color: '#2563EB',
+                  border: '1px solid #BFDBFE',
+                  fontSize: '0.42rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                }}
+                title="Confirmed offline"
+              >
+                Added by host
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -530,8 +560,8 @@ function ParticipantRow({
               label="Host"
               confirmed={pendingState ? pendingState.hostConfirmed : true}
               title={pendingState
-                ? (pendingState.hostConfirmed ? 'Host confirmed' : 'Host not yet confirmed')
-                : 'Host confirmed'}
+                ? (pendingState.hostConfirmed ? 'Waiting for player' : 'Waiting for host')
+                : 'Confirmed by host'}
             />
             <ConfirmationBadge
               label="Player"
@@ -1067,15 +1097,9 @@ export function ParticipantGroups({
             {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
           </div>
         </Section>
-      ) : pending.length > 0 ? (
-        <Section title="Waiting for confirmation" badge={pending.length} badgeColor="#d97706">
-          <div style={participantGridStyle}>
-            {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
-          </div>
-        </Section>
       ) : null}
 
-      {(waiting.length > 0 || (waitingCount ?? 0) > 0) && (
+      {isOrganizer && (waiting.length > 0 || (waitingCount ?? 0) > 0) && (
         <Section title="Waiting List" badge={waitingCount ?? waiting.length} badgeColor="#b45309">
           {waiting.length === 0 ? (
             <p style={{ color: '#98a2b3', fontSize: '0.82rem' }}>Waiting list exists, but details are hidden for your current role.</p>
