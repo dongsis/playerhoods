@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useCallback, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { MatchListItem } from '@/lib/api/matches'
@@ -1356,6 +1356,7 @@ export function MatchesPanel({
   const [subTab, setSubTab] = useState<'upcoming' | 'calendar' | 'history'>('upcoming')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
   const [mobileCreateExpandSignal, setMobileCreateExpandSignal] = useState(0)
+  const [desktopCreateExpanded, setDesktopCreateExpanded] = useState(false)
 
   const now = useMemo(() => new Date().toISOString(), [])
 
@@ -1434,6 +1435,9 @@ export function MatchesPanel({
       document.getElementById('create-match-inline')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 60)
   }
+  const handleCreateExpandedChange = useCallback((expanded: boolean) => {
+    setDesktopCreateExpanded(expanded)
+  }, [])
 
   const renderStarterCard = () => starterCard ? (
     <FirstMatchStarterCard
@@ -1574,9 +1578,20 @@ export function MatchesPanel({
 
       <div className="hidden space-y-8 md:block">
         {renderStarterCard()}
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.72fr)] xl:grid-cols-[minmax(0,1.4fr)_minmax(380px,0.74fr)]">
+        <div
+          className={[
+            'grid items-start gap-6 transition-[grid-template-columns] duration-300',
+            desktopCreateExpanded
+              ? 'lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.72fr)] xl:grid-cols-[minmax(0,1.4fr)_minmax(380px,0.74fr)]'
+              : 'lg:grid-cols-[minmax(430px,640px)_minmax(0,1fr)]',
+          ].join(' ')}
+        >
           <section className="min-w-0">
-            <CreateMatchInline defaultVenueId={defaultVenueId} expandSignal={mobileCreateExpandSignal} />
+            <CreateMatchInline
+              defaultVenueId={defaultVenueId}
+              expandSignal={mobileCreateExpandSignal}
+              onExpandedChange={handleCreateExpandedChange}
+            />
           </section>
 
           <section className="min-w-0 rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">

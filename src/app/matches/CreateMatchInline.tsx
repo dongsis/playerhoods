@@ -547,7 +547,7 @@ function ReviewMatchModal({
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-[480px] overflow-hidden rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_18px_44px_-18px_rgba(15,23,42,0.18)] md:max-w-none"
+        className="max-h-[calc(100vh-2rem)] w-full max-w-[760px] overflow-y-auto rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_18px_44px_-18px_rgba(15,23,42,0.18)]"
       >
         <div className="border-b border-[#F1F5F9] px-6 pb-4 pt-6">
           <h3 className="text-h2 text-[#1E293B]">{recurring ? 'Review Recurring Match' : 'Review Match'}</h3>
@@ -1038,9 +1038,11 @@ function MiniCalendar({
 export function CreateMatchInline({
   defaultVenueId,
   expandSignal,
+  onExpandedChange,
 }: {
   defaultVenueId?: string
   expandSignal?: number
+  onExpandedChange?: (expanded: boolean) => void
 }) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
@@ -1494,6 +1496,10 @@ export function CreateMatchInline({
     if (typeof expandSignal !== 'number' || expandSignal <= 0) return
     setCreateExpanded(true)
   }, [expandSignal])
+
+  useEffect(() => {
+    onExpandedChange?.(createExpanded)
+  }, [createExpanded, onExpandedChange])
 
   const selectedFormatLabel = useMemo(() => {
     const source = gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS

@@ -11,6 +11,7 @@ import { MatchCourtInfoButton } from './MatchCourtInfoButton'
 import type { MatchDetailPageViewModel } from './match-detail.view-model'
 import type { MatchCourtPlanUpdateInput, MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
+import type { MatchParticipantEnriched } from '@/lib/api/matches'
 import { AutoRefresh } from '@/app/components/AutoRefresh'
 
 function IconCalendar({ size = 12, color = '#C25E46' }: { size?: number; color?: string }) {
@@ -381,6 +382,7 @@ function MatchSelfActionsSection({
         needsReconfirm={viewModel.myParticipantNeedsReconfirm}
         inScope={viewModel.inScope}
         myGroupInvites={viewModel.myGroupInvites}
+        organizerName={viewModel.organizerName}
       />
     </section>
   )
@@ -428,6 +430,10 @@ function MatchParticipantsSection({
         ? 'Confirmed players in this match.'
         : 'Confirmed players count toward forming the match.'
 
+  const safeConfirmedParticipants = viewModel.participantsForDisplay.filter((participant) =>
+    participant.status === 'confirmed' &&
+    participant.removed_at === null)
+
   return (
     <section
       style={{
@@ -460,23 +466,136 @@ function MatchParticipantsSection({
           {playersHelper}
         </p>
       </div>
-      <ParticipantGroups
-        matchId={viewModel.matchId}
-        matchStatus={viewModel.match.status}
-        participants={viewModel.participantsForDisplay}
-        isOrganizer={viewModel.isOrganizer}
-        pendingCount={viewModel.pendingCount}
-        requiredCount={viewModel.match.required_count}
-        myUserId={viewModel.userId}
-        organizerUserId={viewModel.match.organizer_id}
-        organizerName={viewModel.organizerName}
-        savedPlayerIds={viewModel.savedPlayerIds}
-        waitingCount={viewModel.waitingCount}
-        onRemoveParticipant={onRemoveParticipant}
-      />
+      {viewModel.isOrganizer ? (
+        <ParticipantGroups
+          matchId={viewModel.matchId}
+          matchStatus={viewModel.match.status}
+          participants={viewModel.participantsForDisplay}
+          isOrganizer={viewModel.isOrganizer}
+          pendingCount={viewModel.pendingCount}
+          requiredCount={viewModel.match.required_count}
+          myUserId={viewModel.userId}
+          organizerUserId={viewModel.match.organizer_id}
+          organizerName={viewModel.organizerName}
+          savedPlayerIds={viewModel.savedPlayerIds}
+          waitingCount={viewModel.waitingCount}
+          onRemoveParticipant={onRemoveParticipant}
+        />
+      ) : (
+        <SafeConfirmedPlayersList
+          participants={safeConfirmedParticipants}
+          confirmedCount={viewModel.confirmedCount}
+          requiredCount={viewModel.match.required_count}
+          myUserId={viewModel.userId}
+          organizerUserId={viewModel.match.organizer_id}
+        />
+      )}
     </section>
   )
 }
+
+function SafeConfirmedPlayersList({
+  participants,
+  confirmedCount,
+  requiredCount,
+  myUserId,
+  organizerUserId,
+}: {
+  participants: MatchParticipantEnriched[]
+  confirmedCount: number
+  requiredCount: number
+  myUserId: string | null
+  organizerUserId: string | null
+}) {
+  return (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      {participants.length === 0 ? (
+        <div
+          style={{
+            border: '1px dashed #D9E5F4',
+            borderRadius: '18px',
+            background: '#F8FBFF',
+            padding: '0.9rem 1rem',
+            color: '#64748b',
+            fontSize: '0.86rem',
+            fontWeight: 700,
+          }}
+        >
+          No players confirmed yet.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: '0.55rem' }}>
+          {participants.map((participant) => (
+            <div
+              key={participant.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.7rem',
+                border: '1px solid #E2E8F0',
+                borderRadius: '18px',
+                background: '#fff',
+                padding: '0.72rem 0.82rem',
+              }}
+            >
+              <div
+                aria-hidden="true"
+                style={{
+                  width: '2.1rem',
+                  height: '2.1rem',
+                  borderRadius: '999px',
+                  background: '#EEF6FF',
+                  color: '#1E3A5F',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.72rem',
+                  fontWeight: 900,
+                  border: '1px solid #D9E5F4',
+                  flexShrink: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                {participant.avatar_url ? (
+                  <img src={participant.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  participant.display_name.charAt(0).toUpperCase() || '?'
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#0F172A', fontSize: '0.9rem', fontWeight: 850 }}>
+                    {participant.display_name}
+                  </span>
+                  {participant.user_id === myUserId ? (
+                    <span style={safePlayerBadgeStyle}>You</span>
+                  ) : null}
+                  {participant.user_id === organizerUserId ? (
+                    <span style={safePlayerBadgeStyle}>Host</span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontWeight: 800 }}>
+        {confirmedCount} of {requiredCount} players confirmed
+      </p>
+    </div>
+  )
+}
+
+const safePlayerBadgeStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  borderRadius: '999px',
+  background: '#F1F5F9',
+  color: '#64748B',
+  padding: '0.12rem 0.45rem',
+  fontSize: '0.62rem',
+  fontWeight: 800,
+} as const
 
 function MatchChatSection({
   viewModel,

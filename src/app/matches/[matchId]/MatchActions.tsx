@@ -21,9 +21,10 @@ interface Props {
   needsReconfirm: boolean
   inScope: boolean
   myGroupInvites: { group_id: string; group_name: string; created_at: string }[]
+  organizerName: string
 }
 
-export function MatchActions({ matchId, isOrganizer, myParticipation, needsReconfirm, inScope, myGroupInvites }: Props) {
+export function MatchActions({ matchId, isOrganizer, myParticipation, needsReconfirm, inScope, myGroupInvites, organizerName }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [declineOpen, setDeclineOpen] = useState(false)
@@ -194,15 +195,74 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     if (!showTopAcceptAction) {
       if (isSelfRequested) {
         return (
-          <div>
+          <div
+            style={{
+              border: '1px solid #dbeafe',
+              borderRadius: '18px',
+              background: '#eff6ff',
+              padding: '0.9rem 1rem',
+            }}
+          >
             <p style={{ margin: '0 0 0.35rem', color: '#0f172a', fontWeight: 800 }}>Request sent</p>
-            <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.9rem' }}>
-              Waiting for the organizer to respond.
+            <p style={{ margin: '0 0 0.75rem', color: '#475569', fontSize: '0.9rem', lineHeight: 1.45 }}>
+              You asked to join this match. {organizerName} will let you know if there&apos;s a spot.
             </p>
-            <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
-              Message Host
-            </a>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  setDeclineOpen(true)
+                }}
+                disabled={loading}
+                style={secondaryButtonStyle}
+              >
+                Withdraw Request
+              </button>
+              <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
+                Message Host
+              </a>
+            </div>
+            <p style={{ margin: '0.6rem 0 0', color: '#64748b', fontSize: '0.78rem', fontWeight: 700 }}>
+              Waiting for host
+            </p>
             {error && <p style={{ color: 'red' }}>{error}</p>}
+            {declineOpen && (
+              <div style={dialogOverlayStyle}>
+                <div style={dialogCardStyle}>
+                  <h4 style={dialogTitleStyle}>Withdraw Request</h4>
+                  <p style={dialogBodyStyle}>
+                    The host will see that you no longer want to join this match.
+                  </p>
+                  <MatchExitNoteComposer
+                    mode="withdraw"
+                    note={declineReason}
+                    onNoteChange={setDeclineReason}
+                  />
+                  <div style={dialogActionsStyle}>
+                    <button type="button" onClick={closeDeclineDialog} style={secondaryDialogButtonStyle}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => {
+                        const note = declineReason.trim()
+                        closeDeclineDialog()
+                        handleAction(() => userWithdraw(supabase, matchId, note))
+                      }}
+                      style={{
+                        ...dangerDialogButtonStyle,
+                        opacity: loading ? 0.6 : 1,
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {loading ? 'Withdrawing...' : 'Withdraw Request'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )
       }

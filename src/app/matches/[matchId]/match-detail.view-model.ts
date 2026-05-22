@@ -98,15 +98,27 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
 
   const isMatchAssociated = isSelfWithdrawAssociated(user?.id, myParticipant)
   const isFormed = Boolean(match.formed_at)
-  const canParticipantInvite = !isOrganizer && match.can_participants_invite_users && (inScope || isMatchAssociated)
+  const hasConfirmedParticipantAccess = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    myParticipant.status === 'confirmed',
+  )
+  const canParticipantInvite = !isOrganizer && match.can_participants_invite_users && hasConfirmedParticipantAccess
   const canParticipantInviteContact = isOrganizer
   const courtState = deriveMatchCourtStatus({
     matchStatus: match.status,
     courtPlanMode: match.court_plan_mode,
     finalCourtLabel: match.final_court_label,
   })
+  const isRequestWaitingForHost = Boolean(
+    myParticipant &&
+    myParticipant.status === 'pending' &&
+    myParticipant.join_method === 'requested' &&
+    myParticipant.org_approved_at == null,
+  )
   const selfNeedsTopAction = !myParticipant
     || myParticipant.status === 'removed'
+    || isRequestWaitingForHost
     || (
       myParticipant.status === 'pending'
       && (
@@ -126,19 +138,12 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     ? participants
     : participants.filter((participant) =>
         participant.status === 'confirmed' &&
-        participant.removed_at === null &&
-        participant.participant_accepted_at !== null &&
-        participant.org_approved_at !== null)
+        participant.removed_at === null)
 
   const hasActiveParticipantAccess = Boolean(
     myParticipant &&
     myParticipant.removed_at === null &&
     ['pending', 'confirmed', 'waiting_list'].includes(myParticipant.status),
-  )
-  const hasConfirmedParticipantAccess = Boolean(
-    myParticipant &&
-    myParticipant.removed_at === null &&
-    myParticipant.status === 'confirmed',
   )
   const hasWaitingListParticipantAccess = Boolean(
     myParticipant &&

@@ -1886,11 +1886,34 @@ export async function getMatchDetailData(
         }
         return message.author_user_id === userId || message.author_user_id === match.organizer_id
       })
+      const missingAuthorIds = Array.from(new Set(
+        rawMessages
+          .map((message) => message.author_user_id)
+          .filter((authorId) => !profileDisplayMap.has(authorId)),
+      ))
+      const messageAuthorProfiles = new Map(profileDisplayMap)
+
+      if (missingAuthorIds.length > 0) {
+        const { data: authorProfiles, error: authorProfilesError } = await supabase
+          .from('profiles')
+          .select('id, display_name, avatar_url, gender')
+          .in('id', missingAuthorIds)
+
+        if (authorProfilesError) {
+          logMatchDetailSoftFailure(matchId, 'message_author_profiles', authorProfilesError)
+        } else {
+          ;((authorProfiles ?? []) as Array<Pick<Profile, 'id' | 'display_name' | 'avatar_url' | 'gender'>>)
+            .forEach((profile) => {
+              messageAuthorProfiles.set(profile.id, profile)
+            })
+        }
+      }
+
       messages = rawMessages.map((message) => {
-        const authorProfile = profileDisplayMap.get(message.author_user_id)
+        const authorProfile = messageAuthorProfiles.get(message.author_user_id)
         return {
           ...message,
-          author_name: resolve(message.author_user_id, null),
+          author_name: authorProfile?.display_name ?? resolve(message.author_user_id, null),
           author_avatar_url: authorProfile?.avatar_url ?? null,
           is_organizer_author: message.author_user_id === match.organizer_id,
         }
