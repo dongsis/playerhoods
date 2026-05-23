@@ -107,6 +107,7 @@ type SummaryEntry = {
   guestId?: string | null
   personId?: string | null
   avatarUrl?: string | null
+  isHost?: boolean
 }
 
 type RemoveRowItem = {
@@ -183,6 +184,10 @@ function getLookupAvailabilityStatus(
   return null
 }
 
+function getParticipantEffectiveUserId(participant: MatchParticipantEnriched): string | null {
+  return participant.user_id ?? participant.linked_user_id ?? null
+}
+
 function SummaryRosterRow({
   title,
   items,
@@ -224,13 +229,8 @@ function SummaryRosterRow({
             {previewItems.map((item) => (
               <span
                 key={item.key}
-                className={`text-body-sub relative inline-flex min-w-0 items-center gap-1 rounded-lg border px-2 py-1 font-semibold ${toneChipClass}`}
+                className={`text-body-sub inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-1 font-semibold ${toneChipClass}`}
               >
-                {item.kind === 'contact' ? (
-                  <span className="pointer-events-none absolute -right-1 -top-1">
-                    <ContactPlayerMark className="h-[0.95rem] w-[0.95rem]" variant="badge" />
-                  </span>
-                ) : null}
                 {item.kind === 'user' ? (
                   (() => {
                     const availabilityDotClass = getAvailabilityStatusDotClass(
@@ -255,9 +255,19 @@ function SummaryRosterRow({
                       avatarUrl: item.avatarUrl ?? null,
                     }}
                   >
-                    <span className="break-all">{item.label}</span>
+                    <span className="inline-flex min-w-0 items-center gap-1">
+                      <span className="min-w-0 break-all">{item.label}</span>
+                      {item.isHost ? (
+                        <span className="shrink-0" aria-label="Host" title="Host">
+                          👑
+                        </span>
+                      ) : null}
+                    </span>
                   </ParticipantQuickPreviewTrigger>
                 )}
+                {item.kind === 'contact' ? (
+                  <ContactPlayerMark className="h-[0.95rem] w-[0.95rem] shrink-0" variant="badge" />
+                ) : null}
                 {item.kind === 'group' ? (
                   <span className="rounded bg-green-100 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-green-800">
                     Group
@@ -1261,35 +1271,43 @@ export function MatchManagePanel({
     }
   }
 
-  const confirmedSummaryItems: SummaryEntry[] = visibleConfirmedParticipants.map((participant) => ({
-    key: `confirmed-${participant.id}`,
-    label: participant.display_name,
-    kind: participant.user_id ? ('user' as const) : ('contact' as const),
-    availabilityStatus: participant.user_id
-      ? getLookupAvailabilityStatus(availabilityLookup, {
-          kind: 'user',
-          userId: participant.user_id,
-        })
-      : null,
-    userId: participant.user_id ?? null,
-    guestId: participant.guest_id ?? null,
-    avatarUrl: participant.avatar_url ?? null,
-  }))
-  const inviteSummaryItems: SummaryEntry[] = [
-    ...visibleInviteUsers.map((participant) => ({
-      key: `invite-user-${participant.id}`,
+  const confirmedSummaryItems: SummaryEntry[] = visibleConfirmedParticipants.map((participant) => {
+    const effectiveUserId = getParticipantEffectiveUserId(participant)
+    return {
+      key: `confirmed-${participant.id}`,
       label: participant.display_name,
-      kind: participant.user_id ? ('user' as const) : ('contact' as const),
-      availabilityStatus: participant.user_id
+      kind: effectiveUserId ? ('user' as const) : ('contact' as const),
+      availabilityStatus: effectiveUserId
         ? getLookupAvailabilityStatus(availabilityLookup, {
             kind: 'user',
-            userId: participant.user_id,
+            userId: effectiveUserId,
           })
         : null,
-      userId: participant.user_id ?? null,
+      userId: effectiveUserId,
       guestId: participant.guest_id ?? null,
       avatarUrl: participant.avatar_url ?? null,
-    })),
+      isHost: Boolean(organizerUserId && effectiveUserId === organizerUserId),
+    }
+  })
+  const inviteSummaryItems: SummaryEntry[] = [
+    ...visibleInviteUsers.map((participant) => {
+      const effectiveUserId = getParticipantEffectiveUserId(participant)
+      return {
+        key: `invite-user-${participant.id}`,
+        label: participant.display_name,
+        kind: effectiveUserId ? ('user' as const) : ('contact' as const),
+        availabilityStatus: effectiveUserId
+          ? getLookupAvailabilityStatus(availabilityLookup, {
+              kind: 'user',
+              userId: effectiveUserId,
+            })
+          : null,
+        userId: effectiveUserId,
+        guestId: participant.guest_id ?? null,
+        avatarUrl: participant.avatar_url ?? null,
+        isHost: Boolean(organizerUserId && effectiveUserId === organizerUserId),
+      }
+    }),
     ...visibleInviteGroups.map((group) => ({
       key: `invite-group-${group.group_id}`,
       label: group.group_name,
