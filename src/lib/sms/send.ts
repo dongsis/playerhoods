@@ -4,6 +4,16 @@ const TWILIO_MESSAGE_SERVICE_SID = process.env.TWILIO_MESSAGE_SERVICE_SID
 
 export type SendSmsResult = { ok: true; id?: string } | { ok: false; error: string }
 
+function normalizeTwilioDestination(to: string): string {
+  const trimmed = to.trim()
+  if (trimmed.startsWith('+')) return trimmed
+
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+  return trimmed
+}
+
 export async function sendSms(to: string, body: string): Promise<SendSmsResult> {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_MESSAGE_SERVICE_SID) {
     console.warn('[sms] Twilio env not configured, skipping send')
@@ -21,7 +31,7 @@ export async function sendSms(to: string, body: string): Promise<SendSmsResult> 
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-          To: to,
+          To: normalizeTwilioDestination(to),
           Body: body,
           MessagingServiceSid: TWILIO_MESSAGE_SERVICE_SID,
         }),
