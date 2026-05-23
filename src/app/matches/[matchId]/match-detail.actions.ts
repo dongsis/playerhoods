@@ -1,5 +1,6 @@
 'use server'
 
+import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
@@ -71,6 +72,11 @@ function buildCriticalChangeSet(
   return changeSet
 }
 
+function buildScheduleReconfirmDedupeKey(matchId: string, changeSet: Record<string, unknown>) {
+  const digest = createHash('md5').update(JSON.stringify(changeSet)).digest('hex')
+  return `schedule_reconfirm:${matchId}:${digest}`
+}
+
 function getIdentityLinkActionError(error: unknown): string {
   const message =
     error &&
@@ -101,18 +107,62 @@ export async function updateMatchDetailsAction(
   data: MatchUpdateInput,
 ) {
   const supabase = await createSupabaseServerClient()
+  const criticalChangeSet = buildCriticalChangeSet(matchSnapshot, data)
+  const hasCriticalChange = Object.keys(criticalChangeSet).length > 0
+  let reconfirmParticipantIds: string[] = []
+
+  if (hasCriticalChange) {
+    const { data: matchRow } = await supabase
+      .from('matches')
+      .select('organizer_id')
+      .eq('id', matchId)
+      .maybeSingle()
+    const organizerId = (matchRow as { organizer_id?: string | null } | null)?.organizer_id ?? null
+    const { data: acceptedParticipants } = await supabase
+      .from('match_participants')
+      .select('id, user_id')
+      .eq('match_id', matchId)
+      .is('removed_at', null)
+      .not('org_approved_at', 'is', null)
+      .not('participant_accepted_at', 'is', null)
+
+    reconfirmParticipantIds = ((acceptedParticipants ?? []) as Array<{ id: string; user_id: string | null }>)
+      .filter((participant) => participant.user_id === null || participant.user_id !== organizerId)
+      .map((participant) => participant.id)
+  }
+
   await updateMatchDetails(supabase, matchId, data)
   if (data.required_count !== undefined || data.doubles_format !== undefined) {
     await rebalanceMatchRosterAfterEdit(supabase, matchId)
   }
 
-  const criticalChangeSet = buildCriticalChangeSet(matchSnapshot, data)
-  if (Object.keys(criticalChangeSet).length > 0) {
-    await NotificationService.enqueueCriticalUpdateNotifications(
+  let queuedNotificationCount = 0
+  if (hasCriticalChange) {
+    queuedNotificationCount += await NotificationService.enqueueCriticalUpdateNotifications(
       supabase,
       matchId,
       criticalChangeSet,
     )
+
+    if (reconfirmParticipantIds.length > 0) {
+      const dedupeKey = buildScheduleReconfirmDedupeKey(matchId, criticalChangeSet)
+      const deliveryIds = await Promise.all(
+        reconfirmParticipantIds.map((participantId) =>
+          NotificationService.enqueueParticipantNotification(
+            supabase,
+            participantId,
+            'invite',
+            dedupeKey,
+            criticalChangeSet,
+          ),
+        ),
+      )
+      queuedNotificationCount += deliveryIds.filter(Boolean).length
+    }
+  }
+
+  if (queuedNotificationCount > 0) {
+    await drainQueuedNotificationDeliveries(supabase, { batchSize: 10, maxBatches: 5 })
   }
 
   revalidateMatchSurfaces(matchId)

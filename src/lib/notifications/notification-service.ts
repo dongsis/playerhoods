@@ -59,6 +59,21 @@ export const NotificationService = {
     })
   },
 
+  enqueueParticipantNotification(
+    supabase: SupabaseClient<Database>,
+    participantId: string,
+    notificationType: 'invite' | 'confirmed_lineup' | 'critical_update' | 'cancellation',
+    dedupeKey: string,
+    changeSet: CriticalChangeSet = {},
+  ): Promise<string | null> {
+    return callRpc<string | null>(supabase, 'notification_enqueue_for_participant', {
+      p_participant_id: participantId,
+      p_notification_type: notificationType,
+      p_dedupe_key: dedupeKey,
+      p_change_set: changeSet,
+    })
+  },
+
   createOrGetSmsReplyCode(
     supabase: SupabaseClient<Database>,
     participantId: string,
