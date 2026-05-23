@@ -457,7 +457,7 @@ function ParticipantRosterSummary({
               {overflow ? <span className="text-body-sub text-[#94A3B8]">{overflow}</span> : null}
             </>
           ) : (
-            <span className="text-[#94A3B8]">No confirmed players yet</span>
+            <span className="text-[#94A3B8]">No lineup players yet</span>
           )}
       </div>
       {shouldShowMeta && metaLine ? (

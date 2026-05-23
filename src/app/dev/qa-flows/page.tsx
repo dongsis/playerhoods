@@ -28,7 +28,7 @@ const welcomeStates: QaState[] = [
 
 const matchStates: QaState[] = [
   { label: 'Draft', tone: 'slate', meta: 'Not published yet' },
-  { label: 'Open', tone: 'blue', meta: 'Accepting requests' },
+  { label: 'Open to Join', tone: 'blue', meta: "Players can say they'd like to play" },
   { label: 'Pending', tone: 'amber', meta: 'Waiting on confirmations' },
   { label: 'Formed', tone: 'green', meta: 'Lineup ready' },
   { label: 'Canceled', tone: 'red', meta: 'No longer active' },
@@ -44,10 +44,10 @@ const inviteStates: QaState[] = [
 
 const requestStates: QaState[] = [
   { label: 'Sent', tone: 'amber', meta: 'Waiting for host' },
-  { label: 'Approved', tone: 'green', meta: 'Host approved' },
-  { label: 'Declined', tone: 'red', meta: 'Host declined' },
+  { label: 'Added to lineup', tone: 'green', meta: 'Host added player to lineup' },
+  { label: 'Not This Time', tone: 'red', meta: 'No lineup spot this time' },
   { label: 'Withdrawn', tone: 'slate', meta: 'Player withdrew' },
-  { label: 'Match full', tone: 'purple', meta: 'Capacity reached' },
+  { label: 'Lineup Full', tone: 'purple', meta: 'Capacity reached' },
 ]
 
 const playerStates: QaState[] = [
@@ -156,7 +156,7 @@ export default function QaFlowsPage() {
             testId="qa-card-invite"
           />
           <QaCard
-            title="Request to Join card"
+            title="Open to Join card"
             subtitle="Player request and host decision states."
             icon="RQ"
             states={requestStates}

@@ -223,7 +223,7 @@ export function MatchCard({ item, userId }: Props) {
               </div>
             </div>
           ) : (
-            <p className="text-body-main mt-4 text-[#94A3B8]">No confirmed players yet.</p>
+            <p className="text-body-main mt-4 text-[#94A3B8]">No lineup players yet.</p>
           )}
         </div>
 

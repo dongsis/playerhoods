@@ -31,7 +31,7 @@ export const LEGAL_DOCUMENT_SECTIONS: LegalSection[] = [
     bullets: [
       'create and manage sports matches;',
       'invite registered users or non-registered contact players;',
-      'request to join eligible matches;',
+      "use I'd like to play for eligible Open to Join matches;",
       'communicate match details through notes, match chat, emails, SMS, or other notifications;',
       'save players to a personal playing network;',
       'discover club, venue, or group-related players where applicable;',

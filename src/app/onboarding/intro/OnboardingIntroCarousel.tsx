@@ -27,7 +27,7 @@ const slides: Slide[] = [
   {
     kind: 'image',
     title: 'Choose how players join',
-    body: 'Invite players directly, or open a match so eligible players can request to join.',
+    body: "Invite players directly, or set a match Open to Join so eligible players can say they'd like to play.",
     imageSrc: '/onboarding/choose-how-players-join.png',
     imageAlt: 'Illustration of direct invitations and open match requests',
   },

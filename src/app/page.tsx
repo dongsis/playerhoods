@@ -44,7 +44,7 @@ const slides: Slide[] = [
     label: 'Join',
     title: 'Join or invite without the group-chat mess',
     imageTitle: 'Choose how players join',
-    copy: 'Invite players directly, or open a match so eligible players can request to join.',
+    copy: "Invite players directly, or set a match Open to Join so eligible players can say they'd like to play.",
     cta: 'Create a Match',
     href: '/matches',
     image: '/home-feature-join.png',

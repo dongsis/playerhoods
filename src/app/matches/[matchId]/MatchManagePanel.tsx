@@ -1072,7 +1072,7 @@ export function MatchManagePanel({
           name: user.name,
           kind: 'user' as const,
           userId: user.id,
-          subtitle: 'Can request to join',
+          subtitle: "Can choose I'd like to play",
           badges: [],
           selected: pendingRemovalKeys.has(`request:user:${user.id}`),
           onToggle: () => {
@@ -1090,7 +1090,7 @@ export function MatchManagePanel({
                       id: user.id,
                       name: user.name,
                       userId: user.id,
-                      subtitle: 'Can request to join',
+                      subtitle: "Can choose I'd like to play",
                     },
                   ],
             )
@@ -1101,7 +1101,7 @@ export function MatchManagePanel({
           key: `request:group:${group.id}`,
           name: group.name,
           kind: 'group' as const,
-          subtitle: 'Group can request to join',
+          subtitle: "Group can choose I'd like to play",
           badges: ['Group'],
           selected: pendingRemovalKeys.has(`request:group:${group.id}`),
           onToggle: () => {
@@ -1118,7 +1118,7 @@ export function MatchManagePanel({
                       kind: 'group',
                       id: group.id,
                       name: group.name,
-                      subtitle: 'Group can request to join',
+                      subtitle: "Group can choose I'd like to play",
                     },
                   ],
             )
@@ -1334,7 +1334,7 @@ export function MatchManagePanel({
 
   const confirmedMetaLabel =
     visibleConfirmedParticipants.length >= requiredCount
-      ? 'Full'
+      ? 'Lineup Full'
       : `${Math.max(requiredCount - visibleConfirmedParticipants.length, 0)} spots left`
   const inviteMetaParts: string[] = []
   if (visibleInviteUsers.length > 0) inviteMetaParts.push(`${visibleInviteUsers.length} player${visibleInviteUsers.length === 1 ? '' : 's'}`)
@@ -1345,14 +1345,14 @@ export function MatchManagePanel({
   if (visibleRequestGroups.length > 0) requestMetaParts.push(`${visibleRequestGroups.length} group${visibleRequestGroups.length === 1 ? '' : 's'}`)
   const requestMetaLabel = requestMetaParts.join(' · ')
 
-  const spotsLabel = `${visibleConfirmedParticipants.length} / ${requiredCount}${visibleConfirmedParticipants.length >= requiredCount ? ' Full' : ''}`
+  const spotsLabel = `${visibleConfirmedParticipants.length} / ${requiredCount}${visibleConfirmedParticipants.length >= requiredCount ? ' Lineup Full' : ''}`
   const isOverCapacity = visibleConfirmedParticipants.length > requiredCount
 
   const pendingGroups: PendingGroup[] = []
   if (pendingConfirmedRemovals.length > 0) {
     pendingGroups.push({
       title: 'Remove Confirmed',
-      subtitle: 'Confirmed players to remove from this match',
+      subtitle: 'Confirmed lineup players to remove from this match',
       items: pendingConfirmedRemovals,
     })
   }
@@ -1366,7 +1366,7 @@ export function MatchManagePanel({
   if (pendingRequestRemovals.length > 0) {
     pendingGroups.push({
       title: 'Remove Request Access',
-      subtitle: 'Players or groups that will no longer be able to request to join',
+      subtitle: "Players or groups that will no longer be able to use I'd like to play",
       items: pendingRequestRemovals,
     })
   }
@@ -1434,7 +1434,7 @@ export function MatchManagePanel({
     if (pendingRequestRemovals.length > 0 && pendingConfirmedRemovals.length === 0 && pendingInviteRemovals.length === 0) {
       return {
         title: `Remove request access for ${pendingRequestRemovals.length} item${pendingRequestRemovals.length === 1 ? '' : 's'}?`,
-        body: 'Selected players or groups will no longer see the request-to-join entry for this match.',
+        body: "Selected players or groups will no longer see the I'd like to play entry for this match.",
         confirmLabel: 'Remove Request Access',
       }
     }
@@ -1554,7 +1554,7 @@ export function MatchManagePanel({
                   />
                   {isOrganizer ? (
                     <InviteModeButton
-                      title="Open for Request"
+                      title="Open to Join"
                       selected={inviteMode === 'request'}
                       onClick={() => setInviteMode('request')}
                       tone="green"
@@ -1579,7 +1579,7 @@ export function MatchManagePanel({
                   />
                   <ActionCard
                     title="Remove Request Access"
-                    subtitle="Stop selected players or groups from requesting to join"
+                    subtitle="Stop selected players or groups from using I'd like to play"
                     selected={removeMode === 'requests'}
                     onClick={() => setRemoveMode('requests')}
                     accent="orange"
@@ -1754,7 +1754,7 @@ export function MatchManagePanel({
                       <SummaryRosterRow
                         title="Confirmed"
                         items={confirmedSummaryItems}
-                        emptyLabel="No confirmed players yet"
+                        emptyLabel="No lineup players yet"
                         metaLabel={confirmedMetaLabel}
                         tone="slate"
                         availabilityLookup={availabilityLookup}
@@ -1771,7 +1771,7 @@ export function MatchManagePanel({
                       ) : null}
                       {isOrganizer ? (
                         <SummaryRosterRow
-                          title="Open for Request"
+                          title="Open to Join"
                           items={requestSummaryItems}
                           emptyLabel="None"
                           metaLabel={requestMetaLabel}

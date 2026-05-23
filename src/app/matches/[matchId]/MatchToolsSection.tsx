@@ -78,7 +78,7 @@ export function MatchToolsSection({
     return null
   }
 
-  const inviteMeta = `${confirmedParticipants.length} / ${requiredCount}${confirmedParticipants.length >= requiredCount ? ' Full' : ''}`
+  const inviteMeta = `${confirmedParticipants.length} / ${requiredCount}${confirmedParticipants.length >= requiredCount ? ' Lineup Full' : ''}`
 
   return (
     <section

@@ -121,7 +121,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
                 disabled={loading}
                 style={requestJoinButtonStyle}
               >
-                {loading ? 'Requesting...' : 'Request to Join'}
+                {loading ? 'Sending...' : "I'd like to play"}
               </button>
             </>
           ) : (
@@ -164,9 +164,9 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     if (inScope) {
       return (
         <div>
-          <p style={{ margin: '0 0 0.35rem', color: '#0f172a', fontWeight: 800 }}>Want to join this match?</p>
+          <p style={{ margin: '0 0 0.35rem', color: '#0f172a', fontWeight: 800 }}>Open to Join</p>
           <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.9rem' }}>
-            Send a request to the organizer. They&apos;ll let you know if there&apos;s a spot.
+            Let the host know you&apos;d like to play. They can add you to the lineup if there&apos;s a spot.
           </p>
           <button
             data-testid="request-join"
@@ -174,7 +174,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
             disabled={loading}
             style={requestJoinButtonStyle}
           >
-            {loading ? 'Requesting...' : 'Request to Join'}
+            {loading ? 'Sending...' : "I'd like to play"}
           </button>
           {error && <p style={{ color: 'red' }}>{error}</p>}
         </div>
@@ -205,7 +205,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
           >
             <p style={{ margin: '0 0 0.35rem', color: '#0f172a', fontWeight: 800 }}>Request sent</p>
             <p style={{ margin: '0 0 0.75rem', color: '#475569', fontSize: '0.9rem', lineHeight: 1.45 }}>
-              You asked to join this match. {organizerName} will let you know if there&apos;s a spot.
+              The host can now add you to the lineup.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
               <button
@@ -310,18 +310,18 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
           )}
           {!needsReconfirm && (
             <>
-              {isSelfRequested && <span>Waiting for host confirmation.</span>}
+              {isSelfRequested && <span>Waiting for host.</span>}
               {isInvited && (
                 <span>
                   {hasUserAccepted
-                    ? (mp.org_approved_at ? 'Confirmed.' : 'Waiting for host confirmation.')
+                    ? (mp.org_approved_at ? "You're in the lineup." : 'Waiting for host.')
                     : (mp.org_approved_at ? 'The host added you. Join when ready.' : 'Let the host know if you can make it.')}
                 </span>
               )}
               {isParticipantInvite && (
                 <span>
                   {hasUserAccepted
-                    ? (mp.org_approved_at ? 'Confirmed.' : 'Waiting for host confirmation.')
+                    ? (mp.org_approved_at ? "You're in the lineup." : 'Waiting for host.')
                     : (mp.org_approved_at ? 'The host added you. Join when ready.' : 'Let the host know if you can make it.')}
                 </span>
               )}
@@ -405,7 +405,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
             padding: '0.9rem 1rem',
           }}
         >
-          <p style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>You&apos;re listed as confirmed</p>
+          <p style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>You&apos;re in the lineup</p>
           <p style={{ margin: '0.35rem 0 0', color: '#475569', fontSize: '0.9rem', lineHeight: 1.45 }}>
             The host added you because you already confirmed outside PlayerHoods. If anything changed, you can update your response.
           </p>

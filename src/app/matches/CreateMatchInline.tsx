@@ -654,7 +654,7 @@ function ReviewMatchModal({
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
-                <span className="text-label text-[#64748B]">Open to Request</span>
+                <span className="text-label text-[#64748B]">Open to Join</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {requestItems.length > 0 ? requestItems.map((item) => (
@@ -3153,7 +3153,7 @@ export function CreateMatchInline({
               ].join(' ')}
             >
               <span className="text-base">+</span>
-              <span className="text-body-main whitespace-nowrap font-medium">Open for Request</span>
+              <span className="text-body-main whitespace-nowrap font-medium">Open to Join</span>
             </button>
           </div>
 
@@ -3334,7 +3334,7 @@ export function CreateMatchInline({
                     <div>
                       <div className="mb-2 flex items-center gap-2">
                         <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                        <span className="text-label">Open to Request</span>
+                        <span className="text-label">Open to Join</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedScopeUsers.map((candidate) => (

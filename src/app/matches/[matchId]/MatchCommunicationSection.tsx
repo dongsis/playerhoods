@@ -140,7 +140,7 @@ export function MatchCommunicationSection({
       ? 'Player Messages'
       : 'Message Host'
   const communicationHelper = showFormedNotice
-    ? 'Confirmed players can chat together here.'
+    ? 'Lineup players can chat together here.'
     : isOrganizer
       ? 'Before the match is formed, each player can message you directly.'
       : 'Ask a question or send an update to the organizer.'

@@ -48,7 +48,7 @@ export function RequestJoinButton({ matchId }: Props) {
         disabled={loading}
         style={buttonStyle}
       >
-        {loading ? 'Requesting...' : 'Request to Join'}
+        {loading ? 'Sending...' : "I'd like to play"}
       </button>
       {error && <p style={{ color: 'red' }}>{error}</p>}
     </div>

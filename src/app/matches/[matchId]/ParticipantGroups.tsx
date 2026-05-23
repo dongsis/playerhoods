@@ -322,7 +322,7 @@ function ParticipantRow({
 
   const canRemoveParticipant = canOrganizerRemoveParticipant || canRemovePendingParticipant
   const isPendingRequest = p.status === 'pending' && p.join_method === 'requested' && p.org_approved_at === null
-  const hostRemoveActionLabel = isPendingRequest ? 'Decline request' : 'Remove player'
+  const hostRemoveActionLabel = isPendingRequest ? 'Not This Time' : 'Remove player'
 
   const closeMenus = () => {
     setMenuOpen(false)
@@ -379,7 +379,7 @@ function ParticipantRow({
   } else if (p.join_method === 'requested') {
     timelineEvents.push({
       key: 'requested',
-      label: `Self request to join`,
+      label: `Asked to join`,
       at: p.created_at,
     })
   }
@@ -421,7 +421,7 @@ function ParticipantRow({
     const approver = resolveActorName(p.org_approved_by) ?? organizerName
     timelineEvents.push({
       key: 'organizer-approved',
-      label: `Host approved by ${approver}`,
+      label: `Added to lineup by ${approver}`,
       at: p.org_approved_at,
     })
   }
@@ -594,7 +594,7 @@ function ParticipantRow({
               Waiting list
             </span>
             <span style={{ fontSize: '0.64rem', color: '#94a3b8' }}>
-              Fully confirmed, waiting for an open spot.
+              Lineup full, waiting for an open spot.
               {p.waiting_list_at ? ` Since ${formatEventTimestamp(p.waiting_list_at)}` : ''}
             </span>
           </div>
@@ -648,7 +648,7 @@ function ParticipantRow({
                 disabled={isPending}
                 style={inlinePrimaryActionStyle}
               >
-                Confirm this player
+                Add to Lineup
               </button>
             )}
 
@@ -737,7 +737,7 @@ function ParticipantRow({
             <h4 style={dialogTitleStyle}>{hostRemoveActionLabel}?</h4>
             <p style={dialogBodyStyle}>
               {isPendingRequest
-                ? 'This will decline their request to join.'
+                ? 'This lets them know there is not a lineup spot this time.'
                 : isOrganizer
                   ? 'This removes them from the match.'
                   : 'Remove this player?'}
@@ -745,7 +745,7 @@ function ParticipantRow({
             <textarea
               value={actionReason}
               onChange={(event) => setActionReason(event.target.value)}
-              placeholder={isPendingRequest ? 'Add a note for declining (optional)' : 'Add a note (optional)'}
+              placeholder={isPendingRequest ? 'Add a note (optional)' : 'Add a note (optional)'}
               style={dialogTextareaStyle}
             />
             <div style={dialogActionsStyle}>
@@ -1057,6 +1057,12 @@ export function ParticipantGroups({
     p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
       p.status === 'pending' && p.join_method !== 'guest_add'
   )
+  const playersWhoWantToJoin = pending.filter(
+    p => p.join_method === 'requested' && p.org_approved_at === null
+  )
+  const waitingForConfirmation = pending.filter(
+    p => !(p.join_method === 'requested' && p.org_approved_at === null)
+  )
   const waiting = participants.filter(
     p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
       p.status === 'waiting_list' && p.join_method !== 'guest_add'
@@ -1080,10 +1086,10 @@ export function ParticipantGroups({
     <div>
       {/* Confirmed — visible to all */}
       <Section
-        title="Confirmed"
+        title="Confirmed Lineup"
         badge={confirmed.length}
         badgeColor="#2d8a4e"
-        extraLabel={confirmed.length >= requiredCount ? 'Full' : null}
+        extraLabel={confirmed.length >= requiredCount ? 'Lineup Full' : null}
       >
         {confirmed.length === 0 ? (
           <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None yet.</p>
@@ -1095,10 +1101,18 @@ export function ParticipantGroups({
       </Section>
 
       {/* Pending — visible here when the current page model allows the row through. */}
-      {pending.length > 0 && isOrganizer ? (
-        <Section title="Waiting for confirmation" badge={pending.length} badgeColor="#d97706">
+      {playersWhoWantToJoin.length > 0 && isOrganizer ? (
+        <Section title="Players Who Want to Join" badge={playersWhoWantToJoin.length} badgeColor="#0d6efd">
           <div style={participantGridStyle}>
-            {pending.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+            {playersWhoWantToJoin.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          </div>
+        </Section>
+      ) : null}
+
+      {waitingForConfirmation.length > 0 && isOrganizer ? (
+        <Section title="Waiting for player" badge={waitingForConfirmation.length} badgeColor="#d97706">
+          <div style={participantGridStyle}>
+            {waitingForConfirmation.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
           </div>
         </Section>
       ) : null}

@@ -438,14 +438,14 @@ function MatchParticipantsSection({
     ? 'Players'
     : viewModel.isFormed
       ? 'Players'
-      : 'Players confirmed so far'
+      : 'Confirmed Lineup'
   const playersHelper = viewModel.isOrganizer
-    ? 'Confirmed players count toward forming the match. Invited players confirm themselves. Join requests are added by the organizer.'
+    ? 'Confirmed lineup players count toward forming the match. Invited players confirm themselves. Players who want to join are added by the organizer.'
     : viewModel.myParticipant?.status === 'waiting_list'
       ? 'The organizer will let you know if a spot opens.'
       : viewModel.isFormed
-        ? 'Confirmed players in this match.'
-        : 'Confirmed players count toward forming the match.'
+        ? 'Players in this match.'
+        : 'Confirmed lineup players count toward forming the match.'
 
   const safeConfirmedParticipants = viewModel.participantsForDisplay.filter((participant) =>
     participant.status === 'confirmed' &&
@@ -538,7 +538,7 @@ function SafeConfirmedPlayersList({
             fontWeight: 700,
           }}
         >
-          No players confirmed yet.
+          No lineup players yet.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.55rem' }}>
@@ -597,7 +597,7 @@ function SafeConfirmedPlayersList({
         </div>
       )}
       <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontWeight: 800 }}>
-        {confirmedCount} of {requiredCount} players confirmed
+        {confirmedCount} of {requiredCount} lineup spots filled
       </p>
     </div>
   )
