@@ -46,8 +46,12 @@ type ParticipantTimelineEvent = {
 }
 
 function getPendingState(p: MatchParticipantEnriched) {
+  const isApprovedRequestNeedingReconfirm =
+    p.join_method === 'requested' &&
+    p.org_approved_at !== null &&
+    p.participant_accepted_at === null
   const participantConfirmed =
-    p.join_method === 'requested'
+    p.join_method === 'requested' && !isApprovedRequestNeedingReconfirm
       ? Boolean(p.participant_accepted_at ?? p.created_at)
       : Boolean(p.participant_accepted_at)
   const hostConfirmed = Boolean(p.org_approved_at)
