@@ -21,6 +21,7 @@ export async function middleware(request: NextRequest) {
   const isShortStopRoute = pathname.startsWith('/stop/')
   const isSeoFileRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   const isDevHelperRoute = pathname.startsWith('/dev/')
+  const isNotificationDrainRoute = pathname === '/api/notifications/drain'
   const isCanonicalLocalAuthRoute = isLoginRoute || isAuthCallback || isResetPasswordRoute
 
   if (shouldUseCanonicalLocalAuthHost(requestHost) && isCanonicalLocalAuthRoute) {
@@ -72,6 +73,7 @@ export async function middleware(request: NextRequest) {
     || isInvitationPage
     || isPublicVenueProfile
     || isPublicVenueDirectory
+    || isNotificationDrainRoute
   const isProtectedRoute = !isPublicRoute && !isOnboarding
 
   if (isSeoFileRoute) {
