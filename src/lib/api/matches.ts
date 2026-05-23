@@ -1926,7 +1926,10 @@ export async function getMatchDetailData(
     && myParticipant.status === 'pending'
     && myParticipant.participant_accepted_at == null
     && myParticipant.org_approved_at != null
-    && participantIdsWithPriorAcceptance.has(myParticipant.id)
+    && (
+      participantIdsWithPriorAcceptance.has(myParticipant.id)
+      || myParticipant.join_method === 'requested'
+    )
   )
   const scopeGroups = ((scopeGroupsRes.data ?? []) as { id: string; name: string }[])
   const rosterInsight = deriveMatchRosterInsight(match, enriched)
