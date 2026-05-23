@@ -453,14 +453,14 @@ function SelectableInviteChip({
   const confirmLabel = item.kind === 'contact' ? 'Add & Confirm' : 'Add as Confirmed'
 
   return (
-    <span className="inline-flex max-w-full flex-wrap items-center gap-1.5">
+    <span className="flex w-full max-w-full flex-wrap items-center gap-1.5">
     <button
       type="button"
       onClick={onToggle}
       aria-pressed={selected}
       title={item.sourceLabel ? `${item.name}: ${item.sourceLabel}` : item.name}
       className={[
-        'text-body-sub relative inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-2 font-medium shadow-sm transition hover:-translate-y-0.5',
+        'text-body-sub relative inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border px-3 py-2 font-medium shadow-sm transition hover:-translate-y-0.5',
         selected ? selectedClass : hoverClass,
       ].join(' ')}
     >
@@ -641,7 +641,6 @@ export function MatchManagePanel({
   const [isExpanded, setIsExpanded] = useState(false)
   const [inviteMode, setInviteMode] = useState<InviteSelectionMode>('invite')
   const [removeMode, setRemoveMode] = useState<RemoveSelectionMode>('confirmed')
-  const [search, setSearch] = useState('')
   const [pendingAdds, setPendingAdds] = useState<PendingAddition[]>([])
   const [pendingRemovals, setPendingRemovals] = useState<PendingRemoval[]>([])
   const [isApplying, setIsApplying] = useState(false)
@@ -858,9 +857,7 @@ export function MatchManagePanel({
         if (candidate.kind === 'group' && currentRequestGroupIds.has(candidate.id) && !revokedRequestGroupIds.has(candidate.id)) return false
       }
 
-      if (!search.trim()) return true
-      const haystack = `${candidate.name} ${candidate.sourceLabel ?? ''}`.toLowerCase()
-      return haystack.includes(search.trim().toLowerCase())
+      return true
     })
   }, [
     candidateGroups,
@@ -877,7 +874,6 @@ export function MatchManagePanel({
     pendingAddKeys,
     revokedRequestGroupIds,
     revokedRequestUserIds,
-    search,
   ])
 
   const handleCreateContactForMatch = async () => {
@@ -935,7 +931,6 @@ export function MatchManagePanel({
       })
       stageAdd(candidate, 'invite')
       setInviteMode('invite')
-      setSearch('')
       setContactDisplayName('')
       setContactEmail('')
       setContactPhone('')
@@ -1249,7 +1244,6 @@ export function MatchManagePanel({
       setPendingAdds([])
       setPendingRemovals([])
       setLocalContactCandidates([])
-      setSearch('')
       setConfirmOpen(false)
       setSuccess('Changes applied.')
       router.refresh()
@@ -1576,7 +1570,7 @@ export function MatchManagePanel({
               )}
             </div>
 
-            <div className="lg:col-span-4">
+            <div className="lg:col-span-5">
               <div className="text-label mb-4 flex items-center text-[#94A3B8]">
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                 Select Target
@@ -1588,9 +1582,6 @@ export function MatchManagePanel({
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
                           <div className="text-title-main text-slate-900">Need more players?</div>
-                          <p className="text-body-sub mt-1 max-w-[260px] text-slate-500">
-                            Add people you already play with and invite them to this match.
-                          </p>
                         </div>
                         <button
                           type="button"
@@ -1683,27 +1674,11 @@ export function MatchManagePanel({
                         </form>
                       ) : null}
                     </div>
-                    <input
-                      type="text"
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder={
-                        inviteMode === 'request'
-                          ? 'Search saved registered players or groups...'
-                          : 'Search saved registered players, contacts, or groups...'
-                      }
-                      className="text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                    />
-                    {inviteMode === 'invite' && isOrganizer ? (
-                      <p className="text-body-sub mt-2 text-slate-400">
-                        Use Add & Confirm only when they already told you they can play. They’ll be notified and can update their response.
-                      </p>
-                    ) : null}
                   </div>
                 ) : null}
 
                 {panelMode === 'invite' ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid max-h-[360px] gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
                     {inviteCandidates.length === 0 ? (
                       <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
                         {inviteMode === 'request'
@@ -1749,7 +1724,7 @@ export function MatchManagePanel({
               </div>
             </div>
 
-            <div className="flex flex-col lg:col-span-5">
+            <div className="flex flex-col lg:col-span-4">
               <div className="text-label mb-4 flex items-center text-[#94A3B8]">
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                 {panelMode === 'remove' ? 'Pending Actions' : 'Summary'}
@@ -1862,7 +1837,6 @@ export function MatchManagePanel({
                       setPendingRemovals([])
                       setConfirmOpen(false)
                     }
-                    setSearch('')
                   }}
                   disabled={isApplying || (panelMode === 'invite' ? pendingAdds.length === 0 : pendingRemovals.length === 0)}
                   className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
