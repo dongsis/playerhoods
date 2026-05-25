@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-05-25 - PATCH-20260525-contact-notification-public-links
 
 **Type:** Patch
-**Code Commit:** Local workspace deployment; GitHub commit pending
+**Code Commit:** `5fbb8eb`
 **Migration:** `20260525170500_contact_notifications_public_invitation_links.sql`
-**Status:** Pending deployment
+**Status:** Vercel Production deployed; Supabase Remote applied
 
 ### Summary
 
@@ -33,9 +33,9 @@ This patch fixes contact/player-card email CTA links so unregistered recipients 
 
 | Check | Status | Evidence |
 |---|---|---|
-| Build | Pending | `npm run build` |
-| Remote Supabase | Pending | Apply migration and run validation RPC where feasible |
-| Vercel Production | Pending | Confirm production deployment is Ready |
+| Build | Passed | `npm run build` |
+| Remote Supabase | Passed | `supabase db push`; `supabase migration list` shows `20260525170500` applied remotely |
+| Vercel Production | Passed | Deployment `https://playerhoods-codex-ihaa6p28f-nancys-projects-128e326c.vercel.app` reported Ready and aliases include `https://www.playerhoods.com` |
 
 ### Rollback
 
