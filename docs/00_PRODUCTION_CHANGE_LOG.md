@@ -14,6 +14,33 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-25 - PATCH-20260525-contact-notification-public-links
+
+**Type:** Patch
+**Code Commit:** Local workspace deployment; GitHub commit pending
+**Migration:** `20260525170500_contact_notifications_public_invitation_links.sql`
+**Status:** Pending deployment
+
+### Summary
+
+This patch fixes contact/player-card email CTA links so unregistered recipients open public invitation pages instead of protected match pages:
+
+- Updates `notification_match_payload` to create or reuse an `email_invitations.match_participant_id` anchor for guest/contact participants before rendering notification links.
+- Updates `notification_magic_link_for_participant` to keep using invitation anchors after an invitation is accepted or declined, avoiding fallback to `/matches/:id`.
+- Adds validation RPC `rpc_validate_contact_notification_public_links`.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build | Pending | `npm run build` |
+| Remote Supabase | Pending | Apply migration and run validation RPC where feasible |
+| Vercel Production | Pending | Confirm production deployment is Ready |
+
+### Rollback
+
+- Restore the previous definitions of `notification_match_payload` and `notification_magic_link_for_participant` from the prior migration.
+
 ## 2026-05-25 - PATCH-20260525-ready-to-form-copy-polish
 
 **Type:** Patch
