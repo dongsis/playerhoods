@@ -3,6 +3,7 @@ import { sendEmail } from './send'
 import { sendSms } from '@/lib/sms/send'
 import { renderGameFormedSms, renderMatchRemovedSms, renderMatchTimeChangeSms } from '@/lib/notifications/channels/sms/render-notification-sms'
 import { gameFormedEmail, matchRemovedEmail, matchTimeChangePendingEmail, type MatchInfo } from './templates'
+import { getSiteOrigin } from '@/lib/site-url'
 
 export type ParticipantNotificationTarget = {
   participant_id: string | null
@@ -47,16 +48,13 @@ function buildMatchInfo(
   match: { id: string; game_type: string | null; match_date: string | null; start_time: string | null },
   venueName: string | null,
 ): MatchInfo {
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://127.0.0.1:3000')
   return {
     matchId: match.id,
     gameType: match.game_type ?? 'Match',
     matchDate: match.match_date,
     startTime: match.start_time,
     venueName,
-    siteUrl,
+    siteUrl: getSiteOrigin(),
   }
 }
 

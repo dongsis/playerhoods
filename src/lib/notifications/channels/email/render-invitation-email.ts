@@ -1,4 +1,5 @@
 import { escapeHtml, renderEmailLayout } from '@/lib/email/render-email-layout'
+import { getSiteOrigin } from '@/lib/site-url'
 
 export type InvitationEmailData = {
   inviterDisplayName: string
@@ -33,7 +34,7 @@ function formatClubLabel(clubName: string | null | undefined): string {
 
 /** Render invitation email HTML. CTA leads to the invitation response page. */
 export function renderInvitationEmail(data: InvitationEmailData): string {
-  const base = data.siteUrl && data.siteUrl !== 'undefined' ? data.siteUrl : 'http://localhost:3000'
+  const base = data.siteUrl && data.siteUrl !== 'undefined' ? data.siteUrl : getSiteOrigin()
   const viewUrl = `${base}/invitations/${data.invitationId}`
   const unsubscribeUrl = data.unsubscribeUrl ?? `${base}/unsubscribe?invitation=${encodeURIComponent(data.invitationId)}&channel=email&scope=contact_invites`
   const formatLabel = formatMatchFormatLabel(data.matchSummary?.game_type)

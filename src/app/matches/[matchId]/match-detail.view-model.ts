@@ -103,8 +103,23 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     myParticipant.removed_at === null &&
     myParticipant.status === 'confirmed',
   )
-  const canParticipantInvite = !isOrganizer && match.can_participants_invite_users && hasConfirmedParticipantAccess
-  const canParticipantInviteContact = isOrganizer
+  const hasActiveParticipantAccess = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    ['pending', 'confirmed', 'waiting_list'].includes(myParticipant.status),
+  )
+  const hasPreviewAccess = Boolean(
+    user?.id &&
+    !myParticipant &&
+    (myGroupInvites.length > 0 || inScope),
+  )
+  const canParticipantNominate = Boolean(
+    !isOrganizer &&
+    match.can_participants_invite_users &&
+    (hasActiveParticipantAccess || hasPreviewAccess),
+  )
+  const canParticipantInvite = canParticipantNominate
+  const canParticipantInviteContact = canParticipantNominate
   const courtState = deriveMatchCourtStatus({
     matchStatus: match.status,
     courtPlanMode: match.court_plan_mode,
@@ -133,27 +148,25 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
         )
       )
     )
+  const canSelfManageParticipation = Boolean(
+    myParticipant &&
+    myParticipant.removed_at === null &&
+    ['confirmed', 'waiting_list'].includes(myParticipant.status),
+  )
 
   const participantsForDisplay = isOrganizer
     ? participants
     : participants.filter((participant) =>
-        participant.status === 'confirmed' &&
-        participant.removed_at === null)
+        participant.removed_at === null &&
+        (
+          participant.status === 'confirmed' ||
+          participant.proxy_manageable_by_viewer === true
+        ))
 
-  const hasActiveParticipantAccess = Boolean(
-    myParticipant &&
-    myParticipant.removed_at === null &&
-    ['pending', 'confirmed', 'waiting_list'].includes(myParticipant.status),
-  )
   const hasWaitingListParticipantAccess = Boolean(
     myParticipant &&
     myParticipant.removed_at === null &&
     myParticipant.status === 'waiting_list',
-  )
-  const hasPreviewAccess = Boolean(
-    user?.id &&
-    !myParticipant &&
-    (myGroupInvites.length > 0 || inScope),
   )
   const canAccessCommunication = Boolean(
     user?.id &&
@@ -217,7 +230,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     scopeUsersForInvite: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
     scopeUsersForParticipantInvite: admissionTargetsToScopeUsers(savedAdmissionTargets, { requireCanAdmit: true }),
     contactTargets: loaderData.contactPersonTargets,
-    showSelfActionsSection: match.status === 'active' && !isOrganizer && selfNeedsTopAction && loaderData.identityLinkCandidates.length === 0,
+    showSelfActionsSection: match.status === 'active' && !isOrganizer && (selfNeedsTopAction || canSelfManageParticipation) && loaderData.identityLinkCandidates.length === 0,
     showParticipantInviteSection: match.status === 'active' && canParticipantInvite,
     showParticipantInviteContactSection: match.status === 'active' && canParticipantInviteContact && !isOrganizer,
     showOrganizerAdminSection: match.status === 'active' && isOrganizer,

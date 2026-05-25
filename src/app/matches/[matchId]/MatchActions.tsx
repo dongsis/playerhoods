@@ -378,69 +378,29 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
         <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
           You&apos;re available, but the match is currently full. The organizer will let you know if a spot opens.
         </p>
-        <a href="#match-communication" style={{ ...secondaryButtonStyle, display: 'inline-flex', marginTop: '0.75rem', textDecoration: 'none' }}>
-          Message Host
-        </a>
-      </div>
-    )
-  }
-
-  if (isConfirmedDerived) {
-    const isHostManagedConfirmation =
-      mp.confirmation_source === 'host_managed_offline'
-      || mp.confirmation_source === 'contact_owner_managed'
-      || mp.participant_accepted_via === 'host_offline_confirmation'
-
-    if (!isHostManagedConfirmation) {
-      return null
-    }
-
-    return (
-      <div>
-        <div
-          style={{
-            border: '1px solid #dbeafe',
-            borderRadius: '18px',
-            background: '#eff6ff',
-            padding: '0.9rem 1rem',
-          }}
-        >
-          <p style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>You&apos;re in the lineup</p>
-          <p style={{ margin: '0.35rem 0 0', color: '#475569', fontSize: '0.9rem', lineHeight: 1.45 }}>
-            The host added you because you already confirmed outside PlayerHoods. If anything changed, you can update your response.
-          </p>
-          <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => handleAction(() => reconfirmMatchParticipation(supabase, matchId))}
-              style={primaryButtonStyle}
-            >
-              I&apos;m In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setError(null)
-                setDeclineOpen(true)
-              }}
-              disabled={loading}
-              style={secondaryButtonStyle}
-            >
-              Can&apos;t Make It
-            </button>
-            <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
-              Message Host
-            </a>
-          </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              setDeclineOpen(true)
+            }}
+            disabled={loading}
+            style={secondaryButtonStyle}
+          >
+            Leave Waitlist
+          </button>
+          <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
+            Message Host
+          </a>
         </div>
         {error && <p style={{ color: 'red' }}>{error}</p>}
         {declineOpen && (
           <div style={dialogOverlayStyle}>
             <div style={dialogCardStyle}>
-              <h4 style={dialogTitleStyle}>{declineActionLabel}</h4>
+              <h4 style={dialogTitleStyle}>Leave Waitlist</h4>
               <p style={dialogBodyStyle}>
-                Add a note if you want. The host will see it with your response.
+                The host will see that you are no longer waiting for a spot.
               </p>
               <MatchExitNoteComposer
                 mode="withdraw"
@@ -465,7 +425,101 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
                     cursor: loading ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  {loading ? 'Updating...' : declineActionLabel}
+                  {loading ? 'Leaving...' : 'Leave Waitlist'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (isConfirmedDerived) {
+    const isHostManagedConfirmation =
+      mp.confirmation_source === 'host_managed_offline'
+      || mp.confirmation_source === 'contact_owner_managed'
+      || mp.participant_accepted_via === 'host_offline_confirmation'
+    const cancelParticipationLabel = 'Cancel Participation'
+    const confirmedMessage = isHostManagedConfirmation
+      ? 'The host added you because you already confirmed outside PlayerHoods. If anything changed, you can update your response.'
+      : 'If you can no longer play, cancel your participation so the host can fill the spot.'
+
+    return (
+      <div>
+        <div
+          style={{
+            border: '1px solid #dbeafe',
+            borderRadius: '18px',
+            background: '#eff6ff',
+            padding: '0.9rem 1rem',
+          }}
+        >
+          <p style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>You&apos;re in the lineup</p>
+          <p style={{ margin: '0.35rem 0 0', color: '#475569', fontSize: '0.9rem', lineHeight: 1.45 }}>
+            {confirmedMessage}
+          </p>
+          <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {isHostManagedConfirmation && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleAction(() => reconfirmMatchParticipation(supabase, matchId))}
+                style={primaryButtonStyle}
+              >
+                I&apos;m In
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setError(null)
+                setDeclineOpen(true)
+              }}
+              disabled={loading}
+              style={secondaryButtonStyle}
+            >
+              {isHostManagedConfirmation ? declineActionLabel : cancelParticipationLabel}
+            </button>
+            <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
+              Message Host
+            </a>
+          </div>
+        </div>
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        {declineOpen && (
+          <div style={dialogOverlayStyle}>
+            <div style={dialogCardStyle}>
+              <h4 style={dialogTitleStyle}>{isHostManagedConfirmation ? declineActionLabel : cancelParticipationLabel}</h4>
+              <p style={dialogBodyStyle}>
+                {isHostManagedConfirmation
+                  ? 'Add a note if you want. The host will see it with your response.'
+                  : 'The host will see that you can no longer join this match.'}
+              </p>
+              <MatchExitNoteComposer
+                mode="withdraw"
+                note={declineReason}
+                onNoteChange={setDeclineReason}
+              />
+              <div style={dialogActionsStyle}>
+                <button type="button" onClick={closeDeclineDialog} style={secondaryDialogButtonStyle}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    const note = declineReason.trim()
+                    closeDeclineDialog()
+                    handleAction(() => userWithdraw(supabase, matchId, note))
+                  }}
+                  style={{
+                    ...dangerDialogButtonStyle,
+                    opacity: loading ? 0.6 : 1,
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {loading ? 'Updating...' : (isHostManagedConfirmation ? declineActionLabel : cancelParticipationLabel)}
                 </button>
               </div>
             </div>

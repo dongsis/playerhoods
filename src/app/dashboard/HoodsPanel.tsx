@@ -2800,6 +2800,7 @@ export function HoodsPanel({
         await processDeliveriesAction()
       } else if (person.userId) {
         await inviteUserToMatch(supabase, matchId, person.userId)
+        await processDeliveriesAction()
       } else if (person.guestId) {
         await inviteContactGuestToMatch(supabase, matchId, person.guestId)
         await processDeliveriesAction()
@@ -3501,17 +3502,17 @@ export function HoodsPanel({
       )}
 
       {contactComposerMode === 'screenshot' && onParseScreenshots && onImportScreenshotContacts && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
           <button
             type="button"
             aria-label="Close screenshot import"
             className="absolute inset-0 bg-[#0B1F44]/40 backdrop-blur-sm"
             onClick={() => setContactComposerMode(null)}
           />
-          <div className="relative max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-[32px] bg-white p-4 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)]">
-            <div className="mb-4 flex items-start justify-between gap-4 px-2 pt-2">
+          <div className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-[28px] bg-white p-4 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)] sm:max-h-[88vh] sm:rounded-[32px]">
+            <div className="mb-4 flex items-start justify-between gap-4 px-1 pt-1 sm:px-2 sm:pt-2">
               <div>
-                <h3 className="text-h2 text-[#1E293B]">Smart Import</h3>
+                <h3 className="text-xl font-black text-[#1E293B] sm:text-h2">Smart Import</h3>
                 <p className="text-body-sub mt-1 max-w-xl text-[#64748B]">
                   Upload or paste a screenshot from a chat group, email header, or contact list. We&apos;ll extract possible names, emails, and phone numbers for you to review before saving them as Contact Players.
                 </p>

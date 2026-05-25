@@ -1,4 +1,5 @@
 import { SUPPORT_EMAIL } from '@/lib/legal'
+import { getSiteOrigin } from '@/lib/site-url'
 
 export type EmailDetail = {
   label: string
@@ -22,10 +23,8 @@ export type RenderEmailLayoutInput = {
   siteUrl?: string
 }
 
-const FALLBACK_SITE_URL = 'http://localhost:3000'
-
 export function normalizeEmailBaseUrl(siteUrl: string | null | undefined): string {
-  if (!siteUrl || siteUrl === 'undefined') return FALLBACK_SITE_URL
+  if (!siteUrl || siteUrl === 'undefined') return getSiteOrigin()
   return siteUrl
 }
 

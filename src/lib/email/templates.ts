@@ -3,6 +3,7 @@
  */
 
 import { escapeHtml, renderEmailLayout, type EmailDetail } from '@/lib/email/render-email-layout'
+import { getSiteOrigin } from '@/lib/site-url'
 
 export type MatchInfo = {
   matchId: string
@@ -17,7 +18,7 @@ export type MatchInfo = {
 }
 
 function matchLink(m: MatchInfo): string {
-  const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : 'http://localhost:3000'
+  const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : getSiteOrigin()
   if (m.magicLinkPath) {
     const path = m.magicLinkPath.startsWith('/') ? m.magicLinkPath : `/${m.magicLinkPath}`
     return `${base}${path}`

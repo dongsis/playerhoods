@@ -1684,9 +1684,10 @@ export function ProfilePanel({
   const [customPreferredTime, setCustomPreferredTime] = useState('')
   const [selectedSportIds, setSelectedSportIds] = useState<number[]>(mySportIds)
   const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const mountedRef = useRef(false)
   const lastSavedSnapshotRef = useRef('')
+  const availabilitySaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const availabilityMountedRef = useRef(false)
+  const lastSavedAvailabilitySnapshotRef = useRef('')
   const normalizedAuthEmail = normalizeEmail(userEmail)
   const normalizedProfileContactEmail = normalizeEmail(contactEmail)
   const verifiedAuthEmailEntry = useMemo(
@@ -1849,15 +1850,20 @@ export function ProfilePanel({
     first_name: firstName,
     last_name: lastName,
     gender,
-    availability_status: availabilityStatus,
-    availability_note: availabilityNote,
-    availability_until: availabilityUntil,
     contact_email: contactEmail,
     contact_phone: contactPhone,
     contact_channel: contactChannel,
+  })
+  const availabilitySnapshot = JSON.stringify({
+    availability_status: availabilityStatus,
+    availability_note: availabilityNote,
+    availability_until: availabilityUntil,
     looking_to_play: lookingToPlay,
     preferred_play_times: [...preferredPlayTimes].sort(),
   })
+  const hasBasicChanges =
+    currentSnapshot !== lastSavedSnapshotRef.current ||
+    displayNameDraft.trim() !== (profile.display_name ?? '').trim()
 
   useEffect(() => {
     const nextFirstName = profile.first_name ?? ''
@@ -1890,12 +1896,14 @@ export function ProfilePanel({
       first_name: nextFirstName,
       last_name: nextLastName,
       gender: nextGender,
-      availability_status: nextAvailabilityStatus,
-      availability_note: nextAvailabilityNote,
-      availability_until: nextAvailabilityUntil,
       contact_email: nextContactEmail,
       contact_phone: nextContactPhone,
       contact_channel: nextContactChannel,
+    })
+    lastSavedAvailabilitySnapshotRef.current = JSON.stringify({
+      availability_status: nextAvailabilityStatus,
+      availability_note: nextAvailabilityNote,
+      availability_until: nextAvailabilityUntil,
       looking_to_play: nextLookingToPlay,
       preferred_play_times: [...nextPreferredPlayTimes].sort(),
     })
@@ -1915,27 +1923,20 @@ export function ProfilePanel({
   ])
 
   useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true
+    if (!availabilityMountedRef.current) {
+      availabilityMountedRef.current = true
       return
     }
 
-    if (currentSnapshot === lastSavedSnapshotRef.current) return
+    if (availabilitySnapshot === lastSavedAvailabilitySnapshotRef.current) return
 
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    setAutoSaveState('saving')
+    if (availabilitySaveTimerRef.current) clearTimeout(availabilitySaveTimerRef.current)
 
-    saveTimerRef.current = setTimeout(() => {
+    availabilitySaveTimerRef.current = setTimeout(() => {
       const formData = new FormData()
-      formData.set('first_name', firstName)
-      formData.set('last_name', lastName)
-      formData.set('gender', gender ?? 'unspecified')
       formData.set('availability_status', availabilityStatus ?? 'available')
       formData.set('availability_note', availabilityNote)
       formData.set('availability_until', availabilityUntil)
-      formData.set('contact_email', contactEmail)
-      formData.set('contact_phone', contactPhone)
-      formData.set('contact_channel', contactChannel)
       formData.set('looking_to_play', lookingToPlay)
       formData.set('preferred_play_times_present', '1')
       preferredPlayTimes.forEach((value) => formData.append('preferred_play_times', value))
@@ -1943,21 +1944,17 @@ export function ProfilePanel({
       startTransition(async () => {
         try {
           await onUpdateProfile(formData)
-          lastSavedSnapshotRef.current = currentSnapshot
-          setAutoSaveState('saved')
-          setTimeout(() => {
-            setAutoSaveState(prev => (prev === 'saved' ? 'idle' : prev))
-          }, 1200)
-        } catch {
-          setAutoSaveState('error')
+          lastSavedAvailabilitySnapshotRef.current = availabilitySnapshot
+        } catch (error) {
+          console.error('[ProfilePanel] availability autosave failed:', error)
         }
       })
     }, 500)
 
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      if (availabilitySaveTimerRef.current) clearTimeout(availabilitySaveTimerRef.current)
     }
-  }, [availabilityNote, availabilityStatus, availabilityUntil, contactChannel, contactEmail, contactPhone, currentSnapshot, firstName, gender, lastName, lookingToPlay, onUpdateProfile, preferredPlayTimes, startTransition])
+  }, [availabilityNote, availabilitySnapshot, availabilityStatus, availabilityUntil, lookingToPlay, onUpdateProfile, preferredPlayTimes, startTransition])
 
   const inputClass = 'text-body-main h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-slate-900 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-slate-100'
   const emailSelected = contactChannel === 'email'
@@ -2032,7 +2029,11 @@ export function ProfilePanel({
           disabled={isPending || autoSaveState === 'saving'}
           className="inline-flex h-8 min-w-[58px] items-center justify-center rounded-md bg-[#071A44] px-5 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#0B255D] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isPending || autoSaveState === 'saving' ? 'Saving' : 'Save'}
+          {isPending || autoSaveState === 'saving'
+            ? 'Saving'
+            : autoSaveState === 'saved' && !hasBasicChanges
+              ? 'Saved'
+              : 'Save'}
         </button>
       </div>
 
@@ -2661,6 +2662,7 @@ export function ProfilePanel({
 
   const handleBasicSave = () => {
     const trimmedDisplayName = displayNameDraft.trim()
+    setAutoSaveState('saving')
     startTransition(async () => {
       try {
         if (trimmedDisplayName && trimmedDisplayName !== (profile.display_name ?? '').trim()) {
@@ -2682,6 +2684,7 @@ export function ProfilePanel({
         preferredPlayTimes.forEach((value) => formData.append('preferred_play_times', value))
         await onUpdateProfile(formData)
         lastSavedSnapshotRef.current = currentSnapshot
+        lastSavedAvailabilitySnapshotRef.current = availabilitySnapshot
         setAutoSaveState('saved')
         setTimeout(() => {
           setAutoSaveState(prev => (prev === 'saved' ? 'idle' : prev))

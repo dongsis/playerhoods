@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   orgApproveParticipant,
+  proxyConfirmParticipant,
+  proxyDeclineParticipant,
+  proxyWithdrawParticipant,
   removeParticipant,
   userWithdraw,
 } from '@/lib/api/matches'
@@ -36,7 +39,7 @@ interface Props {
   onRemoveParticipant?: (participantId: string) => Promise<void>
 }
 
-type ParticipantMenuAction = 'remove' | 'withdraw' | null
+type ParticipantMenuAction = 'remove' | 'withdraw' | 'proxy-withdraw' | null
 
 type ParticipantTimelineEvent = {
   key: string
@@ -282,7 +285,7 @@ function ParticipantRow({
     })
   }
 
-  const isGuest = p.guest_id !== null
+  const isGuest = p.participant_kind === 'contact_player' || (p.participant_kind == null && p.guest_id !== null)
   const isHostRow = organizerUserId !== null && p.user_id === organizerUserId
   const canSavePlayer = !isGuest && p.user_id !== null && p.user_id !== myUserId
   const canSaveContactPlayer = Boolean(
@@ -318,6 +321,17 @@ function ParticipantRow({
     isActive &&
     p.user_id === myUserId &&
     (p.status === 'pending' || p.status === 'confirmed' || p.status === 'waiting_list')
+  const canProxyManage =
+    isActive &&
+    p.proxy_manageable_by_viewer === true &&
+    (p.status === 'pending' || p.status === 'confirmed' || p.status === 'waiting_list')
+  const canProxyConfirm =
+    canProxyManage &&
+    p.status === 'pending' &&
+    p.participant_accepted_at === null
+  const canProxyWithdraw =
+    canProxyManage &&
+    p.participant_accepted_at !== null
   const relationshipBadges: string[] = []
 
   const canRemoveParticipant = canOrganizerRemoveParticipant || canRemovePendingParticipant
@@ -442,7 +456,34 @@ function ParticipantRow({
       : p.join_method === 'requested'
         ? 'Withdraw request'
         : 'Decline participation'
+  const proxyWithdrawLabel =
+    p.status === 'confirmed' || p.status === 'waiting_list' || (pendingState?.participantConfirmed ?? false)
+      ? 'Withdraw for player'
+      : 'Decline for player'
   const actionButtons = [
+    canProxyConfirm
+      ? {
+          key: 'proxy-confirm',
+          label: 'Confirm for player',
+          style: primaryMenuActionStyle,
+          onClick: () => {
+            setMenuOpen(false)
+            act(() => proxyConfirmParticipant(supabase, p.id))
+          },
+        }
+      : null,
+    canProxyWithdraw
+      ? {
+          key: 'proxy-withdraw',
+          label: proxyWithdrawLabel,
+          style: secondaryMenuActionStyle,
+          onClick: () => {
+            setMenuOpen(false)
+            setActionReason('')
+            setActiveDialog('proxy-withdraw')
+          },
+        }
+      : null,
     canRemoveParticipant
       ? {
           key: 'remove',
@@ -781,14 +822,16 @@ function ParticipantRow({
         </div>
       )}
 
-      {activeDialog === 'withdraw' && (
+      {(activeDialog === 'withdraw' || activeDialog === 'proxy-withdraw') && (
         <div style={dialogOverlayStyle}>
           <div style={dialogCardStyle}>
-            <h4 style={dialogTitleStyle}>{withdrawLabel}?</h4>
+            <h4 style={dialogTitleStyle}>{activeDialog === 'proxy-withdraw' ? proxyWithdrawLabel : withdrawLabel}?</h4>
             <p style={dialogBodyStyle}>
-              {p.status === 'confirmed'
-                ? 'You will leave this match.'
-                : 'This removes your participation.'}
+              {activeDialog === 'proxy-withdraw'
+                ? 'This updates participation for the player you manage.'
+                : p.status === 'confirmed'
+                  ? 'You will leave this match.'
+                  : 'This removes your participation.'}
             </p>
             <MatchExitNoteComposer
               mode={withdrawDialogMode}
@@ -804,11 +847,19 @@ function ParticipantRow({
                 onClick={() => {
                   const note = actionReason.trim()
                   closeMenus()
-                  act(() => userWithdraw(supabase, matchId, note))
+                  if (activeDialog === 'proxy-withdraw') {
+                    act(() => (
+                      p.status === 'confirmed' || p.status === 'waiting_list' || (pendingState?.participantConfirmed ?? false)
+                        ? proxyWithdrawParticipant(supabase, p.id, note)
+                        : proxyDeclineParticipant(supabase, p.id, note)
+                    ))
+                  } else {
+                    act(() => userWithdraw(supabase, matchId, note))
+                  }
                 }}
                 style={dangerButtonStyle}
               >
-                {withdrawLabel}
+                {activeDialog === 'proxy-withdraw' ? proxyWithdrawLabel : withdrawLabel}
               </button>
             </div>
           </div>
@@ -1063,10 +1114,19 @@ export function ParticipantGroups({
   const waitingForConfirmation = pending.filter(
     p => !(p.join_method === 'requested' && p.org_approved_at === null)
   )
+  const visiblePlayersWhoWantToJoin = isOrganizer
+    ? playersWhoWantToJoin
+    : playersWhoWantToJoin.filter((p) => p.proxy_manageable_by_viewer === true)
+  const visibleWaitingForConfirmation = isOrganizer
+    ? waitingForConfirmation
+    : waitingForConfirmation.filter((p) => p.proxy_manageable_by_viewer === true)
   const waiting = participants.filter(
     p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
       p.status === 'waiting_list' && p.join_method !== 'guest_add'
   )
+  const visibleWaiting = isOrganizer
+    ? waiting
+    : waiting.filter((p) => p.proxy_manageable_by_viewer === true)
 
   const rowProps = (p: MatchParticipantEnriched) => ({
     p,
@@ -1101,29 +1161,29 @@ export function ParticipantGroups({
       </Section>
 
       {/* Pending — visible here when the current page model allows the row through. */}
-      {playersWhoWantToJoin.length > 0 && isOrganizer ? (
-        <Section title="Players Who Want to Join" badge={playersWhoWantToJoin.length} badgeColor="#0d6efd">
+      {visiblePlayersWhoWantToJoin.length > 0 ? (
+        <Section title={isOrganizer ? 'Players Who Want to Join' : 'Players You Manage'} badge={visiblePlayersWhoWantToJoin.length} badgeColor="#0d6efd">
           <div style={participantGridStyle}>
-            {playersWhoWantToJoin.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+            {visiblePlayersWhoWantToJoin.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
           </div>
         </Section>
       ) : null}
 
-      {waitingForConfirmation.length > 0 && isOrganizer ? (
-        <Section title="Waiting for player" badge={waitingForConfirmation.length} badgeColor="#d97706">
+      {visibleWaitingForConfirmation.length > 0 ? (
+        <Section title={isOrganizer ? 'Waiting for player' : 'Players You Manage'} badge={visibleWaitingForConfirmation.length} badgeColor="#d97706">
           <div style={participantGridStyle}>
-            {waitingForConfirmation.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+            {visibleWaitingForConfirmation.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
           </div>
         </Section>
       ) : null}
 
-      {isOrganizer && (waiting.length > 0 || (waitingCount ?? 0) > 0) && (
-        <Section title="Waiting List" badge={waitingCount ?? waiting.length} badgeColor="#b45309">
-          {waiting.length === 0 ? (
+      {(isOrganizer || visibleWaiting.length > 0) && (visibleWaiting.length > 0 || (isOrganizer && (waitingCount ?? 0) > 0)) && (
+        <Section title="Waiting List" badge={isOrganizer ? (waitingCount ?? waiting.length) : visibleWaiting.length} badgeColor="#b45309">
+          {visibleWaiting.length === 0 ? (
             <p style={{ color: '#98a2b3', fontSize: '0.82rem' }}>Waiting list exists, but details are hidden for your current role.</p>
           ) : (
             <div style={participantGridStyle}>
-              {waiting.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+              {visibleWaiting.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
             </div>
           )}
         </Section>

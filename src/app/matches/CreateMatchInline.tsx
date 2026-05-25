@@ -31,7 +31,7 @@ import { createRosterGuest, getContactPlayerResolution } from '@/lib/api/roster'
 import { getContactInvitationDeliveryStatus } from '@/lib/contact-communication'
 import { getAvailabilityStatusLabel } from '@/lib/profile-options'
 import { getVenueDisplayName } from '@/lib/venues/display'
-import type { AvailabilityStatus, Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
+import type { AvailabilityStatus, Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat, UserPlayCity, VenueSport } from '@/lib/types/database'
 
 type TooltipState = { kind: 'group-members'; groupId: string } | null
 
@@ -1040,10 +1040,14 @@ export function CreateMatchInline({
   defaultVenueId,
   expandSignal,
   onExpandedChange,
+  myPlayCities = [],
+  venueSports = [],
 }: {
   defaultVenueId?: string
   expandSignal?: number
   onExpandedChange?: (expanded: boolean) => void
+  myPlayCities?: UserPlayCity[]
+  venueSports?: VenueSport[]
 }) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
@@ -1400,16 +1404,75 @@ export function CreateMatchInline({
     }
   }, [])
 
-  const selectedVenue = useMemo(
-    () => venues.find((venue) => venue.id === venueId),
-    [venueId, venues],
+  const playCityNames = useMemo(
+    () =>
+      new Set(
+        myPlayCities
+          .map((city) => city.city_name?.trim().toLowerCase() ?? '')
+          .filter((cityName) => cityName.length > 0),
+      ),
+    [myPlayCities],
   )
+
+  const venueSportIdsByVenueId = useMemo(() => {
+    const map = new Map<string, Set<number>>()
+    venueSports.forEach((entry) => {
+      const current = map.get(entry.venue_id) ?? new Set<number>()
+      current.add(entry.sport_id)
+      map.set(entry.venue_id, current)
+    })
+    return map
+  }, [venueSports])
+
+  const venuesForSelectedSport = useMemo(() => {
+    const selectedSportCode = selectedSport?.code?.toLowerCase() ?? ''
+    const hasExplicitVenueSportRows = venueSports.length > 0
+
+    return venues.filter((venue) => {
+      const venueCityName = venue.city?.trim().toLowerCase() ?? ''
+      const matchesProfileCityScope = playCityNames.size === 0 || (venueCityName.length > 0 && playCityNames.has(venueCityName))
+
+      const venueSportIds = venueSportIdsByVenueId.get(venue.id)
+      const matchesSport =
+        venueSportIds
+          ? venueSportIds.has(sportId)
+          : hasExplicitVenueSportRows
+            ? false
+            : selectedSportCode === 'pickleball'
+              ? venue.supports_pickleball
+              : selectedSportCode === 'tennis'
+                ? venue.supports_tennis
+                : true
+
+      return matchesProfileCityScope && matchesSport
+    })
+  }, [playCityNames, selectedSport?.code, sportId, venueSportIdsByVenueId, venueSports.length, venues])
+
+  const selectedVenue = useMemo(
+    () => venuesForSelectedSport.find((venue) => venue.id === venueId),
+    [venueId, venuesForSelectedSport],
+  )
+
+  useEffect(() => {
+    setVenueOptionsExpanded(false)
+    setVenueId((currentVenueId) => {
+      if (currentVenueId && venuesForSelectedSport.some((venue) => venue.id === currentVenueId)) {
+        return currentVenueId
+      }
+
+      const defaultVenueForSport = defaultVenueId && venuesForSelectedSport.some((venue) => venue.id === defaultVenueId)
+        ? defaultVenueId
+        : ''
+
+      return defaultVenueForSport || venuesForSelectedSport[0]?.id || ''
+    })
+  }, [defaultVenueId, sportId, venuesForSelectedSport])
 
   const visibleVenueOptions = useMemo(() => {
     const selected = selectedVenue ? [selectedVenue] : []
-    const rest = venues.filter((venue) => venue.id !== selectedVenue?.id)
+    const rest = venuesForSelectedSport.filter((venue) => venue.id !== selectedVenue?.id)
     return [...selected, ...rest]
-  }, [selectedVenue, venues])
+  }, [selectedVenue, venuesForSelectedSport])
 
   const primaryVenueOptions = useMemo(
     () => visibleVenueOptions.slice(0, 3),
@@ -1930,6 +1993,7 @@ export function CreateMatchInline({
         try {
           if (candidate.kind === 'user' && candidate.userId) {
             await inviteUserToMatch(supabase, match.id, candidate.userId)
+            shouldProcessQueuedDeliveries = true
           } else if (candidate.kind === 'contact' && candidate.guestId) {
             await inviteContactGuestToMatch(supabase, match.id, candidate.guestId)
             shouldProcessQueuedDeliveries = true
@@ -2089,6 +2153,7 @@ export function CreateMatchInline({
       for (const uid of selectedIds) {
         await inviteUserToMatch(supabase, createdMatchId, uid)
       }
+      await processDeliveriesAction()
 
       const participants = await getMatchParticipants(supabase, createdMatchId)
       const pendingUserIds = new Set(
@@ -2903,7 +2968,9 @@ export function CreateMatchInline({
               </div>
             ) : (
               <p className="text-body-sub rounded-xl border border-dashed border-[#D7E2F0] bg-[#F8FBFF] px-4 py-3 text-[#64748B]">
-                Add a venue to your profile before creating a match.
+                {venues.length > 0
+                  ? `No ${selectedSport?.display_name ?? 'selected sport'} venues match your profile city range. Add one to your profile before creating this match.`
+                  : 'Add a venue to your profile before creating a match.'}
               </p>
             )}
           </div>

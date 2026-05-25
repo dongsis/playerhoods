@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import type { GroupMessageEnriched, GroupResourceEnriched } from '@/lib/api/groups'
 
 const GROUP_RESOURCE_MESSAGE_PREFIX = '[[group-resource:'
@@ -451,9 +452,13 @@ export function GroupCommunicationSection({
               <div key={message.id} style={{ display: 'flex', gap: '0.85rem', alignItems: 'flex-start' }}>
                 <MessageAvatar displayName={message.author_name} avatarUrl={message.author_avatar_url} />
                 <div>
-                  <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                    {message.author_name}
-                  </div>
+                  <PlayerProfileTrigger
+                    targetUserId={message.author_user_id}
+                    className="text-[0.68rem] font-extrabold uppercase tracking-[0.12em] text-[#94a3b8] transition hover:text-[#0d6efd]"
+                    label={`View details for ${message.author_name}`}
+                  >
+                    <span>{message.author_name}</span>
+                  </PlayerProfileTrigger>
                   {resourceId ? (
                     <div style={{ marginTop: '0.3rem' }}>
                       <SharedPhotoCard resource={linkedResource} align="left" />

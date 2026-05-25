@@ -137,6 +137,7 @@ export async function createRecurringMatchSeries(
       try {
         if (candidate.kind === 'user') {
           await inviteUserToMatch(supabase, match.id, candidate.userId)
+          hasQueuedGuestDeliveries = true
         } else {
           await inviteContactGuestToMatch(supabase, match.id, candidate.guestId)
           hasQueuedGuestDeliveries = true

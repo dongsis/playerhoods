@@ -27,13 +27,28 @@ import {
 } from '@/lib/email/templates'
 import { formatInvitationToken } from '@/lib/invitations/invitation-token'
 import { NotificationService } from '@/lib/notifications/notification-service'
+import { getSiteOrigin } from '@/lib/site-url'
 
-const raw =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-const SITE_URL = raw && raw !== 'undefined' ? raw : 'http://localhost:3000'
-const smsRaw = process.env.NEXT_PUBLIC_SMS_SITE_URL ?? raw
-const SMS_SITE_URL = smsRaw && smsRaw !== 'undefined' ? smsRaw : SITE_URL
+function normalizeConfiguredOrigin(value: string | null | undefined): string | null {
+  if (!value || value === 'undefined') return null
+
+  try {
+    const origin = new URL(value).origin
+    const hostname = new URL(origin).hostname.toLowerCase()
+    const isProductionBuild = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+
+    if (isProductionBuild && (hostname === 'localhost' || hostname === '127.0.0.1')) {
+      return null
+    }
+
+    return origin
+  } catch {
+    return null
+  }
+}
+
+const SITE_URL = getSiteOrigin()
+const SMS_SITE_URL = normalizeConfiguredOrigin(process.env.NEXT_PUBLIC_SMS_SITE_URL) ?? SITE_URL
 const DEFAULT_INVITE_FROM = process.env.EMAIL_INVITE_FROM ?? process.env.EMAIL_FROM ?? 'Playerhoods <invites@send.playerhoods.com>'
 
 export type DeliveryRow = {

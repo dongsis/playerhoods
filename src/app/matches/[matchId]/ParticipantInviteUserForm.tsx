@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { inviteParticipantUserToMatch } from '@/lib/api/matches'
 import type { ScopeUser } from '@/lib/api/matches'
+import { processDeliveriesAction } from './process-deliveries-action'
 
 interface Props {
   matchId: string
@@ -27,6 +28,7 @@ export function ParticipantInviteUserForm({ matchId, scopeUsers }: Props) {
     const supabase = createSupabaseBrowserClient()
     try {
       await inviteParticipantUserToMatch(supabase, matchId, userId)
+      await processDeliveriesAction()
       setSuccess(true)
       setUserId('')
       router.refresh()

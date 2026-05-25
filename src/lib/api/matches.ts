@@ -58,6 +58,7 @@ export type MatchParticipantEnriched = MatchParticipant & {
   display_name: string
   avatar_url?: string | null
   gender?: Profile['gender'] | null
+  participant_kind?: 'registered_user' | 'contact_player'
   manual_confirmed_by_name?: string | null
   shares_group_with_viewer?: boolean
   proxy_manageable_by_viewer?: boolean
@@ -1682,6 +1683,7 @@ export async function getMatchDetailData(
       ? supabase
           .from('person_relationships')
           .select('person_id')
+          .eq('actor_user_id', userId)
           .eq('relationship_type', 'saved')
           .in('person_id', guestPersonIds)
       : Promise.resolve({ data: [] }),
@@ -1760,6 +1762,7 @@ export async function getMatchDetailData(
       display_name: displayName,
       avatar_url: profileDisplay?.avatar_url ?? null,
       gender: normalizeMatchGender(profileDisplay?.gender ?? null),
+      participant_kind: effectiveUserId ? 'registered_user' : 'contact_player',
       shares_group_with_viewer: effectiveUserId ? sharedGroupMap.get(effectiveUserId) ?? false : false,
       proxy_manageable_by_viewer: proxyManageableParticipantIds.has(p.id),
       saved_by_viewer: Boolean(
@@ -1975,7 +1978,26 @@ export async function getMatchDetailData(
         linked_user_id: null,
       }
     })
-  const participantsForViewer = isOrganizer ? enriched : confirmedVisibleToParticipants
+  const viewerOwnedPendingParticipants = userId
+    ? enriched.filter((participant) =>
+        participant.status === 'pending' &&
+        participant.removed_at === null &&
+        (
+          participant.id === myParticipant?.id ||
+          participant.user_id === userId ||
+          participant.linked_user_id === userId ||
+          participant.nominated_by === userId ||
+          participant.created_by === userId
+        ),
+      )
+    : []
+  const nonOrganizerVisibleParticipants = Array.from(
+    new Map(
+      [...confirmedVisibleToParticipants, ...viewerOwnedPendingParticipants]
+        .map((participant) => [participant.id, participant]),
+    ).values(),
+  )
+  const participantsForViewer = isOrganizer ? enriched : nonOrganizerVisibleParticipants
 
   return {
     match,

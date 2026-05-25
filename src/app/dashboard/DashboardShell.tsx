@@ -170,10 +170,12 @@ function getStarterTarget(format: StarterMatchFormat) {
 function MobileBottomNav({
   active,
   onTab,
+  onLogout,
   badges,
 }: {
   active: DashTab
   onTab: (tab: DashTab) => void
+  onLogout: () => void
   badges: Partial<Record<DashTab, number | undefined>>
 }) {
   return (
@@ -213,6 +215,20 @@ function MobileBottomNav({
             </button>
           )
         })}
+        <button
+          type="button"
+          onClick={onLogout}
+          className="relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[20px] px-2 py-2.5 text-[#64748B] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
+        >
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F8FAFC] text-current transition">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
+              <path d="M10 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H10" />
+              <path d="M13 8l4 4-4 4" />
+              <path d="M9 12h8" />
+            </svg>
+          </span>
+          <span className="text-[11px] font-semibold tracking-[-0.01em]">Log out</span>
+        </button>
       </div>
     </nav>
   )
@@ -532,6 +548,11 @@ export function DashboardShell({
     ? 'max-w-6xl'
     : 'max-w-3xl'
   const shouldLeftAlignMain = activeTab === 'groups'
+  const handleLogout = useCallback(async () => {
+    const supabase = createSupabaseBrowserClient()
+    await supabase.auth.signOut()
+    router.push('/login')
+  }, [router])
 
   return (
     <div className="flex min-h-screen bg-[#F0F7FF]">
@@ -575,6 +596,8 @@ export function DashboardShell({
           items={liveItems}
           userId={userId}
           defaultVenueId={profile.primary_venue_id ?? ''}
+          myPlayCities={myPlayCities}
+          venueSports={venueSports}
           starterVenueName={starterVenueName}
           selectedMatchId={selectedMatchId ?? null}
           selectedMatchDetail={selectedMatchDetail}
@@ -696,7 +719,7 @@ export function DashboardShell({
           />
         )}
       </main>
-      <MobileBottomNav active={activeTab} onTab={setActiveTab} badges={{ ...badges, inbox: badges.inbox ?? inboxBadge }} />
+      <MobileBottomNav active={activeTab} onTab={setActiveTab} onLogout={handleLogout} badges={{ ...badges, inbox: badges.inbox ?? inboxBadge }} />
     </div>
   )
 }

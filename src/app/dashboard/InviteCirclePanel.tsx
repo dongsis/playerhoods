@@ -90,9 +90,13 @@ export function InviteCirclePanel({
                 />
               </PlayerProfileTrigger>
               <div className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-gray-800">
-                  {item.target_display_name || 'Unknown'}
-                </span>
+                <PlayerProfileTrigger
+                  targetUserId={item.target_user_id}
+                  className="max-w-full justify-start text-left text-sm font-medium text-gray-800 transition hover:text-[#0d6efd]"
+                  label={`View details for ${item.target_display_name || 'Unknown'}`}
+                >
+                  <span className="block truncate">{item.target_display_name || 'Unknown'}</span>
+                </PlayerProfileTrigger>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
                     {getInviteCircleSourceLabel(item.source)}

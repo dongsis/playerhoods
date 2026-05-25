@@ -8,6 +8,7 @@ import { MatchEditForm } from './MatchEditForm'
 import { MatchToolsSection } from './MatchToolsSection'
 import { MatchCommunicationSection } from './MatchCommunicationSection'
 import { MatchCourtInfoButton } from './MatchCourtInfoButton'
+import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
 import type { MatchDetailPageViewModel } from './match-detail.view-model'
 import type { MatchCourtPlanUpdateInput, MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
@@ -223,7 +224,22 @@ function MatchHeaderSection({
                   </h1>
                 </div>
                 <p style={{ margin: 0, fontSize: '0.76rem', color: '#94A3B8', fontWeight: 500 }}>
-                  Hosted by {organizerName}
+                  Hosted by{' '}
+                  <ParticipantDetailTrigger
+                    participant={{
+                      user_id: match.organizer_id,
+                      guest_id: null,
+                      display_name: organizerName,
+                      avatar_url: null,
+                      gender: null,
+                      saved_by_viewer: false,
+                      shares_group_with_viewer: false,
+                    }}
+                    className="font-bold text-[#64748B] transition hover:text-[#0d6efd]"
+                    label={`View details for ${organizerName}`}
+                  >
+                    <span>{organizerName}</span>
+                  </ParticipantDetailTrigger>
                 </p>
                 {match.recurring_series_id ? (
                   <Link
@@ -450,6 +466,9 @@ function MatchParticipantsSection({
   const safeConfirmedParticipants = viewModel.participantsForDisplay.filter((participant) =>
     participant.status === 'confirmed' &&
     participant.removed_at === null)
+  const hasProxyManagedParticipants = viewModel.participantsForDisplay.some(
+    (participant) => participant.proxy_manageable_by_viewer === true,
+  )
 
   return (
     <section
@@ -483,7 +502,7 @@ function MatchParticipantsSection({
           {playersHelper}
         </p>
       </div>
-      {viewModel.isOrganizer ? (
+      {viewModel.isOrganizer || hasProxyManagedParticipants ? (
         <ParticipantGroups
           matchId={viewModel.matchId}
           matchStatus={viewModel.match.status}
@@ -543,56 +562,62 @@ function SafeConfirmedPlayersList({
       ) : (
         <div style={{ display: 'grid', gap: '0.55rem' }}>
           {participants.map((participant) => (
-            <div
+            <ParticipantDetailTrigger
               key={participant.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.7rem',
-                border: '1px solid #E2E8F0',
-                borderRadius: '18px',
-                background: '#fff',
-                padding: '0.72rem 0.82rem',
-              }}
+              participant={participant}
+              className="w-full text-left transition hover:border-[#bfdbfe] hover:bg-[#F8FBFF]"
+              label={`View details for ${participant.display_name}`}
             >
               <div
-                aria-hidden="true"
                 style={{
-                  width: '2.1rem',
-                  height: '2.1rem',
-                  borderRadius: '999px',
-                  background: '#EEF6FF',
-                  color: '#1E3A5F',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '0.72rem',
-                  fontWeight: 900,
-                  border: '1px solid #D9E5F4',
-                  flexShrink: 0,
-                  overflow: 'hidden',
+                  gap: '0.7rem',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '18px',
+                  background: '#fff',
+                  padding: '0.72rem 0.82rem',
                 }}
               >
-                {participant.avatar_url ? (
-                  <img src={participant.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  participant.display_name.charAt(0).toUpperCase() || '?'
-                )}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-                  <span style={{ color: '#0F172A', fontSize: '0.9rem', fontWeight: 850 }}>
-                    {participant.display_name}
-                  </span>
-                  {participant.user_id === myUserId ? (
-                    <span style={safePlayerBadgeStyle}>You</span>
-                  ) : null}
-                  {participant.user_id === organizerUserId ? (
-                    <span style={safePlayerBadgeStyle}>Host</span>
-                  ) : null}
+                <div
+                  aria-hidden="true"
+                  style={{
+                    width: '2.1rem',
+                    height: '2.1rem',
+                    borderRadius: '999px',
+                    background: '#EEF6FF',
+                    color: '#1E3A5F',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.72rem',
+                    fontWeight: 900,
+                    border: '1px solid #D9E5F4',
+                    flexShrink: 0,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {participant.avatar_url ? (
+                    <img src={participant.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    participant.display_name.charAt(0).toUpperCase() || '?'
+                  )}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#0F172A', fontSize: '0.9rem', fontWeight: 850 }}>
+                      {participant.display_name}
+                    </span>
+                    {participant.user_id === myUserId ? (
+                      <span style={safePlayerBadgeStyle}>You</span>
+                    ) : null}
+                    {participant.user_id === organizerUserId ? (
+                      <span style={safePlayerBadgeStyle}>Host</span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
+            </ParticipantDetailTrigger>
           ))}
         </div>
       )}

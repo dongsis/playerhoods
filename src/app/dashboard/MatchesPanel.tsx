@@ -11,6 +11,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
 import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
+import type { UserPlayCity, VenueSport } from '@/lib/types/database'
 
 const FALLBACK_COURT_STATE = {
   status: 'open',
@@ -1328,6 +1329,8 @@ interface Props {
   items: MatchListItem[]
   userId: string
   defaultVenueId?: string
+  myPlayCities?: UserPlayCity[]
+  venueSports?: VenueSport[]
   selectedMatchId?: string | null
   selectedMatchDetail?: ReactNode
   onCancelMatch?: (matchId: string) => Promise<void>
@@ -1349,6 +1352,8 @@ export function MatchesPanel({
   items,
   userId,
   defaultVenueId,
+  myPlayCities = [],
+  venueSports = [],
   selectedMatchId,
   selectedMatchDetail,
   onCancelMatch,
@@ -1602,6 +1607,8 @@ export function MatchesPanel({
               defaultVenueId={defaultVenueId}
               expandSignal={mobileCreateExpandSignal}
               onExpandedChange={handleCreateExpandedChange}
+              myPlayCities={myPlayCities}
+              venueSports={venueSports}
             />
             )}
           </section>
@@ -1752,7 +1759,12 @@ export function MatchesPanel({
       </div>
 
       <div className="md:hidden">
-        <CreateMatchInline defaultVenueId={defaultVenueId} expandSignal={mobileCreateExpandSignal} />
+        <CreateMatchInline
+          defaultVenueId={defaultVenueId}
+          expandSignal={mobileCreateExpandSignal}
+          myPlayCities={myPlayCities}
+          venueSports={venueSports}
+        />
       </div>
     </div>
   )

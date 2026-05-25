@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import type { MatchMessageEnriched } from '@/lib/api/matches'
 import {
   ORGANIZER_NOTE_PRESETS,
@@ -432,16 +433,15 @@ export function MatchCommunicationSection({
                         flexDirection: isMine ? 'row-reverse' : 'row',
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: '0.58rem',
-                          fontWeight: 800,
-                          textTransform: 'uppercase',
-                        color: isMine ? '#0d6efd' : '#1E293B',
-                        }}
+                      <PlayerProfileTrigger
+                        targetUserId={message.author_user_id}
+                        className="text-[0.58rem] font-extrabold uppercase transition hover:text-[#0d6efd]"
+                        label={`View details for ${message.author_name}`}
                       >
-                        {isMine ? 'You' : message.author_name}
-                      </span>
+                        <span style={{ color: isMine ? '#0d6efd' : '#1E293B' }}>
+                          {isMine ? 'You' : message.author_name}
+                        </span>
+                      </PlayerProfileTrigger>
                       <span style={{ fontSize: '0.55rem', color: '#cbd5e1', fontStyle: 'italic' }}>
                         {formatMessageTime(message.created_at)}
                       </span>

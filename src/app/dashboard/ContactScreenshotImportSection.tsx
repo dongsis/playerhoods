@@ -128,6 +128,12 @@ function isSupportedScreenshotFile(file: File): boolean {
   return SUPPORTED_IMAGE_TYPES.has(file.type) || (!file.type && SUPPORTED_IMAGE_EXTENSIONS.test(file.name))
 }
 
+function getFileExtensionForMimeType(mimeType: string): string {
+  if (mimeType === 'image/png') return 'png'
+  if (mimeType === 'image/webp') return 'webp'
+  return 'jpg'
+}
+
 function UploadIcon() {
   return (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -196,9 +202,13 @@ function InfoIcon() {
 
 function ImportExampleCards() {
   return (
-    <div className="grid grid-cols-3 gap-4">
-      <div className="text-center">
-        <div className="flex aspect-[3/4] flex-col gap-2 rounded-xl border border-[#DCE6F2] bg-[#F8FBFF] p-2 shadow-[0_8px_18px_-16px_rgba(15,23,42,0.45)]">
+    <>
+      <div className="rounded-2xl border border-[#DCE6F2] bg-[#F8FBFF] p-4 text-sm font-semibold leading-6 text-[#475569] sm:hidden">
+        Works best with a clear crop of a chat group, email header, or contact list.
+      </div>
+      <div className="hidden grid-cols-3 gap-4 sm:grid">
+        <div className="text-center">
+          <div className="flex aspect-[3/4] flex-col gap-2 rounded-xl border border-[#DCE6F2] bg-[#F8FBFF] p-2 shadow-[0_8px_18px_-16px_rgba(15,23,42,0.45)]">
           <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-1 text-left">
             <span className="h-3 w-3 rounded-full bg-[#2D6CDF]" />
             <span className="truncate text-[8px] font-black text-[#334155]">Tennis Group (12)</span>
@@ -257,7 +267,8 @@ function ImportExampleCards() {
         </div>
         <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#64748B]">Sheet/List</p>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -367,6 +378,38 @@ export function ContactScreenshotImportSection({
 
     if (supportedFiles.length > 0) {
       void handleParseFiles(supportedFiles)
+    }
+  }
+
+  const handlePasteFromClipboard = async () => {
+    if (parsing) return
+
+    if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+      setRetryMessage('This browser cannot open clipboard images from a button yet. Copy a screenshot, then press Ctrl + V here, or use Upload screenshot.')
+      return
+    }
+
+    try {
+      const clipboardItems = await navigator.clipboard.read()
+      const pastedFiles: File[] = []
+
+      for (const [index, item] of clipboardItems.entries()) {
+        const imageType = item.types.find((type) => SUPPORTED_IMAGE_TYPES.has(type))
+        if (!imageType) continue
+
+        const blob = await item.getType(imageType)
+        const extension = getFileExtensionForMimeType(imageType)
+        pastedFiles.push(new File([blob], `pasted-screenshot-${index + 1}.${extension}`, { type: imageType }))
+      }
+
+      if (pastedFiles.length === 0) {
+        setRetryMessage('No JPG, PNG, or WEBP image was found in the clipboard. Copy a screenshot first, then try Paste screenshot again.')
+        return
+      }
+
+      handleFileSelection(pastedFiles, 'pasted')
+    } catch {
+      setRetryMessage('Clipboard permission was not granted. You can still press Ctrl + V here, or use Upload screenshot.')
     }
   }
 
@@ -672,14 +715,14 @@ export function ContactScreenshotImportSection({
                 )
               })}
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-slate-100 bg-slate-50 px-4 py-4">
-              <div className="text-sm italic text-slate-500">
+            <div className="grid gap-3 rounded-[20px] border border-slate-100 bg-slate-50 px-4 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
+              <div className="text-sm font-semibold text-slate-500 sm:italic">
                 {selectedCount} contacts selected to save
               </div>
-              <div className="flex gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:flex">
                 <button
                   type="button"
-                  className="rounded-lg px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
+                  className="min-h-11 rounded-lg px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
                   onClick={() => {
                     resetFlow()
                     setNotice(null)
@@ -693,7 +736,7 @@ export function ContactScreenshotImportSection({
                   disabled={importing || selectedCount === 0 || selectableDraftIds.length === 0}
                   onClick={handleImport}
                   className={[
-                    'inline-flex items-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold shadow-sm transition-all',
+                    'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold shadow-sm transition-all',
                     selectedCount > 0 && selectableDraftIds.length > 0 && !importing
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'cursor-not-allowed bg-slate-200 text-slate-400',
@@ -711,27 +754,37 @@ export function ContactScreenshotImportSection({
           <div className="space-y-5 p-5">
             <div className="grid gap-5 md:grid-cols-[1.05fr_0.95fr] md:items-center">
               <div className="space-y-4">
-                <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#334155]">
+                <div className="grid grid-cols-2 gap-2 text-sm font-bold text-[#334155] md:grid-cols-3">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={parsing}
-                    className="rounded-2xl border border-[#bfdbfe] bg-white px-4 py-3 text-[#0d6efd] transition hover:bg-[#eff6ff] disabled:cursor-wait disabled:text-[#94A3B8]"
+                    className="min-h-12 rounded-2xl border border-[#bfdbfe] bg-white px-4 py-3 text-[#0d6efd] transition hover:bg-[#eff6ff] disabled:cursor-wait disabled:text-[#94A3B8]"
                   >
                     Upload screenshot
                   </button>
-                  <span className="rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-[#475569]">
+                  <button
+                    type="button"
+                    onClick={handlePasteFromClipboard}
+                    disabled={parsing}
+                    className="min-h-12 rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-[#475569] transition hover:bg-[#F8FBFF] disabled:cursor-wait disabled:text-[#94A3B8]"
+                  >
                     Paste screenshot
-                  </span>
-                  <span className="rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-[#475569]">
+                  </button>
+                  <span className="hidden min-h-12 items-center justify-center rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-center text-[#475569] md:flex">
                     Drag image here
                   </span>
                 </div>
 
-                <div className={[
-                  'rounded-[24px] border-2 border-dashed px-5 py-7 text-center transition',
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={parsing}
+                  className={[
+                  'block w-full rounded-[24px] border-2 border-dashed px-5 py-7 text-center transition disabled:cursor-wait',
                   isDragging ? 'border-[#2D6CDF] bg-[#eff6ff]' : 'border-[#DCE6F2] bg-[#F8FBFF]',
-                ].join(' ')}>
+                ].join(' ')}
+                >
                   <span className="mx-auto flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-[#2D6CDF] shadow-sm">
                     <UploadIcon />
                   </span>
@@ -756,13 +809,13 @@ export function ContactScreenshotImportSection({
                   ) : (
                     <p className="mt-3 text-xs font-semibold text-[#94A3B8]">JPG, PNG, WEBP</p>
                   )}
-                </div>
+                </button>
 
                 {step === 'retry' ? (
                   <div className="rounded-[20px] border border-[#bfdbfe] bg-[#F8FBFF] p-4 text-sm leading-6 text-[#475569]">
                     <p className="font-bold text-[#0B1F44]">No contacts saved yet.</p>
                     <p className="mt-1">{retryMessage}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
@@ -770,9 +823,7 @@ export function ContactScreenshotImportSection({
                       >
                         Retry import
                       </button>
-                      <span className="rounded-xl border border-[#DCE6F2] bg-white px-4 py-2 text-sm font-semibold text-[#64748B]">
-                        Or use Add My Contact manually
-                      </span>
+                      <span className="text-sm font-semibold text-[#64748B]">Or use Add My Contact manually.</span>
                     </div>
                   </div>
                 ) : null}

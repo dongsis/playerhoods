@@ -643,13 +643,13 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
                     className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm text-gray-700 flex items-center gap-3"
                   >
                     <div className="flex-1 min-w-0">
-                      <span className="block truncate">{m.handle}</span>
-                      {m.userId !== userId && (
-                        <PlayerProfileTrigger
-                          targetUserId={m.userId}
-                          className="mt-1"
-                        />
-                      )}
+                      <PlayerProfileTrigger
+                        targetUserId={m.userId}
+                        className="max-w-full justify-start text-left transition hover:text-[#0d6efd]"
+                        label={`View details for ${m.handle || 'Player'}`}
+                      >
+                        <span className="block truncate">{m.handle}</span>
+                      </PlayerProfileTrigger>
                     </div>
                     {m.userId !== userId && (
                       <SavedPlayerButton
@@ -682,7 +682,13 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
                     key={p.id}
                     className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm text-gray-500 italic"
                   >
-                    {p.display_name ?? '(unnamed)'}
+                    <PlayerProfileTrigger
+                      targetUserId={p.id}
+                      className="max-w-full justify-start text-left transition hover:text-[#0d6efd]"
+                      label={`View details for ${p.display_name ?? 'Player'}`}
+                    >
+                      <span className="block truncate">{p.display_name ?? '(unnamed)'}</span>
+                    </PlayerProfileTrigger>
                   </div>
                 ))}
               </div>
@@ -799,13 +805,13 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
                         className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm text-gray-700 flex items-center gap-3"
                       >
                         <div className="flex-1 min-w-0">
-                          <span className="block truncate">{m.displayName || '(unnamed)'}</span>
-                          {m.userId !== userId && (
-                            <PlayerProfileTrigger
-                              targetUserId={m.userId}
-                              className="mt-1"
-                            />
-                          )}
+                          <PlayerProfileTrigger
+                            targetUserId={m.userId}
+                            className="max-w-full justify-start text-left transition hover:text-[#0d6efd]"
+                            label={`View details for ${m.displayName || 'Player'}`}
+                          >
+                            <span className="block truncate">{m.displayName || '(unnamed)'}</span>
+                          </PlayerProfileTrigger>
                         </div>
                         {m.userId !== userId && (
                           <SavedPlayerButton
@@ -840,13 +846,13 @@ export function PlayersPanel({ data, inviteCircle, userId }: Props) {
               className="px-3 py-2 bg-white rounded-xl border border-gray-100 text-sm flex items-start gap-3"
             >
               <div className="flex-1 min-w-0">
-                <div className="text-gray-700">{r.label || '(unnamed)'}</div>
-                {r.userId !== userId && (
-                  <PlayerProfileTrigger
-                    targetUserId={r.userId}
-                    className="mt-1"
-                  />
-                )}
+                <PlayerProfileTrigger
+                  targetUserId={r.userId}
+                  className="max-w-full justify-start text-left text-gray-700 transition hover:text-[#0d6efd]"
+                  label={`View details for ${r.label || 'Player'}`}
+                >
+                  <span className="block truncate">{r.label || '(unnamed)'}</span>
+                </PlayerProfileTrigger>
                 {r.groups.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
                   {r.groups.map(g => (

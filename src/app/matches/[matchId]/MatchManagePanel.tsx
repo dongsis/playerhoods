@@ -188,6 +188,12 @@ function getParticipantEffectiveUserId(participant: MatchParticipantEnriched): s
   return participant.user_id ?? participant.linked_user_id ?? null
 }
 
+function getParticipantRosterKind(participant: MatchParticipantEnriched): 'user' | 'contact' {
+  if (participant.participant_kind === 'registered_user') return 'user'
+  if (participant.participant_kind === 'contact_player') return 'contact'
+  return getParticipantEffectiveUserId(participant) ? 'user' : 'contact'
+}
+
 function SummaryRosterRow({
   title,
   items,
@@ -958,79 +964,87 @@ export function MatchManagePanel({
   const removeCandidates = useMemo<RemoveRowItem[]>(() => {
     if (removeMode === 'confirmed') {
       return confirmedParticipants
-        .filter((participant) => participant.user_id !== organizerUserId)
-        .map((participant) => ({
-          key: `remove:${participant.id}`,
-          name: participant.display_name,
-          kind: participant.user_id ? ('user' as const) : ('contact' as const),
-          avatarUrl: participant.avatar_url ?? null,
-          userId: participant.user_id ?? null,
-          guestId: participant.guest_id ?? null,
-          subtitle: 'Confirmed in this match',
-          badges: participant.guest_id ? ['Contact'] : [],
-          selected: pendingRemovalKeys.has(`remove:${participant.id}`),
-          onToggle: () => {
-            setSuccess(null)
-            setError(null)
-            setPendingRemovals((prev) =>
-              prev.some((item) => item.key === `remove:${participant.id}`)
-                ? prev.filter((item) => item.key !== `remove:${participant.id}`)
-                : [
-                    ...prev,
-                    {
-                      key: `remove:${participant.id}`,
-                      category: 'confirmed',
-                      kind: participant.user_id ? 'user' : 'contact',
-                      id: participant.user_id ?? participant.id,
-                      name: participant.display_name,
-                      participantId: participant.id,
-                      avatarUrl: participant.avatar_url ?? null,
-                      userId: participant.user_id ?? null,
-                      guestId: participant.guest_id ?? null,
-                      subtitle: 'Confirmed in this match',
-                    },
-                  ],
-            )
-          },
-        }))
+        .filter((participant) => getParticipantEffectiveUserId(participant) !== organizerUserId)
+        .map((participant) => {
+          const effectiveUserId = getParticipantEffectiveUserId(participant)
+          const rosterKind = getParticipantRosterKind(participant)
+          return {
+            key: `remove:${participant.id}`,
+            name: participant.display_name,
+            kind: rosterKind,
+            avatarUrl: participant.avatar_url ?? null,
+            userId: effectiveUserId,
+            guestId: participant.guest_id ?? null,
+            subtitle: 'Confirmed in this match',
+            badges: rosterKind === 'contact' ? ['Contact'] : [],
+            selected: pendingRemovalKeys.has(`remove:${participant.id}`),
+            onToggle: () => {
+              setSuccess(null)
+              setError(null)
+              setPendingRemovals((prev) =>
+                prev.some((item) => item.key === `remove:${participant.id}`)
+                  ? prev.filter((item) => item.key !== `remove:${participant.id}`)
+                  : [
+                      ...prev,
+                      {
+                        key: `remove:${participant.id}`,
+                        category: 'confirmed',
+                        kind: rosterKind,
+                        id: effectiveUserId ?? participant.id,
+                        name: participant.display_name,
+                        participantId: participant.id,
+                        avatarUrl: participant.avatar_url ?? null,
+                        userId: effectiveUserId,
+                        guestId: participant.guest_id ?? null,
+                        subtitle: 'Confirmed in this match',
+                      },
+                    ],
+              )
+            },
+          }
+        })
     }
 
     if (removeMode === 'invites') {
       const userRows = activeInviteParticipants
-        .map((participant) => ({
-          key: `invite:${participant.id}`,
-          name: participant.display_name,
-          kind: participant.user_id ? ('user' as const) : ('contact' as const),
-          avatarUrl: participant.avatar_url ?? null,
-          userId: participant.user_id ?? null,
-          guestId: participant.guest_id ?? null,
-          subtitle: 'Invited, not confirmed',
-          badges: participant.guest_id ? ['Contact'] : [],
-          selected: pendingRemovalKeys.has(`invite:${participant.id}`),
-          onToggle: () => {
-            setSuccess(null)
-            setError(null)
-            setPendingRemovals((prev) =>
-              prev.some((item) => item.key === `invite:${participant.id}`)
-                ? prev.filter((item) => item.key !== `invite:${participant.id}`)
-                : [
-                    ...prev,
-                    {
-                      key: `invite:${participant.id}`,
-                      category: 'invites',
-                      kind: participant.user_id ? 'user' : 'contact',
-                      id: participant.user_id ?? participant.id,
-                      name: participant.display_name,
-                      participantId: participant.id,
-                      avatarUrl: participant.avatar_url ?? null,
-                      userId: participant.user_id ?? null,
-                      guestId: participant.guest_id ?? null,
-                      subtitle: 'Invited, not confirmed',
-                    },
-                  ],
-            )
-          },
-        }))
+        .map((participant) => {
+          const effectiveUserId = getParticipantEffectiveUserId(participant)
+          const rosterKind = getParticipantRosterKind(participant)
+          return {
+            key: `invite:${participant.id}`,
+            name: participant.display_name,
+            kind: rosterKind,
+            avatarUrl: participant.avatar_url ?? null,
+            userId: effectiveUserId,
+            guestId: participant.guest_id ?? null,
+            subtitle: 'Invited, not confirmed',
+            badges: rosterKind === 'contact' ? ['Contact'] : [],
+            selected: pendingRemovalKeys.has(`invite:${participant.id}`),
+            onToggle: () => {
+              setSuccess(null)
+              setError(null)
+              setPendingRemovals((prev) =>
+                prev.some((item) => item.key === `invite:${participant.id}`)
+                  ? prev.filter((item) => item.key !== `invite:${participant.id}`)
+                  : [
+                      ...prev,
+                      {
+                        key: `invite:${participant.id}`,
+                        category: 'invites',
+                        kind: rosterKind,
+                        id: effectiveUserId ?? participant.id,
+                        name: participant.display_name,
+                        participantId: participant.id,
+                        avatarUrl: participant.avatar_url ?? null,
+                        userId: effectiveUserId,
+                        guestId: participant.guest_id ?? null,
+                        subtitle: 'Invited, not confirmed',
+                      },
+                    ],
+              )
+            },
+          }
+        })
 
       const groupRows = activeGroupInvites
         .map((group) => ({
@@ -1225,8 +1239,10 @@ export function MatchManagePanel({
         if (item.kind === 'user') {
           if (isOrganizer) {
             await inviteUserToMatch(supabase, matchId, item.id)
+            shouldProcessQueuedDeliveries = true
           } else {
             await inviteParticipantUserToMatch(supabase, matchId, item.id)
+            shouldProcessQueuedDeliveries = true
           }
         } else if (item.kind === 'group') {
           await inviteGroupToMatch(supabase, matchId, item.id)
@@ -1273,10 +1289,11 @@ export function MatchManagePanel({
 
   const confirmedSummaryItems: SummaryEntry[] = visibleConfirmedParticipants.map((participant) => {
     const effectiveUserId = getParticipantEffectiveUserId(participant)
+    const rosterKind = getParticipantRosterKind(participant)
     return {
       key: `confirmed-${participant.id}`,
       label: participant.display_name,
-      kind: effectiveUserId ? ('user' as const) : ('contact' as const),
+      kind: rosterKind,
       availabilityStatus: effectiveUserId
         ? getLookupAvailabilityStatus(availabilityLookup, {
             kind: 'user',
@@ -1292,10 +1309,11 @@ export function MatchManagePanel({
   const inviteSummaryItems: SummaryEntry[] = [
     ...visibleInviteUsers.map((participant) => {
       const effectiveUserId = getParticipantEffectiveUserId(participant)
+      const rosterKind = getParticipantRosterKind(participant)
       return {
         key: `invite-user-${participant.id}`,
         label: participant.display_name,
-        kind: effectiveUserId ? ('user' as const) : ('contact' as const),
+        kind: rosterKind,
         availabilityStatus: effectiveUserId
           ? getLookupAvailabilityStatus(availabilityLookup, {
               kind: 'user',

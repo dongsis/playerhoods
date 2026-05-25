@@ -107,9 +107,13 @@ export function VenueMembersSection({ venueId, initialSavedPlayerIds }: Props) {
                 />
               </PlayerProfileTrigger>
               <div className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-gray-800">
-                  {member.display_name || 'Unknown'}
-                </span>
+                <PlayerProfileTrigger
+                  targetUserId={member.user_id}
+                  className="max-w-full justify-start text-left text-sm font-medium text-gray-800 transition hover:text-[#0d6efd]"
+                  label={`View details for ${member.display_name || 'Unknown'}`}
+                >
+                  <span className="block truncate">{member.display_name || 'Unknown'}</span>
+                </PlayerProfileTrigger>
               </div>
               <SavedPlayerButton
                 targetUserId={member.user_id}
