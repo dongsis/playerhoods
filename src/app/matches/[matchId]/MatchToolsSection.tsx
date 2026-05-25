@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState, type ComponentType } from 'react'
+import { useRef, useState, type ComponentType } from 'react'
 import { MatchManagePanel } from './MatchManagePanel'
 import { MatchRoundRobinPanel, type MatchRoundRobinPanelProps } from './MatchRoundRobinPanel'
 import type { MatchParticipantEnriched, MatchGroupInvite, ScopeUser, ContactPersonAdmissionTarget } from '@/lib/api/matches'
@@ -16,6 +16,7 @@ type CurrentRequestTarget = {
 type Props = {
   showInviteTools: boolean
   showRoundRobinTools: boolean
+  isFormed: boolean
   matchId: string
   matchStatus: MatchStatus
   gameType: string | null
@@ -41,6 +42,7 @@ type Props = {
 export function MatchToolsSection({
   showInviteTools,
   showRoundRobinTools,
+  isFormed,
   matchId,
   matchStatus,
   gameType,
@@ -64,77 +66,138 @@ export function MatchToolsSection({
 }: Props) {
   const RoundRobinPanel = MatchRoundRobinPanel as ComponentType<MatchRoundRobinPanelProps>
   const sectionRef = useRef<HTMLElement | null>(null)
-  const tabs = useMemo(() => {
-    const nextTabs: Array<{ key: 'invite' | 'remove' | 'round_robin'; label: string }> = []
-    if (showInviteTools) nextTabs.push({ key: 'invite', label: 'Invite Players' })
-    if (showInviteTools && isOrganizer) nextTabs.push({ key: 'remove', label: 'Remove Players' })
-    if (showRoundRobinTools) nextTabs.push({ key: 'round_robin', label: 'Lineup' })
-    return nextTabs
-  }, [isOrganizer, showInviteTools, showRoundRobinTools])
+  const [activeTab, setActiveTab] = useState<'invite' | 'round_robin' | null>(null)
 
-  const [activeTab, setActiveTab] = useState<'invite' | 'remove' | 'round_robin' | null>(null)
-
-  if (tabs.length === 0) {
+  if (!showInviteTools && !showRoundRobinTools) {
     return null
   }
 
-  const inviteMeta = `${confirmedParticipants.length} / ${requiredCount}${confirmedParticipants.length >= requiredCount ? ' Lineup Full' : ''}`
+  const remainingSpots = Math.max(requiredCount - confirmedParticipants.length, 0)
+  const isLineupFull = confirmedParticipants.length >= requiredCount
+  const playersLabel = `${confirmedParticipants.length} confirmed ${confirmedParticipants.length === 1 ? 'player' : 'players'}`
+  const toolsTitle = isFormed
+    ? 'Match formed'
+    : isLineupFull
+      ? 'Ready to set teams'
+      : 'Need more players?'
+  const toolsCopy = isFormed
+    ? 'Message players or adjust teams from the confirmed lineup.'
+    : isLineupFull
+      ? `${playersLabel}. Set teams now, or invite backup players if you want options.`
+      : `${remainingSpots} more ${remainingSpots === 1 ? 'spot is' : 'spots are'} open. Invite saved players, add a contact, or open this match to join.`
+  const enoughPlayersForTeams = confirmedParticipants.length >= Math.max(requiredCount, 4)
+  const setTeamsHelper = enoughPlayersForTeams
+    ? `Ready to set teams from ${confirmedParticipants.length} confirmed ${confirmedParticipants.length === 1 ? 'player' : 'players'}.`
+    : 'Need 4 confirmed players to set doubles teams.'
+
+  const togglePanel = (nextTab: 'invite' | 'round_robin') => {
+    setActiveTab((current) => {
+      const next = current === nextTab ? null : nextTab
+      if (next) {
+        requestAnimationFrame(() => {
+          sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        })
+      }
+      return next
+    })
+  }
 
   return (
     <section
       ref={sectionRef}
       className="mt-5 overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
-        <div className="flex flex-wrap gap-2">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.key
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => {
-                  setActiveTab((current) => {
-                    const next = current === tab.key ? null : tab.key
-                    if (next) {
-                      requestAnimationFrame(() => {
-                        sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                      })
-                    }
-                    return next
-                  })
-                }}
-                className={[
-                  'text-label inline-flex items-center gap-2 rounded-full border px-4 py-2 transition',
-                  isActive
-                    ? tab.key === 'remove'
-                      ? 'border-orange-200 bg-orange-50 text-orange-700'
-                      : 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50',
-                ].join(' ')}
-              >
-                <span className="text-body-main">
-                  {tab.key === 'invite' ? '+' : tab.key === 'remove' ? '-' : '[]'}
-                </span>
-                <span>{tab.label}</span>
-              </button>
-            )
-          })}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-5">
+        <div>
+          <p className="m-0 text-[1rem] font-black text-slate-900">{toolsTitle}</p>
+          <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
+            {toolsCopy}
+          </p>
         </div>
 
-        <span className="text-title-main text-teal-600">
-          {activeTab === 'invite' || activeTab === 'remove'
-            ? inviteMeta
-            : savedLineup
-              ? `${savedLineup.playersCount} players`
-              : `${confirmedParticipants.length} players`}
-        </span>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {isFormed ? (
+            <a
+              href="#match-communication"
+              className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[#0B1F47] px-4 py-2.5 text-sm font-black text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)] transition hover:bg-[#102a5c]"
+            >
+              <span>Message Players</span>
+            </a>
+          ) : null}
+
+          {showRoundRobinTools && isLineupFull ? (
+            <button
+              type="button"
+              onClick={() => togglePanel('round_robin')}
+              disabled={!enoughPlayersForTeams}
+              title={setTeamsHelper}
+              className={[
+                'inline-flex items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-black transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-55',
+                activeTab === 'round_robin'
+                  ? 'border-[#2F63F6] bg-[#2F63F6] text-white shadow-[0_10px_24px_rgba(47,99,246,0.22)]'
+                  : 'border-[#2F63F6] bg-[#2F63F6] text-white shadow-[0_10px_24px_rgba(47,99,246,0.16)] hover:bg-[#2554D9]',
+              ].join(' ')}
+            >
+              <span aria-hidden="true">T</span>
+              <span>Set Teams</span>
+            </button>
+          ) : null}
+
+          {showInviteTools && !isFormed ? (
+            <button
+              type="button"
+              onClick={() => togglePanel('invite')}
+              className={[
+                'inline-flex items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-black transition active:scale-95',
+                activeTab === 'invite'
+                  ? isLineupFull
+                    ? 'border-[#BFD1F8] bg-[#F5F8FF] text-[#2554D9]'
+                    : 'border-[#7fd300] bg-[#7fd300] text-[#0f2a00] shadow-[0_10px_24px_rgba(127,211,0,0.26)]'
+                  : isLineupFull
+                    ? 'border-[#BFD1F8] bg-white text-[#2554D9] hover:bg-[#F5F8FF]'
+                    : 'border-[#9CE600] bg-[#9CE600] text-[#102A00] shadow-[0_10px_24px_rgba(127,211,0,0.18)] hover:bg-[#8CDA00]',
+              ].join(' ')}
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-xl leading-none text-[#5fa900] shadow-sm"
+              >
+                +
+              </span>
+              <span>Add More Players</span>
+            </button>
+          ) : null}
+
+          {showRoundRobinTools && !isLineupFull ? (
+            <button
+              type="button"
+              onClick={() => togglePanel('round_robin')}
+              disabled={!enoughPlayersForTeams}
+              title={setTeamsHelper}
+              className={[
+                'inline-flex items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-black transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-55',
+                activeTab === 'round_robin'
+                  ? 'border-[#2F63F6] bg-[#2F63F6] text-white shadow-[0_10px_24px_rgba(47,99,246,0.22)]'
+                  : 'border-[#BFD1F8] bg-white text-[#2554D9] hover:bg-[#F5F8FF]',
+              ].join(' ')}
+            >
+              <span aria-hidden="true">T</span>
+              <span>Set Teams</span>
+            </button>
+          ) : null}
+        </div>
+
+        {showRoundRobinTools ? (
+          <p className="basis-full text-body-sub font-semibold text-slate-400">
+            {setTeamsHelper}
+          </p>
+        ) : null}
       </div>
 
-      {(activeTab === 'invite' || activeTab === 'remove') && showInviteTools ? (
+      {activeTab === 'invite' && showInviteTools ? (
         <MatchManagePanel
           embedded
-          panelMode={activeTab === 'remove' ? 'remove' : 'invite'}
+          panelMode="invite"
           matchId={matchId}
           isOrganizer={isOrganizer}
           organizerUserId={organizerUserId}
@@ -149,7 +212,6 @@ export function MatchToolsSection({
           candidateGroups={candidateGroups}
           onUpdateMatchDetails={onUpdateMatchDetails}
           onRemoveParticipant={onRemoveParticipant}
-          onRequestPanelMode={setActiveTab}
         />
       ) : null}
 

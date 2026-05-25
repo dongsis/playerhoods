@@ -35,7 +35,7 @@ const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'needs_help_booking', label: 'Players can help secure a court' },
 ]
 
-const DEFAULT_COURT_LABELS = Array.from({ length: 10 }, (_, index) => `crt ${index + 1}`)
+const DEFAULT_COURT_LABELS = Array.from({ length: 20 }, (_, index) => `crt ${index + 1}`)
 
 const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open doubles' },

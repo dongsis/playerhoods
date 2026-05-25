@@ -101,6 +101,11 @@ function formatPersonName(value: string | null | undefined): string {
     .join(' ')
 }
 
+function formatMatchKindForSentence(value: string | null | undefined): string {
+  const normalized = value?.replace(/_/g, ' ').trim().toLowerCase()
+  return normalized || 'a match'
+}
+
 export default async function InvitationPage({ params, searchParams }: Props) {
   const { id } = await params
   const pageParams = await searchParams
@@ -146,6 +151,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
 
   const inviterName = formatPersonName(inv.inviter_display_name)
   const matchType = formatGameType(inv.match_summary?.game_type)
+  const matchKind = formatMatchKindForSentence(inv.match_summary?.game_type)
   const matchDate = formatDate(inv.match_summary?.match_date)
   const matchTime = formatTime(inv.match_summary?.start_time)
   const venueName = inv.match_summary?.club_name ?? null
@@ -157,6 +163,42 @@ export default async function InvitationPage({ params, searchParams }: Props) {
   const pageNotice = (inv.status === 'accepted' && pageParams.notice === 'accepted') || (inv.status === 'declined' && pageParams.notice === 'declined')
     ? null
     : getInvitationPageNotice(pageParams.notice)
+  const confirmationSource = inv.match_summary?.participant_confirmation_source ?? null
+  const acceptedVia = inv.match_summary?.participant_accepted_via ?? null
+  const isParticipantRemoved =
+    inv.match_summary?.participant_status === 'removed'
+    || Boolean(inv.match_summary?.participant_removed_at)
+  const isInvitationInactive =
+    inv.status === 'canceled'
+    || inv.status === 'expired'
+    || isParticipantRemoved
+    || inv.match_summary?.match_status === 'cancelled'
+    || inv.match_summary?.match_status === 'canceled'
+  const isHostConfirmed =
+    confirmationSource === 'host_managed_offline'
+    || confirmationSource === 'contact_owner_managed'
+    || acceptedVia === 'host_offline_confirmation'
+  const isParticipantConfirmed =
+    Boolean(inv.match_summary?.participant_accepted_at)
+    && Boolean(inv.match_summary?.participant_org_approved_at)
+    && !isParticipantRemoved
+  const isMatchFormed = Boolean(inv.match_summary?.formed_at)
+  const shouldShowConfirmedLanding =
+    !isInvitationInactive
+    && (isHostConfirmed || (isParticipantConfirmed && inv.status === 'pending'))
+  const shouldShowFormedLanding =
+    !isInvitationInactive
+    && isMatchFormed
+    && isParticipantConfirmed
+  const showPendingResponseFlow =
+    inv.status === 'pending'
+    && !isExpired
+    && !shouldShowConfirmedLanding
+    && !shouldShowFormedLanding
+    && !isInvitationInactive
+  const pageKicker = shouldShowConfirmedLanding || shouldShowFormedLanding
+    ? 'Match Confirmation'
+    : 'Match Invitation'
 
   return (
     <div className="invitation-page">
@@ -318,6 +360,11 @@ export default async function InvitationPage({ params, searchParams }: Props) {
           border: 1px solid #d9e6f4;
           border-radius: 22px;
           background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        }
+
+        .invitation-account-card-soft {
+          margin-top: 18px;
+          background: #fff;
         }
 
         .invitation-account-card h2 {
@@ -492,7 +539,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
 
         <div className="invitation-grid">
           <main className="invitation-card">
-            <p className="invitation-kicker">Match Invitation</p>
+            <p className="invitation-kicker">{pageKicker}</p>
 
             {pageError ? (
               <div className="invitation-status-alert invitation-status-error">
@@ -506,7 +553,28 @@ export default async function InvitationPage({ params, searchParams }: Props) {
               </div>
             ) : null}
 
-            {inv.status === 'accepted' ? (
+            {isInvitationInactive ? (
+              <>
+                <h1 className="invitation-title">This invitation is no longer active</h1>
+                <p className="invitation-subtext">
+                  The match or invitation status changed, so this response link can no longer be used.
+                </p>
+              </>
+            ) : shouldShowFormedLanding ? (
+              <>
+                <h1 className="invitation-title">This match is formed</h1>
+                <p className="invitation-subtext">
+                  You&apos;re in the confirmed lineup for {matchKind} at {venueName ?? 'the venue'}.
+                </p>
+              </>
+            ) : shouldShowConfirmedLanding ? (
+              <>
+                <h1 className="invitation-title">You&apos;re confirmed for this match</h1>
+                <p className="invitation-subtext">
+                  {inviterName} added you as confirmed for {matchKind} at {venueName ?? 'the venue'}. If anything changed, you can update your response or message the host.
+                </p>
+              </>
+            ) : inv.status === 'accepted' ? (
               <>
                 <h1 className="invitation-title">You&apos;re in.</h1>
                 <p className="invitation-subtext">
@@ -535,7 +603,38 @@ export default async function InvitationPage({ params, searchParams }: Props) {
               <div className="invitation-summary-time">{matchDateTime || 'Time to be confirmed'}</div>
             </section>
 
-            {inv.status === 'accepted' && (
+            {(shouldShowConfirmedLanding || shouldShowFormedLanding) && (
+              <>
+                {inv.related_type === 'match' && (
+                  <div className="invitation-actions">
+                    <Link href={matchHref} className="invitation-button invitation-button-primary">
+                      View Match
+                    </Link>
+                  </div>
+                )}
+                <section className="invitation-account-card invitation-account-card-soft">
+                  <h2>Need to change your response?</h2>
+                  <p>
+                    Open the match page if you can&apos;t make it or need to let the host know something changed.
+                  </p>
+                </section>
+                {!user && (
+                  <section className="invitation-account-card invitation-account-card-soft">
+                    <h2>New to PlayerHoods?</h2>
+                    <p>
+                      Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.
+                    </p>
+                    <div className="invitation-actions">
+                      <Link href={`/login?mode=register&next=${encodeURIComponent(matchHref)}`} className="invitation-button invitation-button-secondary">
+                        Create Free Account
+                      </Link>
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
+
+            {inv.status === 'accepted' && !shouldShowConfirmedLanding && !shouldShowFormedLanding && !isInvitationInactive && (
               <>
                 <p className="invitation-note">
                   We&apos;ll only contact you again if the match is confirmed and you&apos;re selected to play, or if key details change.
@@ -564,7 +663,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
               </>
             )}
 
-            {inv.status === 'declined' && (
+            {inv.status === 'declined' && !isInvitationInactive && (
               <div className="invitation-actions">
                 <Link href={matchHref} className="invitation-button invitation-button-secondary">
                   View invitation
@@ -572,13 +671,13 @@ export default async function InvitationPage({ params, searchParams }: Props) {
               </div>
             )}
 
-            {isExpired && inv.status === 'pending' && (
+            {isExpired && inv.status === 'pending' && !shouldShowConfirmedLanding && !shouldShowFormedLanding && !isInvitationInactive && (
               <div className="invitation-status-alert invitation-status-error">
                 This invitation has expired.
               </div>
             )}
 
-            {inv.status === 'pending' && !isExpired && (
+            {showPendingResponseFlow && (
               <div>
                 {user && relevantIdentityLinkCandidates.length > 0 ? (
                   <IdentityLinkReviewCard
@@ -621,7 +720,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
                 ) : (
                   <>
                     <p className="invitation-form-copy">
-                      You can accept or decline here. No account is required.
+                      No account is required to respond.
                     </p>
                     <div className="invitation-actions">
                       <form action={acceptAction}>
@@ -635,6 +734,17 @@ export default async function InvitationPage({ params, searchParams }: Props) {
                         </button>
                       </form>
                     </div>
+                    <section className="invitation-account-card invitation-account-card-soft">
+                      <h2>New to PlayerHoods?</h2>
+                      <p>
+                        Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.
+                      </p>
+                      <div className="invitation-actions">
+                        <Link href={`/login?mode=register&next=${encodeURIComponent(matchHref)}`} className="invitation-button invitation-button-secondary">
+                          Create Free Account
+                        </Link>
+                      </div>
+                    </section>
                   </>
                 )}
               </div>

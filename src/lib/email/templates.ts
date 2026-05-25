@@ -174,17 +174,25 @@ export function matchInvitationEmail(m: MatchInfo, inviterName: string): string 
 export function playerhoodsMatchInviteEmail(m: MatchInfo, organizerName = 'Someone'): string {
   const venueName = m.venueName || 'the venue'
   const inviterName = organizerName.trim() || 'Someone'
+  const respondUrl = matchLink(m)
+  const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : getSiteOrigin()
+  const registerUrl = `${base}/login?mode=register&next=${encodeURIComponent(respondUrl)}`
 
   return renderEmailLayout({
     title: `${inviterName} invited you to play`,
     introHtml: `Hi,<br><br><strong>${escapeHtml(inviterName)}</strong> invited you to play at <strong>${escapeHtml(venueName)}</strong>.<br><br>Please confirm whether you can join:`,
     details: buildMatchDetails(m),
-    ctaLabel: 'Respond to invitation',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'Respond to Invitation',
+    ctaUrl: respondUrl,
     ctaHint: 'No account is required to respond.',
+    promoTitle: 'New to PlayerHoods?',
+    promoBody:
+      'Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.',
+    promoCtaLabel: 'Create Free Account',
+    promoCtaUrl: registerUrl,
     secondaryTitle: 'Notification note',
     secondaryBody:
-      `Playerhoods is helping ${inviterName} organize this match. You will not receive more messages unless the match is confirmed and you are selected to play, or if the match is cancelled or key details change.`,
+      `PlayerHoods is helping ${inviterName} organize this match. You’ll only receive important updates, such as when the match is formed, cancelled, or key details change.`,
     footerNote: `You received this because ${inviterName} invited you to this match.`,
     siteUrl: m.siteUrl,
   })

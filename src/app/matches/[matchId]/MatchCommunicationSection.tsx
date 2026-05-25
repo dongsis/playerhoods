@@ -55,6 +55,7 @@ type Props = {
   canEditOrganizerNote: boolean
   isOrganizer: boolean
   showFormedNotice: boolean
+  organizerName: string
   onUpdateOrganizerNote: (organizerNote: string | null) => Promise<void>
   onPostMessage: (body: string) => Promise<void>
 }
@@ -115,6 +116,7 @@ export function MatchCommunicationSection({
   canEditOrganizerNote,
   isOrganizer,
   showFormedNotice,
+  organizerName,
   onUpdateOrganizerNote,
   onPostMessage,
 }: Props) {
@@ -135,17 +137,17 @@ export function MatchCommunicationSection({
     () => [...messages].sort((left, right) => left.created_at.localeCompare(right.created_at)),
     [messages],
   )
-  const communicationTitle = showFormedNotice
-    ? 'Match Chat'
-    : isOrganizer
-      ? 'Player Messages'
-      : 'Message Host'
-  const communicationHelper = showFormedNotice
-    ? 'Lineup players can chat together here.'
-    : isOrganizer
-      ? 'Before the match is formed, each player can message you directly.'
-      : 'Ask a question or send an update to the organizer.'
-  const inputPlaceholder = showFormedNotice ? 'Message match...' : 'Message host...'
+  const communicationTitle = isOrganizer
+    ? showFormedNotice
+      ? 'Match Chat'
+      : 'Player Messages'
+    : 'Message Host'
+  const communicationHelper = isOrganizer
+    ? showFormedNotice
+      ? 'Lineup players can chat together here.'
+      : 'Before the match is formed, each player can message you directly.'
+    : `Ask a question or send an update to ${organizerName}.`
+  const inputPlaceholder = isOrganizer && showFormedNotice ? 'Message match...' : 'Message host...'
 
   if (!canAccessCommunication) {
     return null

@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   requestJoinMatch,
   acceptMatchInvite,
   acceptGroupMatchInvite,
-  reconfirmMatchParticipation,
   userWithdraw,
 } from '@/lib/api/matches'
 import { MatchExitNoteComposer } from './MatchExitNoteComposer'
@@ -19,12 +19,26 @@ interface Props {
   isOrganizer: boolean
   myParticipation: MatchParticipant | null
   needsReconfirm: boolean
+  isFormed: boolean
+  confirmedCount: number
+  requiredCount: number
   inScope: boolean
   myGroupInvites: { group_id: string; group_name: string; created_at: string }[]
   organizerName: string
 }
 
-export function MatchActions({ matchId, isOrganizer, myParticipation, needsReconfirm, inScope, myGroupInvites, organizerName }: Props) {
+export function MatchActions({
+  matchId,
+  isOrganizer,
+  myParticipation,
+  needsReconfirm,
+  isFormed,
+  confirmedCount,
+  requiredCount,
+  inScope,
+  myGroupInvites,
+  organizerName,
+}: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [declineOpen, setDeclineOpen] = useState(false)
@@ -80,6 +94,26 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
     color: '#475569',
     border: '1px solid #cbd5e1',
     padding: '0.5rem 1rem',
+  } as const
+  const messageHostButtonStyle = {
+    background: '#0B1F47',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '999px',
+    padding: '0.6rem 1rem',
+    fontSize: '0.86rem',
+    fontWeight: 800,
+    textDecoration: 'none',
+    boxShadow: '0 10px 22px rgba(11, 31, 71, 0.16)',
+  } as const
+  const quietCancelButtonStyle = {
+    background: '#fff',
+    color: '#64748b',
+    border: '1px solid #cbd5e1',
+    borderRadius: '999px',
+    padding: '0.6rem 1rem',
+    fontSize: '0.86rem',
+    fontWeight: 700,
   } as const
   const declineActionLabel = "Can't Make It"
 
@@ -441,9 +475,21 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
       || mp.confirmation_source === 'contact_owner_managed'
       || mp.participant_accepted_via === 'host_offline_confirmation'
     const cancelParticipationLabel = 'Cancel Participation'
-    const confirmedMessage = isHostManagedConfirmation
-      ? 'The host added you because you already confirmed outside PlayerHoods. If anything changed, you can update your response.'
-      : 'If you can no longer play, cancel your participation so the host can fill the spot.'
+    const lineupReady = confirmedCount >= requiredCount
+    const confirmedTitle: ReactNode = isFormed ? (
+      <>You&rsquo;re all set</>
+    ) : (
+      <>You&rsquo;re in for this match</>
+    )
+    const confirmedMessage: ReactNode = isFormed ? (
+      <>This match is formed. You&rsquo;ll only get updates if key details change.</>
+    ) : lineupReady ? (
+      <>The lineup is ready. You&rsquo;ll get an update once the host forms the match.</>
+    ) : isHostManagedConfirmation ? (
+      <>The host added you to the lineup. You&rsquo;ll get an update once the match is formed.</>
+    ) : (
+      <>The match is still being formed. You&rsquo;ll get an update once the lineup is ready.</>
+    )
 
     return (
       <div>
@@ -455,21 +501,14 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
             padding: '0.9rem 1rem',
           }}
         >
-          <p style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>You&apos;re in the lineup</p>
+          <p style={{ margin: 0, color: '#0f172a', fontWeight: 900, fontSize: '1rem' }}>{confirmedTitle}</p>
           <p style={{ margin: '0.35rem 0 0', color: '#475569', fontSize: '0.9rem', lineHeight: 1.45 }}>
             {confirmedMessage}
           </p>
           <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {isHostManagedConfirmation && (
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleAction(() => reconfirmMatchParticipation(supabase, matchId))}
-                style={primaryButtonStyle}
-              >
-                I&apos;m In
-              </button>
-            )}
+            <a href="#match-communication" style={messageHostButtonStyle}>
+              Message Host
+            </a>
             <button
               type="button"
               onClick={() => {
@@ -477,24 +516,19 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
                 setDeclineOpen(true)
               }}
               disabled={loading}
-              style={secondaryButtonStyle}
+              style={quietCancelButtonStyle}
             >
-              {isHostManagedConfirmation ? declineActionLabel : cancelParticipationLabel}
+              {cancelParticipationLabel}
             </button>
-            <a href="#match-communication" style={{ ...secondaryButtonStyle, textDecoration: 'none' }}>
-              Message Host
-            </a>
           </div>
         </div>
         {error && <p style={{ color: 'red' }}>{error}</p>}
         {declineOpen && (
           <div style={dialogOverlayStyle}>
             <div style={dialogCardStyle}>
-              <h4 style={dialogTitleStyle}>{isHostManagedConfirmation ? declineActionLabel : cancelParticipationLabel}</h4>
+              <h4 style={dialogTitleStyle}>{cancelParticipationLabel}</h4>
               <p style={dialogBodyStyle}>
-                {isHostManagedConfirmation
-                  ? 'Add a note if you want. The host will see it with your response.'
-                  : 'The host will see that you can no longer join this match.'}
+                The host will see that you can no longer join this match.
               </p>
               <MatchExitNoteComposer
                 mode="withdraw"
@@ -519,7 +553,7 @@ export function MatchActions({ matchId, isOrganizer, myParticipation, needsRecon
                     cursor: loading ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  {loading ? 'Updating...' : (isHostManagedConfirmation ? declineActionLabel : cancelParticipationLabel)}
+                  {loading ? 'Updating...' : cancelParticipationLabel}
                 </button>
               </div>
             </div>

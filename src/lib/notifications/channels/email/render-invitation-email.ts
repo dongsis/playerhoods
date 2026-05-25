@@ -36,6 +36,7 @@ function formatClubLabel(clubName: string | null | undefined): string {
 export function renderInvitationEmail(data: InvitationEmailData): string {
   const base = data.siteUrl && data.siteUrl !== 'undefined' ? data.siteUrl : getSiteOrigin()
   const viewUrl = `${base}/invitations/${data.invitationId}`
+  const registerUrl = `${base}/login?mode=register&next=${encodeURIComponent(viewUrl)}`
   const unsubscribeUrl = data.unsubscribeUrl ?? `${base}/unsubscribe?invitation=${encodeURIComponent(data.invitationId)}&channel=email&scope=contact_invites`
   const formatLabel = formatMatchFormatLabel(data.matchSummary?.game_type)
   const dateLabel = formatMatchDateLabel(data.matchSummary?.match_date)
@@ -54,12 +55,17 @@ export function renderInvitationEmail(data: InvitationEmailData): string {
       { label: 'Venue', value: clubLabel },
       { label: 'Match', value: formatLabel },
     ],
-    ctaLabel: 'Respond to invitation',
+    ctaLabel: 'Respond to Invitation',
     ctaUrl: viewUrl,
     ctaHint: 'No account is required to respond.',
+    promoTitle: 'New to PlayerHoods?',
+    promoBody:
+      'Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.',
+    promoCtaLabel: 'Create Free Account',
+    promoCtaUrl: registerUrl,
     secondaryTitle: 'Notification note',
     secondaryBody:
-      `Playerhoods is helping ${inviterName} organize this match. You will not receive more messages unless the match is confirmed and you are selected to play, or if the match is cancelled or key details change.`,
+      `PlayerHoods is helping ${inviterName} organize this match. You’ll only receive important updates, such as when the match is formed, cancelled, or key details change.`,
     footerNoteHtml: `You received this because ${escapedInviter} invited you to this match. If you do not want to receive match invitations by email, you can <a href="${escapeHtml(unsubscribeUrl)}">unsubscribe here</a>.`,
     siteUrl: data.siteUrl,
   })

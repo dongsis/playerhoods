@@ -701,6 +701,10 @@ function getVenueMetaLine(venue: Venue): string {
   return parts.join(' • ')
 }
 
+function getVenueFullName(venue: Venue): string {
+  return venue.name?.trim() || getVenueDisplayName(venue)
+}
+
 function venueUsesMemberRelationship(kind: Venue['venue_kind'] | null | undefined): boolean {
   return kind === 'club' || kind === 'private_facility' || kind === 'condo' || kind === 'school'
 }
@@ -1718,12 +1722,12 @@ export function ProfilePanel({
       const aPrimary = a.venue_id === profile.primary_venue_id ? 1 : 0
       const bPrimary = b.venue_id === profile.primary_venue_id ? 1 : 0
       if (aPrimary !== bPrimary) return bPrimary - aPrimary
-      return getVenueDisplayName(a.venue).localeCompare(getVenueDisplayName(b.venue))
+      return getVenueFullName(a.venue).localeCompare(getVenueFullName(b.venue))
     }),
     [myVenueMemberships, profile.primary_venue_id],
   )
   const sortedPublicVenuePrefs = useMemo(
-    () => [...publicVenuePrefs].sort((a, b) => getVenueDisplayName(a).localeCompare(getVenueDisplayName(b))),
+    () => [...publicVenuePrefs].sort((a, b) => getVenueFullName(a).localeCompare(getVenueFullName(b))),
     [publicVenuePrefs],
   )
   const tennisSportId = useMemo(() => getSportLookupId(sports, 'tennis'), [sports])
@@ -1766,9 +1770,9 @@ export function ProfilePanel({
       .map((venue) => {
         const matchesType = venueTypeFilter === 'all' || venue.venue_kind === venueTypeFilter
         const venueNameValues = [
-          getVenueDisplayName(venue),
           venue.name,
           venue.abbreviation ?? '',
+          getVenueDisplayName(venue),
           venue.location_text ?? '',
           venue.postal_code ?? '',
           venue.website_url ?? '',
@@ -1802,7 +1806,7 @@ export function ProfilePanel({
       .filter((entry): entry is { venue: Venue; score: number } => entry != null)
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score
-        return getVenueDisplayName(a.venue).localeCompare(getVenueDisplayName(b.venue))
+        return getVenueFullName(a.venue).localeCompare(getVenueFullName(b.venue))
       })
       .map((entry) => entry.venue)
   }, [joinableVenues, pickleballSportId, tennisSportId, venueCitySearch, venueNameSearch, venueSportFilter, venueSportIdsByVenueId, venueTypeFilter])
@@ -2374,7 +2378,7 @@ export function ProfilePanel({
               <>
                 {sortedJoinedIdentities.map((identity) => {
                   const menuKey = `joined:${identity.id}`
-                  const venueName = getVenueDisplayName(identity.venue)
+                  const venueName = getVenueFullName(identity.venue)
                   return (
                     <div
                       key={identity.id}
@@ -2458,7 +2462,7 @@ export function ProfilePanel({
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 overflow-hidden">
-                          <h4 className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</h4>
+                          <h4 className="text-title-main truncate text-slate-900">{getVenueFullName(venue)}</h4>
                           <div className="flex flex-wrap items-center gap-1.5">
                             <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
                             <VenueBadge tone="starred">Saved</VenueBadge>
@@ -2791,7 +2795,7 @@ export function ProfilePanel({
           className="min-w-0 flex-1 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
+            <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueFullName(venue)}</h4>
             <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
             {renderVenueSportBadges(venue.id)}
           </div>
@@ -2824,8 +2828,8 @@ export function ProfilePanel({
               }}
               disabled={isJoiningVenue || !normalizedDisplayName}
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueDisplayName(venue)}`}
-              title={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueDisplayName(venue)}`}
+              aria-label={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueFullName(venue)}`}
+              title={`${usesMemberRelationship ? 'Choose membership type for' : 'Save'} ${getVenueFullName(venue)}`}
             >
               {isBusy ? '...' : '+'}
             </button>
@@ -3212,7 +3216,7 @@ export function ProfilePanel({
                   <>
                     {sortedJoinedIdentities.map((identity) => {
                       const menuKey = `joined:${identity.id}`
-                      const venueName = getVenueDisplayName(identity.venue)
+                      const venueName = getVenueFullName(identity.venue)
                       return (
                         <div
                           key={identity.id}
@@ -3296,7 +3300,7 @@ export function ProfilePanel({
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2 overflow-hidden">
-                              <h4 className="text-title-main truncate text-slate-900">{getVenueDisplayName(venue)}</h4>
+                              <h4 className="text-title-main truncate text-slate-900">{getVenueFullName(venue)}</h4>
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
                                 <VenueBadge tone="starred">Saved</VenueBadge>
@@ -3416,7 +3420,7 @@ export function ProfilePanel({
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueDisplayName(venue)}</h4>
+                        <h4 className="text-body-main truncate font-semibold text-slate-900">{getVenueFullName(venue)}</h4>
                         <VenueBadge tone="type">{getVenueKindLabel(venue.venue_kind)}</VenueBadge>
                         {renderVenueSportBadges(venue.id)}
                       </div>
@@ -3429,8 +3433,8 @@ export function ProfilePanel({
                       onClick={() => handleQuickJoinVenue(venue.id)}
                       disabled={isJoiningVenue || !normalizedDisplayName}
                       className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label={`Add ${getVenueDisplayName(venue)}`}
-                      title={`Add ${getVenueDisplayName(venue)}`}
+                      aria-label={`Add ${getVenueFullName(venue)}`}
+                      title={`Add ${getVenueFullName(venue)}`}
                     >
                       {isJoiningVenue && joiningVenueId === venue.id ? '…' : '+'}
                     </button>

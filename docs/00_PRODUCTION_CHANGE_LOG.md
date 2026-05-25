@@ -14,6 +14,168 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-05-25 - PATCH-20260525-ready-to-form-copy-polish
+
+**Type:** Patch
+**Code Commit:** Local workspace deployment; GitHub commit pending
+**Migration:** None
+**Status:** Vercel Production deployed
+
+### Summary
+
+This patch softens and shortens the ready-to-form match detail copy:
+
+- Changes the primary ready CTA from `Form Match & Notify` to `Form Match`.
+- Adds helper copy: `Forming the match will notify confirmed players.`
+- Simplifies the confirmed section heading to `Ready Lineup · 4 players` instead of combining `4 / 4` and `Full`.
+- Changes the full-lineup waiting helper to `Not counted toward this match yet.`
+- Updates the tools card copy to `Set teams now, or invite backup players if you want options.`
+- Avoids showing both `You` and `Host` badges on the host's own participant row.
+- Softens the `Host-confirmed` badge color.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Type check | Passed | `npx tsc --noEmit` |
+| Build | Passed | `npm run build` locally and Vercel production build |
+| Vercel Production | Passed | Deployment `https://playerhoods-codex-8w1tbt2i1-nancys-projects-128e326c.vercel.app` reported Ready and aliases include `https://www.playerhoods.com` |
+| Production login smoke | Passed | `https://www.playerhoods.com/login` returned HTTP 200 |
+
+### Rollback
+
+- Redeploy the previous known-good Vercel Production deployment.
+
+## 2026-05-25 - PATCH-20260525-ready-to-form-lineup-state
+
+**Type:** Patch
+**Code Commit:** Local workspace deployment; GitHub commit pending
+**Migration:** None
+**Status:** Vercel Production deployed
+
+### Summary
+
+This patch refines the ready-to-form and formed match detail states:
+
+- Renames host ready state from `Ready to confirm` / `Confirm and Notify` to `Ready to Form` / `Form Match & Notify`.
+- Shows `Match Formed` and `Players have been notified.` after the match is formed instead of keeping the ready-to-form CTA.
+- Changes players card labels by stage: `Lineup so far`, `Ready Lineup`, and `Confirmed Lineup`.
+- Uses `4 / 4` plus a softer `Full` badge instead of `Lineup Full`.
+- Adds a helper for waiting invites under a full lineup: `Not counted toward the formed match yet.`
+- Hides `Players Who Want to Join` when there are no join requests.
+- Reorders bottom actions so `Set Teams` is primary when full, while `Add More Players` becomes secondary; formed matches show `Message Players` and `Set Teams`.
+- Aligns Match Board formed state with the same `match.formed_at` source used by the main match page.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Type check | Passed | `npx tsc --noEmit` |
+| Build | Passed | `npm run build` locally and Vercel production build |
+| Vercel Production | Passed | Deployment `https://playerhoods-codex-7ouvwkrwf-nancys-projects-128e326c.vercel.app` reported Ready and aliases include `https://www.playerhoods.com` |
+| Production login smoke | Passed | `https://www.playerhoods.com/login` returned HTTP 200 |
+
+### Rollback
+
+- Redeploy the previous known-good Vercel Production deployment.
+
+## 2026-05-25 - PATCH-20260525-invite-response-register-nudge
+
+**Type:** Patch
+**Code Commit:** Local workspace deployment; GitHub commit pending
+**Migration:** None
+**Status:** Vercel Production deployed
+
+### Summary
+
+This patch lightly encourages invited contacts/guests to register without blocking the response flow:
+
+- Keeps the primary email action as `Respond to Invitation`.
+- Keeps `No account is required to respond.` directly under the primary CTA.
+- Adds a secondary `New to PlayerHoods?` registration card below the response CTA and above Notification Note.
+- Adds the same lightweight registration prompt to the unauthenticated invitation response page.
+- Simplifies the Notification Note copy to important updates only.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Type check | Passed | `npx tsc --noEmit` |
+| Build | Passed | `npm run build` locally and Vercel production build |
+| Vercel Production | Passed | Deployment `https://playerhoods-codex-15646wfct-nancys-projects-128e326c.vercel.app` reported Ready and aliases include `https://www.playerhoods.com` |
+| Production login smoke | Passed | `https://www.playerhoods.com/login` returned HTTP 200 |
+
+### Rollback
+
+- Redeploy the previous known-good Vercel Production deployment.
+
+## 2026-05-25 - PATCH-20260525-contact-player-owned-name-overlay
+
+**Type:** Patch
+**Code Commit:** Local workspace deployment; GitHub commit pending
+**Migration:** None
+**Status:** Vercel Production deployed
+
+### Summary
+
+This patch fixes Contact Player name display in match participant rows:
+
+- When the current user owns the Contact Player, match list/detail name resolution now prefers the caller-owned contact display name.
+- Prevents a private contact such as `nanaw` from rendering as a stale canonical person name such as `riverhot` while the detail drawer shows the owned contact correctly.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Type check | Passed | `npx tsc --noEmit` |
+| Build | Passed | `npm run build` locally and Vercel production build |
+| Vercel Production | Passed | Deployment `https://playerhoods-codex-79i27hygr-nancys-projects-128e326c.vercel.app` reported Ready and aliases include `https://www.playerhoods.com` |
+| Production login smoke | Passed | `https://www.playerhoods.com/login` returned HTTP 200 |
+
+### Rollback
+
+- Redeploy the previous known-good Vercel Production deployment.
+
+## 2026-05-25 - MR-20260525-host-offline-confirm-existing-participants
+
+**Type:** Mini Release
+**Code Commit:** Local workspace deployment; GitHub commit pending
+**Migration:** `20260525101500_host_confirm_existing_participants_offline.sql`
+**Status:** Supabase Remote and Vercel Production deployed
+
+### Summary
+
+This mini release extends host-managed offline confirmation to existing match participants:
+
+- Adds organizer-only `rpc_match_host_confirm_participant_offline(uuid)` for pending or waiting-list participants already in the match.
+- Records explicit host-managed audit fields instead of pretending the player self-confirmed.
+- Queues the existing `host_managed_confirmation` SMS/email notification when the participant has a reachable channel.
+- Adds a guarded `Mark Confirmed Offline` action in participant menus with confirmation copy.
+
+### Environment Status
+
+| Area | Status | Evidence |
+|---|---|---|
+| GitHub main | Pending | Local workspace deployment; no commit created in this task |
+| Vercel Production | Ready | Deployment `https://playerhoods-codex-4sny0np1d-nancys-projects-128e326c.vercel.app` reported Ready and aliases include `https://www.playerhoods.com` |
+| Supabase Remote | Applied | `npx supabase db push --linked --yes` applied migration `20260525101500` |
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Type check | Passed | `npx tsc --noEmit` |
+| Build | Passed | `npm run build` locally and Vercel production build |
+| Remote DB migration | Passed | `npx supabase migration list --linked` shows `20260525101500` in Local and Remote |
+| Vercel Production | Passed | `vercel inspect` reported deployment Ready |
+| Production login smoke | Passed | `https://www.playerhoods.com/login` returned HTTP 200 |
+| Authenticated host-confirm flow | Not run | Production test-account core-flow verification was not run |
+
+### Rollback
+
+- Redeploy the previous known-good Vercel Production deployment.
+- Apply a forward migration that drops `rpc_match_host_confirm_participant_offline(uuid)` if the new RPC must be removed.
+
 ## 2026-05-20 - MR-20260520-onboarding-venue-search-scroll
 
 **Type:** Mini Release

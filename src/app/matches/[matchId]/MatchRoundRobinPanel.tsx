@@ -188,7 +188,7 @@ function buildRoundRobin(
   gameType: string | null,
 ): RoundRobinResult {
   if (gameType === 'singles') {
-    return { ok: false, message: 'Round Robin grouping is currently available for doubles only.' }
+    return { ok: false, message: 'Team setup is currently available for doubles only.' }
   }
 
   const uniquePlayers = confirmedParticipants
@@ -199,11 +199,11 @@ function buildRoundRobin(
     .filter((player, index, all) => all.findIndex((item) => item.id === player.id) === index)
 
   if (uniquePlayers.length < 4) {
-    return { ok: false, message: 'Need at least 4 confirmed players to build a round robin draw.' }
+    return { ok: false, message: 'Need 4 confirmed players to set doubles teams.' }
   }
 
   if (uniquePlayers.length % 4 !== 0) {
-    return { ok: false, message: 'Round Robin currently needs confirmed players in groups of 4.' }
+    return { ok: false, message: 'Set Teams currently needs confirmed players in groups of 4.' }
   }
 
   const courtCount = uniquePlayers.length / 4
@@ -212,7 +212,7 @@ function buildRoundRobin(
 
   const setOne = makeSet(playerIds, labels)
   if (!setOne) {
-    return { ok: false, message: 'Unable to generate the first round. Try again after adjusting players or courts.' }
+    return { ok: false, message: 'Unable to generate the first team set. Try again after adjusting players or courts.' }
   }
 
   const firstSetStats = deriveStats(setOne)
@@ -232,7 +232,7 @@ function buildRoundRobin(
   }
 
   if (!bestSetTwo) {
-    return { ok: false, message: 'Unable to generate the second round right now.' }
+    return { ok: false, message: 'Unable to generate the second team set right now.' }
   }
 
   const playerNameMap = new Map(uniquePlayers.map((player) => [player.id, player.name]))
@@ -352,9 +352,9 @@ export function MatchRoundRobinPanel({
     <div className="px-6 pb-6 pt-5">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-label mb-2">Lineup</div>
+          <div className="text-label mb-2">Set Teams</div>
           <p className="text-body-main max-w-2xl text-slate-500">
-            Build a simple two-round doubles lineup from the current confirmed players.
+            Set doubles teams from the current confirmed players.
           </p>
         </div>
         {isOrganizer ? (
@@ -364,7 +364,7 @@ export function MatchRoundRobinPanel({
             disabled={!draftResult.ok || isSaving}
             className="text-body-sub rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSaving ? 'Saving...' : activeLineup ? 'Shuffle Lineup' : 'Generate Lineup'}
+            {isSaving ? 'Saving...' : activeLineup ? 'Regenerate Teams' : 'Generate Teams'}
           </button>
         ) : null}
       </div>
@@ -389,19 +389,19 @@ export function MatchRoundRobinPanel({
               {activeLineup.courtCount} court{activeLineup.courtCount === 1 ? '' : 's'}
             </span>
             <span className="text-body-sub rounded-full border border-orange-100 bg-orange-50 px-3 py-1 font-semibold text-orange-600">
-              2 rounds
+              Team sets
             </span>
           </div>
 
           {activeLineup.generatedCourtLabels ? (
             <div className="mb-5 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-              Current court info does not fully match the player count, so extra court labels were generated for the draw preview.
+              Current court info does not fully match the player count, so extra court labels were generated for the team preview.
             </div>
           ) : null}
 
           <div className="grid gap-5 xl:grid-cols-2">
-            <SetCard title="Round 1" matches={activeLineup.setOne} />
-            <SetCard title="Round 2" matches={activeLineup.setTwo} />
+            <SetCard title="Team Set 1" matches={activeLineup.setOne} />
+            <SetCard title="Team Set 2" matches={activeLineup.setTwo} />
           </div>
         </>
       )}

@@ -21,6 +21,15 @@ export type InvitationDisplay = {
     match_date: string | null
     start_time: string | null
     club_name: string | null
+    match_status?: string | null
+    formed_at?: string | null
+    match_participant_id?: string | null
+    participant_status?: string | null
+    participant_removed_at?: string | null
+    participant_accepted_at?: string | null
+    participant_org_approved_at?: string | null
+    participant_confirmation_source?: string | null
+    participant_accepted_via?: string | null
   } | null
   caller_email_matches: boolean
 }

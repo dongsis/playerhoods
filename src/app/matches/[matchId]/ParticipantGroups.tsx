@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
+  hostConfirmParticipantOffline,
   orgApproveParticipant,
   proxyConfirmParticipant,
   proxyDeclineParticipant,
@@ -27,6 +28,7 @@ interface Props {
   // Organizer receives full participants list (confirmed + pending + removed).
   participants: MatchParticipantEnriched[]
   isOrganizer: boolean
+  isFormed: boolean
   requiredCount: number
   // Count from match_formed view — used to display "Pending (N)" for non-organizer
   pendingCount: number
@@ -39,7 +41,7 @@ interface Props {
   onRemoveParticipant?: (participantId: string) => Promise<void>
 }
 
-type ParticipantMenuAction = 'remove' | 'withdraw' | 'proxy-withdraw' | null
+type ParticipantMenuAction = 'remove' | 'withdraw' | 'proxy-withdraw' | 'host-confirm-offline' | 'move-to-waiting' | null
 
 type ParticipantTimelineEvent = {
   key: string
@@ -203,6 +205,7 @@ function ParticipantRow({
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
   const [activeDialog, setActiveDialog] = useState<ParticipantMenuAction>(null)
   const [actionReason, setActionReason] = useState('')
+  const [inlineNotice, setInlineNotice] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -270,11 +273,15 @@ function ParticipantRow({
     }
   }, [menuOpen])
 
-  const act = (fn: () => Promise<void>) => {
+  const act = (fn: () => Promise<void>, successMessage?: string) => {
     setError(null)
+    setInlineNotice(null)
     startTransition(async () => {
       try {
         await fn()
+        if (successMessage) {
+          setInlineNotice(successMessage)
+        }
         router.refresh()
         // Run delivery worker in background — don't block UI on email send
         processDeliveriesAction().catch(() => {})
@@ -334,9 +341,38 @@ function ParticipantRow({
     p.participant_accepted_at !== null
   const relationshipBadges: string[] = []
 
+  const canHostConfirmOffline =
+    isOrganizer &&
+    isActive &&
+    (p.status === 'pending' || p.status === 'waiting_list') &&
+    p.participant_accepted_at === null &&
+    !(p.user_id !== null && p.user_id === organizerUserId)
+
   const canRemoveParticipant = canOrganizerRemoveParticipant || canRemovePendingParticipant
   const isPendingRequest = p.status === 'pending' && p.join_method === 'requested' && p.org_approved_at === null
-  const hostRemoveActionLabel = isPendingRequest ? 'Not This Time' : 'Remove player'
+  const isWaitingForPlayer = p.status === 'pending' && !isPendingRequest
+  const canSendReminder =
+    isOrganizer &&
+    isActive &&
+    isWaitingForPlayer &&
+    p.org_approved_at !== null &&
+    p.participant_accepted_at === null
+  const canMoveToWaiting =
+    isOrganizer &&
+    isActive &&
+    p.status === 'confirmed' &&
+    !(p.user_id !== null && p.user_id === organizerUserId)
+  const hostRemoveActionLabel =
+    isPendingRequest
+      ? 'Not This Time'
+      : p.status === 'waiting_list'
+        ? 'Remove from Waitlist'
+        : isWaitingForPlayer
+          ? 'Cancel Invite'
+          : p.status === 'confirmed'
+            ? 'Remove from Lineup'
+            : 'Remove player'
+  const hasSaveAction = canSavePlayer || canSaveContactPlayer
 
   const closeMenus = () => {
     setMenuOpen(false)
@@ -402,7 +438,7 @@ function ParticipantRow({
     if (isOrganizer && isHostManagedConfirmation) {
       timelineEvents.push({
         key: 'host-offline-confirmed',
-        label: 'Added by host · Confirmed offline',
+        label: 'Confirmed by host offline',
         at: p.participant_accepted_at,
       })
     } else if (
@@ -461,6 +497,58 @@ function ParticipantRow({
       ? 'Withdraw for player'
       : 'Decline for player'
   const actionButtons = [
+    canSendReminder
+      ? {
+          key: 'send-reminder',
+          label: 'Send Reminder',
+          style: secondaryMenuActionStyle,
+          onClick: () => {
+            setMenuOpen(false)
+            act(
+              async () => {
+                const result = await (supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data?: string | null; error?: { message?: string } | null }>)(
+                  'notification_enqueue_for_participant',
+                  {
+                    p_participant_id: p.id,
+                    p_notification_type: 'invite',
+                    p_dedupe_key: `invite_reminder:${p.id}:${Date.now()}`,
+                    p_change_set: { reminder: true },
+                  },
+                )
+                if (result.error) {
+                  throw new Error(result.error.message ?? 'Could not send reminder')
+                }
+                if (!result.data) {
+                  throw new Error(`No email or text channel is available for ${p.display_name}.`)
+                }
+              },
+              `Reminder sent to ${p.display_name}.`,
+            )
+          },
+        }
+      : null,
+    canHostConfirmOffline
+      ? {
+          key: 'host-confirm-offline',
+          label: 'Mark as Host-Confirmed',
+          style: primaryMenuActionStyle,
+          onClick: () => {
+            setMenuOpen(false)
+            setActiveDialog('host-confirm-offline')
+          },
+        }
+      : null,
+    canMoveToWaiting
+      ? {
+          key: 'move-to-waiting',
+          label: 'Move to Waiting',
+          style: secondaryMenuActionStyle,
+          onClick: () => {
+            setMenuOpen(false)
+            setActiveDialog('move-to-waiting')
+          },
+        }
+      : null,
     canProxyConfirm
       ? {
           key: 'proxy-confirm',
@@ -514,7 +602,7 @@ function ParticipantRow({
     onClick: () => void
   } => item !== null)
 
-  const showParticipantMenu = timelineEvents.length > 0 || actionButtons.length > 0
+  const showParticipantMenu = timelineEvents.length > 0 || actionButtons.length > 0 || hasSaveAction
   const withdrawDialogMode =
     p.status === 'confirmed'
       || p.status === 'waiting_list'
@@ -536,7 +624,7 @@ function ParticipantRow({
               {p.display_name}
             </span>
 
-            {isMe ? (
+            {isMe && !isHostRow ? (
               <span
                 style={{
                   display: 'inline-flex',
@@ -552,6 +640,26 @@ function ParticipantRow({
                 }}
               >
                 You
+              </span>
+            ) : null}
+
+            {isHostRow ? (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0.1rem 0.38rem',
+                  borderRadius: '999px',
+                  background: '#fff7ed',
+                  color: '#9a3412',
+                  border: '1px solid #fed7aa',
+                  fontSize: '0.5rem',
+                  fontWeight: 900,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Host
               </span>
             ) : null}
 
@@ -583,23 +691,23 @@ function ParticipantRow({
                   alignItems: 'center',
                   padding: '0.08rem 0.38rem',
                   borderRadius: '999px',
-                  background: '#eff6ff',
-                  color: '#0d6efd',
-                  border: '1px solid #bfdbfe',
+                  background: '#F6F8FB',
+                  color: '#4B647F',
+                  border: '1px solid #D8E2EE',
                   fontSize: '0.42rem',
                   fontWeight: 800,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
+                  letterSpacing: 0,
+                  textTransform: 'none',
                 }}
-                title="Confirmed offline"
+                title="Confirmed outside the app by the host."
               >
-                Added by host
+                Host-confirmed
               </span>
             ) : null}
           </div>
         </div>
 
-        {!isHostRow && (pendingState || p.status === 'confirmed') && (
+        {!isHostRow && pendingState && p.status !== 'confirmed' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginTop: '0.18rem' }}>
             <ConfirmationBadge
               label="Host"
@@ -658,30 +766,8 @@ function ParticipantRow({
         ) : participantInfo}
 
         {/* Organizer / participant action controls */}
-        {(canSavePlayer || canSaveContactPlayer || showParticipantMenu) && (
+        {(canApprove || showParticipantMenu) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0, paddingTop: '0.06rem' }}>
-            {canSavePlayer && (
-              <SavedPlayerButton
-                targetUserId={p.user_id!}
-                source="match_player"
-                currentUserId={myUserId}
-                initialSaved={initiallySaved}
-                compact
-                savedLabel="Saved"
-                removeLabel="Remove"
-              />
-            )}
-
-            {canSaveContactPlayer && (
-              <SaveContactPlayerButton
-                guestId={p.guest_id!}
-                source="shared_match"
-                matchId={matchId}
-                compact
-                saveLabel="Save player"
-              />
-            )}
-
             {canApprove && (
               <button
                 type="button"
@@ -743,7 +829,7 @@ function ParticipantRow({
                         }}
                       >
                         {event.label}
-                        {event.at && ` · ${formatEventTimestamp(event.at)}`}
+                        {event.at && ` \u00b7 ${formatEventTimestamp(event.at)}`}
                       </div>
                     ))}
                   </div>
@@ -765,6 +851,35 @@ function ParticipantRow({
                       </div>
                     </div>
                   )}
+
+                  {hasSaveAction && (
+                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #eceff3' }}>
+                      <div style={{ display: 'grid', gap: '0.45rem' }}>
+                        {canSavePlayer ? (
+                          <SavedPlayerButton
+                            targetUserId={p.user_id!}
+                            source="match_player"
+                            currentUserId={myUserId}
+                            initialSaved={initiallySaved}
+                            compact
+                            saveLabel="Save Player"
+                            savedLabel="Saved"
+                            removeLabel="Remove"
+                          />
+                        ) : null}
+
+                        {canSaveContactPlayer ? (
+                          <SaveContactPlayerButton
+                            guestId={p.guest_id!}
+                            source="shared_match"
+                            matchId={matchId}
+                            compact
+                            saveLabel="Save Player"
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -779,6 +894,10 @@ function ParticipantRow({
             <p style={dialogBodyStyle}>
               {isPendingRequest
                 ? 'This lets them know there is not a lineup spot this time.'
+                : isWaitingForPlayer
+                  ? 'This cancels the invitation before the player confirms.'
+                  : p.status === 'waiting_list'
+                    ? 'This removes them from the waitlist.'
                 : isOrganizer
                   ? 'This removes them from the match.'
                   : 'Remove this player?'}
@@ -816,6 +935,50 @@ function ParticipantRow({
                 style={dangerButtonStyle}
               >
                 {hostRemoveActionLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeDialog === 'host-confirm-offline' && (
+        <div style={dialogOverlayStyle}>
+          <div style={dialogCardStyle}>
+            <h4 style={dialogTitleStyle}>Mark as Host-Confirmed?</h4>
+            <p style={dialogBodyStyle}>
+              Use this when the player already agreed outside the app, such as by text, phone,
+              WeChat, or in person. They&apos;ll be added to the confirmed lineup and receive a
+              confirmation notice.
+            </p>
+            <div style={dialogActionsStyle}>
+              <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  closeMenus()
+                  act(() => hostConfirmParticipantOffline(supabase, p.id))
+                }}
+                style={primaryButtonStyle}
+              >
+                Mark as Host-Confirmed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeDialog === 'move-to-waiting' && (
+        <div style={dialogOverlayStyle}>
+          <div style={dialogCardStyle}>
+            <h4 style={dialogTitleStyle}>Move to Waiting?</h4>
+            <p style={dialogBodyStyle}>
+              This action needs a backend transition before it can safely move confirmed players back to waiting.
+            </p>
+            <div style={dialogActionsStyle}>
+              <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
+                Close
               </button>
             </div>
           </div>
@@ -866,8 +1029,12 @@ function ParticipantRow({
         </div>
       )}
 
-
-      {error && <p style={{ color: 'red', fontSize: '0.75rem', margin: '0.2rem 0 0' }}>{error}</p>}
+      {inlineNotice && (
+        <p style={{ color: '#0f766e', fontSize: '0.75rem', fontWeight: 700, margin: '0.35rem 0 0' }}>
+          {inlineNotice}
+        </p>
+      )}
+      {error && <p style={{ color: '#b42318', fontSize: '0.75rem', margin: '0.2rem 0 0' }}>{error}</p>}
     </div>
   )
 }
@@ -982,6 +1149,16 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontSize: '0.8rem',
 }
 
+const primaryButtonStyle: React.CSSProperties = {
+  background: '#111827',
+  color: '#fff',
+  border: 'none',
+  padding: '0.45rem 0.7rem',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  fontSize: '0.8rem',
+}
+
 const dangerButtonStyle: React.CSSProperties = {
   background: '#b42318',
   color: '#fff',
@@ -1002,15 +1179,19 @@ const participantGridStyle: React.CSSProperties = {
 function Section({
   title,
   badge,
+  badgeLabel,
   badgeColor,
   extraLabel,
+  helper,
   children,
   defaultOpen = true,
 }: {
   title: string
   badge: number
+  badgeLabel?: string
   badgeColor: string
   extraLabel?: string | null
+  helper?: string | null
   children: React.ReactNode
   defaultOpen?: boolean
 }) {
@@ -1045,8 +1226,8 @@ function Section({
             letterSpacing: '-0.01em',
           }}
         >
-        {title} · {badge}
-      </h4>
+          {title} {'\u00b7'} {badgeLabel ?? badge}
+        </h4>
         {extraLabel ? (
           <span
             style={{
@@ -1059,6 +1240,11 @@ function Section({
           </span>
         ) : null}
       </div>
+      {helper ? (
+        <p style={{ margin: '0 0 0.35rem', color: '#94a3b8', fontSize: '0.74rem', lineHeight: 1.45 }}>
+          {helper}
+        </p>
+      ) : null}
       {children}
     </div>
   )
@@ -1069,6 +1255,7 @@ export function ParticipantGroups({
   matchStatus,
   participants,
   isOrganizer,
+  isFormed,
   requiredCount,
   pendingCount,
   waitingCount,
@@ -1102,6 +1289,12 @@ export function ParticipantGroups({
     if (removedIdentityIds.has(p.guest_id ?? p.user_id ?? '')) return false
     return p.status === 'confirmed' || (p.join_method === 'guest_add' && p.status !== 'removed')
   })
+  const isLineupFull = confirmed.length >= requiredCount
+  const confirmedSectionTitle = isFormed
+    ? 'Confirmed Lineup'
+    : isLineupFull
+      ? 'Ready Lineup'
+      : 'Lineup so far'
 
   // Pending — exclude anyone in removed
   const pending = participants.filter(
@@ -1146,10 +1339,10 @@ export function ParticipantGroups({
     <div>
       {/* Confirmed — visible to all */}
       <Section
-        title="Confirmed Lineup"
+        title={confirmedSectionTitle}
         badge={confirmed.length}
+        badgeLabel={`${confirmed.length} ${confirmed.length === 1 ? 'player' : 'players'}`}
         badgeColor="#2d8a4e"
-        extraLabel={confirmed.length >= requiredCount ? 'Lineup Full' : null}
       >
         {confirmed.length === 0 ? (
           <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None yet.</p>
@@ -1161,40 +1354,44 @@ export function ParticipantGroups({
       </Section>
 
       {/* Pending — visible here when the current page model allows the row through. */}
-      {visiblePlayersWhoWantToJoin.length > 0 ? (
-        <Section title={isOrganizer ? 'Players Who Want to Join' : 'Players You Manage'} badge={visiblePlayersWhoWantToJoin.length} badgeColor="#0d6efd">
-          <div style={participantGridStyle}>
-            {visiblePlayersWhoWantToJoin.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
-          </div>
+      {isOrganizer || visibleWaitingForConfirmation.length > 0 ? (
+        <Section
+          title={isOrganizer ? 'Waiting for player' : 'Players You Manage'}
+          badge={visibleWaitingForConfirmation.length}
+          badgeColor="#d97706"
+          helper={isLineupFull && visibleWaitingForConfirmation.length > 0 ? 'Not counted toward this match yet.' : null}
+        >
+          {visibleWaitingForConfirmation.length === 0 ? (
+            <p style={{ color: '#98a2b3', fontSize: '0.82rem' }}>No players waiting for confirmation.</p>
+          ) : (
+            <div style={participantGridStyle}>
+              {visibleWaitingForConfirmation.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+            </div>
+          )}
         </Section>
       ) : null}
 
-      {visibleWaitingForConfirmation.length > 0 ? (
-        <Section title={isOrganizer ? 'Waiting for player' : 'Players You Manage'} badge={visibleWaitingForConfirmation.length} badgeColor="#d97706">
-          <div style={participantGridStyle}>
-            {visibleWaitingForConfirmation.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
-          </div>
+      {visiblePlayersWhoWantToJoin.length > 0 ? (
+        <Section title={isOrganizer ? 'Players Who Want to Join' : 'Players You Manage'} badge={visiblePlayersWhoWantToJoin.length} badgeColor="#0d6efd">
+          {visiblePlayersWhoWantToJoin.length === 0 ? (
+            <p style={{ color: '#98a2b3', fontSize: '0.82rem' }}>No players waiting to join.</p>
+          ) : (
+            <div style={participantGridStyle}>
+              {visiblePlayersWhoWantToJoin.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+            </div>
+          )}
         </Section>
       ) : null}
 
       {(isOrganizer || visibleWaiting.length > 0) && (visibleWaiting.length > 0 || (isOrganizer && (waitingCount ?? 0) > 0)) && (
-        <Section title="Waiting List" badge={isOrganizer ? (waitingCount ?? waiting.length) : visibleWaiting.length} badgeColor="#b45309">
+        <Section title="Waitlist" badge={isOrganizer ? (waitingCount ?? waiting.length) : visibleWaiting.length} badgeColor="#b45309">
           {visibleWaiting.length === 0 ? (
-            <p style={{ color: '#98a2b3', fontSize: '0.82rem' }}>Waiting list exists, but details are hidden for your current role.</p>
+            <p style={{ color: '#98a2b3', fontSize: '0.82rem' }}>Waitlist exists, but details are hidden for your current role.</p>
           ) : (
             <div style={participantGridStyle}>
               {visibleWaiting.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
             </div>
           )}
-        </Section>
-      )}
-
-      {/* Removed — organizer only (§3.3). Always expanded for clarity. */}
-      {isOrganizer && removed.length > 0 && (
-        <Section title="Removed" badge={removed.length} badgeColor="#999">
-          <div style={participantGridStyle}>
-            {removed.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
-          </div>
         </Section>
       )}
     </div>

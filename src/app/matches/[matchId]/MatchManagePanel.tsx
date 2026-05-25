@@ -102,6 +102,7 @@ type SummaryEntry = {
   key: string
   label: string
   kind: 'user' | 'group' | 'contact'
+  detailLabel?: string | null
   availabilityStatus?: AvailabilityStatus | null
   userId?: string | null
   guestId?: string | null
@@ -233,10 +234,10 @@ function SummaryRosterRow({
         <div className="min-w-0">
           <div className="flex flex-wrap gap-1.5">
             {previewItems.map((item) => (
-              <span
-                key={item.key}
-                className={`text-body-sub inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-1 font-semibold ${toneChipClass}`}
-              >
+              <span key={item.key} className="inline-flex min-w-0 max-w-full flex-col gap-0.5">
+                <span
+                  className={`text-body-sub inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-1 font-semibold ${toneChipClass}`}
+                >
                 {item.kind === 'user' ? (
                   (() => {
                     const availabilityDotClass = getAvailabilityStatusDotClass(
@@ -277,6 +278,12 @@ function SummaryRosterRow({
                 {item.kind === 'group' ? (
                   <span className="rounded bg-green-100 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-green-800">
                     Group
+                  </span>
+                ) : null}
+                </span>
+                {item.detailLabel ? (
+                  <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                    {item.detailLabel}
                   </span>
                 ) : null}
               </span>
@@ -1324,6 +1331,7 @@ export function MatchManagePanel({
         guestId: participant.guest_id ?? null,
         avatarUrl: participant.avatar_url ?? null,
         isHost: Boolean(organizerUserId && effectiveUserId === organizerUserId),
+        detailLabel: participant.invited_by_name ? `Invited by ${participant.invited_by_name}` : null,
       }
     }),
     ...visibleInviteGroups.map((group) => ({
@@ -1352,7 +1360,7 @@ export function MatchManagePanel({
 
   const confirmedMetaLabel =
     visibleConfirmedParticipants.length >= requiredCount
-      ? 'Lineup Full'
+      ? 'Full'
       : `${Math.max(requiredCount - visibleConfirmedParticipants.length, 0)} spots left`
   const inviteMetaParts: string[] = []
   if (visibleInviteUsers.length > 0) inviteMetaParts.push(`${visibleInviteUsers.length} player${visibleInviteUsers.length === 1 ? '' : 's'}`)
@@ -1363,7 +1371,7 @@ export function MatchManagePanel({
   if (visibleRequestGroups.length > 0) requestMetaParts.push(`${visibleRequestGroups.length} group${visibleRequestGroups.length === 1 ? '' : 's'}`)
   const requestMetaLabel = requestMetaParts.join(' · ')
 
-  const spotsLabel = `${visibleConfirmedParticipants.length} / ${requiredCount}${visibleConfirmedParticipants.length >= requiredCount ? ' Lineup Full' : ''}`
+  const spotsLabel = `${visibleConfirmedParticipants.length} / ${requiredCount}`
   const isOverCapacity = visibleConfirmedParticipants.length > requiredCount
 
   const pendingGroups: PendingGroup[] = []
@@ -1537,22 +1545,24 @@ export function MatchManagePanel({
               <div className="text-body-sub mt-1 text-amber-700">
                 Choose who is in the match before forming. Extra confirmed players can be moved to the waitlist.
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => onRequestPanelMode?.('remove')}
-                  className="text-body-main rounded-full bg-slate-900 px-4 py-2 font-bold text-white"
-                >
-                  Choose Lineup
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRequestPanelMode?.('remove')}
-                  className="text-body-main rounded-full border border-amber-200 bg-white px-4 py-2 font-bold text-amber-800"
-                >
-                  Move extra players to waitlist
-                </button>
-              </div>
+              {onRequestPanelMode ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onRequestPanelMode('remove')}
+                    className="text-body-main rounded-full bg-slate-900 px-4 py-2 font-bold text-white"
+                  >
+                    Choose Lineup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRequestPanelMode('remove')}
+                    className="text-body-main rounded-full border border-amber-200 bg-white px-4 py-2 font-bold text-amber-800"
+                  >
+                    Move extra players to waitlist
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

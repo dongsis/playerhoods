@@ -602,6 +602,8 @@ export function DashboardShell({
           selectedMatchId={selectedMatchId ?? null}
           selectedMatchDetail={selectedMatchDetail}
           onCancelMatch={onCancelMatch}
+          onParseScreenshots={onParseContactScreenshots}
+          onImportScreenshotContacts={onImportScreenshotContacts}
           starterCard={shouldShowStarterCard ? {
             contactCount: starterContactCount,
             preferredFormat: starterFormat,

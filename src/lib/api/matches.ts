@@ -59,6 +59,7 @@ export type MatchParticipantEnriched = MatchParticipant & {
   avatar_url?: string | null
   gender?: Profile['gender'] | null
   participant_kind?: 'registered_user' | 'contact_player'
+  invited_by_name?: string | null
   manual_confirmed_by_name?: string | null
   shares_group_with_viewer?: boolean
   proxy_manageable_by_viewer?: boolean
@@ -183,8 +184,29 @@ async function fetchContactPlayerLookup(
     person_id: string | null
   }[]
 
+  let ownedContactNameByGuestId = new Map<string, string>()
+  try {
+    const { data: ownedContacts, error: ownedContactsError } = await supabase.rpc('rpc_contact_player_resolution')
+    if (!ownedContactsError) {
+      ownedContactNameByGuestId = new Map(
+        ((ownedContacts ?? []) as Array<{ guest_id: string; display_name: string | null }>)
+          .map((contact) => [contact.guest_id, contact.display_name?.trim() ?? ''])
+          .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1])),
+      )
+    }
+  } catch (error) {
+    logMatchListSoftFailure('owned_contact_name_overlay', error)
+  }
+
   return new Map(
-    rows.map((row) => [row.guest_id, { id: row.guest_id, display_name: row.display_name, person_id: row.person_id } as Guest]),
+    rows.map((row) => [
+      row.guest_id,
+      {
+        id: row.guest_id,
+        display_name: ownedContactNameByGuestId.get(row.guest_id) ?? row.display_name,
+        person_id: row.person_id,
+      } as Guest,
+    ]),
   )
 }
 
@@ -898,6 +920,22 @@ export async function hostAddContactPersonAsConfirmed(
   if (error) throw error
 }
 
+/** Host-managed offline confirmation for an existing match participant. */
+export async function hostConfirmParticipantOffline(
+  supabase: Client,
+  participantId: string,
+) {
+  const { error } = await (supabase as Client & {
+    rpc: (
+      fn: 'rpc_match_host_confirm_participant_offline',
+      args: { p_match_participant_id: string }
+    ) => Promise<{ error: Error | null }>
+  }).rpc('rpc_match_host_confirm_participant_offline', {
+    p_match_participant_id: participantId,
+  })
+  if (error) throw error
+}
+
 /** Player acknowledgement after being added through host-managed offline confirmation. */
 export async function reconfirmMatchParticipation(supabase: Client, matchId: string) {
   const { error } = await (supabase as Client & {
@@ -1547,7 +1585,7 @@ export async function getMatchListData(
       confirmedCount: formed?.confirmed_count ?? confirmed.length,
       pendingCount: formed?.pending_count ?? pending.length,
       waitingCount: formed?.waiting_count ?? waiting.length,
-      isFormed: (formed?.confirmed_count ?? confirmed.length) >= match.required_count,
+      isFormed: Boolean(match.formed_at),
       participants: enriched,
       myParticipant,
       rosterInsight,
@@ -1629,6 +1667,8 @@ export async function getMatchDetailData(
     match.organizer_id,
     ...participants.filter(p => p.user_id).map(p => p.user_id as string),
     ...actions.map(a => a.created_by),
+    ...participants.map(p => p.nominated_by).filter((id): id is string => Boolean(id)),
+    ...participants.map(p => p.created_by).filter((id): id is string => Boolean(id)),
     ...participants.filter(p => p.confirmed_by_user_id).map(p => p.confirmed_by_user_id as string),
     ...(userId ? [userId] : []),
   ])]
@@ -1757,12 +1797,17 @@ export async function getMatchDetailData(
       ? (profileDisplay?.display_name ?? profileMap.get(effectiveUserId) ?? 'Unknown')
       : resolve(p.user_id, p.guest_id)
     const guestPersonId = p.guest_id ? (guestsRes.get(p.guest_id)?.person_id ?? null) : null
+    const invitedByUserId = p.nominated_by ?? p.created_by ?? null
+    const invitedByName = isOrganizerViewer && invitedByUserId
+      ? (profileMap.get(invitedByUserId) ?? null)
+      : null
     return {
       ...p,
       display_name: displayName,
       avatar_url: profileDisplay?.avatar_url ?? null,
       gender: normalizeMatchGender(profileDisplay?.gender ?? null),
       participant_kind: effectiveUserId ? 'registered_user' : 'contact_player',
+      invited_by_name: invitedByName,
       shares_group_with_viewer: effectiveUserId ? sharedGroupMap.get(effectiveUserId) ?? false : false,
       proxy_manageable_by_viewer: proxyManageableParticipantIds.has(p.id),
       saved_by_viewer: Boolean(

@@ -14,6 +14,11 @@ export type RenderEmailLayoutInput = {
   ctaLabel?: string
   ctaUrl?: string
   ctaHint?: string
+  promoTitle?: string
+  promoBody?: string
+  promoCtaLabel?: string
+  promoCtaUrl?: string
+  promoBullets?: string[]
   secondaryTitle?: string
   secondaryBody?: string
   secondaryLinkLabel?: string
@@ -41,6 +46,7 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
   const baseUrl = normalizeEmailBaseUrl(input.siteUrl)
   const termsUrl = `${baseUrl}/terms`
   const privacyUrl = `${baseUrl}/privacy`
+  const logoUrl = `${baseUrl}/playerhoods-brand-mark-cropped.png`
   const details = (input.details ?? []).filter((detail) => detail.value.trim().length > 0)
   const detailsHtml =
     details.length > 0
@@ -64,6 +70,26 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
         <div class="ph-cta-wrap">
           <a href="${escapeHtml(input.ctaUrl)}" class="ph-cta">${escapeHtml(input.ctaLabel)}</a>
           ${input.ctaHint ? `<div class="ph-cta-hint">${escapeHtml(input.ctaHint)}</div>` : ''}
+        </div>`
+      : ''
+
+  const promoBullets = (input.promoBullets ?? []).filter((bullet) => bullet.trim().length > 0)
+  const promoHtml =
+    input.promoTitle || input.promoBody || (input.promoCtaLabel && input.promoCtaUrl) || promoBullets.length > 0
+      ? `
+        <div class="ph-promo">
+          ${input.promoTitle ? `<div class="ph-promo-title">${escapeHtml(input.promoTitle)}</div>` : ''}
+          ${input.promoBody ? `<p class="ph-promo-body">${escapeHtml(input.promoBody)}</p>` : ''}
+          ${
+            promoBullets.length > 0
+              ? `<ul class="ph-promo-list">${promoBullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join('')}</ul>`
+              : ''
+          }
+          ${
+            input.promoCtaLabel && input.promoCtaUrl
+              ? `<a href="${escapeHtml(input.promoCtaUrl)}" class="ph-promo-cta">${escapeHtml(input.promoCtaLabel)}</a>`
+              : ''
+          }
         </div>`
       : ''
 
@@ -113,11 +139,25 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
       background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
     }
     .ph-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
       color: #1e293b;
       font-size: 24px;
       font-weight: 900;
       letter-spacing: -0.03em;
       margin: 0 0 18px;
+    }
+    .ph-brand-logo {
+      display: inline-block;
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      vertical-align: middle;
+    }
+    .ph-brand-text {
+      display: inline-block;
+      vertical-align: middle;
     }
     .ph-eyebrow {
       display: inline-block;
@@ -193,6 +233,54 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
       color: #94a3b8;
       font-size: 12px;
     }
+    .ph-promo {
+      margin-top: 22px;
+      padding: 18px 18px 16px;
+      border: 1px solid #dbe7f5;
+      border-radius: 20px;
+      background: #ffffff;
+    }
+    .ph-promo-title {
+      margin: 0 0 8px;
+      color: #1e293b;
+      font-size: 16px;
+      font-weight: 850;
+      letter-spacing: -0.01em;
+    }
+    .ph-promo-body {
+      margin: 0 0 14px;
+      color: #475569;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .ph-promo-list {
+      margin: 0 0 14px;
+      padding: 0;
+      list-style: none;
+    }
+    .ph-promo-list li {
+      margin: 6px 0;
+      color: #475569;
+      font-size: 13px;
+    }
+    .ph-promo-list li::before {
+      content: "✓";
+      display: inline-block;
+      margin-right: 8px;
+      color: #0f766e;
+      font-weight: 900;
+    }
+    .ph-promo-cta {
+      display: inline-block;
+      padding: 10px 16px;
+      border: 1px solid #c8d7eb;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #16335f !important;
+      font-size: 13px;
+      font-weight: 800;
+      text-decoration: none;
+    }
     .ph-secondary {
       margin-top: 28px;
       padding: 18px 18px 16px;
@@ -241,9 +329,12 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
 </head>
 <body>
   <div class="ph-shell">
-    <div class="ph-card">
+      <div class="ph-card">
       <div class="ph-header">
-        <div class="ph-brand">PlayerHoods</div>
+        <div class="ph-brand">
+          <img class="ph-brand-logo" src="${escapeHtml(logoUrl)}" width="42" height="42" alt="PlayerHoods">
+          <span class="ph-brand-text">PlayerHoods</span>
+        </div>
         ${input.eyebrow ? `<div class="ph-eyebrow">${escapeHtml(input.eyebrow)}</div>` : ''}
         <h1 class="ph-title">${escapeHtml(input.title)}</h1>
         <p class="ph-intro">${input.introHtml}</p>
@@ -251,6 +342,7 @@ export function renderEmailLayout(input: RenderEmailLayoutInput): string {
       <div class="ph-body">
         ${detailsHtml}
         ${ctaHtml}
+        ${promoHtml}
         ${secondaryHtml}
       </div>
     </div>

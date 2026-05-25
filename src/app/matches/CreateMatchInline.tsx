@@ -7,9 +7,11 @@ import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
 import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import { SportSectionIcon } from '@/app/components/SportBallIcon'
+import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
 import type { CreateRecurringMatchSeriesInput, RecurringDirectInviteInput } from '@/lib/api/recurring-matches'
+import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   admissionTargetsToScopeUsers,
@@ -27,7 +29,7 @@ import {
 import { getGroups, getGroupMembers } from '@/lib/api/groups'
 import { listSports, setGuestSports } from '@/lib/api/sports'
 import { getInviteCircleList, getInviteCircleSourceLabel, saveContactPlayer } from '@/lib/api/play-network'
-import { createRosterGuest, getContactPlayerResolution } from '@/lib/api/roster'
+import { createRosterGuest, getContactPlayerResolution, type ContactPlayerResolved } from '@/lib/api/roster'
 import { getContactInvitationDeliveryStatus } from '@/lib/contact-communication'
 import { getAvailabilityStatusLabel } from '@/lib/profile-options'
 import { getVenueDisplayName } from '@/lib/venues/display'
@@ -89,7 +91,7 @@ type CourtOption = {
   label: string
 }
 
-const DEFAULT_COURT_OPTIONS: CourtOption[] = Array.from({ length: 10 }, (_, index) => ({
+const DEFAULT_COURT_OPTIONS: CourtOption[] = Array.from({ length: 20 }, (_, index) => ({
   id: `fallback-crt-${index + 1}`,
   label: `crt ${index + 1}`,
 }))
@@ -1042,12 +1044,21 @@ export function CreateMatchInline({
   onExpandedChange,
   myPlayCities = [],
   venueSports = [],
+  onParseScreenshots,
+  onImportScreenshotContacts,
 }: {
   defaultVenueId?: string
   expandSignal?: number
   onExpandedChange?: (expanded: boolean) => void
   myPlayCities?: UserPlayCity[]
   venueSports?: VenueSport[]
+  onParseScreenshots?: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
+  onImportScreenshotContacts?: (drafts: Array<{
+    display_name: string
+    phone?: string | null
+    email?: string | null
+    source_file_name?: string | null
+  }>) => Promise<{ created: number; skipped: number }>
 }) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
@@ -1101,6 +1112,7 @@ export function CreateMatchInline({
   const [loading, setLoading] = useState(false)
   const [selectionMode, setSelectionMode] = useState<'invite' | 'request' | null>(null)
   const [contactAddPanelOpen, setContactAddPanelOpen] = useState(false)
+  const [contactComposerMode, setContactComposerMode] = useState<'screenshot' | null>(null)
   const [contactDisplayName, setContactDisplayName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
@@ -1300,6 +1312,24 @@ export function CreateMatchInline({
   const selectedSport = useMemo(
     () => sports.find((sport) => sport.id === sportId),
     [sportId, sports],
+  )
+
+  const existingImportContacts = useMemo<ContactPlayerResolved[]>(
+    () =>
+      contactPlayers.map((contact) => ({
+        guest_id: contact.guestId ?? contact.key.replace(/^contact:/, ''),
+        display_name: contact.name,
+        email: contact.email ?? null,
+        phone: contact.phone ?? null,
+        notes: contact.notes ?? null,
+        gender: contact.gender,
+        availability_status: contact.availabilityStatus,
+        availability_note: contact.availabilityNote ?? null,
+        availability_until: contact.availabilityUntil ?? null,
+        linked_user_id: null,
+        resolution_state: 'contact_only',
+      })),
+    [contactPlayers],
   )
 
   const loadContactInviteCandidates = useCallback(async () => {
@@ -2694,8 +2724,15 @@ export function CreateMatchInline({
             <div className="flex flex-col items-center justify-center gap-5 px-2 py-6 text-center lg:pl-2">
               <button
                 type="button"
-                disabled
-                className="text-body-main inline-flex cursor-not-allowed items-center gap-2 rounded-2xl bg-[#94A3B8] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.5)]"
+                onClick={() => {
+                  if (!onParseScreenshots || !onImportScreenshotContacts || !currentUserId) {
+                    setError('Smart Import is not available right now. Please refresh and try again.')
+                    return
+                  }
+                  setContactComposerMode('screenshot')
+                  setError(null)
+                }}
+                className="text-body-main inline-flex items-center gap-2 rounded-2xl bg-[#0d6efd] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7]"
               >
                 <ContactAddIcon kind="spark" />
                 Smart Import
@@ -2723,6 +2760,50 @@ export function CreateMatchInline({
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    ) : null}
+    {contactComposerMode === 'screenshot' && onParseScreenshots && onImportScreenshotContacts && currentUserId ? (
+      <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4">
+        <button
+          type="button"
+          aria-label="Close screenshot import"
+          className="absolute inset-0 bg-[#0B1F44]/40 backdrop-blur-sm"
+          onClick={() => setContactComposerMode(null)}
+        />
+        <div className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-[28px] bg-white p-4 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)] sm:max-h-[88vh] sm:rounded-[32px]">
+          <div className="mb-4 flex items-start justify-between gap-4 px-1 pt-1 sm:px-2 sm:pt-2">
+            <div>
+              <h3 className="text-xl font-black text-[#1E293B] sm:text-h2">Smart Import</h3>
+              <p className="text-body-sub mt-1 max-w-xl text-[#64748B]">
+                Upload or paste a screenshot from a chat group, email header, or contact list. We&apos;ll extract possible names, emails, and phone numbers for you to review before saving them as Contact Players.
+              </p>
+              <p className="text-body-sub mt-2 max-w-xl font-semibold text-[#475569]">
+                Nothing is sent or invited automatically. You choose which contacts to save.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setContactComposerMode(null)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
+              aria-label="Close import modal"
+            >
+              <ContactAddIcon kind="close" />
+            </button>
+          </div>
+          <ContactScreenshotImportSection
+            userId={currentUserId}
+            existingContacts={existingImportContacts}
+            onParseScreenshots={onParseScreenshots}
+            onImportScreenshotContacts={onImportScreenshotContacts}
+            onImported={async () => {
+              await loadContactInviteCandidates()
+              setSelectionMode('invite')
+              setContactComposerMode(null)
+              setContactAddPanelOpen(false)
+              setInviteNotice('Imported contacts were saved. You can invite them from your saved contact players.')
+            }}
+          />
         </div>
       </div>
     ) : null}

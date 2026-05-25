@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { MatchActions } from './MatchActions'
@@ -118,6 +119,12 @@ function MatchHeaderSection({
     match.status === 'active' &&
     !match.formed_at &&
     confirmedCount >= match.required_count
+  const isLineupFull = confirmedCount >= match.required_count
+  const matchStateLabel = match.formed_at
+    ? 'FORMED'
+    : isLineupFull
+      ? 'READY TO FORM'
+      : rosterInsight.formatLabel?.replace(/\s+/g, ' ')
   const gameTypeLabel = match.game_type
     ? `${match.game_type.charAt(0).toUpperCase()}${match.game_type.slice(1)}`
     : null
@@ -203,7 +210,7 @@ function MatchHeaderSection({
                         <span aria-hidden="true">&middot;</span>
                         {' '}
                         {gameTypeLabel}
-                        {rosterInsight.formatLabel ? (
+                        {matchStateLabel ? (
                           <span
                             style={{
                               marginLeft: '0.38rem',
@@ -216,7 +223,7 @@ function MatchHeaderSection({
                             }}
                           >
                             {' - '}
-                            {rosterInsight.formatLabel.replace(/\s+/g, ' ')}
+                            {matchStateLabel}
                           </span>
                         ) : null}
                       </>
@@ -294,22 +301,11 @@ function MatchHeaderSection({
             </div>
 
             {showMatchFormedBanner ? (
-              <div
-                style={{
-                  marginBottom: '0.8rem',
-                  borderRadius: '18px',
-                  overflow: 'hidden',
-                }}
-              >
-                <img
-                  src="/match-formed-confirmation.png"
-                  alt="Match formed confirmation"
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    height: 'auto',
-                  }}
-                />
+              <div className="mb-4 rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-emerald-700">Match Formed</p>
+                <p className="mt-1 text-[14px] font-semibold text-[#0F172A]">
+                  Players have been notified.
+                </p>
               </div>
             ) : null}
 
@@ -317,9 +313,12 @@ function MatchHeaderSection({
               <div className="mb-4 rounded-[18px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#0d6efd]">Ready to confirm</p>
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#0d6efd]">Ready to Form</p>
                     <p className="mt-1 text-[14px] font-semibold text-[#0F172A]">
                       {confirmedCount} of {match.required_count} players confirmed
+                    </p>
+                    <p className="mt-1 text-[12px] font-semibold text-[#64748B]">
+                      Forming the match will notify confirmed players.
                     </p>
                   </div>
                   <form action={onConfirmMatch}>
@@ -327,7 +326,7 @@ function MatchHeaderSection({
                       type="submit"
                       className="inline-flex h-10 items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
                     >
-                      Confirm and Notify
+                      Form Match
                     </button>
                   </form>
                 </div>
@@ -413,6 +412,9 @@ function MatchSelfActionsSection({
         isOrganizer={viewModel.isOrganizer}
         myParticipation={viewModel.myParticipant}
         needsReconfirm={viewModel.myParticipantNeedsReconfirm}
+        isFormed={viewModel.isFormed}
+        confirmedCount={viewModel.confirmedCount}
+        requiredCount={viewModel.match.required_count}
         inScope={viewModel.inScope}
         myGroupInvites={viewModel.myGroupInvites}
         organizerName={viewModel.organizerName}
@@ -449,19 +451,25 @@ function LinkedContactNotice({
 function MatchParticipantsSection({
   viewModel,
   onRemoveParticipant,
-}: Pick<MatchDetailPageViewProps, 'viewModel' | 'onRemoveParticipant'>) {
-  const playersTitle = viewModel.isOrganizer
-    ? 'Players'
+  tools,
+}: Pick<MatchDetailPageViewProps, 'viewModel' | 'onRemoveParticipant'> & { tools?: ReactNode }) {
+  const remainingSpots = Math.max(viewModel.match.required_count - viewModel.confirmedCount, 0)
+  const isLineupFull = viewModel.confirmedCount >= viewModel.match.required_count
+  const playersInCopy = `${viewModel.confirmedCount} ${viewModel.confirmedCount === 1 ? 'player is' : 'players are'} in.`
+  const playersHelper = viewModel.myParticipant?.status === 'waiting_list'
+    ? 'The organizer will let you know if a spot opens.'
     : viewModel.isFormed
-      ? 'Players'
-      : 'Confirmed Lineup'
-  const playersHelper = viewModel.isOrganizer
-    ? 'Confirmed lineup players count toward forming the match. Invited players confirm themselves. Players who want to join are added by the organizer.'
-    : viewModel.myParticipant?.status === 'waiting_list'
-      ? 'The organizer will let you know if a spot opens.'
-      : viewModel.isFormed
-        ? 'Players in this match.'
-        : 'Confirmed lineup players count toward forming the match.'
+      ? `This match is formed with ${viewModel.confirmedCount} ${viewModel.confirmedCount === 1 ? 'player' : 'players'}.`
+      : isLineupFull
+        ? viewModel.isOrganizer
+          ? `${playersInCopy} Form the match when you're ready.`
+          : `${viewModel.confirmedCount} players are confirmed. Waiting for the host to form the match.`
+        : `${playersInCopy} ${remainingSpots} more ${remainingSpots === 1 ? 'spot' : 'spots'} to form the match.`
+  const playersTitle = viewModel.isFormed
+    ? 'Confirmed Lineup'
+    : isLineupFull
+      ? 'Ready Lineup'
+      : 'Lineup so far'
 
   const safeConfirmedParticipants = viewModel.participantsForDisplay.filter((participant) =>
     participant.status === 'confirmed' &&
@@ -501,6 +509,10 @@ function MatchParticipantsSection({
         <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>
           {playersHelper}
         </p>
+        <LineupProgressDots
+          confirmedCount={viewModel.confirmedCount}
+          requiredCount={viewModel.match.required_count}
+        />
       </div>
       {viewModel.isOrganizer || hasProxyManagedParticipants ? (
         <ParticipantGroups
@@ -508,6 +520,7 @@ function MatchParticipantsSection({
           matchStatus={viewModel.match.status}
           participants={viewModel.participantsForDisplay}
           isOrganizer={viewModel.isOrganizer}
+          isFormed={viewModel.isFormed}
           pendingCount={viewModel.pendingCount}
           requiredCount={viewModel.match.required_count}
           myUserId={viewModel.userId}
@@ -520,28 +533,92 @@ function MatchParticipantsSection({
       ) : (
         <SafeConfirmedPlayersList
           participants={safeConfirmedParticipants}
-          confirmedCount={viewModel.confirmedCount}
-          requiredCount={viewModel.match.required_count}
           myUserId={viewModel.userId}
           organizerUserId={viewModel.match.organizer_id}
+          organizerName={viewModel.organizerName}
         />
       )}
+      {!viewModel.isOrganizer && !viewModel.isFormed ? (
+        <WaitingForMorePlayersCard remainingSpots={remainingSpots} />
+      ) : null}
+      {tools ? (
+        <div style={{ marginTop: '1rem' }}>
+          {tools}
+        </div>
+      ) : null}
     </section>
+  )
+}
+
+function LineupProgressDots({
+  confirmedCount,
+  requiredCount,
+}: {
+  confirmedCount: number
+  requiredCount: number
+}) {
+  return (
+    <div style={{ marginTop: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '0.28rem' }} aria-hidden="true">
+        {Array.from({ length: Math.max(requiredCount, 1) }).map((_, index) => (
+          <span
+            key={index}
+            style={{
+              width: '0.58rem',
+              height: '0.58rem',
+              borderRadius: '999px',
+              background: index < confirmedCount ? '#2d8a4e' : '#E2E8F0',
+              boxShadow: index < confirmedCount ? '0 0 0 3px rgba(45, 138, 78, 0.1)' : 'none',
+            }}
+          />
+        ))}
+      </div>
+      <span style={{ color: '#64748b', fontSize: '0.78rem', fontWeight: 800 }}>
+        {confirmedCount} / {requiredCount} players confirmed
+      </span>
+    </div>
+  )
+}
+
+function WaitingForMorePlayersCard({
+  remainingSpots,
+}: {
+  remainingSpots: number
+}) {
+  if (remainingSpots <= 0) {
+    return null
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: '1rem',
+        border: '1px dashed #D9E5F4',
+        borderRadius: '22px',
+        background: '#F8FBFF',
+        padding: '0.95rem 1rem',
+      }}
+    >
+      <p style={{ margin: 0, color: '#0f172a', fontSize: '0.92rem', fontWeight: 900 }}>
+        Waiting for more players
+      </p>
+      <p style={{ margin: '0.28rem 0 0', color: '#64748b', fontSize: '0.82rem', lineHeight: 1.45 }}>
+        The host is filling the remaining {remainingSpots === 1 ? 'spot' : 'spots'}.
+      </p>
+    </div>
   )
 }
 
 function SafeConfirmedPlayersList({
   participants,
-  confirmedCount,
-  requiredCount,
   myUserId,
   organizerUserId,
+  organizerName,
 }: {
   participants: MatchParticipantEnriched[]
-  confirmedCount: number
-  requiredCount: number
   myUserId: string | null
   organizerUserId: string | null
+  organizerName: string
 }) {
   return (
     <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -608,11 +685,11 @@ function SafeConfirmedPlayersList({
                     <span style={{ color: '#0F172A', fontSize: '0.9rem', fontWeight: 850 }}>
                       {participant.display_name}
                     </span>
+                    {participant.user_id === organizerUserId || participant.display_name === organizerName ? (
+                      <span style={safeHostBadgeStyle}>Host</span>
+                    ) : null}
                     {participant.user_id === myUserId ? (
                       <span style={safePlayerBadgeStyle}>You</span>
-                    ) : null}
-                    {participant.user_id === organizerUserId ? (
-                      <span style={safePlayerBadgeStyle}>Host</span>
                     ) : null}
                   </div>
                 </div>
@@ -621,9 +698,6 @@ function SafeConfirmedPlayersList({
           ))}
         </div>
       )}
-      <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontWeight: 800 }}>
-        {confirmedCount} of {requiredCount} lineup spots filled
-      </p>
     </div>
   )
 }
@@ -634,6 +708,18 @@ const safePlayerBadgeStyle = {
   borderRadius: '999px',
   background: '#F1F5F9',
   color: '#64748B',
+  padding: '0.12rem 0.45rem',
+  fontSize: '0.62rem',
+  fontWeight: 800,
+} as const
+
+const safeHostBadgeStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  borderRadius: '999px',
+  background: '#fff7ed',
+  color: '#9a3412',
+  border: '1px solid #fed7aa',
   padding: '0.12rem 0.45rem',
   fontSize: '0.62rem',
   fontWeight: 800,
@@ -654,6 +740,7 @@ function MatchChatSection({
       canEditOrganizerNote={viewModel.canEditOrganizerNote}
       isOrganizer={viewModel.isOrganizer}
       showFormedNotice={viewModel.isFormed}
+      organizerName={viewModel.organizerName}
       onUpdateOrganizerNote={onUpdateOrganizerNote}
       onPostMessage={onPostMessage}
     />
@@ -703,9 +790,39 @@ export function MatchDetailPageView({
     id,
     name: currentRequestUserMap.get(id) ?? `User ${id.slice(0, 6)}`,
   }))
-  const showRoundRobinTools = viewModel.match.status === 'active' && (viewModel.isOrganizer || viewModel.canViewLineup)
-  const showToolsSection = showManagePanel || showRoundRobinTools
+  const showInviteTools = viewModel.isOrganizer && showManagePanel
+  const showRoundRobinTools = viewModel.match.status === 'active' && viewModel.isOrganizer
+  const showToolsSection = showInviteTools || showRoundRobinTools
   const pageMaxWidth = showToolsSection ? '920px' : '720px'
+  const matchToolsSection = showToolsSection ? (
+    <MatchToolsSection
+      showInviteTools={showInviteTools}
+      showRoundRobinTools={showRoundRobinTools}
+      isFormed={viewModel.isFormed}
+      matchId={viewModel.matchId}
+      matchStatus={viewModel.match.status}
+      gameType={viewModel.match.game_type}
+      finalCourtLabel={viewModel.match.final_court_label}
+      matchCourts={viewModel.matchCourts}
+      isOrganizer={viewModel.isOrganizer}
+      organizerUserId={viewModel.match.organizer_id}
+      requiredCount={viewModel.match.required_count}
+      confirmedParticipants={confirmedParticipants}
+      activeInviteParticipants={activeInviteParticipants}
+      activeGroupInvites={viewModel.groupInvitations}
+      activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
+      activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
+      candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForParticipantInvite}
+      contactTargets={viewModel.contactTargets}
+      candidateGroups={viewModel.allGroups.filter((group) =>
+        group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
+      )}
+      savedLineup={viewModel.savedLineup}
+      onUpdateMatchDetails={onUpdateMatchDetails}
+      onRemoveParticipant={onRemoveParticipant}
+      onSaveLineup={onSaveLineup}
+    />
+  ) : null
 
   return (
     <div
@@ -741,78 +858,16 @@ export function MatchDetailPageView({
       ) : null}
       <LinkedContactNotice viewModel={viewModel} />
       <MatchSelfActionsSection viewModel={viewModel} />
-      <MatchParticipantsSection viewModel={viewModel} onRemoveParticipant={onRemoveParticipant} />
+      <MatchParticipantsSection
+        viewModel={viewModel}
+        onRemoveParticipant={onRemoveParticipant}
+        tools={matchToolsSection}
+      />
       <MatchChatSection
         viewModel={viewModel}
         onUpdateOrganizerNote={onUpdateOrganizerNote}
         onPostMessage={onPostMessage}
       />
-      {showToolsSection ? (
-        <>
-          <details className="mb-4 md:hidden">
-            <summary className="flex cursor-pointer list-none items-center justify-center gap-3 rounded-[24px] border border-[#E2E8F0] bg-white px-5 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-[#0d6efd] shadow-[0_16px_36px_rgba(15,23,42,0.06)] marker:hidden">
-              <span className="text-[28px] leading-none">+</span>
-              Invite Players
-            </summary>
-            <div className="mt-4">
-              <MatchToolsSection
-                showInviteTools={showManagePanel}
-                showRoundRobinTools={showRoundRobinTools}
-                matchId={viewModel.matchId}
-                matchStatus={viewModel.match.status}
-                gameType={viewModel.match.game_type}
-                finalCourtLabel={viewModel.match.final_court_label}
-                matchCourts={viewModel.matchCourts}
-                isOrganizer={viewModel.isOrganizer}
-                organizerUserId={viewModel.match.organizer_id}
-                requiredCount={viewModel.match.required_count}
-                confirmedParticipants={confirmedParticipants}
-                activeInviteParticipants={activeInviteParticipants}
-                activeGroupInvites={viewModel.groupInvitations}
-                activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
-                activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
-                candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForParticipantInvite}
-                contactTargets={viewModel.contactTargets}
-                candidateGroups={viewModel.allGroups.filter((group) =>
-                  group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
-                )}
-                savedLineup={viewModel.savedLineup}
-                onUpdateMatchDetails={onUpdateMatchDetails}
-                onRemoveParticipant={onRemoveParticipant}
-                onSaveLineup={onSaveLineup}
-              />
-            </div>
-          </details>
-          <div className="hidden md:block">
-            <MatchToolsSection
-              showInviteTools={showManagePanel}
-              showRoundRobinTools={showRoundRobinTools}
-              matchId={viewModel.matchId}
-              matchStatus={viewModel.match.status}
-              gameType={viewModel.match.game_type}
-              finalCourtLabel={viewModel.match.final_court_label}
-              matchCourts={viewModel.matchCourts}
-              isOrganizer={viewModel.isOrganizer}
-              organizerUserId={viewModel.match.organizer_id}
-              requiredCount={viewModel.match.required_count}
-              confirmedParticipants={confirmedParticipants}
-              activeInviteParticipants={activeInviteParticipants}
-              activeGroupInvites={viewModel.groupInvitations}
-              activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
-              activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
-              candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForParticipantInvite}
-              contactTargets={viewModel.contactTargets}
-              candidateGroups={viewModel.allGroups.filter((group) =>
-                group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
-              )}
-              savedLineup={viewModel.savedLineup}
-              onUpdateMatchDetails={onUpdateMatchDetails}
-              onRemoveParticipant={onRemoveParticipant}
-              onSaveLineup={onSaveLineup}
-            />
-          </div>
-        </>
-      ) : null}
     </div>
   )
 }

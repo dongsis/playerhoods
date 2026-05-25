@@ -12,6 +12,7 @@ import { formatTimeWindow } from '@/lib/format-time'
 import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
 import type { UserPlayCity, VenueSport } from '@/lib/types/database'
+import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 
 const FALLBACK_COURT_STATE = {
   status: 'open',
@@ -583,6 +584,8 @@ function MatchRow({
     <StatusBadge label={isFormed ? 'Played' : 'Past'} tone="slate" />
   ) : isFormed ? (
     <StatusBadge label="Formed" tone="green" />
+  ) : confirmedCount >= match.required_count ? (
+    <StatusBadge label="Ready" tone="blue" />
   ) : (
     <StatusBadge label={`${confirmedCount}/${match.required_count}`} tone="amber" />
   )
@@ -1294,7 +1297,10 @@ function MobileMatchCard({
               {item.venueName ? <p className="mt-1 text-body-main text-[#1E293B]">{item.venueName}</p> : null}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              <MobileStatusBadge label={item.isFormed ? 'Formed' : `${item.confirmedCount}/${item.match.required_count}`} tone={item.isFormed ? 'green' : 'orange'} />
+              <MobileStatusBadge
+                label={item.isFormed ? 'Formed' : item.confirmedCount >= item.match.required_count ? 'Ready' : `${item.confirmedCount}/${item.match.required_count}`}
+                tone={item.isFormed ? 'green' : item.confirmedCount >= item.match.required_count ? 'blue' : 'orange'}
+              />
               <MobileStatusBadge label={item.courtState.badgeLabel} tone={courtBadgeTone} />
             </div>
           </div>
@@ -1346,6 +1352,13 @@ interface Props {
     onDismiss: () => void
     onAddContact?: () => void
   } | null
+  onParseScreenshots?: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
+  onImportScreenshotContacts?: (drafts: Array<{
+    display_name: string
+    phone?: string | null
+    email?: string | null
+    source_file_name?: string | null
+  }>) => Promise<{ created: number; skipped: number }>
 }
 
 export function MatchesPanel({
@@ -1362,6 +1375,8 @@ export function MatchesPanel({
   onDismissAlert,
   starterVenueName,
   starterCard,
+  onParseScreenshots,
+  onImportScreenshotContacts,
 }: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'calendar' | 'history'>('upcoming')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
@@ -1450,7 +1465,7 @@ export function MatchesPanel({
     setDesktopCreateExpanded(expanded)
   }, [])
 
-  const renderStarterCard = () => starterCard ? (
+  const renderStarterCard = () => starterCard && !hasSelectedMatchDetail ? (
     <FirstMatchStarterCard
       contactCount={starterCard.contactCount}
       firstMatchCreated={starterCard.firstMatchCreated}
@@ -1609,6 +1624,8 @@ export function MatchesPanel({
               onExpandedChange={handleCreateExpandedChange}
               myPlayCities={myPlayCities}
               venueSports={venueSports}
+              onParseScreenshots={onParseScreenshots}
+              onImportScreenshotContacts={onImportScreenshotContacts}
             />
             )}
           </section>
@@ -1764,6 +1781,8 @@ export function MatchesPanel({
           expandSignal={mobileCreateExpandSignal}
           myPlayCities={myPlayCities}
           venueSports={venueSports}
+          onParseScreenshots={onParseScreenshots}
+          onImportScreenshotContacts={onImportScreenshotContacts}
         />
       </div>
     </div>
