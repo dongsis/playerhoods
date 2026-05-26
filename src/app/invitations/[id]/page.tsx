@@ -189,12 +189,16 @@ export default async function InvitationPage({ params, searchParams }: Props) {
   const isParticipantRemoved =
     inv.match_summary?.participant_status === 'removed'
     || Boolean(inv.match_summary?.participant_removed_at)
+  const hasResponded = inv.status === 'accepted' || inv.status === 'declined'
   const isInvitationInactive =
-    inv.status === 'canceled'
-    || inv.status === 'expired'
-    || isParticipantRemoved
-    || inv.match_summary?.match_status === 'cancelled'
-    || inv.match_summary?.match_status === 'canceled'
+    !hasResponded
+    && (
+      inv.status === 'canceled'
+      || inv.status === 'expired'
+      || isParticipantRemoved
+      || inv.match_summary?.match_status === 'cancelled'
+      || inv.match_summary?.match_status === 'canceled'
+    )
   const inactiveCopy = getInactiveInvitationCopy(inv.status, inv.match_summary?.match_status, isParticipantRemoved)
   const isHostConfirmed =
     confirmationSource === 'host_managed_offline'
@@ -521,10 +525,9 @@ export default async function InvitationPage({ params, searchParams }: Props) {
           position: relative;
         }
 
-        .invitation-value-item::before {
+        .invitation-value-dot {
           background: #c7e500;
           border-radius: 999px;
-          content: "";
           height: 8px;
           left: 0;
           position: absolute;
@@ -607,7 +610,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
         </div>
 
         <div className="invitation-grid">
-          <main className="invitation-card">
+          <section className="invitation-card">
             <p className="invitation-kicker">{pageKicker}</p>
 
             {pageError ? (
@@ -652,9 +655,9 @@ export default async function InvitationPage({ params, searchParams }: Props) {
               </>
             ) : inv.status === 'declined' ? (
               <>
-                <h1 className="invitation-title">You&apos;re not playing</h1>
+                <h1 className="invitation-title">You&apos;ve declined this invitation.</h1>
                 <p className="invitation-subtext">
-                  You&apos;ve declined this invitation. The host will be notified.
+                  We&apos;ll let the host know.
                 </p>
               </>
             ) : (
@@ -838,20 +841,23 @@ export default async function InvitationPage({ params, searchParams }: Props) {
                 )}
               </div>
             )}
-          </main>
+          </section>
 
           <aside className="invitation-value-panel" aria-label="Why PlayerHoods">
             <h2>Why PlayerHoods?</h2>
             <ul className="invitation-value-list">
               <li className="invitation-value-item">
+                <span className="invitation-value-dot" aria-hidden="true" />
                 <strong>No group chat chaos</strong>
                 <span>Confirm who&apos;s in without endless messages.</span>
               </li>
               <li className="invitation-value-item">
+                <span className="invitation-value-dot" aria-hidden="true" />
                 <strong>Private by default</strong>
                 <span>Your phone, email, and player contacts are not shown to others.</span>
               </li>
               <li className="invitation-value-item">
+                <span className="invitation-value-dot" aria-hidden="true" />
                 <strong>Only useful updates</strong>
                 <span>We notify you only when it matters.</span>
               </li>

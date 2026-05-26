@@ -71,13 +71,17 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
   const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' · ') || 'Time to be confirmed'
   const invitationHref = `/invitations/${invitationId}`
   const createAccountHref = `/login?mode=register&next=${encodeURIComponent(`/i/${id}/match`)}`
+  const hasResponded = invitation.status === 'accepted' || invitation.status === 'declined'
   const isInactive =
-    invitation.status === 'canceled'
-    || invitation.status === 'expired'
-    || summary?.participant_status === 'removed'
-    || Boolean(summary?.participant_removed_at)
-    || summary?.match_status === 'cancelled'
-    || summary?.match_status === 'canceled'
+    !hasResponded
+    && (
+      invitation.status === 'canceled'
+      || invitation.status === 'expired'
+      || summary?.participant_status === 'removed'
+      || Boolean(summary?.participant_removed_at)
+      || summary?.match_status === 'cancelled'
+      || summary?.match_status === 'canceled'
+    )
 
   const pageState = isInactive
     ? {
@@ -90,8 +94,8 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
       }
     : invitation.status === 'declined'
       ? {
-          title: "You're not playing",
-          body: "You've declined this invitation. The host will be notified.",
+          title: "You've declined this invitation.",
+          body: "We'll let the host know.",
           rsvp: 'Declined',
           promptTitle: 'Manage future invites more easily',
           promptBody: 'Create a free PlayerHoods account to track match updates, save players, and respond faster next time.',
@@ -116,7 +120,7 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
           }
 
   return (
-    <main className="guest-invitation-page">
+    <div className="guest-invitation-page">
       <style>{`
         .guest-invitation-page {
           min-height: 100vh;
@@ -334,10 +338,9 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
           position: relative;
         }
 
-        .guest-invitation-value-item::before {
+        .guest-invitation-value-dot {
           background: #c7e500;
           border-radius: 999px;
-          content: "";
           height: 8px;
           left: 0;
           position: absolute;
@@ -471,14 +474,17 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
             <h2>Why PlayerHoods?</h2>
             <ul className="guest-invitation-value-list">
               <li className="guest-invitation-value-item">
+                <span className="guest-invitation-value-dot" aria-hidden="true" />
                 <strong>No group chat chaos</strong>
                 <span>Confirm who&apos;s in without endless messages.</span>
               </li>
               <li className="guest-invitation-value-item">
+                <span className="guest-invitation-value-dot" aria-hidden="true" />
                 <strong>Private by default</strong>
                 <span>Your phone, email, and player contacts are not shown to others.</span>
               </li>
               <li className="guest-invitation-value-item">
+                <span className="guest-invitation-value-dot" aria-hidden="true" />
                 <strong>Only useful updates</strong>
                 <span>We notify you only when it matters.</span>
               </li>
@@ -490,6 +496,6 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
           Private match coordination. No group chat chaos. <Link href="/">PlayerHoods</Link>
         </p>
       </div>
-    </main>
+    </div>
   )
 }
