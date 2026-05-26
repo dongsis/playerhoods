@@ -26,6 +26,7 @@ export type MatchUpdateInput = {
   match_date?: string | null
   start_time?: string | null
   duration_minutes?: number | null
+  player_reminder_minutes?: number | null
   required_count?: number | null
   invitation_scope_group_ids?: string[] | null
   invitation_scope_user_ids?: string[] | null

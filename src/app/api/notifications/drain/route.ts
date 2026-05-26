@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { drainQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
+import { NotificationService } from '@/lib/notifications/notification-service'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
@@ -13,10 +14,11 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createSupabaseServerClient()
+  const remindersQueued = await NotificationService.enqueueDueMatchReminders(supabase, 50)
   const result = await drainQueuedNotificationDeliveries(supabase, {
     batchSize: 10,
     maxBatches: 5,
   })
 
-  return NextResponse.json({ ok: true, ...result })
+  return NextResponse.json({ ok: true, remindersQueued, ...result })
 }

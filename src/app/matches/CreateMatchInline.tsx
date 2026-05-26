@@ -144,6 +144,12 @@ const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'needs_help_booking', label: 'Players can help secure a court' },
 ]
 
+const PLAYER_REMINDER_OPTIONS: { value: number | null; label: string }[] = [
+  { value: 1440, label: '1 day before' },
+  { value: 120, label: '2 hours before' },
+  { value: null, label: 'No reminder' },
+]
+
 function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | null | undefined): MatchCourtPlanMode | null {
   if (!venueKind) return null
   if (venueKind === 'club') return 'secured'
@@ -1067,6 +1073,7 @@ export function CreateMatchInline({
   const [matchDate, setMatchDate] = useState('')
   const [startTime, setStartTime] = useState('')
   const [durationMinutes, setDurationMinutes] = useState(60)
+  const [playerReminderMinutes, setPlayerReminderMinutes] = useState<number | null>(1440)
   const [gameType, setGameType] = useState('doubles')
   const [doublesFormat, setDoublesFormat] = useState<MatchDoublesFormat>('open')
   const [venueId, setVenueId] = useState(defaultVenueId || '')
@@ -2004,6 +2011,7 @@ export function CreateMatchInline({
         match_date: matchDate || undefined,
         start_time: startTime ? `${startTime}:00` : undefined,
         duration_minutes: durationMinutes || undefined,
+        player_reminder_minutes: playerReminderMinutes,
         game_type: gameType || undefined,
         doubles_format: doublesFormat,
         venue_id: venueId || undefined,
@@ -3255,6 +3263,33 @@ export function CreateMatchInline({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="text-label mb-1 block">Player reminders</label>
+              <div className="flex flex-wrap gap-2">
+                {PLAYER_REMINDER_OPTIONS.map((option) => {
+                  const active = playerReminderMinutes === option.value
+                  return (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => setPlayerReminderMinutes(option.value)}
+                      className={[
+                        'rounded-full border px-3 py-1.5 text-xs font-bold transition',
+                        active
+                          ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
+                          : 'border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#BFD4EA]',
+                      ].join(' ')}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="mt-1 text-[11px] font-medium leading-snug text-[#64748B]">
+                Contacts receive only useful match updates, not chat.
+              </p>
             </div>
           </div>
         </div>

@@ -280,6 +280,7 @@ export type Match = {
   match_date: string | null
   start_time: string | null
   duration_minutes: number | null
+  player_reminder_minutes: number | null
   game_type: string | null
   doubles_format: MatchDoublesFormat | null
   required_count: number

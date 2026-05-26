@@ -505,6 +505,7 @@ export async function updateMatchDetails(
     match_date?: string | null
     start_time?: string | null
     duration_minutes?: number | null
+    player_reminder_minutes?: number | null
     required_count?: number | null
     invitation_scope_group_ids?: string[] | null
     invitation_scope_user_ids?: string[] | null
@@ -516,6 +517,7 @@ export async function updateMatchDetails(
   if (data.match_date !== undefined) updateData.match_date = data.match_date
   if (data.start_time !== undefined) updateData.start_time = data.start_time
   if (data.duration_minutes !== undefined) updateData.duration_minutes = data.duration_minutes
+  if (data.player_reminder_minutes !== undefined) updateData.player_reminder_minutes = data.player_reminder_minutes
   if (data.required_count !== undefined) updateData.required_count = data.required_count
   if (data.invitation_scope_group_ids !== undefined) updateData.invitation_scope_group_ids = data.invitation_scope_group_ids
   if (data.invitation_scope_user_ids !== undefined) updateData.invitation_scope_user_ids = data.invitation_scope_user_ids
@@ -1188,6 +1190,7 @@ export async function createMatch(
     match_date?: string
     start_time?: string
     duration_minutes?: number
+    player_reminder_minutes?: number | null
     game_type?: string
     venue_id?: string
     court_slots?: { court_label: string }[]
@@ -1295,6 +1298,15 @@ export async function createMatch(
       .eq('id', created.id)
     if (organizerNoteError) throw organizerNoteError
     created.organizer_note = organizerNote
+  }
+
+  if (data.player_reminder_minutes !== undefined) {
+    const { error: reminderError } = await supabase
+      .from('matches')
+      .update({ player_reminder_minutes: data.player_reminder_minutes })
+      .eq('id', created.id)
+    if (reminderError) throw reminderError
+    created.player_reminder_minutes = data.player_reminder_minutes
   }
 
   if (data.required_court_count !== undefined) {

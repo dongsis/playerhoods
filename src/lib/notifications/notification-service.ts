@@ -59,10 +59,19 @@ export const NotificationService = {
     })
   },
 
+  enqueueDueMatchReminders(
+    supabase: SupabaseClient<Database>,
+    limit = 50,
+  ): Promise<number> {
+    return callRpc<number>(supabase, 'notification_enqueue_due_match_reminders', {
+      p_limit: limit,
+    })
+  },
+
   enqueueParticipantNotification(
     supabase: SupabaseClient<Database>,
     participantId: string,
-    notificationType: 'invite' | 'confirmed_lineup' | 'critical_update' | 'cancellation',
+    notificationType: 'invite' | 'confirmed_lineup' | 'critical_update' | 'cancellation' | 'match_reminder',
     dedupeKey: string,
     changeSet: CriticalChangeSet = {},
   ): Promise<string | null> {
@@ -77,7 +86,7 @@ export const NotificationService = {
   createOrGetSmsReplyCode(
     supabase: SupabaseClient<Database>,
     participantId: string,
-    purpose: 'invite' | 'confirmed_lineup' | 'critical_update' = 'invite',
+    purpose: 'invite' | 'confirmed_lineup' | 'critical_update' | 'match_reminder' = 'invite',
   ): Promise<string | null> {
     return callRpc<string | null>(supabase, 'notification_create_or_get_sms_reply_code', {
       p_participant_id: participantId,
@@ -88,7 +97,7 @@ export const NotificationService = {
   createOrGetSmsReplyCodeForInvitation(
     supabase: SupabaseClient<Database>,
     invitationId: string,
-    purpose: 'invite' | 'confirmed_lineup' | 'critical_update' = 'invite',
+    purpose: 'invite' | 'confirmed_lineup' | 'critical_update' | 'match_reminder' = 'invite',
   ): Promise<string | null> {
     return callRpc<string | null>(supabase, 'rpc_match_participant_sms_reply_code_for_invitation', {
       p_invitation_id: invitationId,

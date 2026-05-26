@@ -13,6 +13,7 @@ interface Props {
   matchDate: string | null
   startTime: string | null
   durationMinutes: number | null
+  playerReminderMinutes: number | null
   courtPlanMode: MatchCourtPlanMode
   courtNote: string | null
   finalCourtLabel: string | null
@@ -23,6 +24,7 @@ interface Props {
     match_date: string | null
     start_time: string | null
     duration_minutes: number | null
+    player_reminder_minutes?: number | null
   }) => Promise<void>
   onCancelMatch: (reason: string) => Promise<void>
   onSaveCourtPlan: (data: MatchCourtPlanUpdateInput) => Promise<void>
@@ -48,6 +50,12 @@ const SINGLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open singles' },
   { value: 'mens_doubles', label: "Men's singles" },
   { value: 'womens_doubles', label: "Women's singles" },
+]
+
+const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
+  { value: 1440, label: '1 day before' },
+  { value: 120, label: '2 hours before' },
+  { value: null, label: 'No reminder' },
 ]
 
 const secondaryButtonStyle: React.CSSProperties = {
@@ -78,6 +86,7 @@ export function MatchEditForm({
   matchDate,
   startTime,
   durationMinutes,
+  playerReminderMinutes,
   courtPlanMode,
   courtNote,
   finalCourtLabel,
@@ -97,6 +106,7 @@ export function MatchEditForm({
   const [date, setDate] = useState(matchDate ?? '')
   const [time, setTime] = useState(startTime ?? '')
   const [duration, setDuration] = useState(durationMinutes?.toString() ?? '')
+  const [reminderMinutes, setReminderMinutes] = useState<number | null>(playerReminderMinutes ?? 1440)
   const [nextDoublesFormat, setNextDoublesFormat] = useState<MatchDoublesFormat>(doublesFormat ?? 'open')
   const [planMode, setPlanMode] = useState<MatchCourtPlanMode>(courtPlanMode)
   const [planNote, setPlanNote] = useState(courtNote ?? '')
@@ -121,11 +131,12 @@ export function MatchEditForm({
     setDate(matchDate ?? '')
     setTime(startTime ?? '')
     setDuration(durationMinutes?.toString() ?? '')
+    setReminderMinutes(playerReminderMinutes ?? 1440)
     setNextDoublesFormat(doublesFormat ?? 'open')
     setPlanMode(courtPlanMode)
     setPlanNote(courtNote ?? '')
     setCourtLabel(finalCourtLabel ?? '')
-  }, [open, requiredCount, doublesFormat, matchDate, startTime, durationMinutes, courtPlanMode, courtNote, finalCourtLabel])
+  }, [open, requiredCount, doublesFormat, matchDate, startTime, durationMinutes, playerReminderMinutes, courtPlanMode, courtNote, finalCourtLabel])
 
   useEffect(() => {
     if (planMode !== 'secured') return
@@ -167,6 +178,7 @@ export function MatchEditForm({
     || nextDate !== (matchDate ?? null)
     || nextTime !== (startTime ?? null)
     || nextDuration !== (durationMinutes ?? null)
+    || reminderMinutes !== (playerReminderMinutes ?? 1440)
 
   const scheduleChanged =
     nextDate !== (matchDate ?? null)
@@ -204,6 +216,7 @@ export function MatchEditForm({
             match_date: nextDate,
             start_time: nextTime,
             duration_minutes: nextDuration,
+            player_reminder_minutes: reminderMinutes,
           })
         }
 
@@ -383,6 +396,46 @@ export function MatchEditForm({
               style={{ width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.85rem' }}
             />
           </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gap: '0.45rem',
+            paddingTop: '0.25rem',
+            borderTop: '1px solid #eef2f7',
+          }}
+        >
+          <label style={{ display: 'block', fontSize: '0.8rem', color: '#666' }}>
+            Player reminders
+          </label>
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+            {REMINDER_OPTIONS.map((option) => {
+              const active = reminderMinutes === option.value
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => setReminderMinutes(option.value)}
+                  style={{
+                    padding: '0.42rem 0.7rem',
+                    borderRadius: '999px',
+                    border: active ? '1px solid #0d6efd' : '1px solid #d9e2ec',
+                    background: active ? '#eff6ff' : '#fff',
+                    color: active ? '#0d6efd' : '#475569',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '0.75rem', lineHeight: 1.45 }}>
+            Contacts receive only useful match updates, not chat.
+          </p>
         </div>
 
         <div

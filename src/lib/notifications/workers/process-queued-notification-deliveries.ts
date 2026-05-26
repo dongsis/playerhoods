@@ -13,6 +13,7 @@ import {
   renderHostOfflineConfirmationSms,
   renderInvitationSms,
   renderMatchInviteSms,
+  renderMatchReminderSms,
 } from '@/lib/notifications/channels/sms/render-notification-sms'
 import {
   cancellationEmail,
@@ -23,6 +24,7 @@ import {
   guestDelegateConfirmedEmail,
   gameFormedEmail,
   hostOfflineConfirmationEmail,
+  matchReminderEmail,
   playerhoodsMatchInviteEmail,
 } from '@/lib/email/templates'
 import { formatInvitationToken } from '@/lib/invitations/invitation-token'
@@ -319,6 +321,13 @@ export async function processQueuedNotificationDeliveries(
       emailFrom = inviteSenderFrom(organizerDisplayName)
       html = confirmedLineupEmail(m, organizerDisplayName)
       smsBody = renderConfirmedLineupSms(m)
+    } else if (templateType === 'match_reminder') {
+      const m = buildMatchInfo(payload)
+      const organizerDisplayName = (payload.inviter_display_name as string) ?? (await getMatchOrganizerName(supabase, m.matchId)) ?? 'Someone'
+      subject = 'Reminder: your PlayerHoods match is coming up'
+      emailFrom = inviteSenderFrom(organizerDisplayName)
+      html = matchReminderEmail(m)
+      smsBody = renderMatchReminderSms(m)
     } else if (templateType === 'host_managed_confirmation') {
       const m = buildMatchInfo(payload)
       const organizerDisplayName =

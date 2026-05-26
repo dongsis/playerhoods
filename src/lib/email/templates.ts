@@ -216,6 +216,22 @@ export function confirmedLineupEmail(m: MatchInfo, organizerName = 'Someone'): s
   })
 }
 
+export function matchReminderEmail(m: MatchInfo): string {
+  return renderEmailLayout({
+    eyebrow: 'Match reminder',
+    title: 'Your PlayerHoods match is coming up',
+    introHtml: `Reminder: you're in for <strong>${escapeHtml(m.gameType || 'a match')}</strong> at <strong>${escapeHtml(m.venueName || 'the venue')}</strong>.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'View match details',
+    ctaUrl: matchLink(m),
+    secondaryTitle: 'No group chat noise',
+    secondaryBody:
+      'PlayerHoods sends only useful match updates: invitations, confirmations, reminders, cancellations, and key detail changes.',
+    footerNote: 'You are receiving this email because you are confirmed for a PlayerHoods match.',
+    siteUrl: m.siteUrl,
+  })
+}
+
 export function hostOfflineConfirmationEmail(m: MatchInfo, organizerName = 'Someone'): string {
   const venueName = m.venueName || 'the venue'
   const hostName = organizerName.trim() || 'Someone'

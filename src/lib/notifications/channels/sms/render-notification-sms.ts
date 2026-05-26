@@ -163,6 +163,14 @@ export function renderConfirmedLineupSms(match: MatchSmsData): string {
   return `Game on. You're confirmed to play: ${date} at ${time}, ${location}.${outText} We'll only notify you again if the match is cancelled or key details change.`
 }
 
+export function renderMatchReminderSms(match: MatchSmsData): string {
+  const date = formatSmsDate(match.matchDate) ?? 'TBD'
+  const time = formatSmsTime(match.startTime) ?? 'TBD'
+  const location = match.venueName ?? 'TBD'
+  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
+  return `Reminder: you're in for ${formatGameType(match.gameType)} on ${date} at ${time}, ${location}.${outText} Details: ${matchLink(match)}`
+}
+
 export function renderHostOfflineConfirmationSms(match: MatchSmsData, hostName = 'Someone'): string {
   const date = formatSmsDate(match.matchDate) ?? 'TBD'
   const time = formatSmsTime(match.startTime) ?? 'TBD'
