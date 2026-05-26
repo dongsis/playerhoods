@@ -22,6 +22,8 @@ type CurrentRequestTarget = {
   name: string
 }
 
+const INVITE_TARGET_LOAD_TIMEOUT_MS = 15000
+
 function TeamsIcon() {
   return (
     <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -103,11 +105,20 @@ export function MatchToolsSection({
 
   useEffect(() => {
     if (activeTab !== 'invite' || !showInviteTools || matchStatus !== 'active') return
-    if (loadedInviteMatchId === matchId || isLoadingInviteTargets) return
+    if (loadedInviteMatchId === matchId) return
 
     let cancelled = false
+    let timedOut = false
     setIsLoadingInviteTargets(true)
     setTargetLoadError(null)
+
+    const loadTimeout = window.setTimeout(() => {
+      if (cancelled) return
+      timedOut = true
+      console.error('[MatchToolsSection] load invite targets timed out')
+      setTargetLoadError('Invite options are taking too long to load. Close and reopen this panel to try again.')
+      setIsLoadingInviteTargets(false)
+    }, INVITE_TARGET_LOAD_TIMEOUT_MS)
 
     const supabase = createSupabaseBrowserClient()
     Promise.all([
@@ -115,26 +126,28 @@ export function MatchToolsSection({
       getContactPersonAdmissionTargets(supabase, matchId),
     ])
       .then(([admissionTargets, nextContactTargets]) => {
-        if (cancelled) return
+        if (cancelled || timedOut) return
+        window.clearTimeout(loadTimeout)
         const savedTargets = admissionTargets.filter((target) => target.source === 'invite_circle')
         setLazyCandidateUsers(admissionTargetsToScopeUsers(savedTargets, { requireCanAdmit: true }))
         setLazyContactTargets(nextContactTargets)
         setLoadedInviteMatchId(matchId)
       })
       .catch((error) => {
-        if (cancelled) return
+        if (cancelled || timedOut) return
+        window.clearTimeout(loadTimeout)
         console.error('[MatchToolsSection] load invite targets:', error)
         setTargetLoadError((error as { message?: string })?.message ?? 'Could not load invite options.')
-        setLoadedInviteMatchId(matchId)
       })
       .finally(() => {
-        if (!cancelled) setIsLoadingInviteTargets(false)
+        if (!cancelled && !timedOut) setIsLoadingInviteTargets(false)
       })
 
     return () => {
       cancelled = true
+      window.clearTimeout(loadTimeout)
     }
-  }, [activeTab, isLoadingInviteTargets, loadedInviteMatchId, matchId, matchStatus, showInviteTools])
+  }, [activeTab, loadedInviteMatchId, matchId, matchStatus, showInviteTools])
 
   if (!showInviteTools && !showRoundRobinTools) {
     return null
