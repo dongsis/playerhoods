@@ -290,6 +290,7 @@ type MatchRowProps = {
   showAcknowledge?: boolean
   variant?: 'default' | 'incoming' | 'history'
   showRosterNames?: boolean
+  isSelected?: boolean
 }
 
 function getCompactRosterMeta(summaryLabel: string | null | undefined): string[] {
@@ -304,6 +305,45 @@ function getCompactRosterMeta(summaryLabel: string | null | undefined): string[]
 
 function getSafeParticipants(item: Pick<MatchListItem, 'participants'>): MatchListItem['participants'] {
   return Array.isArray(item.participants) ? item.participants : []
+}
+
+function hasTimeConflictWithItems(item: MatchListItem, items: MatchListItem[] | undefined): boolean {
+  if (!items || item.match.status === 'cancelled') return false
+  const itemDate = item.match.match_date
+  if (!itemDate) return false
+  const itemTiming = getCalendarTiming(item)
+
+  return items.some((other) => {
+    if (other.match.id === item.match.id || other.match.status === 'cancelled') return false
+    if (other.myParticipant?.status === 'removed') return false
+    if (other.match.match_date !== itemDate) return false
+
+    const otherTiming = getCalendarTiming(other)
+    return itemTiming.startMinutes < otherTiming.endMinutes && otherTiming.startMinutes < itemTiming.endMinutes
+  })
+}
+
+function getParticipantPreview(participants: MatchListItem['participants'], organizerId: string): string | null {
+  const confirmed = participants
+    .filter((participant) => participant.status === 'confirmed')
+    .sort((a, b) => {
+      const aIsHost = a.user_id === organizerId
+      const bIsHost = b.user_id === organizerId
+      if (aIsHost === bIsHost) return 0
+      return aIsHost ? -1 : 1
+    })
+
+  if (confirmed.length === 0) return null
+
+  const visibleNames = confirmed.slice(0, 2).map((participant) => participant.display_name)
+  const overflow = confirmed.length - visibleNames.length
+  return overflow > 0 ? `${visibleNames.join(', ')} +${overflow}` : visibleNames.join(', ')
+}
+
+function getBoardCourtLabel(label: string | null | undefined): string | null {
+  if (!label) return null
+  if (/host will book it later/i.test(label)) return 'Court TBD'
+  return label
 }
 
 function SportBadgeIcon({ sportName }: { sportName: string | null | undefined }) {
@@ -505,6 +545,7 @@ function MatchRow({
   showAcknowledge = false,
   variant = 'default',
   showRosterNames = true,
+  isSelected = false,
 }: MatchRowProps) {
   const {
     match,
@@ -522,9 +563,9 @@ function MatchRow({
   if (!item.rosterInsight) {
     ;(item as MatchListItem).rosterInsight = rosterInsight
   }
-  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirmError, setConfirmError] = useState<string | null>(null)
+  const [optimisticAccepted, setOptimisticAccepted] = useState(false)
   const normalizedSportName = (sportName ?? '').trim().toLowerCase()
   const showSportIcon = normalizedSportName.includes('tennis') || normalizedSportName.includes('pickleball')
   const compactRosterMeta = getCompactRosterMeta(rosterInsight.summaryLabel)
@@ -538,7 +579,7 @@ function MatchRow({
       && participant.org_approved_at === null,
   )
 
-  const hasUserAccepted = myParticipant?.participant_accepted_at != null
+  const hasUserAccepted = myParticipant?.participant_accepted_at != null || optimisticAccepted
   const isInvited = myParticipant?.status === 'pending' && myParticipant.join_method === 'invited'
   const isParticipantInvite = myParticipant?.status === 'pending' && myParticipant.join_method === 'nominated'
   const isRequested = myParticipant?.status === 'pending' && myParticipant.join_method === 'requested'
@@ -557,18 +598,17 @@ function MatchRow({
 
   const handleConfirm = () => {
     setConfirmError(null)
+    setOptimisticAccepted(true)
     const supabase = createSupabaseBrowserClient()
     startTransition(async () => {
       try {
         await acceptMatchInvite(supabase, match.id)
-        router.refresh()
       } catch (err: unknown) {
+        setOptimisticAccepted(false)
         setConfirmError((err as { message?: string })?.message ?? 'Failed')
       }
     })
   }
-
-  const rosterMeta = item.rosterInsight.summaryLabel ? item.rosterInsight.summaryLabel.split(' · ') : []
 
   const timeStr = formatTimeWindow(
     match.start_at_utc,
@@ -577,6 +617,31 @@ function MatchRow({
     match.duration_minutes,
     venueTimezone ?? 'UTC',
   )
+  const hasBoardConflict = !isHistoryRow && hasTimeConflictWithItems(item, detailItems)
+  const playerCountLabel = `${confirmedCount}/${match.required_count}`
+  const boardCourtLabel = getBoardCourtLabel(courtState.badgeLabel)
+  const courtTbdBoardLabel = boardCourtLabel === 'Court TBD'
+  const boardStatusLabel = isCancelled
+    ? 'Match cancelled'
+    : hasBoardConflict
+      ? `⚠ Overlaps · ${playerCountLabel}`
+      : courtTbdBoardLabel && !isFormed
+        ? `Court TBD · ${playerCountLabel}`
+      : isFormed
+        ? `Formed · ${playerCountLabel}`
+        : confirmedCount >= match.required_count
+          ? `Ready · ${playerCountLabel}`
+          : playerCountLabel
+  const boardStatusTone: 'green' | 'amber' | 'blue' | 'red' | 'slate' = isCancelled
+    ? 'red'
+    : hasBoardConflict
+      ? 'red'
+      : isFormed
+        ? 'green'
+        : confirmedCount >= match.required_count
+          ? 'blue'
+          : 'amber'
+  const participantPreview = getParticipantPreview(participants, match.organizer_id)
 
   const statusBadge = isCancelled ? (
     <StatusBadge label="Match cancelled" tone="red" />
@@ -608,7 +673,9 @@ function MatchRow({
     <div
       className={[
         'flex items-center gap-3 bg-white transition-colors',
-        variant !== 'default'
+        isSelected
+          ? 'rounded-[24px] border border-[#0d6efd] bg-[#eff6ff] px-4 py-4 shadow-[0_12px_30px_rgba(13,110,253,0.10)]'
+          : variant !== 'default'
           ? 'rounded-[24px] border border-[#E2E8F0] px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]'
           : 'rounded-[24px] border border-[#E2E8F0] px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]',
       ].join(' ')}
@@ -627,17 +694,16 @@ function MatchRow({
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             {showSportIcon ? <InlineSportBadge sportName={sportName} /> : null}
-            {statusBadge}
-            {courtBadge}
+            <StatusBadge label={boardStatusLabel} tone={boardStatusTone} />
+            {!isCancelled && boardCourtLabel && !courtTbdBoardLabel ? (
+              <span className="text-body-sub font-semibold text-[#64748B]">
+                {boardCourtLabel}
+              </span>
+            ) : null}
           </div>
-          <ParticipantRosterSummary
-            participants={participants}
-            rosterMeta={visibleRosterMeta}
-            confirmedCount={confirmedCount}
-            organizerId={match.organizer_id}
-            detailItems={detailItems}
-            showMeta={isOrganizer}
-          />
+          <p className="text-body-sub truncate font-semibold text-[#64748B]">
+            {participantPreview ?? 'No lineup players yet'}
+          </p>
         </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -828,6 +894,7 @@ type CalendarEntry = {
   startMinutes: number
   endMinutes: number
   tone: 'green' | 'amber' | 'blue' | 'slate'
+  hasConflict?: boolean
 }
 
 function parseDateOnly(dateStr: string): Date {
@@ -967,6 +1034,35 @@ function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinu
   }
 }
 
+function markCalendarConflicts(entries: CalendarEntry[]): CalendarEntry[] {
+  const conflictIds = new Set<string>()
+  const byDate = new Map<string, CalendarEntry[]>()
+
+  for (const entry of entries) {
+    const bucket = byDate.get(entry.dateKey) ?? []
+    bucket.push(entry)
+    byDate.set(entry.dateKey, bucket)
+  }
+
+  for (const dayEntries of byDate.values()) {
+    for (let leftIndex = 0; leftIndex < dayEntries.length; leftIndex += 1) {
+      const left = dayEntries[leftIndex]
+      for (let rightIndex = leftIndex + 1; rightIndex < dayEntries.length; rightIndex += 1) {
+        const right = dayEntries[rightIndex]
+        if (left.startMinutes < right.endMinutes && right.startMinutes < left.endMinutes) {
+          conflictIds.add(left.id)
+          conflictIds.add(right.id)
+        }
+      }
+    }
+  }
+
+  return entries.map((entry) => ({
+    ...entry,
+    hasConflict: conflictIds.has(entry.id),
+  }))
+}
+
 function WeeklyCalendar({
   items,
   userId,
@@ -1031,7 +1127,7 @@ function WeeklyCalendar({
       .filter((entry): entry is CalendarEntry => Boolean(entry))
 
     upcoming.sort((left, right) => left.sortStamp.localeCompare(right.sortStamp))
-    return upcoming
+    return markCalendarConflicts(upcoming)
   }, [items, nowIso, userId])
 
   const entryMap = useMemo(() => {
@@ -1154,25 +1250,39 @@ function WeeklyCalendar({
                       <Link
                         key={entry.id}
                         href={`/dashboard?matchId=${entry.id}`}
+                        title={entry.hasConflict ? 'Time conflict with another match' : undefined}
                         className={[
                           'absolute left-1 right-1 overflow-hidden rounded-[11px] border px-1.5 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:z-10 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]',
-                          entry.tone === 'green'
-                            ? 'border-[#BBF7D0] bg-[#F0FDF4]'
-                            : entry.tone === 'amber'
-                              ? 'border-[#FED7AA] bg-[#eff6ff]'
-                              : entry.tone === 'slate'
-                                ? 'border-[#CBD5E1] bg-[#F8FAFC]'
-                                : 'border-[#bfdbfe] bg-[#eff6ff]',
+                          entry.hasConflict
+                            ? 'border-[#FCA5A5] bg-[#FFF1F2]'
+                            : entry.tone === 'green'
+                              ? 'border-[#BBF7D0] bg-[#F0FDF4]'
+                              : entry.tone === 'amber'
+                                ? 'border-[#FED7AA] bg-[#eff6ff]'
+                                : entry.tone === 'slate'
+                                  ? 'border-[#CBD5E1] bg-[#F8FAFC]'
+                                  : 'border-[#bfdbfe] bg-[#eff6ff]',
                         ].join(' ')}
                         style={{ top, height }}
                       >
+                        {entry.hasConflict ? (
+                          <>
+                            <span className="absolute inset-y-0 left-0 w-1 bg-[#DC2626]" aria-hidden="true" />
+                            <span
+                              className="absolute right-1 top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#DC2626] text-[10px] font-black leading-none text-white"
+                              aria-label="Time conflict"
+                            >
+                              !
+                            </span>
+                          </>
+                        ) : null}
                         <div className="flex items-center gap-1">
                           <SportGlyph sportKey={entry.sportKey} />
-                          <p className="text-[10px] font-semibold leading-tight text-[#1E293B]">
+                          <p className={['text-[10px] font-semibold leading-tight text-[#1E293B]', entry.hasConflict ? 'pr-4' : ''].join(' ')}>
                             {entry.organizerName}
                           </p>
                         </div>
-                        <p className="mt-0.5 text-[10px] leading-tight text-[#475569]">
+                        <p className={['mt-0.5 text-[10px] leading-tight', entry.hasConflict ? 'font-semibold text-[#B91C1C]' : 'text-[#475569]'].join(' ')}>
                           {entry.timeLabel}
                         </p>
                       </Link>
@@ -1550,7 +1660,7 @@ export function MatchesPanel({
                     </svg>
                   </div>
                   <p className="text-title-main text-[#1E293B]">No open matches right now.</p>
-                  <p className="mt-2 text-body-main text-[#94A3B8]">Create a match or check back later.</p>
+                  <p className="mt-2 text-body-main text-[#94A3B8]">Start a match or open one to join when you need players.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1664,6 +1774,7 @@ export function MatchesPanel({
                             detailItems={items}
                             onViewed={onViewedMatch}
                             variant="incoming"
+                            isSelected={selectedMatchId === item.match.id}
                           />
                         ))}
                         {visibleCancelled.map((item) => (
@@ -1676,6 +1787,7 @@ export function MatchesPanel({
                             onDismissAlert={onDismissAlert}
                             showAcknowledge={isDismissibleAlert(item, now)}
                             variant="incoming"
+                            isSelected={selectedMatchId === item.match.id}
                           />
                         ))}
                         {visibleRemoved.map((item) => (
@@ -1688,6 +1800,7 @@ export function MatchesPanel({
                             onDismissAlert={onDismissAlert}
                             showAcknowledge={isDismissibleAlert(item, now)}
                             variant="incoming"
+                            isSelected={selectedMatchId === item.match.id}
                           />
                         ))}
                       </div>
@@ -1716,7 +1829,7 @@ export function MatchesPanel({
 
                           return (
                             <div key={item.match.id}>
-                              <MatchRow item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="incoming" />
+                              <MatchRow item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="incoming" isSelected={selectedMatchId === item.match.id} />
                               {expiring && onCancelMatch ? (
                                 <ExpiryBanner item={item} hoursLeft={hoursLeft} onCancel={onCancelMatch} />
                               ) : null}
@@ -1731,12 +1844,13 @@ export function MatchesPanel({
                     <SectionHeading label="Looking for Players" count={lookingFor.length} />
                     {lookingFor.length === 0 ? (
                       <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
-                        No open matches right now.
+                        <p className="font-semibold text-[#64748B]">No open matches right now.</p>
+                        <p className="mt-1 text-[#94A3B8]">Start a match or open one to join when you need players.</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
                         {lookingFor.map((item) => (
-                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} variant="incoming" />
+                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} variant="incoming" isSelected={selectedMatchId === item.match.id} />
                         ))}
                       </div>
                     )}
@@ -1755,7 +1869,7 @@ export function MatchesPanel({
                     <>
                       <div className="space-y-2">
                         {history.slice(0, historyShown).map((item) => (
-                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="history" />
+                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="history" isSelected={selectedMatchId === item.match.id} />
                         ))}
                       </div>
                       {historyShown < history.length ? (

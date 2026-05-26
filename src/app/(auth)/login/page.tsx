@@ -273,7 +273,7 @@ export default function LoginPage() {
 
       if (signUpError) {
         console.error('[auth:register]', signUpError)
-        setError(mapAuthErrorToUiMessage('register'))
+        setError(mapAuthErrorToUiMessage('register', signUpError))
         return
       }
 
@@ -291,7 +291,7 @@ export default function LoginPage() {
       setInfo('We sent you a confirmation email. Please verify your email.')
     } catch (err) {
       console.error('[auth:register]', err)
-      setError(mapAuthErrorToUiMessage('register'))
+      setError(mapAuthErrorToUiMessage('register', err))
     } finally {
       setLoading(false)
     }

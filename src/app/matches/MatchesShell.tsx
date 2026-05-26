@@ -22,6 +22,7 @@ type CalendarEntry = {
   startMinutes: number
   endMinutes: number
   tone: 'green' | 'amber' | 'blue' | 'slate'
+  hasConflict?: boolean
 }
 
 function isInboxItem(item: MatchListItem, nowIso: string): boolean {
@@ -177,6 +178,35 @@ function getCalendarTiming(item: MatchListItem): { startMinutes: number; endMinu
   }
 }
 
+function markCalendarConflicts(entries: CalendarEntry[]): CalendarEntry[] {
+  const conflictIds = new Set<string>()
+  const byDate = new Map<string, CalendarEntry[]>()
+
+  for (const entry of entries) {
+    const bucket = byDate.get(entry.dateKey) ?? []
+    bucket.push(entry)
+    byDate.set(entry.dateKey, bucket)
+  }
+
+  for (const dayEntries of byDate.values()) {
+    for (let leftIndex = 0; leftIndex < dayEntries.length; leftIndex += 1) {
+      const left = dayEntries[leftIndex]
+      for (let rightIndex = leftIndex + 1; rightIndex < dayEntries.length; rightIndex += 1) {
+        const right = dayEntries[rightIndex]
+        if (left.startMinutes < right.endMinutes && right.startMinutes < left.endMinutes) {
+          conflictIds.add(left.id)
+          conflictIds.add(right.id)
+        }
+      }
+    }
+  }
+
+  return entries.map((entry) => ({
+    ...entry,
+    hasConflict: conflictIds.has(entry.id),
+  }))
+}
+
 function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: string | null }) {
   const [weekAnchor, setWeekAnchor] = useState(() => startOfWeek(new Date()))
   const nowIso = useMemo(() => new Date().toISOString(), [])
@@ -234,7 +264,7 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
       .filter((entry): entry is CalendarEntry => Boolean(entry))
 
     relevant.sort((left, right) => left.sortStamp.localeCompare(right.sortStamp))
-    return relevant
+    return markCalendarConflicts(relevant)
   }, [items, nowIso, userId])
 
   const entryMap = useMemo(() => {
@@ -357,25 +387,39 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
                       <Link
                         key={entry.id}
                         href={`/matches/${entry.id}`}
+                        title={entry.hasConflict ? 'Time conflict with another match' : undefined}
                         className={[
                           'absolute left-1 right-1 overflow-hidden rounded-[11px] border px-1.5 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:z-10 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]',
-                          entry.tone === 'green'
-                            ? 'border-[#BBF7D0] bg-[#F0FDF4]'
-                            : entry.tone === 'amber'
-                              ? 'border-[#FED7AA] bg-[#eff6ff]'
-                              : entry.tone === 'slate'
-                                ? 'border-[#CBD5E1] bg-[#F8FAFC]'
-                                : 'border-[#bfdbfe] bg-[#eff6ff]',
+                          entry.hasConflict
+                            ? 'border-[#FCA5A5] bg-[#FFF1F2]'
+                            : entry.tone === 'green'
+                              ? 'border-[#BBF7D0] bg-[#F0FDF4]'
+                              : entry.tone === 'amber'
+                                ? 'border-[#FED7AA] bg-[#eff6ff]'
+                                : entry.tone === 'slate'
+                                  ? 'border-[#CBD5E1] bg-[#F8FAFC]'
+                                  : 'border-[#bfdbfe] bg-[#eff6ff]',
                         ].join(' ')}
                         style={{ top, height }}
                       >
+                        {entry.hasConflict ? (
+                          <>
+                            <span className="absolute inset-y-0 left-0 w-1 bg-[#DC2626]" aria-hidden="true" />
+                            <span
+                              className="absolute right-1 top-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#DC2626] text-[10px] font-black leading-none text-white"
+                              aria-label="Time conflict"
+                            >
+                              !
+                            </span>
+                          </>
+                        ) : null}
                         <div className="flex items-center gap-1">
                           <SportGlyph sportKey={entry.sportKey} />
-                          <p className="truncate text-[10px] font-semibold leading-tight text-[#1E293B]">
+                          <p className={['truncate text-[10px] font-semibold leading-tight text-[#1E293B]', entry.hasConflict ? 'pr-4' : ''].join(' ')}>
                             {entry.organizerName}
                           </p>
                         </div>
-                        <p className="mt-0.5 text-[10px] leading-tight text-[#475569]">
+                        <p className={['mt-0.5 text-[10px] leading-tight', entry.hasConflict ? 'font-semibold text-[#B91C1C]' : 'text-[#475569]'].join(' ')}>
                           {entry.timeLabel}
                         </p>
                       </Link>

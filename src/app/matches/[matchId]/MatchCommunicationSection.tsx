@@ -139,12 +139,12 @@ export function MatchCommunicationSection({
   )
   const communicationTitle = isOrganizer
     ? showFormedNotice
-      ? 'Match Chat'
+      ? 'Match chat'
       : 'Player Messages'
     : 'Message Host'
   const communicationHelper = isOrganizer
     ? showFormedNotice
-      ? 'Lineup players can chat together here.'
+      ? 'Use this space for court updates, arrival time, and last-minute coordination.'
       : 'Before the match is formed, each player can message you directly.'
     : `Ask a question or send an update to ${organizerName}.`
   const inputPlaceholder = isOrganizer && showFormedNotice ? 'Message match...' : 'Message host...'
@@ -245,7 +245,7 @@ export function MatchCommunicationSection({
             fontWeight: 600,
           }}
         >
-          Match formed - only confirmed players can view and chat here.
+          Only registered players in the confirmed lineup can view and participate.
         </div>
       ) : null}
 
@@ -392,7 +392,7 @@ export function MatchCommunicationSection({
                 cursor: 'pointer',
               }}
             >
-              Add host note
+              Add update
             </button>
           )}
         </div>

@@ -28,10 +28,10 @@ export function InviteGuestForm({ matchId, contactTargets }: Props) {
     const supabase = createSupabaseBrowserClient()
     try {
       await inviteContactPersonToMatch(supabase, matchId, personId)
-      await processDeliveriesAction()
       setSuccess(true)
       setPersonId('')
       router.refresh()
+      processDeliveriesAction().catch(() => {})
     } catch (err) {
       setError((err as { message?: string })?.message ?? 'Failed to invite contact')
     } finally {

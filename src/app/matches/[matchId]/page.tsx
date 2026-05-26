@@ -34,6 +34,7 @@ export default async function MatchDetailPage({ params }: Props) {
     game_type: viewModel.match.game_type,
     match_date: viewModel.match.match_date,
     start_time: viewModel.match.start_time,
+    duration_minutes: viewModel.match.duration_minutes,
   }
 
   return (

@@ -49,6 +49,18 @@ function logMatchListSoftFailure(label: string, error: unknown) {
   console.warn(`[MatchList] ${label} soft-failed:`, error)
 }
 
+function isActiveConfirmedParticipant(participant: Pick<MatchParticipant, 'status' | 'removed_at'>): boolean {
+  return participant.status === 'confirmed' && participant.removed_at === null
+}
+
+function isActivePendingParticipant(participant: Pick<MatchParticipant, 'status' | 'removed_at'>): boolean {
+  return participant.status === 'pending' && participant.removed_at === null
+}
+
+function isActiveWaitingListParticipant(participant: Pick<MatchParticipant, 'status' | 'removed_at'>): boolean {
+  return participant.status === 'waiting_list' && participant.removed_at === null
+}
+
 // ============================================================================
 // v1.4.1 enriched types
 // ============================================================================
@@ -211,18 +223,12 @@ async function fetchContactPlayerLookup(
 }
 
 export async function getMatchesWithSummary(supabase: Client): Promise<MatchSummary[]> {
-  // 1. Fetch matches + formed counts in parallel
-  const [matchesRes, formedRes] = await Promise.all([
-    supabase.from('matches').select('*').order('match_date', { ascending: true }),
-    supabase.from('match_formed').select('*'),
-  ])
+  // 1. Fetch matches.
+  const matchesRes = await supabase.from('matches').select('*').order('match_date', { ascending: true })
 
   if (matchesRes.error) throw matchesRes.error
-  if (formedRes.error) throw formedRes.error
 
   const matches = matchesRes.data as Match[]
-  const formedRows = formedRes.data as MatchFormed[]
-  const formedMap = new Map(formedRows.map(f => [f.match_id, f]))
 
   if (matches.length === 0) return []
 
@@ -271,15 +277,14 @@ export async function getMatchesWithSummary(supabase: Client): Promise<MatchSumm
   }
 
   return matches.map(match => {
-    const formed = formedMap.get(match.id)
     const mps = participantsByMatch.get(match.id) || []
-    const confirmed = mps.filter(p => p.status === 'confirmed')
-    const pending = mps.filter(p => p.status === 'pending')
+    const confirmed = mps.filter(isActiveConfirmedParticipant)
+    const pending = mps.filter(isActivePendingParticipant)
 
     return {
       ...match,
       organizer_name: getDisplayName(match.organizer_id, null, profileMap, guestMap),
-      confirmed_count: formed?.confirmed_count ?? confirmed.length,
+      confirmed_count: confirmed.length,
       pending_count: pending.length,
       confirmed_names: confirmed.slice(0, 3).map(p =>
         getDisplayName(p.user_id, p.guest_id, profileMap, guestMap)
@@ -1442,7 +1447,7 @@ export async function getMatchListData(
   const venueIds = [...new Set(matches.filter(m => m.venue_id).map(m => m.venue_id as string))]
   const sportIds = [...new Set(matches.map(m => m.sport_id).filter((id): id is number => id != null))]
 
-  const [participantChunkResults, venuesRes, sportsRes, formedChunkResults] = await Promise.all([
+  const [participantChunkResults, venuesRes, sportsRes] = await Promise.all([
     Promise.all(
       matchIdChunks.map((chunk) =>
         supabase.from('match_participants').select('*').in('match_id', chunk),
@@ -1454,26 +1459,14 @@ export async function getMatchListData(
     sportIds.length > 0
       ? supabase.from('sports').select('id, display_name').in('id', sportIds)
       : Promise.resolve({ data: [], error: null }),
-    Promise.all(
-      matchIdChunks.map((chunk) =>
-        supabase.from('match_formed').select('*').in('match_id', chunk),
-      ),
-    ),
   ])
   const participantsError = participantChunkResults.find((result) => result.error)?.error ?? null
   if (participantsError) throw participantsError
   if (venuesRes.error) throw venuesRes.error
   if (sportsRes.error) throw sportsRes.error
-  const formedError = formedChunkResults.find((result) => result.error)?.error ?? null
-  if (formedError) {
-    logMatchListSoftFailure('match_formed', formedError)
-  }
 
   const allParticipants = participantChunkResults.flatMap(
     (result) => ((result.data ?? []) as MatchParticipant[]),
-  )
-  const formedMap = new Map(
-    formedChunkResults.flatMap((result) => ((result.data ?? []) as MatchFormed[])).map((row) => [row.match_id, row]),
   )
   const venueMap = new Map(
     ((venuesRes.data ?? []) as { id: string; name: string; timezone: string }[])
@@ -1570,9 +1563,9 @@ export async function getMatchListData(
       }
     })
 
-    const confirmed = enriched.filter((participant) => participant.status === 'confirmed')
-    const pending = enriched.filter((participant) => participant.status === 'pending')
-    const waiting = enriched.filter((participant) => participant.status === 'waiting_list')
+    const confirmed = enriched.filter(isActiveConfirmedParticipant)
+    const pending = enriched.filter(isActivePendingParticipant)
+    const waiting = enriched.filter(isActiveWaitingListParticipant)
     const myParticipant = userId
       ? (enriched.find(
           p =>
@@ -1581,7 +1574,6 @@ export async function getMatchListData(
             (p.guest_id ? contactLinkedToUser.get(p.guest_id) === userId : false),
         ) ?? null)
       : null
-    const formed = formedError ? null : (formedMap.get(match.id) ?? null)
     const rosterInsight = deriveMatchRosterInsight(match, enriched)
 
     return {
@@ -1594,9 +1586,9 @@ export async function getMatchListData(
         courtPlanMode: match.court_plan_mode,
         finalCourtLabel: match.final_court_label,
       }),
-      confirmedCount: formed?.confirmed_count ?? confirmed.length,
-      pendingCount: formed?.pending_count ?? pending.length,
-      waitingCount: formed?.waiting_count ?? waiting.length,
+      confirmedCount: confirmed.length,
+      pendingCount: pending.length,
+      waitingCount: waiting.length,
       isFormed: Boolean(match.formed_at),
       participants: enriched,
       myParticipant,
@@ -1882,11 +1874,9 @@ export async function getMatchDetailData(
     }
   })
 
-  const confirmed = enriched.filter(p =>
-    p.status === 'confirmed'
-  )
-  const pending = enriched.filter(p => p.status === 'pending' && p.removed_at === null)
-  const waiting = enriched.filter((participant) => participant.status === 'waiting_list' && participant.removed_at === null)
+  const confirmed = enriched.filter(isActiveConfirmedParticipant)
+  const pending = enriched.filter(isActivePendingParticipant)
+  const waiting = enriched.filter(isActiveWaitingListParticipant)
   const isOrganizer = userId === match.organizer_id
   const myParticipant = userId
     ? (enriched.find(p => p.user_id === userId || participantLinkedToUser.get(p.id) === userId) ?? null)
@@ -2064,9 +2054,9 @@ export async function getMatchDetailData(
     myParticipant,
     myParticipantNeedsReconfirm,
     isOrganizer,
-    confirmedCount: (formedRes.error ? null : formedRes.data?.confirmed_count) ?? confirmed.length,
-      pendingCount: isOrganizer ? pending.length : ((formedRes.error ? null : formedRes.data?.pending_count) ?? pending.length),
-      waitingCount: isOrganizer ? waiting.length : ((formedRes.error ? null : formedRes.data?.waiting_count) ?? waiting.length),
+    confirmedCount: confirmed.length,
+      pendingCount: pending.length,
+      waitingCount: waiting.length,
       activities,
       messages,
       organizerName,

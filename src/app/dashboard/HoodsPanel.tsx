@@ -1379,18 +1379,24 @@ function InvitePopover({
   onInviteExisting,
   onInviteNew,
   pendingId,
+  loading,
 }: {
   person: HoodPerson
   matches: MatchListItem[]
   onInviteExisting: (person: HoodPerson, matchId: string) => Promise<void>
   onInviteNew: (person: HoodPerson) => void
   pendingId: string | null
+  loading: boolean
 }) {
   return (
     <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_22px_44px_-26px_rgba(15,23,42,0.32)]">
       <h4 className="text-title-main text-slate-900">Open Matches</h4>
       <div className="mt-3 space-y-2">
-        {matches.length === 0 ? (
+        {loading ? (
+          <div className="text-body-main rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-slate-500">
+            Loading open matches...
+          </div>
+        ) : matches.length === 0 ? (
           <div className="text-body-main rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-slate-500">
             No open matches
           </div>
@@ -1447,6 +1453,7 @@ function HoodCard({
   onToggleInvite,
   onToggleMenu,
   inviteMatches,
+  inviteTargetsLoading,
   onInviteExisting,
   onInviteNew,
   pendingInviteMatchId,
@@ -1463,6 +1470,7 @@ function HoodCard({
   onToggleInvite: (person: HoodPerson) => void
   onToggleMenu: (person: HoodPerson) => void
   inviteMatches: MatchListItem[]
+  inviteTargetsLoading: boolean
   onInviteExisting: (person: HoodPerson, matchId: string) => Promise<void>
   onInviteNew: (person: HoodPerson) => void
   pendingInviteMatchId: string | null
@@ -1581,6 +1589,7 @@ function HoodCard({
           onInviteExisting={onInviteExisting}
           onInviteNew={onInviteNew}
           pendingId={pendingInviteMatchId}
+          loading={inviteTargetsLoading}
         />
       )}
 
@@ -1634,6 +1643,7 @@ function HoodCardGrid({
   activeInviteKey,
   activeMenuKey,
   openMatchTargetsByPerson,
+  loadingInviteKey,
   pendingInviteMatchId,
   onOpenDrawer,
   onOpenMenuAddToGroup,
@@ -1650,6 +1660,7 @@ function HoodCardGrid({
   activeInviteKey: string | null
   activeMenuKey: string | null
   openMatchTargetsByPerson: Map<string, MatchListItem[]>
+  loadingInviteKey: string | null
   pendingInviteMatchId: string | null
   onOpenDrawer: (person: HoodPerson) => void
   onOpenMenuAddToGroup: (person: HoodPerson) => void
@@ -1676,6 +1687,7 @@ function HoodCardGrid({
           onToggleInvite={onToggleInvite}
           onToggleMenu={onToggleMenu}
           inviteMatches={openMatchTargetsByPerson.get(person.key) ?? []}
+          inviteTargetsLoading={activeInviteKey === person.key && loadingInviteKey === person.key}
           onInviteExisting={onInviteExisting}
           onInviteNew={onInviteNew}
           pendingInviteMatchId={pendingInviteMatchId}
@@ -1835,6 +1847,7 @@ export function HoodsPanel({
   const [pendingInviteMatchId, setPendingInviteMatchId] = useState<string | null>(null)
   const [admissionTargetsByMatchId, setAdmissionTargetsByMatchId] = useState<Map<string, AdmissionTarget[]>>(new Map())
   const [contactPersonTargetsByMatchId, setContactPersonTargetsByMatchId] = useState<Map<string, ContactPersonAdmissionTarget[]>>(new Map())
+  const [loadingInviteKey, setLoadingInviteKey] = useState<string | null>(null)
   const [contactComposerMode, setContactComposerMode] = useState<'manual' | 'screenshot' | null>(null)
   const [contactDisplayName, setContactDisplayName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -2587,21 +2600,23 @@ export function HoodsPanel({
     )
   }, [items, selectedSport])
 
-  useEffect(() => {
-    if (!selectedSport || openMatches.length === 0) {
-      setAdmissionTargetsByMatchId(new Map())
-      setContactPersonTargetsByMatchId(new Map())
-      return
-    }
+  const loadInviteTargetsForPerson = useCallback(async (person: HoodPerson) => {
+    if (!person.canInvite || openMatches.length === 0) return
 
-    let cancelled = false
+    const missingMatches = openMatches.filter((item) =>
+      !admissionTargetsByMatchId.has(item.match.id)
+      || !contactPersonTargetsByMatchId.has(item.match.id),
+    )
+    if (missingMatches.length === 0) return
+
+    setLoadingInviteKey(person.key)
     const supabase = createSupabaseBrowserClient()
+    const nextMap = new Map(admissionTargetsByMatchId)
+    const nextContactMap = new Map(contactPersonTargetsByMatchId)
 
-    const loadAdmissionTargets = async () => {
-      const nextMap = new Map<string, AdmissionTarget[]>()
-      const nextContactMap = new Map<string, ContactPersonAdmissionTarget[]>()
+    try {
       await Promise.all(
-        openMatches.map(async (item) => {
+        missingMatches.map(async (item) => {
           try {
             const [targets, contactTargets] = await Promise.all([
               getAdmissionTargets(supabase, item.match.id),
@@ -2616,17 +2631,13 @@ export function HoodsPanel({
           }
         }),
       )
-      if (!cancelled) {
-        setAdmissionTargetsByMatchId(nextMap)
-        setContactPersonTargetsByMatchId(nextContactMap)
-      }
-    }
 
-    void loadAdmissionTargets()
-    return () => {
-      cancelled = true
+      setAdmissionTargetsByMatchId(nextMap)
+      setContactPersonTargetsByMatchId(nextContactMap)
+    } finally {
+      setLoadingInviteKey((current) => (current === person.key ? null : current))
     }
-  }, [openMatches, selectedSport])
+  }, [admissionTargetsByMatchId, contactPersonTargetsByMatchId, openMatches])
 
   const openMatchTargetsByPerson = useMemo(() => {
     const result = new Map<string, MatchListItem[]>()
@@ -2789,6 +2800,17 @@ export function HoodsPanel({
     }
   }, [loadSupportData])
 
+  const handleToggleInvite = useCallback((person: HoodPerson) => {
+    setActiveMenuKey(null)
+    setActiveInviteKey((current) => {
+      const next = current === person.key ? null : person.key
+      if (next) {
+        void loadInviteTargetsForPerson(person)
+      }
+      return next
+    })
+  }, [loadInviteTargetsForPerson])
+
   const handleInviteExisting = useCallback(async (person: HoodPerson, matchId: string) => {
     const supabase = createSupabaseBrowserClient()
     setPendingInviteMatchId(matchId)
@@ -2797,26 +2819,21 @@ export function HoodsPanel({
     try {
       if (person.personId && isContactModulePerson(person)) {
         await inviteContactPersonToMatch(supabase, matchId, person.personId)
-        await processDeliveriesAction()
       } else if (person.userId) {
         await inviteUserToMatch(supabase, matchId, person.userId)
-        await processDeliveriesAction()
       } else if (person.guestId) {
         await inviteContactGuestToMatch(supabase, matchId, person.guestId)
-        await processDeliveriesAction()
       }
       setMessage(`${person.displayName} was invited to the match.`)
       setActiveInviteKey(null)
-      await Promise.all([
-        loadSupportData(),
-        onRefreshDashboardLive(),
-      ])
+      processDeliveriesAction().catch(() => {})
+      await onRefreshDashboardLive()
     } catch (inviteError) {
       setError((inviteError as Error).message)
     } finally {
       setPendingInviteMatchId(null)
     }
-  }, [loadSupportData, onRefreshDashboardLive])
+  }, [onRefreshDashboardLive])
 
   const handleAddToGroup = useCallback(async (groupId: string) => {
     if (!groupDialogPerson) return
@@ -2885,7 +2902,7 @@ export function HoodsPanel({
       setContactComposerMode('manual')
       setContactToolsOpen(true)
       setHoodFilter('saved')
-      await loadSupportData()
+      void loadSupportData({ foreground: false })
     } catch (createError) {
       setError((createError as Error).message)
     } finally {
@@ -3577,6 +3594,7 @@ export function HoodsPanel({
                 activeInviteKey={activeInviteKey}
                 activeMenuKey={activeMenuKey}
                 openMatchTargetsByPerson={openMatchTargetsByPerson}
+                loadingInviteKey={loadingInviteKey}
                 pendingInviteMatchId={pendingInviteMatchId}
                 onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
                 onOpenMenuAddToGroup={(nextPerson) => {
@@ -3584,10 +3602,7 @@ export function HoodsPanel({
                   setActiveMenuKey(null)
                 }}
                 onSaveToggle={handleSaveToggle}
-                onToggleInvite={(nextPerson) => {
-                  setActiveMenuKey(null)
-                  setActiveInviteKey((current) => (current === nextPerson.key ? null : nextPerson.key))
-                }}
+                onToggleInvite={handleToggleInvite}
                 onToggleMenu={(nextPerson) => {
                   setActiveInviteKey(null)
                   setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))
@@ -3609,6 +3624,7 @@ export function HoodsPanel({
                   activeInviteKey={activeInviteKey}
                   activeMenuKey={activeMenuKey}
                   openMatchTargetsByPerson={openMatchTargetsByPerson}
+                  loadingInviteKey={loadingInviteKey}
                   pendingInviteMatchId={pendingInviteMatchId}
                   onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
                   onOpenMenuAddToGroup={(nextPerson) => {
@@ -3616,10 +3632,7 @@ export function HoodsPanel({
                     setActiveMenuKey(null)
                   }}
                   onSaveToggle={handleSaveToggle}
-                  onToggleInvite={(nextPerson) => {
-                    setActiveMenuKey(null)
-                    setActiveInviteKey((current) => (current === nextPerson.key ? null : nextPerson.key))
-                  }}
+                  onToggleInvite={handleToggleInvite}
                   onToggleMenu={(nextPerson) => {
                     setActiveInviteKey(null)
                     setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))
@@ -3648,6 +3661,7 @@ export function HoodsPanel({
               activeInviteKey={activeInviteKey}
               activeMenuKey={activeMenuKey}
               openMatchTargetsByPerson={openMatchTargetsByPerson}
+              loadingInviteKey={loadingInviteKey}
               pendingInviteMatchId={pendingInviteMatchId}
               onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
               onOpenMenuAddToGroup={(nextPerson) => {
@@ -3655,10 +3669,7 @@ export function HoodsPanel({
                 setActiveMenuKey(null)
               }}
               onSaveToggle={handleSaveToggle}
-              onToggleInvite={(nextPerson) => {
-                setActiveMenuKey(null)
-                setActiveInviteKey((current) => (current === nextPerson.key ? null : nextPerson.key))
-              }}
+              onToggleInvite={handleToggleInvite}
               onToggleMenu={(nextPerson) => {
                 setActiveInviteKey(null)
                 setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))

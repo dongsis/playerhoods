@@ -28,10 +28,10 @@ export function InviteUserForm({ matchId, scopeUsers }: Props) {
     const supabase = createSupabaseBrowserClient()
     try {
       await inviteUserToMatch(supabase, matchId, userId)
-      await processDeliveriesAction()
       setSuccess(true)
       setUserId('')
       router.refresh()
+      processDeliveriesAction().catch(() => {})
     } catch (submitError) {
       setError((submitError as { message?: string })?.message ?? 'Failed to invite user')
     } finally {

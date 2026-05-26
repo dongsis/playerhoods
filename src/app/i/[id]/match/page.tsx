@@ -11,7 +11,11 @@ type Props = {
 
 function formatGameType(value: string | null | undefined): string {
   if (!value) return 'Match'
-  return value.replace(/_/g, ' ')
+  const label = value
+    .replace(/_/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+  return /\bmatch\b/i.test(label) ? label : `${label} match`
 }
 
 function formatDate(value: string | null | undefined): string | null {
@@ -26,10 +30,26 @@ function formatDate(value: string | null | undefined): string | null {
   }).format(date)
 }
 
-function formatStatus(value: string): string {
-  if (value === 'accepted') return 'Accepted'
-  if (value === 'declined') return 'Declined'
-  return 'Pending response'
+function formatTime(value: string | null | undefined): string | null {
+  if (!value) return null
+  const parts = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!parts) return value
+  const date = new Date(Date.UTC(2026, 0, 1, Number(parts[1]), Number(parts[2])))
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(date)
+}
+
+function formatPersonName(value: string | null | undefined): string {
+  const name = value?.trim()
+  if (!name) return 'the host'
+  return name
+    .split(/\s+/)
+    .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : part))
+    .join(' ')
 }
 
 export default async function GuestInvitationMatchPage({ params }: Props) {
@@ -43,70 +63,431 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
   }
 
   const summary = invitation.match_summary
+  const inviterName = formatPersonName(invitation.inviter_display_name)
   const matchType = formatGameType(summary?.game_type)
   const matchDate = formatDate(summary?.match_date)
-  const startTime = summary?.start_time ?? null
+  const matchTime = formatTime(summary?.start_time)
   const venueName = summary?.club_name ?? 'Venue to be confirmed'
+  const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' · ') || 'Time to be confirmed'
+  const invitationHref = `/invitations/${invitationId}`
+  const createAccountHref = `/login?mode=register&next=${encodeURIComponent(`/i/${id}/match`)}`
+  const isInactive =
+    invitation.status === 'canceled'
+    || invitation.status === 'expired'
+    || summary?.participant_status === 'removed'
+    || Boolean(summary?.participant_removed_at)
+    || summary?.match_status === 'cancelled'
+    || summary?.match_status === 'canceled'
+
+  const pageState = isInactive
+    ? {
+        title: 'This invitation is no longer active',
+        body: 'The host canceled this invitation or updated the match details.',
+        rsvp: null,
+        promptTitle: null,
+        promptBody: null,
+        softPrompt: true,
+      }
+    : invitation.status === 'declined'
+      ? {
+          title: "You're not playing",
+          body: "You've declined this invitation. The host will be notified.",
+          rsvp: 'Declined',
+          promptTitle: 'Manage future invites more easily',
+          promptBody: 'Create a free PlayerHoods account to track match updates, save players, and respond faster next time.',
+          softPrompt: true,
+        }
+      : invitation.status === 'accepted'
+        ? {
+            title: "You're in",
+            body: "You've accepted this match invitation. The host will be notified that you're in.",
+            rsvp: 'Accepted',
+            promptTitle: 'Create your free PlayerHoods account',
+            promptBody: `Manage this match, get updates, save ${inviterName} as a player contact, and join future matches faster.`,
+            softPrompt: false,
+          }
+        : {
+            title: `${inviterName} invited you to play`,
+            body: 'Confirm whether you can join this match.',
+            rsvp: null,
+            promptTitle: 'New to PlayerHoods?',
+            promptBody: 'Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.',
+            softPrompt: true,
+          }
 
   return (
-    <main className="min-h-screen bg-[#F3F8FF] px-5 py-8 text-[#0F172A]">
-      <div className="mx-auto max-w-xl">
-        <BrandLogo variant="horizontal" />
-        <section className="mt-6 rounded-2xl border border-[#DCE7F5] bg-white p-6 shadow-sm">
-          <p className="text-label text-[#64748B]">Guest match view</p>
-          <h1 className="mt-2 text-h1">Match details</h1>
-          <p className="mt-2 text-body-main text-[#475569]">
-            This link shows the basics for your invitation. Create an account for the full match workspace.
-          </p>
+    <main className="guest-invitation-page">
+      <style>{`
+        .guest-invitation-page {
+          min-height: 100vh;
+          background: #edf5ff;
+          color: #06183d;
+          padding: 32px 18px 48px;
+        }
 
-          <dl className="mt-6 grid gap-4 text-sm">
-            <div>
-              <dt className="text-label text-[#94A3B8]">Invited by</dt>
-              <dd className="mt-1 font-semibold text-[#0B1F4D]">{invitation.inviter_display_name}</dd>
-            </div>
-            <div>
-              <dt className="text-label text-[#94A3B8]">Match</dt>
-              <dd className="mt-1 font-semibold text-[#0B1F4D]">{matchType}</dd>
-            </div>
-            <div>
-              <dt className="text-label text-[#94A3B8]">Date and time</dt>
-              <dd className="mt-1 font-semibold text-[#0B1F4D]">
-                {[matchDate, startTime].filter(Boolean).join(' at ') || 'Time to be confirmed'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-label text-[#94A3B8]">Venue</dt>
-              <dd className="mt-1 font-semibold text-[#0B1F4D]">{venueName}</dd>
-            </div>
-            <div>
-              <dt className="text-label text-[#94A3B8]">Your RSVP</dt>
-              <dd className="mt-1 font-semibold text-[#0B1F4D]">{formatStatus(invitation.status)}</dd>
-            </div>
-          </dl>
+        .guest-invitation-shell {
+          width: min(100%, 940px);
+          margin: 0 auto;
+        }
 
-          <div className="mt-6 rounded-xl border border-[#DCE7F5] bg-[#F8FBFF] p-4">
-            <h2 className="text-base font-semibold text-[#0B1F4D]">Create your free PlayerHoods account</h2>
-            <p className="mt-2 text-sm text-[#475569]">
-              Manage this match, get updates, save {invitation.inviter_display_name} as a player contact, and join future matches faster.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Link
-                href={`/login?mode=register&next=${encodeURIComponent(`/i/${id}/match`)}`}
-                className="rounded-full bg-[#0B1F4D] px-5 py-2 text-sm font-semibold text-white"
-              >
-                Create account
-              </Link>
-              <Link
-                href={`/invitations/${invitationId}`}
-                className="rounded-full border border-[#CBD5E1] px-5 py-2 text-sm font-semibold text-[#0B1F4D]"
-              >
-                Maybe later
-              </Link>
-            </div>
+        .guest-invitation-brand {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 22px;
+        }
+
+        .guest-invitation-brand-title {
+          font-size: 0.95rem;
+          font-weight: 800;
+          line-height: 1.1;
+        }
+
+        .guest-invitation-brand-subtitle {
+          color: #5c6f91;
+          font-size: 0.85rem;
+          font-weight: 650;
+        }
+
+        .guest-invitation-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 320px;
+          gap: 22px;
+          align-items: start;
+        }
+
+        .guest-invitation-card,
+        .guest-invitation-value-panel {
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid #d5e2f2;
+          border-radius: 28px;
+          box-shadow: 0 18px 44px rgba(17, 42, 84, 0.08);
+        }
+
+        .guest-invitation-card {
+          padding: 30px;
+        }
+
+        .guest-invitation-kicker,
+        .guest-invitation-summary-heading,
+        .guest-invitation-rsvp-label {
+          color: #7c8eaa;
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+        }
+
+        .guest-invitation-kicker {
+          margin: 0 0 14px;
+        }
+
+        .guest-invitation-title {
+          font-size: clamp(2rem, 3.5vw, 2.85rem);
+          line-height: 1.08;
+          margin: 0;
+          letter-spacing: 0;
+        }
+
+        .guest-invitation-subtext {
+          color: #405474;
+          font-size: 1rem;
+          font-weight: 650;
+          line-height: 1.55;
+          margin: 14px 0 0;
+          max-width: 560px;
+        }
+
+        .guest-invitation-summary {
+          display: grid;
+          gap: 10px;
+          margin: 24px 0;
+          padding: 18px;
+          border: 1px solid #d9e6f4;
+          border-radius: 20px;
+          background: #f8fbff;
+        }
+
+        .guest-invitation-summary-type {
+          font-size: 1.15rem;
+          font-weight: 850;
+        }
+
+        .guest-invitation-summary-venue {
+          color: #0b1f4d;
+          font-size: 1rem;
+          font-weight: 800;
+        }
+
+        .guest-invitation-summary-time {
+          color: #526784;
+          font-size: 0.95rem;
+          font-weight: 700;
+        }
+
+        .guest-invitation-rsvp-card {
+          align-items: center;
+          background: #f8fbff;
+          border: 1px solid #d9e6f4;
+          border-radius: 18px;
+          display: flex;
+          justify-content: space-between;
+          margin: -8px 0 22px;
+          padding: 14px 16px;
+        }
+
+        .guest-invitation-helper-card {
+          background: #f8fbff;
+          border: 1px solid #d9e6f4;
+          border-radius: 18px;
+          color: #405474;
+          font-size: 0.95rem;
+          font-weight: 700;
+          line-height: 1.5;
+          margin: -8px 0 22px;
+          padding: 14px 16px;
+        }
+
+        .guest-invitation-rsvp-value {
+          color: #06183d;
+          font-size: 1rem;
+          font-weight: 900;
+        }
+
+        .guest-invitation-account-card {
+          margin-top: 24px;
+          padding: 20px;
+          border: 1px solid #d9e6f4;
+          border-radius: 22px;
+          background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        }
+
+        .guest-invitation-account-card-soft {
+          background: #fff;
+        }
+
+        .guest-invitation-account-card h2 {
+          font-size: 1.25rem;
+          margin: 0;
+        }
+
+        .guest-invitation-account-card p {
+          color: #405474;
+          font-size: 0.95rem;
+          font-weight: 650;
+          line-height: 1.55;
+          margin: 8px 0 16px;
+        }
+
+        .guest-invitation-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .guest-invitation-button {
+          align-items: center;
+          border-radius: 999px;
+          display: inline-flex;
+          font-size: 0.92rem;
+          font-weight: 850;
+          justify-content: center;
+          min-height: 46px;
+          padding: 0 18px;
+          text-decoration: none;
+        }
+
+        .guest-invitation-button-primary {
+          background: #06183d;
+          color: #fff;
+          box-shadow: 0 12px 24px rgba(6, 24, 61, 0.16);
+        }
+
+        .guest-invitation-button-secondary {
+          border: 1px solid #c8d7eb;
+          color: #16335f;
+          background: #fff;
+        }
+
+        .guest-invitation-value-panel {
+          padding: 24px;
+        }
+
+        .guest-invitation-value-panel h2 {
+          font-size: 1.25rem;
+          margin: 0 0 18px;
+        }
+
+        .guest-invitation-value-list {
+          display: grid;
+          gap: 16px;
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+
+        .guest-invitation-value-item {
+          display: grid;
+          gap: 4px;
+          padding-left: 18px;
+          position: relative;
+        }
+
+        .guest-invitation-value-item::before {
+          background: #c7e500;
+          border-radius: 999px;
+          content: "";
+          height: 8px;
+          left: 0;
+          position: absolute;
+          top: 8px;
+          width: 8px;
+        }
+
+        .guest-invitation-value-item strong {
+          font-size: 0.95rem;
+        }
+
+        .guest-invitation-value-item span {
+          color: #526784;
+          font-size: 0.86rem;
+          line-height: 1.45;
+        }
+
+        .guest-invitation-footer {
+          color: #72819a;
+          font-size: 0.78rem;
+          font-weight: 650;
+          margin-top: 18px;
+        }
+
+        .guest-invitation-footer a {
+          color: #526784;
+        }
+
+        @media (max-width: 760px) {
+          .guest-invitation-page {
+            padding: 20px 12px 34px;
+          }
+
+          .guest-invitation-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .guest-invitation-card {
+            padding: 22px;
+            border-radius: 24px;
+          }
+
+          .guest-invitation-brand {
+            justify-content: center;
+            text-align: center;
+          }
+
+          .guest-invitation-brand-subtitle {
+            font-size: 0.78rem;
+          }
+
+          .guest-invitation-title {
+            font-size: 2rem;
+            line-height: 1.12;
+          }
+
+          .guest-invitation-value-panel {
+            display: none;
+          }
+
+          .guest-invitation-actions {
+            display: grid;
+          }
+
+          .guest-invitation-button {
+            width: 100%;
+          }
+        }
+      `}</style>
+
+      <div className="guest-invitation-shell">
+        <div className="guest-invitation-brand">
+          <BrandLogo variant="horizontal" />
+          <div>
+            <div className="guest-invitation-brand-title">PlayerHoods</div>
+            <div className="guest-invitation-brand-subtitle">See who&apos;s in. Keep playing.</div>
           </div>
-        </section>
-        <p className="mt-6 text-sm text-[#64748B]">
-          <Link href="/">PlayerHoods</Link>
+        </div>
+
+        <div className="guest-invitation-grid">
+          <section className="guest-invitation-card">
+            <p className="guest-invitation-kicker">Match Invitation</p>
+            <h1 className="guest-invitation-title">{pageState.title}</h1>
+            <p className="guest-invitation-subtext">{pageState.body}</p>
+
+            <section className="guest-invitation-summary" aria-label="Match details">
+              <div className="guest-invitation-summary-heading">Match details</div>
+              <div className="guest-invitation-summary-type">{matchType}</div>
+              <div className="guest-invitation-summary-venue">{venueName}</div>
+              <div className="guest-invitation-summary-time">{matchDateTime}</div>
+            </section>
+
+            {pageState.rsvp ? (
+              <section className="guest-invitation-rsvp-card" aria-label="Your RSVP">
+                <span className="guest-invitation-rsvp-label">Your RSVP</span>
+                <span className="guest-invitation-rsvp-value">{pageState.rsvp}</span>
+              </section>
+            ) : null}
+
+            {isInactive ? (
+              <section className="guest-invitation-helper-card">
+                No action is needed.
+              </section>
+            ) : null}
+
+            {invitation.status === 'pending' && !isInactive ? (
+              <div className="guest-invitation-actions">
+                <Link href={invitationHref} className="guest-invitation-button guest-invitation-button-primary">
+                  Respond to invitation
+                </Link>
+              </div>
+            ) : null}
+
+            {pageState.promptTitle && pageState.promptBody ? (
+              <section className={`guest-invitation-account-card${pageState.softPrompt ? ' guest-invitation-account-card-soft' : ''}`}>
+                <h2>{pageState.promptTitle}</h2>
+                <p>{pageState.promptBody}</p>
+                <div className="guest-invitation-actions">
+                  <Link href={createAccountHref} className={`guest-invitation-button ${pageState.softPrompt ? 'guest-invitation-button-secondary' : 'guest-invitation-button-primary'}`}>
+                    Create account
+                  </Link>
+                  <Link href={invitationHref} className="guest-invitation-button guest-invitation-button-secondary">
+                    Maybe later
+                  </Link>
+                </div>
+              </section>
+            ) : null}
+          </section>
+
+          <aside className="guest-invitation-value-panel" aria-label="Why PlayerHoods">
+            <h2>Why PlayerHoods?</h2>
+            <ul className="guest-invitation-value-list">
+              <li className="guest-invitation-value-item">
+                <strong>No group chat chaos</strong>
+                <span>Confirm who&apos;s in without endless messages.</span>
+              </li>
+              <li className="guest-invitation-value-item">
+                <strong>Private by default</strong>
+                <span>Your phone, email, and player contacts are not shown to others.</span>
+              </li>
+              <li className="guest-invitation-value-item">
+                <strong>Only useful updates</strong>
+                <span>We notify you only when it matters.</span>
+              </li>
+            </ul>
+          </aside>
+        </div>
+
+        <p className="guest-invitation-footer">
+          Private match coordination. No group chat chaos. <Link href="/">PlayerHoods</Link>
         </p>
       </div>
     </main>

@@ -19,7 +19,6 @@ import {
   notifyMatchCourtPlanUpdated,
 } from '@/lib/notifications/match-court'
 import { NotificationService } from '@/lib/notifications/notification-service'
-import { drainQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
 import type { MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
 
 export type MatchUpdateInput = {
@@ -45,6 +44,7 @@ type MatchNotificationSnapshot = {
   game_type: string | null
   match_date: string | null
   start_time: string | null
+  duration_minutes: number | null
 }
 
 type MatchRemovalNotificationSnapshot = MatchNotificationSnapshot & {
@@ -66,8 +66,8 @@ function buildCriticalChangeSet(
   if (next.start_time !== undefined && next.start_time !== previous.start_time) {
     changeSet.start_time = { old: previous.start_time, new: next.start_time }
   }
-  if (next.duration_minutes !== undefined) {
-    changeSet.duration_minutes = { old: null, new: next.duration_minutes }
+  if (next.duration_minutes !== undefined && next.duration_minutes !== previous.duration_minutes) {
+    changeSet.duration_minutes = { old: previous.duration_minutes, new: next.duration_minutes }
   }
 
   return changeSet
@@ -96,9 +96,6 @@ function getIdentityLinkActionError(error: unknown): string {
 function revalidateMatchSurfaces(matchId: string) {
   revalidatePath(`/matches/${matchId}`)
   revalidatePath('/matches')
-  revalidatePath('/dashboard')
-  revalidatePath('/profile')
-  revalidatePath('/onboarding/next-steps')
 }
 
 export async function updateMatchDetailsAction(
@@ -162,9 +159,7 @@ export async function updateMatchDetailsAction(
     }
   }
 
-  if (queuedNotificationCount > 0) {
-    await drainQueuedNotificationDeliveries(supabase, { batchSize: 10, maxBatches: 5 })
-  }
+  void queuedNotificationCount
 
   revalidateMatchSurfaces(matchId)
 }
@@ -271,7 +266,6 @@ export async function confirmMatchAndNotifyAction(matchId: string) {
   }
 
   await NotificationService.confirmMatchAndNotify(supabase, matchId)
-  await drainQueuedNotificationDeliveries(supabase, { batchSize: 10, maxBatches: 5 })
   revalidateMatchSurfaces(matchId)
 }
 
@@ -361,7 +355,7 @@ export async function removeMatchParticipantAction(
       .maybeSingle()
     venueName = venue?.name ?? null
   }
-  await sendParticipantRemovedNotification(
+  sendParticipantRemovedNotification(
     supabase,
     participantId,
     {
@@ -371,7 +365,9 @@ export async function removeMatchParticipantAction(
       start_time: match.start_time,
     },
     venueName,
-  )
+  ).catch((error) => {
+    console.error('[removeMatchParticipantAction] async removed participant notification failed:', error)
+  })
   revalidateMatchSurfaces(matchId)
 }
 

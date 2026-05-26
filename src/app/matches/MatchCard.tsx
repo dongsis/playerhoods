@@ -73,6 +73,7 @@ export function MatchCard({ item, userId }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [completedFastAction, setCompletedFastAction] = useState<'accept' | 'withdraw' | null>(null)
   const router = useRouter()
   const supabase = createSupabaseBrowserClient()
 
@@ -92,6 +93,7 @@ export function MatchCard({ item, userId }: Props) {
     isOrganizer,
     pendingApprovals,
   })
+  const visibleCta = completedFastAction ? null : cta
 
   const confirmedList = participants
     .filter((participant) => participant.status === 'confirmed')
@@ -115,13 +117,22 @@ export function MatchCard({ item, userId }: Props) {
     setError(null)
     startTransition(async () => {
       try {
-        if (!cta) return
-        if (cta.kind === 'accept') await acceptMatchInvite(supabase, match.id)
-        if (cta.kind === 'withdraw') await userWithdraw(supabase, match.id)
-        if (cta.kind === 'request') await requestJoinMatch(supabase, match.id)
-        if (cta.kind === 'approve') await orgApproveParticipant(supabase, cta.participantId)
+        if (!visibleCta) return
+        if (visibleCta.kind === 'accept') {
+          setCompletedFastAction('accept')
+          await acceptMatchInvite(supabase, match.id)
+          return
+        }
+        if (visibleCta.kind === 'withdraw') {
+          setCompletedFastAction('withdraw')
+          await userWithdraw(supabase, match.id)
+          return
+        }
+        if (visibleCta.kind === 'request') await requestJoinMatch(supabase, match.id)
+        if (visibleCta.kind === 'approve') await orgApproveParticipant(supabase, visibleCta.participantId)
         router.refresh()
       } catch (err: unknown) {
+        setCompletedFastAction(null)
         setError((err as { message?: string })?.message ?? 'Action failed')
       }
     })
@@ -228,23 +239,23 @@ export function MatchCard({ item, userId }: Props) {
         </div>
 
         <div className="flex shrink-0 items-start gap-2">
-          {cta && cta.kind !== 'withdraw' ? (
+          {visibleCta && visibleCta.kind !== 'withdraw' ? (
             <button
               onClick={handleCTA}
               disabled={isPending}
               className="text-body-main rounded-full px-4 py-2 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60"
               style={{
                 backgroundColor:
-                  cta.kind === 'accept' || cta.kind === 'approve'
+                  visibleCta.kind === 'accept' || visibleCta.kind === 'approve'
                     ? '#0d6efd'
-                    : CTA_COLOR[cta.kind],
+                    : CTA_COLOR[visibleCta.kind],
               }}
             >
               {isPending
                 ? 'Working...'
-                : cta.kind === 'approve'
-                  ? `${CTA_LABEL.approve} (${cta.count})`
-                  : CTA_LABEL[cta.kind]}
+                : visibleCta.kind === 'approve'
+                  ? `${CTA_LABEL.approve} (${visibleCta.count})`
+                  : CTA_LABEL[visibleCta.kind]}
             </button>
           ) : null}
 
@@ -290,7 +301,7 @@ export function MatchCard({ item, userId }: Props) {
                       </>
                     ) : null}
 
-                    {myParticipant && myParticipant.status !== 'removed' ? (
+                    {myParticipant && myParticipant.status !== 'removed' && completedFastAction !== 'withdraw' ? (
                       <button
                         onClick={() => {
                           setMenuOpen(false)

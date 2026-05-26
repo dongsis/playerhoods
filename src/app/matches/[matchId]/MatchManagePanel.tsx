@@ -8,10 +8,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
 import { saveContactPlayer } from '@/lib/api/play-network'
 import { createRosterGuest } from '@/lib/api/roster'
-import { processDeliveriesAction } from './process-deliveries-action'
 import {
-  hostAddContactPersonAsConfirmed,
-  hostAddUserAsConfirmed,
   inviteGroupToMatch,
   inviteContactPersonToMatch,
   inviteUserToMatch,
@@ -32,7 +29,7 @@ type CurrentRequestTarget = {
 
 type PanelMode = 'invite' | 'remove'
 type InviteSelectionMode = 'invite' | 'request'
-type AdditionMode = InviteSelectionMode | 'confirm'
+type AdditionMode = InviteSelectionMode
 type RemoveSelectionMode = 'confirmed' | 'invites' | 'requests'
 
 type CandidateItem = {
@@ -166,6 +163,38 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join('') || '?'
+}
+
+function normalizeCandidateName(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function dedupeCandidateItems(candidates: CandidateItem[]) {
+  const byKey = new Set<string>()
+  const byPersonName = new Set<string>()
+  const deduped: CandidateItem[] = []
+
+  for (const candidate of candidates) {
+    if (byKey.has(candidate.key)) continue
+    byKey.add(candidate.key)
+
+    if (candidate.kind !== 'group') {
+      const normalizedName = normalizeCandidateName(candidate.name)
+      if (normalizedName) {
+        const personNameKey = `${candidate.kind}:${normalizedName}`
+        if (byPersonName.has(personNameKey)) continue
+        byPersonName.add(personNameKey)
+      }
+    }
+
+    deduped.push(candidate)
+  }
+
+  return deduped
 }
 
 function getAvailabilityLookupKey(kind: 'user' | 'contact', id: string) {
@@ -452,17 +481,13 @@ function SelectableTargetRow({
 function SelectableInviteChip({
   item,
   selected,
-  confirmSelected = false,
   mode,
   onToggle,
-  onConfirm,
 }: {
   item: CandidateItem
   selected: boolean
-  confirmSelected?: boolean
   mode: InviteSelectionMode
   onToggle: () => void
-  onConfirm?: () => void
 }) {
   const selectedClass =
     mode === 'request'
@@ -473,7 +498,6 @@ function SelectableInviteChip({
       ? 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4] hover:text-[#15803D]'
       : 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]'
   const availabilityDotClass = item.kind === 'user' ? getAvailabilityStatusDotClass(item.availabilityStatus) : null
-  const confirmLabel = item.kind === 'contact' ? 'Add & Confirm' : 'Add as Confirmed'
 
   return (
     <span className="flex w-full max-w-full flex-wrap items-center gap-1.5">
@@ -521,27 +545,6 @@ function SelectableInviteChip({
       ) : null}
       {selected ? <span className="text-[10px] font-bold">✓</span> : null}
     </button>
-      {onConfirm ? (
-        <button
-          type="button"
-          onClick={onConfirm}
-          aria-pressed={confirmSelected}
-          title={
-            item.kind === 'contact'
-              ? 'Use Add & Confirm if they already told you they can play.'
-              : 'Use this only if they already confirmed with you outside PlayerHoods.'
-          }
-          className={[
-            'text-body-sub rounded-full border px-3 py-2 font-semibold shadow-sm transition hover:-translate-y-0.5',
-            confirmSelected
-              ? 'border-blue-500 bg-blue-50 text-blue-700'
-              : 'border-blue-100 bg-white text-blue-600 hover:border-blue-300 hover:bg-blue-50',
-          ].join(' ')}
-        >
-          {confirmLabel}
-          {confirmSelected ? <span className="ml-1 text-[10px] font-bold">✓</span> : null}
-        </button>
-      ) : null}
     </span>
   )
 }
@@ -795,7 +798,6 @@ export function MatchManagePanel({
 
   const pendingInviteAdds = pendingAdds.filter((item) => item.mode === 'invite')
   const pendingRequestAdds = pendingAdds.filter((item) => item.mode === 'request')
-  const pendingConfirmAdds = pendingAdds.filter((item) => item.mode === 'confirm')
   const pendingConfirmedRemovals = pendingRemovals.filter((item) => item.category === 'confirmed')
   const pendingInviteRemovals = pendingRemovals.filter((item) => item.category === 'invites')
   const pendingRequestRemovals = pendingRemovals.filter((item) => item.category === 'requests')
@@ -871,7 +873,7 @@ export function MatchManagePanel({
               : []),
           ]
 
-    return pool.filter((candidate) => {
+    const filteredCandidates = pool.filter((candidate) => {
       if (inviteMode === 'invite') {
         if (candidate.kind === 'user' && currentInviteUserIds.has(candidate.id)) return false
         if (candidate.kind === 'group' && currentGroupInviteIds.has(candidate.id)) return false
@@ -882,6 +884,8 @@ export function MatchManagePanel({
 
       return true
     })
+
+    return dedupeCandidateItems(filteredCandidates)
   }, [
     candidateGroups,
     candidateUsers,
@@ -1172,15 +1176,6 @@ export function MatchManagePanel({
     stageAdd(candidate, inviteMode)
   }
 
-  const togglePendingConfirm = (candidate: CandidateItem) => {
-    const alreadySelected = pendingAddKeys.has(`confirm:${candidate.key}`)
-    if (alreadySelected) {
-      cancelAdd(candidate.key, 'confirm')
-      return
-    }
-    stageAdd(candidate, 'confirm')
-  }
-
   const cancelAdd = (key: string, mode: AdditionMode) => {
     setPendingAdds((prev) => prev.filter((item) => !(item.key === key && item.mode === mode)))
   }
@@ -1195,8 +1190,6 @@ export function MatchManagePanel({
     setSuccess(null)
 
     try {
-      let shouldProcessQueuedDeliveries = false
-
       const nextRequestUserIds = sortStrings([
         ...activeRequestUsers
           .map((user) => user.id)
@@ -1246,32 +1239,14 @@ export function MatchManagePanel({
         if (item.kind === 'user') {
           if (isOrganizer) {
             await inviteUserToMatch(supabase, matchId, item.id)
-            shouldProcessQueuedDeliveries = true
           } else {
             await inviteParticipantUserToMatch(supabase, matchId, item.id)
-            shouldProcessQueuedDeliveries = true
           }
         } else if (item.kind === 'group') {
           await inviteGroupToMatch(supabase, matchId, item.id)
-          shouldProcessQueuedDeliveries = true
         } else {
           await inviteContactPersonToMatch(supabase, matchId, item.personId ?? item.id)
-          shouldProcessQueuedDeliveries = true
         }
-      }
-
-      for (const item of pendingConfirmAdds) {
-        if (item.kind === 'user') {
-          await hostAddUserAsConfirmed(supabase, matchId, item.id)
-          shouldProcessQueuedDeliveries = true
-        } else if (item.kind === 'contact') {
-          await hostAddContactPersonAsConfirmed(supabase, matchId, item.personId ?? item.id)
-          shouldProcessQueuedDeliveries = true
-        }
-      }
-
-      if (shouldProcessQueuedDeliveries) {
-        await processDeliveriesAction()
       }
 
       setPendingAdds([])
@@ -1279,13 +1254,14 @@ export function MatchManagePanel({
       setLocalContactCandidates([])
       setConfirmOpen(false)
       setSuccess('Changes applied.')
-      router.refresh()
+      window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
+      if (!embedded) {
+        router.refresh()
+      }
     } catch (applyError) {
       const message = (applyError as { message?: string })?.message ?? ''
       setError(
-        message.includes('target_not_saved')
-          ? 'Add as Confirmed is available only for players saved in your Hood.'
-          : message.includes('contact_communication_opted_out')
+        message.includes('contact_communication_opted_out')
             ? 'This contact has unsubscribed or has no reachable invitation channel.'
             : message || 'Failed to apply changes',
       )
@@ -1398,12 +1374,6 @@ export function MatchManagePanel({
   }
 
   const inviteChanges = [
-    ...pendingConfirmAdds.map((item) => ({
-      key: `add:confirm:${item.key}`,
-      title: item.kind === 'contact' ? 'Add & Confirm' : 'Add as Confirmed',
-      name: item.name,
-      mode: item.mode,
-    })),
     ...pendingInviteAdds.map((item) => ({
       key: `add:invite:${item.key}`,
       title: item.kind === 'group' ? 'Invite group' : 'Invite player',
@@ -1423,9 +1393,7 @@ export function MatchManagePanel({
       ? pendingRequestAdds.length > 0
         ? 'Apply Request Changes'
         : 'Apply Changes'
-      : pendingConfirmAdds.length > 0
-        ? 'Apply Confirmed Players'
-        : pendingInviteAdds.length > 0
+      : pendingInviteAdds.length > 0
           ? 'Apply Invitations'
         : 'Apply Changes'
 
@@ -1627,7 +1595,14 @@ export function MatchManagePanel({
                     <div className="mb-4 rounded-2xl border border-dashed border-blue-200 bg-white/80 p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
-                          <div className="text-title-main text-slate-900">Need more players?</div>
+                          <div className="text-title-main text-slate-900">
+                            {visibleConfirmedParticipants.length >= requiredCount ? 'Lineup is full.' : 'Need more players?'}
+                          </div>
+                          {visibleConfirmedParticipants.length >= requiredCount ? (
+                            <p className="mt-1 text-body-sub font-semibold text-slate-500">
+                              Use Adjust Lineup if you need to add or replace players.
+                            </p>
+                          ) : null}
                         </div>
                         <button
                           type="button"
@@ -1738,17 +1713,6 @@ export function MatchManagePanel({
                           item={candidate}
                           mode={inviteMode}
                           selected={pendingAddKeys.has(`${inviteMode}:${candidate.key}`)}
-                          confirmSelected={pendingAddKeys.has(`confirm:${candidate.key}`)}
-                          onConfirm={
-                            inviteMode === 'invite'
-                            && isOrganizer
-                            && (
-                              candidate.kind === 'contact'
-                              || (candidate.kind === 'user' && candidate.sourceLabel === 'Saved')
-                            )
-                              ? () => togglePendingConfirm(candidate)
-                              : undefined
-                          }
                           onToggle={() => togglePendingAdd(candidate)}
                         />
                       ))
@@ -1832,7 +1796,7 @@ export function MatchManagePanel({
                               </div>
                               <button
                                 type="button"
-                                onClick={() => cancelAdd(change.key.replace(/^add:(invite|request|confirm):/, ''), change.mode)}
+                                onClick={() => cancelAdd(change.key.replace(/^add:(invite|request):/, ''), change.mode)}
                                 className="text-body-sub shrink-0 font-semibold text-slate-400 transition hover:text-slate-700"
                               >
                                 Undo

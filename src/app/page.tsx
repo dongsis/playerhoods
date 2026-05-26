@@ -444,7 +444,7 @@ function HomeAuthOverlay({
 
       if (signUpError) {
         console.error('[home-auth:register]', signUpError)
-        setError(mapAuthErrorToUiMessage('register'))
+        setError(mapAuthErrorToUiMessage('register', signUpError))
         return
       }
 
@@ -462,7 +462,7 @@ function HomeAuthOverlay({
       setInfo('We sent you a confirmation email. Please verify your email.')
     } catch (err) {
       console.error('[home-auth:register]', err)
-      setError(mapAuthErrorToUiMessage('register'))
+      setError(mapAuthErrorToUiMessage('register', err))
     } finally {
       setLoading(false)
     }

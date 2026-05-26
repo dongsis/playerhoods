@@ -48,9 +48,38 @@ import {
 import { MatchDetailPageView } from '../matches/[matchId]/MatchDetailPageView'
 import { loadMatchDetailPageData } from '../matches/[matchId]/match-detail.loader'
 import { buildMatchDetailPageViewModel } from '../matches/[matchId]/match-detail.view-model'
+import type { MatchListItem } from '@/lib/api/matches'
 
 interface Props {
   searchParams: Promise<{ notice?: string; matchId?: string; tab?: string }>
+}
+
+function getMatchMinutes(item: MatchListItem): { start: number; end: number } | null {
+  if (!item.match.start_time) return null
+  const [hour, minute] = item.match.start_time.slice(0, 5).split(':').map(Number)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
+  const start = hour * 60 + minute
+  const duration = Math.max(item.match.duration_minutes ?? 60, 30)
+  return { start, end: start + duration }
+}
+
+function hasSelectedMatchConflict(items: MatchListItem[], selectedMatchId: string): boolean {
+  const selected = items.find((item) => item.match.id === selectedMatchId)
+  if (!selected || selected.match.status === 'cancelled' || !selected.match.match_date) return false
+
+  const selectedMinutes = getMatchMinutes(selected)
+  if (!selectedMinutes) return false
+
+  return items.some((item) => {
+    if (item.match.id === selectedMatchId || item.match.status === 'cancelled') return false
+    if (item.myParticipant?.status === 'removed') return false
+    if (item.match.match_date !== selected.match.match_date) return false
+
+    const otherMinutes = getMatchMinutes(item)
+    if (!otherMinutes) return false
+
+    return selectedMinutes.start < otherMinutes.end && otherMinutes.start < selectedMinutes.end
+  })
 }
 
 export default async function DashboardPage({ searchParams }: Props) {
@@ -63,17 +92,20 @@ export default async function DashboardPage({ searchParams }: Props) {
   if (selectedMatchId) {
     const matchDetailLoaderData = await loadMatchDetailPageData(selectedMatchId)
     const matchDetailViewModel = buildMatchDetailPageViewModel(matchDetailLoaderData)
+    const hasTimeConflict = hasSelectedMatchConflict(viewModel.items, selectedMatchId)
     const matchSnapshot = {
       id: matchDetailViewModel.match.id,
       game_type: matchDetailViewModel.match.game_type,
       match_date: matchDetailViewModel.match.match_date,
       start_time: matchDetailViewModel.match.start_time,
+      duration_minutes: matchDetailViewModel.match.duration_minutes,
     }
 
     selectedMatchDetail = (
       <MatchDetailPageView
         embedded
         viewModel={matchDetailViewModel}
+        hasTimeConflict={hasTimeConflict}
         onUpdateMatchDetails={updateMatchDetailsAction.bind(null, selectedMatchId, matchDetailViewModel.venueName, matchSnapshot)}
         onUpdateOrganizerNote={updateMatchOrganizerNoteAction.bind(null, selectedMatchId)}
         onPostMessage={postMatchMessageAction.bind(null, selectedMatchId)}

@@ -41,7 +41,7 @@ interface Props {
   onRemoveParticipant?: (participantId: string) => Promise<void>
 }
 
-type ParticipantMenuAction = 'remove' | 'withdraw' | 'proxy-withdraw' | 'host-confirm-offline' | 'move-to-waiting' | null
+type ParticipantMenuAction = 'remove' | 'withdraw' | 'proxy-withdraw' | 'host-confirm-offline' | null
 
 type ParticipantTimelineEvent = {
   key: string
@@ -357,11 +357,6 @@ function ParticipantRow({
     isWaitingForPlayer &&
     p.org_approved_at !== null &&
     p.participant_accepted_at === null
-  const canMoveToWaiting =
-    isOrganizer &&
-    isActive &&
-    p.status === 'confirmed' &&
-    !(p.user_id !== null && p.user_id === organizerUserId)
   const hostRemoveActionLabel =
     isPendingRequest
       ? 'Not This Time'
@@ -538,17 +533,6 @@ function ParticipantRow({
           },
         }
       : null,
-    canMoveToWaiting
-      ? {
-          key: 'move-to-waiting',
-          label: 'Move to Waiting',
-          style: secondaryMenuActionStyle,
-          onClick: () => {
-            setMenuOpen(false)
-            setActiveDialog('move-to-waiting')
-          },
-        }
-      : null,
     canProxyConfirm
       ? {
           key: 'proxy-confirm',
@@ -689,17 +673,17 @@ function ParticipantRow({
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  padding: '0.08rem 0.38rem',
+                  padding: '0.14rem 0.48rem',
                   borderRadius: '999px',
                   background: '#F6F8FB',
                   color: '#4B647F',
                   border: '1px solid #D8E2EE',
-                  fontSize: '0.42rem',
+                  fontSize: '0.54rem',
                   fontWeight: 800,
                   letterSpacing: 0,
                   textTransform: 'none',
                 }}
-                title="Confirmed outside the app by the host."
+                title="Added by host after offline confirmation."
               >
                 Host-confirmed
               </span>
@@ -969,22 +953,6 @@ function ParticipantRow({
         </div>
       )}
 
-      {activeDialog === 'move-to-waiting' && (
-        <div style={dialogOverlayStyle}>
-          <div style={dialogCardStyle}>
-            <h4 style={dialogTitleStyle}>Move to Waiting?</h4>
-            <p style={dialogBodyStyle}>
-              This action needs a backend transition before it can safely move confirmed players back to waiting.
-            </p>
-            <div style={dialogActionsStyle}>
-              <button type="button" onClick={closeMenus} style={secondaryButtonStyle}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {(activeDialog === 'withdraw' || activeDialog === 'proxy-withdraw') && (
         <div style={dialogOverlayStyle}>
           <div style={dialogCardStyle}>
@@ -1183,6 +1151,7 @@ function Section({
   badgeColor,
   extraLabel,
   helper,
+  hideHeader = false,
   children,
   defaultOpen = true,
 }: {
@@ -1192,6 +1161,7 @@ function Section({
   badgeColor: string
   extraLabel?: string | null
   helper?: string | null
+  hideHeader?: boolean
   children: React.ReactNode
   defaultOpen?: boolean
 }) {
@@ -1208,38 +1178,40 @@ function Section({
 
   return (
     <div style={{ marginBottom: '0.6rem' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          gap: '0.28rem',
-          marginBottom: '0.18rem',
-          flexWrap: 'wrap',
-        }}
-      >
-        <h4
+      {!hideHeader ? (
+        <div
           style={{
-            margin: 0,
-            fontSize: '0.82rem',
-            color: badgeColor,
-            fontWeight: 700,
-            letterSpacing: '-0.01em',
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: '0.28rem',
+            marginBottom: '0.18rem',
+            flexWrap: 'wrap',
           }}
         >
-          {title} {'\u00b7'} {badgeLabel ?? badge}
-        </h4>
-        {extraLabel ? (
-          <span
+          <h4
             style={{
-              fontSize: '0.62rem',
-              fontWeight: 700,
+              margin: 0,
+              fontSize: '0.82rem',
               color: badgeColor,
+              fontWeight: 700,
+              letterSpacing: '-0.01em',
             }}
           >
-            {extraLabel}
-          </span>
-        ) : null}
-      </div>
+            {title} {'\u00b7'} {badgeLabel ?? badge}
+          </h4>
+          {extraLabel ? (
+            <span
+              style={{
+                fontSize: '0.62rem',
+                fontWeight: 700,
+                color: badgeColor,
+              }}
+            >
+              {extraLabel}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {helper ? (
         <p style={{ margin: '0 0 0.35rem', color: '#94a3b8', fontSize: '0.74rem', lineHeight: 1.45 }}>
           {helper}
@@ -1287,7 +1259,7 @@ export function ParticipantGroups({
   // Confirmed participants — exclude anyone who is also in removed (handles duplicate rows for same guest/user)
   const confirmed = participants.filter(p => {
     if (removedIdentityIds.has(p.guest_id ?? p.user_id ?? '')) return false
-    return p.status === 'confirmed' || (p.join_method === 'guest_add' && p.status !== 'removed')
+    return p.status === 'confirmed' && p.removed_at === null
   })
   const isLineupFull = confirmed.length >= requiredCount
   const confirmedSectionTitle = isFormed
@@ -1343,6 +1315,7 @@ export function ParticipantGroups({
         badge={confirmed.length}
         badgeLabel={`${confirmed.length} ${confirmed.length === 1 ? 'player' : 'players'}`}
         badgeColor="#2d8a4e"
+        hideHeader={isFormed}
       >
         {confirmed.length === 0 ? (
           <p style={{ color: '#aaa', fontSize: '0.85rem' }}>None yet.</p>
@@ -1354,20 +1327,16 @@ export function ParticipantGroups({
       </Section>
 
       {/* Pending — visible here when the current page model allows the row through. */}
-      {isOrganizer || visibleWaitingForConfirmation.length > 0 ? (
+      {visibleWaitingForConfirmation.length > 0 ? (
         <Section
           title={isOrganizer ? 'Waiting for player' : 'Players You Manage'}
           badge={visibleWaitingForConfirmation.length}
           badgeColor="#d97706"
           helper={isLineupFull && visibleWaitingForConfirmation.length > 0 ? 'Not counted toward this match yet.' : null}
         >
-          {visibleWaitingForConfirmation.length === 0 ? (
-            <p style={{ color: '#98a2b3', fontSize: '0.82rem' }}>No players waiting for confirmation.</p>
-          ) : (
-            <div style={participantGridStyle}>
-              {visibleWaitingForConfirmation.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
-            </div>
-          )}
+          <div style={participantGridStyle}>
+            {visibleWaitingForConfirmation.map(p => <ParticipantRow key={p.id} {...rowProps(p)} />)}
+          </div>
         </Section>
       ) : null}
 

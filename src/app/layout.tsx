@@ -10,6 +10,14 @@ export const metadata: Metadata = {
   metadataBase: new URL(getSiteOrigin()),
   title: 'PlayerHoods',
   description: 'Find tennis and pickleball venues, matches, and players with PlayerHoods.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '32x32' },
+      { url: '/icon.png', type: 'image/png', sizes: '512x512' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [{ url: '/apple-touch-icon.png', type: 'image/png', sizes: '180x180' }],
+  },
   openGraph: {
     title: 'PlayerHoods',
     description: 'Find tennis and pickleball venues, matches, and players with PlayerHoods.',

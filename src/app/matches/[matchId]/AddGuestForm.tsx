@@ -50,13 +50,13 @@ export function AddGuestForm({ matchId }: Props) {
       })
       // 2) Invite that Contact Player into this match
       await inviteContactGuestToMatch(supabase, matchId, guest.id)
-      await processDeliveriesAction()
       setSuccess(true)
       setDisplayName('')
       setEmail('')
       setPhone('')
       setGuestNotes('')
       router.refresh()
+      processDeliveriesAction().catch(() => {})
     } catch (err) {
       setError((err as { message?: string })?.message ?? 'Failed to create contact player')
     } finally {

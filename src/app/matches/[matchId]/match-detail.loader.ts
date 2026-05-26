@@ -1,8 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
 import {
-  getAdmissionTargets,
-  getContactPersonAdmissionTargets,
   getCourts,
   getMatchCourts,
   getMatchDetailData,
@@ -74,13 +72,7 @@ export async function loadMatchDetailPageData(matchId: string): Promise<MatchDet
       : Promise.resolve([] as Court[]),
   ])
 
-  const [admissionTargets, contactPersonTargets, inviteCircle, allGroups, identityLinkCandidates] = await Promise.all([
-    detail.match.status === 'active'
-      ? loadWithFallback('admissionTargets', () => getAdmissionTargets(supabase, matchId), [] as AdmissionTarget[])
-      : Promise.resolve([] as AdmissionTarget[]),
-    detail.match.status === 'active' && user
-      ? loadWithFallback('contactPersonTargets', () => getContactPersonAdmissionTargets(supabase, matchId), [] as ContactPersonAdmissionTarget[])
-      : Promise.resolve([] as ContactPersonAdmissionTarget[]),
+  const [inviteCircle, allGroups, identityLinkCandidates] = await Promise.all([
     user
       ? loadWithFallback('inviteCircle', () => getInviteCircleList(supabase), [] as InviteCircleRow[])
       : Promise.resolve([] as InviteCircleRow[]),
@@ -99,8 +91,8 @@ export async function loadMatchDetailPageData(matchId: string): Promise<MatchDet
     matchCourts,
     inScope,
     venueCourts,
-    admissionTargets,
-    contactPersonTargets,
+    admissionTargets: [],
+    contactPersonTargets: [],
     inviteCircle,
     allGroups,
     identityLinkCandidates,

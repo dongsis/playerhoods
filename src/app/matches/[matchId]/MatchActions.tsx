@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
@@ -39,23 +39,71 @@ export function MatchActions({
   myGroupInvites,
   organizerName,
 }: Props) {
+  const [localParticipation, setLocalParticipation] = useState<MatchParticipant | null>(myParticipation)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [declineOpen, setDeclineOpen] = useState(false)
   const [declineReason, setDeclineReason] = useState('')
   const router = useRouter()
 
-  const handleAction = async (action: () => Promise<void>, redirectAfter?: string) => {
+  useEffect(() => {
+    setLocalParticipation(myParticipation)
+  }, [myParticipation])
+
+  const markAcceptedOptimistic = () => {
+    setLocalParticipation((current) => {
+      if (!current) return current
+      const now = new Date().toISOString()
+      const waitsForHostApproval =
+        current.join_method === 'nominated' && current.org_approved_at === null
+      const nextStatus = waitsForHostApproval
+        ? current.status
+        : confirmedCount >= requiredCount
+          ? 'waiting_list'
+          : 'confirmed'
+
+      return {
+        ...current,
+        status: nextStatus,
+        participant_accepted_at: current.participant_accepted_at ?? now,
+        participant_accepted_via: current.participant_accepted_via ?? 'in_app',
+        waiting_list_at: nextStatus === 'waiting_list' ? (current.waiting_list_at ?? now) : current.waiting_list_at,
+      }
+    })
+  }
+
+  const markDeclinedOptimistic = () => {
+    setLocalParticipation((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        status: 'removed',
+        removed_at: current.removed_at ?? new Date().toISOString(),
+      }
+    })
+  }
+
+  const handleAction = async (
+    action: () => Promise<void>,
+    options?: {
+      redirectAfter?: string
+      refreshAfter?: boolean
+      optimistic?: () => void
+    },
+  ) => {
     setError(null)
     setLoading(true)
+    const previousParticipation = localParticipation
+    options?.optimistic?.()
     try {
       await action()
-      if (redirectAfter) {
-        router.push(redirectAfter)
-      } else {
+      if (options?.redirectAfter) {
+        router.push(options.redirectAfter)
+      } else if (options?.refreshAfter !== false) {
         router.refresh()
       }
     } catch (err: unknown) {
+      setLocalParticipation(previousParticipation)
       const message = (err as { message?: string })?.message || 'Action failed'
       console.error('MatchActions error:', err)
       setError(message)
@@ -65,7 +113,7 @@ export function MatchActions({
   }
 
   const supabase = createSupabaseBrowserClient()
-  const mp = myParticipation
+  const mp = localParticipation
   const isRemoved = mp?.status === 'removed'
   const isPending = mp?.status === 'pending'
   const isWaitingList = mp?.status === 'waiting_list'
@@ -283,7 +331,10 @@ export function MatchActions({
                       onClick={() => {
                         const note = declineReason.trim()
                         closeDeclineDialog()
-                        handleAction(() => userWithdraw(supabase, matchId, note))
+                        handleAction(() => userWithdraw(supabase, matchId, note), {
+                          refreshAfter: false,
+                          optimistic: markDeclinedOptimistic,
+                        })
                       }}
                       style={{
                         ...dangerDialogButtonStyle,
@@ -308,7 +359,10 @@ export function MatchActions({
         {!needsReconfirm && !hasUserAccepted && (isInvited || isParticipantInvite) && (
           <>
             <button
-              onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
+              onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId), {
+                refreshAfter: false,
+                optimistic: markAcceptedOptimistic,
+              })}
               disabled={loading}
               style={primaryButtonStyle}
             >
@@ -330,7 +384,10 @@ export function MatchActions({
 
         {needsReconfirm && (
           <button
-            onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId))}
+            onClick={() => handleAction(() => acceptMatchInvite(supabase, matchId), {
+              refreshAfter: false,
+              optimistic: markAcceptedOptimistic,
+            })}
             disabled={loading}
             style={primaryButtonStyle}
           >
@@ -385,7 +442,10 @@ export function MatchActions({
                   onClick={() => {
                     const note = declineReason.trim()
                     closeDeclineDialog()
-                    handleAction(() => userWithdraw(supabase, matchId, note))
+                    handleAction(() => userWithdraw(supabase, matchId, note), {
+                      refreshAfter: false,
+                      optimistic: markDeclinedOptimistic,
+                    })
                   }}
                   style={{
                     ...dangerDialogButtonStyle,
@@ -451,7 +511,10 @@ export function MatchActions({
                   onClick={() => {
                     const note = declineReason.trim()
                     closeDeclineDialog()
-                    handleAction(() => userWithdraw(supabase, matchId, note))
+                    handleAction(() => userWithdraw(supabase, matchId, note), {
+                      refreshAfter: false,
+                      optimistic: markDeclinedOptimistic,
+                    })
                   }}
                   style={{
                     ...dangerDialogButtonStyle,
@@ -545,7 +608,10 @@ export function MatchActions({
                   onClick={() => {
                     const note = declineReason.trim()
                     closeDeclineDialog()
-                    handleAction(() => userWithdraw(supabase, matchId, note))
+                    handleAction(() => userWithdraw(supabase, matchId, note), {
+                      refreshAfter: false,
+                      optimistic: markDeclinedOptimistic,
+                    })
                   }}
                   style={{
                     ...dangerDialogButtonStyle,

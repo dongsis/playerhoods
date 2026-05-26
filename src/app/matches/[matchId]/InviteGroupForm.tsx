@@ -34,10 +34,10 @@ export function InviteGroupForm({ matchId, groups, invitedGroups }: Props) {
     const supabase = createSupabaseBrowserClient()
     try {
       const invite = await inviteGroupToMatch(supabase, matchId, groupId)
-      await processDeliveriesAction()
       setSuccess(invite?.group_name ?? 'Group invited.')
       setGroupId('')
       router.refresh()
+      processDeliveriesAction().catch(() => {})
     } catch (submitError) {
       setError((submitError as { message?: string })?.message ?? 'Failed to invite Shared Group')
     } finally {

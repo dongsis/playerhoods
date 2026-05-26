@@ -2049,11 +2049,9 @@ export function CreateMatchInline({
         }
       }
       if (shouldProcessQueuedDeliveries) {
-        try {
-          await processDeliveriesAction()
-        } catch (deliveryError) {
+        processDeliveriesAction().catch((deliveryError) => {
           console.error('[CreateMatchInline] process queued deliveries:', deliveryError)
-        }
+        })
       }
       if (mode === 'invite') {
         const targets = await getAdmissionTargets(supabase, match.id)
@@ -2191,7 +2189,9 @@ export function CreateMatchInline({
       for (const uid of selectedIds) {
         await inviteUserToMatch(supabase, createdMatchId, uid)
       }
-      await processDeliveriesAction()
+      processDeliveriesAction().catch((deliveryError) => {
+        console.error('[CreateMatchInline] process queued deliveries:', deliveryError)
+      })
 
       const participants = await getMatchParticipants(supabase, createdMatchId)
       const pendingUserIds = new Set(

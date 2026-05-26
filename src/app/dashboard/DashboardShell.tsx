@@ -475,15 +475,20 @@ export function DashboardShell({
         void refreshDashboardLive()
       }
     }
+    const handleDashboardLiveRefresh = () => {
+      void refreshDashboardLive()
+    }
 
     if (document.visibilityState === 'visible') {
       void refreshDashboardLive()
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('playerhoods:dashboard-live-refresh', handleDashboardLiveRefresh)
 
     return () => {
       window.clearInterval(intervalId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('playerhoods:dashboard-live-refresh', handleDashboardLiveRefresh)
     }
   }, [activeTab, refreshDashboardLive])
 

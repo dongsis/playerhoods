@@ -106,6 +106,27 @@ function formatMatchKindForSentence(value: string | null | undefined): string {
   return normalized || 'a match'
 }
 
+function getInactiveInvitationCopy(invitationStatus: string, matchStatus: string | null | undefined, isParticipantRemoved: boolean) {
+  if (invitationStatus === 'canceled' || isParticipantRemoved) {
+    return {
+      title: 'This invitation is no longer active',
+      body: 'The host canceled this invitation or updated the match details.',
+    }
+  }
+
+  if (matchStatus === 'cancelled' || matchStatus === 'canceled') {
+    return {
+      title: 'This invitation is no longer active',
+      body: 'The host canceled this invitation or updated the match details.',
+    }
+  }
+
+  return {
+    title: 'This invitation is no longer active',
+    body: 'The host canceled this invitation or updated the match details.',
+  }
+}
+
 export default async function InvitationPage({ params, searchParams }: Props) {
   const { id } = await params
   const pageParams = await searchParams
@@ -174,6 +195,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
     || isParticipantRemoved
     || inv.match_summary?.match_status === 'cancelled'
     || inv.match_summary?.match_status === 'canceled'
+  const inactiveCopy = getInactiveInvitationCopy(inv.status, inv.match_summary?.match_status, isParticipantRemoved)
   const isHostConfirmed =
     confirmationSource === 'host_managed_offline'
     || confirmationSource === 'contact_owner_managed'
@@ -199,6 +221,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
   const pageKicker = shouldShowConfirmedLanding || shouldShowFormedLanding
     ? 'Match Confirmation'
     : 'Match Invitation'
+  const createAccountHref = `/login?mode=register&next=${encodeURIComponent(matchHref)}`
 
   return (
     <div className="invitation-page">
@@ -268,8 +291,8 @@ export default async function InvitationPage({ params, searchParams }: Props) {
         }
 
         .invitation-title {
-          font-size: clamp(2rem, 4vw, 3.4rem);
-          line-height: 0.98;
+          font-size: clamp(2rem, 3.5vw, 2.85rem);
+          line-height: 1.08;
           margin: 0;
           letter-spacing: 0;
         }
@@ -291,6 +314,14 @@ export default async function InvitationPage({ params, searchParams }: Props) {
           border: 1px solid #d9e6f4;
           border-radius: 20px;
           background: #f8fbff;
+        }
+
+        .invitation-summary-heading {
+          color: #7c8eaa;
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
         }
 
         .invitation-summary-type {
@@ -315,6 +346,43 @@ export default async function InvitationPage({ params, searchParams }: Props) {
           font-size: 0.95rem;
           line-height: 1.55;
           margin: 0 0 22px;
+        }
+
+        .invitation-helper-card {
+          background: #f8fbff;
+          border: 1px solid #d9e6f4;
+          border-radius: 18px;
+          color: #405474;
+          font-size: 0.95rem;
+          font-weight: 700;
+          line-height: 1.5;
+          margin: -8px 0 22px;
+          padding: 14px 16px;
+        }
+
+        .invitation-rsvp-card {
+          align-items: center;
+          background: #f8fbff;
+          border: 1px solid #d9e6f4;
+          border-radius: 18px;
+          display: flex;
+          justify-content: space-between;
+          margin: -8px 0 22px;
+          padding: 14px 16px;
+        }
+
+        .invitation-rsvp-label {
+          color: #7c8eaa;
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .invitation-rsvp-value {
+          color: #06183d;
+          font-size: 1rem;
+          font-weight: 900;
         }
 
         .invitation-actions {
@@ -510,6 +578,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
 
           .invitation-title {
             font-size: 2rem;
+            line-height: 1.12;
           }
 
           .invitation-value-panel {
@@ -555,9 +624,9 @@ export default async function InvitationPage({ params, searchParams }: Props) {
 
             {isInvitationInactive ? (
               <>
-                <h1 className="invitation-title">This invitation is no longer active</h1>
+                <h1 className="invitation-title">{inactiveCopy.title}</h1>
                 <p className="invitation-subtext">
-                  The match or invitation status changed, so this response link can no longer be used.
+                  {inactiveCopy.body}
                 </p>
               </>
             ) : shouldShowFormedLanding ? (
@@ -576,16 +645,16 @@ export default async function InvitationPage({ params, searchParams }: Props) {
               </>
             ) : inv.status === 'accepted' ? (
               <>
-                <h1 className="invitation-title">You&apos;re in.</h1>
+                <h1 className="invitation-title">You&apos;re in</h1>
                 <p className="invitation-subtext">
-                  {inviterName} will be notified that you accepted.
+                  You&apos;ve accepted this match invitation. The host will be notified that you&apos;re in.
                 </p>
               </>
             ) : inv.status === 'declined' ? (
               <>
-                <h1 className="invitation-title">Invitation declined.</h1>
+                <h1 className="invitation-title">You&apos;re not playing</h1>
                 <p className="invitation-subtext">
-                  {inviterName} will be notified that you can&apos;t make it.
+                  You&apos;ve declined this invitation. The host will be notified.
                 </p>
               </>
             ) : (
@@ -598,10 +667,31 @@ export default async function InvitationPage({ params, searchParams }: Props) {
             )}
 
             <section className="invitation-summary" aria-label="Match summary">
+              <div className="invitation-summary-heading">Match details</div>
               <div className="invitation-summary-type">{matchType}</div>
               <div className="invitation-summary-venue">{venueName ?? 'Venue to be confirmed'}</div>
               <div className="invitation-summary-time">{matchDateTime || 'Time to be confirmed'}</div>
             </section>
+
+            {isInvitationInactive ? (
+              <section className="invitation-helper-card">
+                No action is needed.
+              </section>
+            ) : null}
+
+            {inv.status === 'accepted' && !isInvitationInactive && !shouldShowConfirmedLanding && !shouldShowFormedLanding ? (
+              <section className="invitation-rsvp-card" aria-label="Your RSVP">
+                <span className="invitation-rsvp-label">Your RSVP</span>
+                <span className="invitation-rsvp-value">Accepted</span>
+              </section>
+            ) : null}
+
+            {inv.status === 'declined' && !isInvitationInactive ? (
+              <section className="invitation-rsvp-card" aria-label="Your RSVP">
+                <span className="invitation-rsvp-label">Your RSVP</span>
+                <span className="invitation-rsvp-value">Declined</span>
+              </section>
+            ) : null}
 
             {(shouldShowConfirmedLanding || shouldShowFormedLanding) && (
               <>
@@ -625,7 +715,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
                       Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.
                     </p>
                     <div className="invitation-actions">
-                      <Link href={`/login?mode=register&next=${encodeURIComponent(matchHref)}`} className="invitation-button invitation-button-secondary">
+                      <Link href={createAccountHref} className="invitation-button invitation-button-secondary">
                         Create Free Account
                       </Link>
                     </div>
@@ -636,24 +726,14 @@ export default async function InvitationPage({ params, searchParams }: Props) {
 
             {inv.status === 'accepted' && !shouldShowConfirmedLanding && !shouldShowFormedLanding && !isInvitationInactive && (
               <>
-                <p className="invitation-note">
-                  We&apos;ll only contact you again if the match is confirmed and you&apos;re selected to play, or if key details change.
-                </p>
-                {inv.related_type === 'match' && (
-                  <div className="invitation-actions">
-                    <Link href={matchHref} className="invitation-button invitation-button-primary">
-                      View match details
-                    </Link>
-                  </div>
-                )}
                 <section className="invitation-account-card">
-                  <h2>Make next time easier</h2>
+                  <h2>Create your free PlayerHoods account</h2>
                   <p>
-                    Create a free PlayerHoods account to keep this match, save players you play with, and confirm future invites faster.
+                    Manage this match, get updates, save {inviterName} as a player contact, and join future matches faster.
                   </p>
                   <div className="invitation-actions">
-                    <Link href={`/login?mode=register&next=${encodeURIComponent(matchHref)}`} className="invitation-button invitation-button-blue">
-                      Create free account
+                    <Link href={createAccountHref} className="invitation-button invitation-button-primary">
+                      Create account
                     </Link>
                     <Link href={matchHref} className="invitation-button invitation-button-secondary">
                       Maybe later
@@ -664,11 +744,20 @@ export default async function InvitationPage({ params, searchParams }: Props) {
             )}
 
             {inv.status === 'declined' && !isInvitationInactive && (
-              <div className="invitation-actions">
-                <Link href={matchHref} className="invitation-button invitation-button-secondary">
-                  View invitation
-                </Link>
-              </div>
+              <section className="invitation-account-card invitation-account-card-soft">
+                <h2>Manage future invites more easily</h2>
+                <p>
+                  Create a free PlayerHoods account to track match updates, save players, and respond faster next time.
+                </p>
+                <div className="invitation-actions">
+                  <Link href={createAccountHref} className="invitation-button invitation-button-secondary">
+                    Create account
+                  </Link>
+                  <Link href="/" className="invitation-button invitation-button-secondary">
+                    Maybe later
+                  </Link>
+                </div>
+              </section>
             )}
 
             {isExpired && inv.status === 'pending' && !shouldShowConfirmedLanding && !shouldShowFormedLanding && !isInvitationInactive && (
@@ -740,7 +829,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
                         Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.
                       </p>
                       <div className="invitation-actions">
-                        <Link href={`/login?mode=register&next=${encodeURIComponent(matchHref)}`} className="invitation-button invitation-button-secondary">
+                        <Link href={createAccountHref} className="invitation-button invitation-button-secondary">
                           Create Free Account
                         </Link>
                       </div>

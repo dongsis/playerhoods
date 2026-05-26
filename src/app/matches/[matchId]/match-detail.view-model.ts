@@ -177,7 +177,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
   )
   const savedLineup = parseMatchLineupSnapshot(match.lineup_snapshot)
   const confirmedPlayerIds = participants
-    .filter((participant) => participant.status === 'confirmed')
+    .filter((participant) => participant.status === 'confirmed' && participant.removed_at === null)
     .map((participant) => participant.id)
   const canViewLineup = isOrganizer || isCurrentLineupSnapshot(savedLineup, confirmedPlayerIds)
   const savedAdmissionTargets = admissionTargets.filter((target) => target.source === 'invite_circle')

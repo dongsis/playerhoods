@@ -47,7 +47,40 @@ export function maskEmail(email: string | null | undefined) {
   return `${visiblePrefix}${'*'.repeat(Math.max(localPart.length - visiblePrefix.length, 3))}@${domainPart}`
 }
 
-export function mapAuthErrorToUiMessage(action: AuthAction) {
+function getAuthErrorText(error: unknown) {
+  if (!error) return ''
+  if (typeof error === 'string') return error.toLowerCase()
+  if (error instanceof Error) return error.message.toLowerCase()
+
+  const maybeMessage = (error as { message?: unknown }).message
+  return typeof maybeMessage === 'string' ? maybeMessage.toLowerCase() : ''
+}
+
+export function mapAuthErrorToUiMessage(action: AuthAction, error?: unknown) {
+  const errorText = getAuthErrorText(error)
+
+  if (action === 'register') {
+    if (errorText.includes('email signups are disabled') || errorText.includes('email_provider_disabled')) {
+      return 'Email sign-up is currently disabled. Please continue with Google, or try again after email sign-up is enabled.'
+    }
+
+    if (errorText.includes('error sending confirmation email')) {
+      return 'We could not send the confirmation email right now. Please try again in a few minutes, or continue with Google.'
+    }
+
+    if (
+      errorText.includes('already registered')
+      || errorText.includes('already exists')
+      || errorText.includes('user already')
+    ) {
+      return 'This email already has an account. Please sign in, or continue with Google if you used Google before.'
+    }
+
+    if (errorText.includes('rate limit') || errorText.includes('too many')) {
+      return 'Too many sign-up emails were requested. Please wait a few minutes and try again.'
+    }
+  }
+
   switch (action) {
     case 'login':
       return 'Email or password is incorrect. If you signed up with Google, use "Continue with Google".'
