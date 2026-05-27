@@ -121,16 +121,19 @@ export function MatchCard({ item, userId }: Props) {
         if (visibleCta.kind === 'accept') {
           setCompletedFastAction('accept')
           await acceptMatchInvite(supabase, match.id)
+          window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
           return
         }
         if (visibleCta.kind === 'withdraw') {
           setCompletedFastAction('withdraw')
           await userWithdraw(supabase, match.id)
+          window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
           return
         }
         if (visibleCta.kind === 'request') await requestJoinMatch(supabase, match.id)
         if (visibleCta.kind === 'approve') await orgApproveParticipant(supabase, visibleCta.participantId)
         router.refresh()
+        window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
       } catch (err: unknown) {
         setCompletedFastAction(null)
         setError((err as { message?: string })?.message ?? 'Action failed')
