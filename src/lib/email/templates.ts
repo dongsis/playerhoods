@@ -192,7 +192,7 @@ export function playerhoodsMatchInviteEmail(m: MatchInfo, organizerName = 'Someo
     promoCtaUrl: registerUrl,
     secondaryTitle: 'Notification note',
     secondaryBody:
-      `PlayerHoods is helping ${inviterName} organize this match. You’ll only receive important updates, such as when the match is formed, cancelled, or key details change.`,
+      `PlayerHoods is helping ${inviterName} organize this match. You'll only receive important updates, such as when the match is formed, cancelled, or key details change.`,
     footerNote: `You received this because ${inviterName} invited you to this match.`,
     siteUrl: m.siteUrl,
   })
