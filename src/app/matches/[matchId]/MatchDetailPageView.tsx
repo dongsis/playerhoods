@@ -10,6 +10,7 @@ import { MatchToolsSection } from './MatchToolsSection'
 import { MatchCommunicationSection } from './MatchCommunicationSection'
 import { MatchCourtInfoButton } from './MatchCourtInfoButton'
 import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
+import { SafeConfirmedParticipantMenu } from './SafeConfirmedParticipantMenu'
 import type { MatchDetailPageViewModel } from './match-detail.view-model'
 import type { MatchCourtPlanUpdateInput, MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
@@ -571,6 +572,7 @@ function MatchParticipantsSection({
         />
       ) : (
         <SafeConfirmedPlayersList
+          matchId={viewModel.match.id}
           participants={safeConfirmedParticipants}
           myUserId={viewModel.userId}
           organizerUserId={viewModel.match.organizer_id}
@@ -649,11 +651,13 @@ function WaitingForMorePlayersCard({
 }
 
 function SafeConfirmedPlayersList({
+  matchId,
   participants,
   myUserId,
   organizerUserId,
   organizerName,
 }: {
+  matchId: string
   participants: MatchParticipantEnriched[]
   myUserId: string | null
   organizerUserId: string | null
@@ -677,14 +681,11 @@ function SafeConfirmedPlayersList({
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.55rem' }}>
-          {participants.map((participant) => (
-            <ParticipantDetailTrigger
-              key={participant.id}
-              participant={participant}
-              className="w-full text-left transition hover:border-[#bfdbfe] hover:bg-[#F8FBFF]"
-              label={`View details for ${participant.display_name}`}
-            >
+          {participants.map((participant) => {
+            const isCurrentUser = participant.user_id === myUserId
+            return (
               <div
+                key={participant.id}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -695,46 +696,55 @@ function SafeConfirmedPlayersList({
                   padding: '0.72rem 0.82rem',
                 }}
               >
-                <div
-                  aria-hidden="true"
-                  style={{
-                    width: '2.1rem',
-                    height: '2.1rem',
-                    borderRadius: '999px',
-                    background: '#EEF6FF',
-                    color: '#1E3A5F',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.72rem',
-                    fontWeight: 900,
-                    border: '1px solid #D9E5F4',
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                  }}
+                <ParticipantDetailTrigger
+                  participant={participant}
+                  className="min-w-0 flex-1 text-left transition hover:text-[#0d6efd]"
+                  label={`View details for ${participant.display_name}`}
                 >
-                  {participant.avatar_url ? (
-                    <img src={participant.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    participant.display_name.charAt(0).toUpperCase() || '?'
-                  )}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#0F172A', fontSize: '0.9rem', fontWeight: 850 }}>
-                      {participant.display_name}
-                    </span>
-                    {participant.user_id === organizerUserId || participant.display_name === organizerName ? (
-                      <span style={safeHostBadgeStyle}>Host</span>
-                    ) : null}
-                    {participant.user_id === myUserId ? (
-                      <span style={safePlayerBadgeStyle}>You</span>
-                    ) : null}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', minWidth: 0 }}>
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        width: '2.1rem',
+                        height: '2.1rem',
+                        borderRadius: '999px',
+                        background: '#EEF6FF',
+                        color: '#1E3A5F',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.72rem',
+                        fontWeight: 900,
+                        border: '1px solid #D9E5F4',
+                        flexShrink: 0,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {participant.avatar_url ? (
+                        <img src={participant.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        participant.display_name.charAt(0).toUpperCase() || '?'
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#0F172A', fontSize: '0.9rem', fontWeight: 850 }}>
+                          {participant.display_name}
+                        </span>
+                        {participant.user_id === organizerUserId || participant.display_name === organizerName ? (
+                          <span style={safeHostBadgeStyle}>Host</span>
+                        ) : null}
+                        {isCurrentUser ? (
+                          <span style={safePlayerBadgeStyle}>You</span>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </ParticipantDetailTrigger>
+                {isCurrentUser ? <SafeConfirmedParticipantMenu matchId={matchId} /> : null}
               </div>
-            </ParticipantDetailTrigger>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

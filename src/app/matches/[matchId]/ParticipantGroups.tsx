@@ -483,7 +483,7 @@ function ParticipantRow({
 
   const withdrawLabel =
     p.status === 'confirmed'
-      ? 'Leave match'
+      ? 'Cancel Participation'
       : p.join_method === 'requested'
         ? 'Withdraw request'
         : 'Decline participation'
