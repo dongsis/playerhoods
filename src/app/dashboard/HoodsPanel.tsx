@@ -2311,7 +2311,14 @@ export function HoodsPanel({
       const linkedUserId = contact.linked_user_id ?? null
       const linkedProfile = linkedUserId ? combinedProfiles.get(linkedUserId) : null
       const guestSportIds = supportData.guestSportsByGuestId.get(contact.guest_id) ?? []
-      if (!guestSportIds.includes(selectedSport.id) && !profileMatchesSport(linkedProfile, selectedSport.id)) continue
+      const hasExplicitContactSports = guestSportIds.length > 0
+      if (
+        hasExplicitContactSports &&
+        !guestSportIds.includes(selectedSport.id) &&
+        !profileMatchesSport(linkedProfile, selectedSport.id)
+      ) {
+        continue
+      }
       const isSavedContact = true
 
       const key = buildCanonicalKey({
@@ -2340,7 +2347,9 @@ export function HoodsPanel({
         statusLabel: formatStatusLabel(linkedProfile, contact),
         engagedSports: linkedProfile
           ? linkedProfile.sport_profiles.map((item) => item.sport_name)
-          : guestSportIds.map((sportId) => sportNameByIdAll.get(sportId) ?? selectedSport.display_name),
+          : hasExplicitContactSports
+            ? guestSportIds.map((sportId) => sportNameByIdAll.get(sportId) ?? selectedSport.display_name)
+            : [selectedSport.display_name],
         preferredFormats: selectedSportProfile?.preferred_formats ?? [],
         sportLabel: selectedSport.display_name,
       })
@@ -2433,8 +2442,10 @@ export function HoodsPanel({
         const linkedUserId = contact.linked_user_id ?? ownedContact?.linked_user_id ?? lookup?.linked_user_id ?? null
         const linkedProfile = linkedUserId ? combinedProfiles.get(linkedUserId) : null
         const guestSportIds = supportData.guestSportsByGuestId.get(contact.guest_id) ?? []
+        const hasExplicitContactSports = guestSportIds.length > 0
         if (
           !groupMatchesSelectedSport
+          && hasExplicitContactSports
           && !guestSportIds.includes(selectedSport.id)
           && !profileMatchesSport(linkedProfile, selectedSport.id)
         ) {
@@ -2467,7 +2478,9 @@ export function HoodsPanel({
           statusLabel: formatStatusLabel(linkedProfile, ownedContact ?? null),
           engagedSports: linkedProfile
             ? linkedProfile.sport_profiles.map((item) => item.sport_name)
-            : guestSportIds.map((sportId) => sportNameByIdAll.get(sportId) ?? selectedSport.display_name),
+            : hasExplicitContactSports
+              ? guestSportIds.map((sportId) => sportNameByIdAll.get(sportId) ?? selectedSport.display_name)
+              : [selectedSport.display_name],
           preferredFormats: selectedSportProfile?.preferred_formats ?? [],
           sportLabel: selectedSport.display_name,
           saveSourceGroupId: group.group.id,
