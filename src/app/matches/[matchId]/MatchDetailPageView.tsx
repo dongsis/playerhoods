@@ -859,6 +859,7 @@ export function MatchDetailPageView({
       candidateGroups={viewModel.allGroups.filter((group) =>
         group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
       )}
+      savedPlayerIds={viewModel.savedPlayerIds}
       savedLineup={viewModel.savedLineup}
       onUpdateMatchDetails={onUpdateMatchDetails}
       onRemoveParticipant={onRemoveParticipant}
