@@ -21,6 +21,7 @@ import {
 } from '@/lib/api/matches'
 import type { AvailabilityStatus, Group } from '@/lib/types/database'
 import type { MatchUpdateInput } from './match-detail.actions'
+import { processDeliveriesAction } from './process-deliveries-action'
 
 type CurrentRequestTarget = {
   id: string
@@ -1247,6 +1248,10 @@ export function MatchManagePanel({
         } else {
           await inviteContactPersonToMatch(supabase, matchId, item.personId ?? item.id)
         }
+      }
+
+      if (pendingInviteAdds.length > 0) {
+        processDeliveriesAction().catch(() => {})
       }
 
       setPendingAdds([])
