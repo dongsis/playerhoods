@@ -1,0 +1,48 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-typecheck:
+    name: Build and typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: |
+          if npm run | grep -q "build:clean"; then
+            npm run build:clean
+          elif npm run | grep -q "build"; then
+            npm run build
+          else
+            echo "No build script found"
+          fi
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint if configured
+        run: |
+          if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc ] || [ -f .eslintrc.json ] || [ -f .eslintrc.js ]; then
+            npm run lint
+          else
+            echo "No ESLint config found; skipping lint."
+          fi
