@@ -1,0 +1,168 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened, edited, labeled, reopened]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  triage:
+    name: Triage issue readiness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check issue readiness
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue = context.payload.issue;
+
+            if (!issue || issue.pull_request) {
+              core.info("No issue payload found or this is a PR. Skipping.");
+              return;
+            }
+
+            const labels = issue.labels.map(label => label.name);
+            const body = issue.body || "";
+            const lowerBody = body.toLowerCase();
+
+            async function addLabels(labelNames) {
+              const missing = labelNames.filter(name => !labels.includes(name));
+              if (missing.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  labels: missing
+                });
+              }
+            }
+
+            async function removeLabel(labelName) {
+              if (!labels.includes(labelName)) return;
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  name: labelName
+                });
+              } catch (error) {
+                core.info(`Could not remove label ${labelName}: ${error.message}`);
+              }
+            }
+
+            async function upsertBotComment(marker, body) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: issue.number,
+                per_page: 100
+              });
+
+              const existing = comments.find(comment =>
+                comment.user.type === "Bot" && comment.body.includes(marker)
+              );
+
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  body
+                });
+              }
+            }
+
+            function hasAny(...terms) {
+              return terms.some(term => lowerBody.includes(term.toLowerCase()));
+            }
+
+            const required = [
+              {
+                name: "Problem / Current issue",
+                ok: hasAny("problem", "current issue", "current problem", "当前问题", "问题")
+              },
+              {
+                name: "Expected behavior",
+                ok: hasAny("expected behavior", "expected result", "期望效果", "预期行为", "期望")
+              },
+              {
+                name: "Scope",
+                ok: hasAny("scope", "范围")
+              },
+              {
+                name: "Acceptance criteria",
+                ok: hasAny("acceptance criteria", "验收标准")
+              },
+              {
+                name: "Testing",
+                ok: hasAny("testing", "test steps", "测试", "测试步骤")
+              }
+            ];
+
+            const missing = required.filter(item => !item.ok).map(item => item.name);
+            const isOpened = context.payload.action === "opened";
+            const isApprovedForCodex = labels.includes("approved-for-codex") ||
+              (context.payload.label && context.payload.label.name === "approved-for-codex");
+
+            if (isOpened) {
+              await addLabels(["triage-needed"]);
+            }
+
+            if (!isApprovedForCodex) {
+              core.info("Issue is not approved-for-codex yet. Basic triage label only.");
+              return;
+            }
+
+            const marker = "<!-- playerhoods-issue-triage -->";
+
+            if (missing.length > 0) {
+              await addLabels(["triage-needed"]);
+              await removeLabel("ready-for-codex");
+
+              const commentBody = `${marker}
+              ⚠️ **This issue is not ready for Codex yet.**
+
+              Missing sections:
+              ${missing.map(item => `- ${item}`).join("\n")}
+
+              Please complete the missing sections before coding starts.
+
+              Required sections:
+              - Problem / current issue
+              - Expected behavior
+              - Scope
+              - Acceptance criteria
+              - Testing
+              `;
+
+              await upsertBotComment(marker, commentBody);
+              return;
+            }
+
+            await addLabels(["ready-for-codex"]);
+            await removeLabel("triage-needed");
+
+            const readyComment = `${marker}
+            ✅ **Issue readiness check passed**
+
+            This issue has the required sections and is ready for Codex planning.
+
+            Next step:
+            Codex should run a conflict scan and propose an implementation plan before coding.
+            `;
+
+            await upsertBotComment(marker, readyComment);
