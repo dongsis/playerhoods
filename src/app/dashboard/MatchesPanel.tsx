@@ -838,31 +838,92 @@ function MatchRow({
 function MatchDetailSkeleton() {
   return (
     <div className="space-y-5" aria-live="polite" aria-busy="true">
-      <div className="rounded-[24px] border border-[#E2E8F0] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-        <div className="mb-4 h-3 w-20 rounded-full bg-[#D7E1EE]" />
-        <div className="h-8 w-72 max-w-full rounded-full bg-[#E7EEF7]" />
-        <div className="mt-3 h-4 w-40 rounded-full bg-[#EEF4FB]" />
-        <div className="mt-5 rounded-[18px] bg-[#F8FAFC] p-4">
-          <div className="h-4 w-56 max-w-full rounded-full bg-[#D7E1EE]" />
-          <div className="mt-3 h-4 w-44 rounded-full bg-[#E7EEF7]" />
+      <div className="rounded-[24px] border border-[#D8E6F6] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+        <p className="text-label text-[#0d6efd]">Opening match</p>
+        <h2 className="mt-2 text-h2 font-black text-[#1E293B]">Loading selected match...</h2>
+        <p className="mt-2 text-body-main text-[#64748B]">
+          We are getting the latest lineup and match actions.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function SelectedMatchLoadingFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative" aria-busy="true" aria-live="polite">
+      {children}
+      <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex justify-center sm:inset-x-6">
+        <div className="inline-flex items-center gap-2 rounded-full border border-[#BFDBFE] bg-white/95 px-4 py-2 text-body-sub font-black text-[#0d6efd] shadow-[0_12px_28px_rgba(13,110,253,0.16)] backdrop-blur">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#BFDBFE] border-t-[#0d6efd]" aria-hidden="true" />
+          Loading selected match...
         </div>
       </div>
+    </div>
+  )
+}
 
-      <div className="rounded-[24px] border border-[#E2E8F0] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-        <div className="h-4 w-32 rounded-full bg-[#D7E1EE]" />
-        <div className="mt-5 space-y-3">
-          {[0, 1, 2].map((index) => (
-            <div key={index} className="flex items-center gap-3 rounded-[18px] border border-[#E2E8F0] p-3">
-              <div className="h-10 w-10 rounded-full bg-[#E7EEF7]" />
-              <div className="min-w-0 flex-1">
-                <div className="h-4 w-36 rounded-full bg-[#D7E1EE]" />
-                <div className="mt-2 h-3 w-24 rounded-full bg-[#EEF4FB]" />
+function ProvisionalMatchDetailSummary({ item }: { item: MatchListItem }) {
+  const timeLabel = formatTimeWindow(
+    item.match.start_at_utc,
+    item.match.match_date,
+    item.match.start_time,
+    item.match.duration_minutes,
+    item.venueTimezone ?? 'UTC',
+  )
+  const gameType = item.match.game_type
+    ? item.match.game_type.charAt(0).toUpperCase() + item.match.game_type.slice(1)
+    : 'Match'
+  const confirmedParticipants = getSafeParticipants(item).filter((participant) => participant.status === 'confirmed')
+  const pendingParticipants = getSafeParticipants(item).filter((participant) => participant.status === 'pending')
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-[24px] border border-[#D8E6F6] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+        <p className="text-label text-[#0d6efd]">Selected match</p>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-h1 text-[#1E293B]">
+              {item.sportName ?? 'Match'} <span className="text-[#94A3B8]">&middot;</span> {gameType}
+            </h2>
+            <p className="mt-2 text-body-main font-semibold text-[#64748B]">
+              {timeLabel || 'Time TBD'}
+            </p>
+            {item.venueName ? (
+              <p className="mt-1 text-body-main font-bold text-[#1E293B]">{item.venueName}</p>
+            ) : null}
+          </div>
+          <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1.5 text-body-sub font-black text-[#0d6efd]">
+            {item.confirmedCount} / {item.match.required_count} players
+          </span>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+        <p className="text-label text-[#64748B]">Lineup preview</p>
+        <div className="mt-4 space-y-3">
+          {confirmedParticipants.length > 0 ? confirmedParticipants.slice(0, 4).map((participant) => (
+            <div key={participant.id} className="flex items-center gap-3 rounded-[18px] border border-[#E2E8F0] bg-[#F8FAFC] p-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0d6efd] text-sm font-black text-white">
+                {participant.display_name.slice(0, 1).toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <p className="text-body-main font-black text-[#1E293B]">{participant.display_name}</p>
+                <p className="text-body-sub text-[#64748B]">Confirmed</p>
               </div>
             </div>
-          ))}
+          )) : (
+            <p className="rounded-[18px] border border-dashed border-[#D7E1EE] bg-[#F8FAFC] px-4 py-4 text-body-main font-semibold text-[#94A3B8]">
+              No confirmed players yet.
+            </p>
+          )}
         </div>
-        <p className="mt-5 text-body-main font-semibold text-[#64748B]">Loading match details...</p>
-      </div>
+        {pendingParticipants.length > 0 ? (
+          <p className="mt-4 text-body-sub font-semibold text-[#64748B]">
+            {pendingParticipants.length} waiting for player response.
+          </p>
+        ) : null}
+      </section>
     </div>
   )
 }
@@ -1552,6 +1613,10 @@ export function MatchesPanel({
   const isMatchDetailLoading = Boolean(pendingMatchId)
   const hasActiveMatchSelection = Boolean(effectiveSelectedMatchId)
   const hasSelectedMatchDetail = Boolean(selectedMatchId && selectedMatchDetail)
+  const pendingMatchItem = useMemo(
+    () => pendingMatchId ? items.find((item) => item.match.id === pendingMatchId) ?? null : null,
+    [items, pendingMatchId],
+  )
 
   useEffect(() => {
     if (pendingMatchId && selectedMatchId === pendingMatchId && selectedMatchDetail) {
@@ -1804,7 +1869,15 @@ export function MatchesPanel({
         >
           <section className="min-w-0">
             {isMatchDetailLoading ? (
-              <MatchDetailSkeleton />
+              hasSelectedMatchDetail ? (
+                <SelectedMatchLoadingFrame>{selectedMatchDetail}</SelectedMatchLoadingFrame>
+              ) : pendingMatchItem ? (
+                <SelectedMatchLoadingFrame>
+                  <ProvisionalMatchDetailSummary item={pendingMatchItem} />
+                </SelectedMatchLoadingFrame>
+              ) : (
+                <MatchDetailSkeleton />
+              )
             ) : hasSelectedMatchDetail ? (
               selectedMatchDetail
             ) : (
