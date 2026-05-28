@@ -1,0 +1,203 @@
+name: Coordination Report
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 13 * * *"
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  report:
+    name: Generate issue coordination report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate coordination report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const reportTitle = "Issue Coordination Report";
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              per_page: 100
+            });
+
+            const openIssues = issues.filter(issue => !issue.pull_request);
+            const openPrs = issues.filter(issue => issue.pull_request);
+
+            const areas = [
+              {
+                name: "Add More Players / MatchManagePanel",
+                labels: ["add-players-panel"],
+                keywords: ["add players", "add more players", "matchmanagepanel", "handleapply"]
+              },
+              {
+                name: "Match Detail / Players section",
+                labels: ["match-detail"],
+                keywords: ["match detail", "players section", "lineup", "waiting for player"]
+              },
+              {
+                name: "Invitation Flow",
+                labels: ["invitation-flow"],
+                keywords: ["invitation", "invite link", "accept invitation", "decline"]
+              },
+              {
+                name: "Email / SMS Delivery",
+                labels: ["email-delivery", "notification-flow"],
+                keywords: ["email", "sms", "notification", "delivery", "resend", "twilio"]
+              },
+              {
+                name: "State Consistency",
+                labels: ["state-consistency"],
+                keywords: ["state", "stale", "refresh", "count", "sync"]
+              },
+              {
+                name: "Production Validation",
+                labels: ["production-validation"],
+                keywords: ["production", "validation", "smoke", "disposable"]
+              },
+              {
+                name: "UI / UX Polish",
+                labels: ["ui-polish", "ux-flow"],
+                keywords: ["ui", "ux", "copy", "layout", "visual"]
+              }
+            ];
+
+            function issueLabels(issue) {
+              return issue.labels.map(label => label.name);
+            }
+
+            function matchesArea(issue, area) {
+              const labels = issueLabels(issue);
+              const title = issue.title.toLowerCase();
+              const body = (issue.body || "").toLowerCase();
+
+              const labelMatch = area.labels.some(label => labels.includes(label));
+              const keywordMatch = area.keywords.some(keyword =>
+                title.includes(keyword) || body.includes(keyword)
+              );
+
+              return labelMatch || keywordMatch;
+            }
+
+            function statusSummary(issue) {
+              const labels = issueLabels(issue);
+
+              const statusLabels = [
+                "triage-needed",
+                "ready-for-codex",
+                "in-progress",
+                "needs-review",
+                "preview-tested",
+                "ready-to-merge",
+                "production-validated",
+                "shipped",
+                "blocked",
+                "conflict-risk",
+                "needs-sequencing",
+                "blocked-by-pr",
+                "blocked-by-issue",
+                "high-risk",
+                "safe-test-only"
+              ].filter(label => labels.includes(label));
+
+              return statusLabels.length > 0 ? statusLabels.join(", ") : "no status label";
+            }
+
+            function issueLine(issue) {
+              return `- #${issue.number} ${issue.title} — ${statusSummary(issue)}`;
+            }
+
+            function prLine(pr) {
+              return `- PR #${pr.number} ${pr.title} — ${statusSummary(pr)}`;
+            }
+
+            const now = new Date().toISOString();
+
+            let body = `# Issue Coordination Report
+
+            Generated: ${now}
+
+            This report groups open issues and PRs by affected area and highlights sequencing risks.
+
+            ## Open PRs
+
+            ${openPrs.length > 0 ? openPrs.map(prLine).join("\n") : "- No open PRs found."}
+
+            ## Area Summary
+            `;
+
+            const assignedIssueNumbers = new Set();
+
+            for (const area of areas) {
+              const areaIssues = openIssues.filter(issue => matchesArea(issue, area));
+              areaIssues.forEach(issue => assignedIssueNumbers.add(issue.number));
+
+              body += `
+
+              ### ${area.name}
+
+              ${areaIssues.length > 0 ? areaIssues.map(issueLine).join("\n") : "- No open issues in this area."}
+              `;
+            }
+
+            const otherIssues = openIssues.filter(issue => !assignedIssueNumbers.has(issue.number));
+
+            body += `
+
+            ### Other / Uncategorized
+
+            ${otherIssues.length > 0 ? otherIssues.map(issueLine).join("\n") : "- No uncategorized open issues."}
+
+            ## Recommended Use
+
+            - Work on \`ready-for-codex\` issues only after conflict scan.
+            - Do not start \`blocked\`, \`conflict-risk\`, or \`needs-sequencing\` issues until blockers are resolved.
+            - High-conflict areas should be handled one PR at a time.
+            - After preview validation passes, move to \`ready-to-merge\`.
+            - After production smoke passes, move to \`production-validated\` and close the linked issue.
+            `;
+
+            const existingReports = openIssues.filter(issue =>
+              issue.title === reportTitle
+            );
+
+            if (existingReports.length > 0) {
+              const reportIssue = existingReports[0];
+
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: reportIssue.number,
+                body
+              });
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: reportIssue.number,
+                body: `Coordination report updated at ${now}.`
+              });
+
+              core.info(`Updated existing report issue #${reportIssue.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title: reportTitle,
+                body,
+                labels: ["needs-review"]
+              });
+
+              core.info(`Created coordination report issue #${created.data.number}`);
+            }
