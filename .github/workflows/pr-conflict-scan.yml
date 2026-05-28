@@ -1,0 +1,173 @@
+name: PR Conflict Scan
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  conflict-scan:
+    name: Scan high-conflict PR overlap
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Scan PR file overlap
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const currentPr = context.payload.pull_request;
+
+            if (!currentPr) {
+              core.info("No pull_request payload found. Skipping.");
+              return;
+            }
+
+            const highConflictPatterns = [
+              "src/app/matches/[matchId]/MatchManagePanel.tsx",
+              "src/app/matches/[matchId]/MatchDetailPageView.tsx",
+              "src/app/matches/[matchId]/MatchToolsSection.tsx",
+              "src/app/invitations/**",
+              "src/lib/notifications/**",
+              "supabase/migrations/**"
+            ];
+
+            function matchesPattern(file, pattern) {
+              if (pattern.endsWith("/**")) {
+                const prefix = pattern.slice(0, -3);
+                return file === prefix || file.startsWith(prefix + "/");
+              }
+              return file === pattern;
+            }
+
+            function highConflictHits(files) {
+              return files.filter(file =>
+                highConflictPatterns.some(pattern => matchesPattern(file, pattern))
+              );
+            }
+
+            async function listPrFiles(prNumber) {
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner,
+                repo,
+                pull_number: prNumber,
+                per_page: 100
+              });
+              return files.map(file => file.filename);
+            }
+
+            const currentFiles = await listPrFiles(currentPr.number);
+            const currentHighConflictFiles = highConflictHits(currentFiles);
+
+            const openPrs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: "open",
+              per_page: 100
+            });
+
+            const overlaps = [];
+
+            for (const pr of openPrs) {
+              if (pr.number === currentPr.number) continue;
+
+              const otherFiles = await listPrFiles(pr.number);
+              const otherHighConflictFiles = highConflictHits(otherFiles);
+
+              const overlappingHighConflictFiles = currentHighConflictFiles.filter(file =>
+                otherHighConflictFiles.includes(file)
+              );
+
+              if (overlappingHighConflictFiles.length > 0) {
+                overlaps.push({
+                  number: pr.number,
+                  title: pr.title,
+                  url: pr.html_url,
+                  files: overlappingHighConflictFiles
+                });
+              }
+            }
+
+            const marker = "<!-- playerhoods-conflict-scan -->";
+
+            let body = "";
+
+            if (currentHighConflictFiles.length === 0) {
+              body = `${marker}
+              ✅ **Conflict scan: Low risk**
+
+              This PR does not touch the configured high-conflict areas.
+
+              Checked high-conflict areas:
+              ${highConflictPatterns.map(p => `- \`${p}\``).join("\n")}
+              `;
+            } else if (overlaps.length === 0) {
+              body = `${marker}
+              ✅ **Conflict scan: No overlapping high-conflict PR found**
+
+              This PR touches high-conflict files, but no other open PR currently touches the same high-conflict files.
+
+              High-conflict files touched by this PR:
+              ${currentHighConflictFiles.map(f => `- \`${f}\``).join("\n")}
+              `;
+            } else {
+              body = `${marker}
+              ⚠️ **Conflict risk: High**
+
+              This PR touches high-conflict files that are also touched by other open PRs.
+
+              High-conflict files touched by this PR:
+              ${currentHighConflictFiles.map(f => `- \`${f}\``).join("\n")}
+
+              Overlapping open PRs:
+              ${overlaps.map(overlap => {
+                return `- PR #${overlap.number}: ${overlap.title}
+                ${overlap.files.map(f => `  - \`${f}\``).join("\n")}`;
+              }).join("\n")}
+
+              Recommended:
+              - Do not merge this PR until the overlapping PR sequence is clear.
+              - Merge the earlier/blocking PR first.
+              - Rebase this PR from latest \`main\` before continuing.
+              - Preserve behavior from both PRs when resolving overlap.
+              `;
+
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: currentPr.number,
+                labels: ["conflict-risk", "needs-sequencing"]
+              });
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: currentPr.number,
+              per_page: 100
+            });
+
+            const existing = comments.find(comment =>
+              comment.user.type === "Bot" && comment.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: currentPr.number,
+                body
+              });
+            }
