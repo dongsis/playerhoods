@@ -130,6 +130,7 @@ const TIME_SLOTS = buildTimeSlots()
 const DS_CARD = 'rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]'
 const DS_SECTION_TITLE = 'text-h2 text-[#1E293B]'
 const DS_LABEL = 'text-label mb-1 block'
+const ADD_PLAYERS_SECTION_LABEL = 'text-[9px] font-extrabold leading-[1.2] tracking-normal normal-case'
 const DS_FIELD =
   'text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10'
 const DS_OPTION_BUTTON =
@@ -3308,9 +3309,9 @@ export function CreateMatchInline({
 
         <div className="flex flex-col gap-6 md:flex-row">
           <div className="w-full space-y-3 md:w-1/4">
-            <div className="text-label mb-1 flex items-center text-[#94A3B8]">
+            <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-1 flex items-center text-[#94A3B8]`}>
               <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-              Add By
+              Add by
             </div>
             <button
               type="button"
@@ -3341,9 +3342,9 @@ export function CreateMatchInline({
           </div>
 
           <div className="w-full md:flex-1">
-            <div className="text-label mb-4 flex items-center text-[#94A3B8]">
+            <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-4 flex items-center text-[#94A3B8]`}>
               <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-              Select Target
+              Choose players
             </div>
             <div className="flex min-h-[200px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
               {!selectionMode ? (
@@ -3430,7 +3431,7 @@ export function CreateMatchInline({
           </div>
 
           <div className="w-full md:w-1/3">
-            <div className="text-label mb-4 flex items-center text-[#94A3B8]">
+            <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-4 flex items-center text-[#94A3B8]`}>
               <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
               Summary
             </div>
