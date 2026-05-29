@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
-import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
 import { saveContactPlayer } from '@/lib/api/play-network'
@@ -243,7 +242,7 @@ function SummaryRosterRow({
   tone?: 'slate' | 'orange' | 'green'
   availabilityLookup: Record<string, AvailabilityStatus | null>
 }) {
-  const previewItems = items.slice(0, 4)
+  const previewItems = items.slice(0, 5)
   const overflow = items.length > previewItems.length ? ` +${items.length - previewItems.length}` : ''
   const toneDotClass = tone === 'orange' ? 'bg-[#0d6efd]' : tone === 'green' ? 'bg-green-400' : 'bg-teal-500'
   const toneChipClass =
@@ -265,11 +264,11 @@ function SummaryRosterRow({
         </div>
       ) : (
         <div className="min-w-0">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="space-y-1.5">
             {previewItems.map((item) => (
-              <span key={item.key} className="inline-flex min-w-0 max-w-full flex-col gap-0.5">
+              <span key={item.key} className="flex min-w-0 max-w-full flex-col gap-0.5">
                 <span
-                  className={`text-body-sub inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-1 font-semibold ${toneChipClass}`}
+                  className={`text-body-sub flex min-w-0 max-w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 font-semibold ${toneChipClass}`}
                 >
                 {item.kind === 'user' ? (
                   (() => {
@@ -285,7 +284,7 @@ function SummaryRosterRow({
                   })()
                 ) : null}
                 {item.kind === 'group' ? (
-                  <span className="break-all">{item.label}</span>
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
                 ) : (
                   <ParticipantQuickPreviewTrigger
                     target={{
@@ -295,8 +294,8 @@ function SummaryRosterRow({
                       avatarUrl: item.avatarUrl ?? null,
                     }}
                   >
-                    <span className="inline-flex min-w-0 items-center gap-1">
-                      <span className="min-w-0 break-all">{item.label}</span>
+                    <span className="inline-flex min-w-0 flex-1 items-center gap-1">
+                      <span className="min-w-0 truncate">{item.label}</span>
                       {item.isHost ? (
                         <span className="shrink-0" aria-label="Host" title="Host">
                           👑
@@ -306,16 +305,18 @@ function SummaryRosterRow({
                   </ParticipantQuickPreviewTrigger>
                 )}
                 {item.kind === 'contact' ? (
-                  <ContactPlayerMark className="h-[0.95rem] w-[0.95rem] shrink-0" variant="badge" />
+                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                    Contact
+                  </span>
                 ) : null}
                 {item.kind === 'group' ? (
-                  <span className="rounded bg-green-100 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-green-800">
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-800">
                     Group
                   </span>
                 ) : null}
                 </span>
                 {item.detailLabel ? (
-                  <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                  <span className="text-body-sub pl-1 font-semibold text-slate-400">
                     {item.detailLabel}
                   </span>
                 ) : null}
@@ -499,32 +500,26 @@ function SelectableInviteChip({
       : 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
   const hoverClass =
     mode === 'request'
-      ? 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4] hover:text-[#15803D]'
-      : 'border-[#E2E8F0] bg-white text-[#475569] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]'
+      ? 'border-[#E2E8F0] bg-white text-[#334155] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4] hover:text-[#15803D]'
+      : 'border-[#E2E8F0] bg-white text-[#334155] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]'
   const availabilityDotClass = item.kind === 'user' ? getAvailabilityStatusDotClass(item.availabilityStatus) : null
 
   return (
-    <span className="flex w-full max-w-full flex-wrap items-center gap-1.5">
     <button
       type="button"
       onClick={onToggle}
       aria-pressed={selected}
       title={item.sourceLabel ? `${item.name}: ${item.sourceLabel}` : item.name}
       className={[
-        'text-body-sub relative inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border px-3 py-2 font-medium shadow-sm transition hover:-translate-y-0.5',
+        'text-body-main flex w-full max-w-full min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition',
         selected ? selectedClass : hoverClass,
       ].join(' ')}
     >
-      {item.kind === 'contact' ? (
-        <span className="pointer-events-none absolute -right-1 -top-1">
-          <ContactPlayerMark className="h-[0.95rem] w-[0.95rem]" variant="badge" />
-        </span>
-      ) : null}
       {availabilityDotClass ? (
         <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${availabilityDotClass}`} aria-hidden="true" />
       ) : null}
       {item.kind === 'group' ? (
-        <span className="truncate">{item.name}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{item.name}</span>
       ) : (
         <ParticipantQuickPreviewTrigger
           target={{
@@ -534,22 +529,38 @@ function SelectableInviteChip({
             avatarUrl: item.avatarUrl ?? null,
           }}
         >
-          <span className="truncate">{item.name}</span>
+          <span className="min-w-0 flex-1 truncate font-semibold">{item.name}</span>
         </ParticipantQuickPreviewTrigger>
       )}
       {item.kind === 'group' ? (
-        <span className="rounded bg-green-100 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-green-800">
+        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-800">
           Group
         </span>
       ) : null}
+      {item.kind === 'contact' ? (
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+          Contact
+        </span>
+      ) : null}
       {item.isLinkedContact ? (
-        <span className="rounded bg-sky-50 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-sky-700">
+        <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
           Linked
         </span>
       ) : null}
-      {selected ? <span className="text-[10px] font-bold">✓</span> : null}
+      <span
+        className={[
+          'ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
+          selected
+            ? mode === 'request'
+              ? 'border-green-600 bg-green-600 text-white'
+              : 'border-[#0d6efd] bg-[#0d6efd] text-white'
+            : 'border-[#E2E8F0] bg-white text-transparent',
+        ].join(' ')}
+        aria-hidden="true"
+      >
+        ✓
+      </span>
     </button>
-    </span>
   )
 }
 
@@ -1348,10 +1359,14 @@ export function MatchManagePanel({
     })),
   ]
 
+  const openSpotCount = Math.max(requiredCount - visibleConfirmedParticipants.length, 0)
+  const openSpotLabel = openSpotCount === 0
+    ? 'No open spots'
+    : `${openSpotCount} open ${openSpotCount === 1 ? 'spot' : 'spots'}`
   const confirmedMetaLabel =
     visibleConfirmedParticipants.length >= requiredCount
       ? 'Full'
-      : `${Math.max(requiredCount - visibleConfirmedParticipants.length, 0)} spots left`
+      : openSpotLabel
   const inviteMetaParts: string[] = []
   if (visibleInviteUsers.length > 0) inviteMetaParts.push(`${visibleInviteUsers.length} player${visibleInviteUsers.length === 1 ? '' : 's'}`)
   if (visibleInviteGroups.length > 0) inviteMetaParts.push(`${visibleInviteGroups.length} group${visibleInviteGroups.length === 1 ? '' : 's'}`)
@@ -1359,7 +1374,7 @@ export function MatchManagePanel({
   const requestMetaParts: string[] = []
   if (visibleRequestUsers.length > 0) requestMetaParts.push(`${visibleRequestUsers.length} player${visibleRequestUsers.length === 1 ? '' : 's'}`)
   if (visibleRequestGroups.length > 0) requestMetaParts.push(`${visibleRequestGroups.length} group${visibleRequestGroups.length === 1 ? '' : 's'}`)
-  const requestMetaLabel = requestMetaParts.join(' · ')
+  const requestMetaLabel = [openSpotLabel, requestMetaParts.join(' · ')].filter(Boolean).join(' · ')
 
   const spotsLabel = `${visibleConfirmedParticipants.length} / ${requiredCount}`
   const isOverCapacity = visibleConfirmedParticipants.length > requiredCount
@@ -1606,17 +1621,30 @@ export function MatchManagePanel({
               <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
                 {panelMode === 'invite' ? (
                   <div className="relative mb-6">
-                    <div className="mb-4 rounded-2xl border border-dashed border-blue-200 bg-white/80 p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-4 rounded-xl border border-dashed border-[#D7E3F4] bg-white px-3 py-2.5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
-                          <div className="text-title-main text-slate-900">
-                            {visibleConfirmedParticipants.length >= requiredCount ? 'Lineup is full.' : 'Need more players?'}
+                          <div className="text-body-main font-bold text-slate-900">
+                            {visibleConfirmedParticipants.length >= requiredCount
+                              ? 'Lineup is full.'
+                              : inviteMode === 'request'
+                                ? 'Open spots to join'
+                                : 'Invite specific players'}
                           </div>
                           {visibleConfirmedParticipants.length >= requiredCount ? (
                             <p className="mt-1 text-body-sub font-semibold text-slate-500">
                               Use Adjust Lineup if you need to add or replace players.
                             </p>
-                          ) : null}
+                          ) : (
+                            <>
+                              <p className="mt-0.5 text-body-sub font-semibold text-slate-500">
+                                {inviteMode === 'request'
+                                  ? 'Let eligible players request or join open spots.'
+                                  : 'Choose saved players or contacts to invite directly.'}
+                              </p>
+                              <p className="mt-1 text-body-sub font-semibold text-slate-400">Need someone not listed?</p>
+                            </>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -1624,9 +1652,9 @@ export function MatchManagePanel({
                             setContactCreateError(null)
                             setContactComposerOpen((open) => !open)
                           }}
-                          className="text-body-main inline-flex shrink-0 items-center justify-center rounded-full border border-blue-100 bg-white px-4 py-2 font-bold text-slate-900 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
+                          className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#D7E3F4] bg-[#F8FBFF] px-3 py-1.5 font-bold text-slate-900 transition hover:border-blue-200 hover:bg-white"
                         >
-                          <span className="mr-2 text-lg leading-none">+</span>
+                          <span className="mr-1.5 text-base leading-none">+</span>
                           Add My Contact
                         </button>
                       </div>
@@ -1790,7 +1818,7 @@ export function MatchManagePanel({
                     <div className="mt-auto border-t border-[#E2E8F0] pt-6">
                       <div className="text-label mb-3 flex items-center gap-2 text-[#0d6efd]">
                         <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-                        <span>Pending Additions</span>
+                        <span>Pending changes</span>
                       </div>
 
                       {inviteChanges.length === 0 ? (
