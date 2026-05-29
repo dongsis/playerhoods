@@ -634,12 +634,12 @@ function ReviewMatchModal({
           ) : null}
 
           <div className="space-y-4">
-            <p className="text-label">Invitations Summary</p>
+            <p className="text-label">Player Plan</p>
 
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
-                <span className="text-label text-[#64748B]">Directly Invited</span>
+                <span className="text-label text-[#64748B]">Invited</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {directInviteItems.length > 0 ? directInviteItems.map((item) => (
@@ -1642,6 +1642,31 @@ export function CreateMatchInline({
     && selectedInvitedGroups.length === 0
     && selectedScopeUsers.length === 0
     && selectedScopeGroups.length === 0
+  const invitedTargetCount = useMemo(
+    () =>
+      selectedInvitePlayers.length
+      + selectedInvitedGroups.reduce((total, group) => {
+        const memberCount = groupMembersById[group.id]?.count ?? 0
+        return total + Math.max(memberCount, 1)
+      }, 0),
+    [groupMembersById, selectedInvitePlayers.length, selectedInvitedGroups],
+  )
+  const hasOpenJoinScope = selectedScopeUsers.length > 0 || selectedScopeGroups.length > 0
+  const openSpotCount = hasOpenJoinScope ? Math.max(requiredCount - invitedTargetCount, 0) : 0
+  const selectedPlayerPlanCount = Math.min(requiredCount, invitedTargetCount + openSpotCount)
+  const remainingPlayersNeeded = Math.max(requiredCount - selectedPlayerPlanCount, 0)
+  const playersNeededCopy = selectedPlayerPlanCount === 0
+    ? `Players needed: ${requiredCount}`
+    : `${selectedPlayerPlanCount} of ${requiredCount} selected`
+  const playersProgressCopy = selectedPlayerPlanCount === 0
+    ? null
+    : remainingPlayersNeeded > 0
+      ? `${remainingPlayersNeeded} more needed`
+      : 'Ready to review'
+  const inviteSummaryCopy = `${invitedTargetCount} selected to invite when this match is posted`
+  const openJoinSummaryCopy = openSpotCount > 0
+    ? `${openSpotCount} open ${openSpotCount === 1 ? 'spot' : 'spots'} for eligible players to request`
+    : 'Request scope selected; no open spots remain after invitations'
   const hasSavedOrContactInvitePlayers = availableInviteOptions.length > 0
 
   const organizerNoteSentences = useMemo(
@@ -3300,10 +3325,18 @@ export function CreateMatchInline({
         <div className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center">
             <SportSectionIcon sport={selectedSport} className="mr-3" />
-            <h3 className={DS_SECTION_TITLE}>Players</h3>
+            <div>
+              <h3 className={DS_SECTION_TITLE}>Players</h3>
+              <p className="text-body-sub mt-1 text-[#64748B]">
+                Choose players to invite, or open spots for others to join.
+              </p>
+            </div>
           </div>
-          <div className="text-label rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-[#94A3B8]">
-            Players Needed: <span className="text-[#0d6efd]">{requiredCount}</span>
+          <div className="rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-right">
+            <span className="text-body-sub block font-bold text-[#1E293B]">{playersNeededCopy}</span>
+            {playersProgressCopy ? (
+              <span className="text-[11px] font-semibold leading-tight text-[#64748B]">{playersProgressCopy}</span>
+            ) : null}
           </div>
         </div>
 
@@ -3437,17 +3470,31 @@ export function CreateMatchInline({
             </div>
             <div className="min-h-[200px] rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
               {summaryIsEmpty ? (
-                <div className="py-10 text-center opacity-30">
-                  <div className="mb-2 text-3xl">[]</div>
-                  <p className="text-body-sub">Empty</p>
+                <div className="py-10 text-center">
+                  <p className="text-body-main font-semibold text-[#94A3B8]">No players selected yet</p>
+                  <p className="text-body-sub mx-auto mt-2 max-w-[240px] leading-relaxed text-[#CBD5E1]">
+                    Invite players directly, or open spots for eligible players to request.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-5">
+                  <div className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5">
+                    <p className="text-body-main font-bold text-[#1E293B]">{playersNeededCopy}</p>
+                    {playersProgressCopy ? (
+                      <p className="text-body-sub mt-0.5 font-semibold text-[#64748B]">{playersProgressCopy}</p>
+                    ) : null}
+                  </div>
+
                   {(selectedInvitePlayers.length > 0 || selectedInvitedGroups.length > 0) && (
                     <div>
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-                        <span className="text-label">Invited</span>
+                      <div className="mb-2 flex items-start gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
+                        <div>
+                          <span className="text-label">Invited</span>
+                          <p className="text-body-sub mt-0.5 font-semibold leading-snug text-[#64748B]">
+                            {inviteSummaryCopy}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedInvitePlayers.map((member) => (
@@ -3516,9 +3563,14 @@ export function CreateMatchInline({
 
                   {(selectedScopeUsers.length > 0 || selectedScopeGroups.length > 0) && (
                     <div>
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                        <span className="text-label">Open to Join</span>
+                      <div className="mb-2 flex items-start gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-green-400" />
+                        <div>
+                          <span className="text-label">Open to Join</span>
+                          <p className="text-body-sub mt-0.5 font-semibold leading-snug text-[#64748B]">
+                            {openJoinSummaryCopy}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedScopeUsers.map((candidate) => (
