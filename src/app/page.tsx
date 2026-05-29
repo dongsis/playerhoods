@@ -80,24 +80,25 @@ const slides: Slide[] = [
     copy: "See who's invited, who's confirmed, who declined, and who still needs a reply.",
     cta: 'See Match Flow',
     href: '/matches',
+    image: '/home-feature-flow-match-board.png',
     visual: 'flow',
   },
 ]
 
 const benefits = [
   {
-    title: 'Less digging through chats',
-    copy: 'Match replies, requests, and player status stay attached to the game.',
+    title: 'Find games around your courts',
+    copy: 'Discover players and matches near the places you already play.',
     icon: 'chat',
   },
   {
-    title: 'People you can play with again',
-    copy: 'Save good playing partners into your Hood and invite them next time.',
+    title: 'Organize without chasing replies',
+    copy: 'Invites, open spots, requests, and player status stay attached to each match.',
     icon: 'people',
   },
   {
-    title: 'Privacy stays protected',
-    copy: 'Choose how you are discoverable without showing email or phone.',
+    title: 'Build your trusted playing circle',
+    copy: 'Save good playing partners into your Hood and invite them again next time.',
     icon: 'lock',
   },
 ]
@@ -143,7 +144,7 @@ export default function HomePage() {
     <main className="min-h-screen bg-[#F0F7FF] text-[#12213A]">
       <nav className="sticky top-0 z-50 w-full border-b border-[#D8E4F2] bg-white/95 shadow-sm backdrop-blur">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <BrandLogo variant="horizontal" imageClassName="h-12 w-[218px]" />
+          <BrandLogo variant="horizontal" imageClassName="h-[52px] w-[236px] sm:h-14 sm:w-[250px]" />
 
           <div className="hidden items-center gap-7 md:flex">
             <a href="#players" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
@@ -153,7 +154,7 @@ export default function HomePage() {
               Benefits
             </a>
             <a href="#clubs" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
-              Club Tools
+              For Organizers
             </a>
             <a href="/venues" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
               Venues
@@ -173,7 +174,7 @@ export default function HomePage() {
               onClick={() => openAuth('register')}
               className="rounded-full bg-[#0d6efd] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-[#0b5ed7]"
             >
-              Join Free
+              Join Free Today
             </button>
           </div>
 
@@ -197,7 +198,7 @@ export default function HomePage() {
                 Benefits
               </a>
               <a className="rounded-lg px-3 py-2 font-bold text-[#30445F]" href="#clubs">
-                Club Tools
+                For Organizers
               </a>
               <a className="rounded-lg px-3 py-2 font-bold text-[#30445F]" href="/venues">
                 Venues
@@ -214,7 +215,7 @@ export default function HomePage() {
                 onClick={() => openAuth('register')}
                 className="mt-2 rounded-lg bg-[#0d6efd] px-3 py-3 text-center font-black text-white"
               >
-                Join Free
+                Join Free Today
               </button>
             </div>
           </div>
@@ -224,14 +225,14 @@ export default function HomePage() {
       <div className="relative overflow-hidden bg-[#F0F7FF]">
         <div className="absolute inset-0">
           <img
-            src="/playerhoods-home-hero.png"
+            src="/homepage-hero-players-20260529.png"
             alt=""
             aria-hidden="true"
-            className="h-full w-full object-cover object-[center_14%]"
+            className="h-full w-full object-cover object-center"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-white/10 via-white/46 to-white/8" />
-          <div className="absolute inset-0 bg-gradient-to-b from-white/8 via-white/32 to-[#F0F7FF]/46" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.12)_44%,rgba(255,255,255,0)_78%)]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#071A44]/42 via-white/10 to-[#071A44]/18" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#071A44]/28 via-white/8 to-[#F0F7FF]/56" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.68)_0%,rgba(255,255,255,0.44)_28%,rgba(255,255,255,0.04)_58%,rgba(7,26,68,0.2)_100%)]" />
         </div>
 
         <div className="relative z-10">
@@ -262,18 +263,22 @@ export default function HomePage() {
         <div className="mx-auto grid max-w-7xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div>
             <p className="text-xs font-black uppercase text-[#9BCB3C]">
-              For clubs, captains, and community organizers
+              For Organizers
             </p>
-            <h2 className="mt-3 max-w-3xl text-3xl font-black leading-tight md:text-4xl">
-              Run clearer games, keep members active, and grow a reusable player community.
+            <h2 className="mt-3 max-w-3xl text-3xl font-black leading-tight text-white md:text-4xl">
+              Help your players find the next game without turning every match into message chasing.
             </h2>
+            <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-white/78">
+              Built for hosts, captains, and community organizers who need a simpler way to gather
+              players, fill spots, and keep familiar groups active.
+            </p>
           </div>
           <button
             type="button"
             onClick={() => openAuth('register')}
             className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white px-7 text-sm font-black text-[#071A44] transition hover:bg-[#EEF6FF]"
           >
-            See Club Tools
+            Explore Organizer Features
           </button>
         </div>
       </section>
@@ -647,10 +652,10 @@ function HeroSection() {
     <section id="players" className="relative overflow-hidden">
       <div className="mx-auto flex min-h-[calc(100vh-72px)] max-w-7xl flex-col justify-start px-4 pb-8 pt-8 text-[#071A44] sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-left">
-          <p className="mb-4 text-xs font-black uppercase text-[#6F7E00]">
-            Tennis and pickleball, organized around real players
+          <p className="mb-5 inline-flex rounded-full border border-[#D8F64C]/70 bg-[#071A44]/72 px-5 py-2 text-xs font-black uppercase text-[#E9FF4F] shadow-[0_0_24px_rgba(216,246,76,0.32)] backdrop-blur">
+            Tennis and Pickleball Players
           </p>
-          <h1 className="max-w-4xl text-4xl font-black leading-[1.02] md:text-6xl">
+          <h1 className="max-w-4xl text-4xl font-black leading-[1.02] text-[#071A44] drop-shadow-[0_2px_18px_rgba(255,255,255,0.72)] md:text-6xl">
             Find your courts.
             <span className="block">
               Join more games.
@@ -802,8 +807,6 @@ function FeatureCarousel() {
 }
 
 function CarouselVisual({ slide }: { slide: Slide }) {
-  if (slide.visual === 'flow') return <FlowIllustration />
-
   return (
     <div className="relative flex h-full min-h-[300px] items-center justify-center overflow-hidden rounded-lg border border-[#D8E4F2] bg-white p-4 shadow-[0_18px_42px_-36px_rgba(15,23,42,0.3)]">
       {slide.image ? (
@@ -814,53 +817,6 @@ function CarouselVisual({ slide }: { slide: Slide }) {
           className="h-full max-h-[390px] w-full object-contain"
         />
       ) : null}
-    </div>
-  )
-}
-
-function FlowIllustration() {
-  const statuses = [
-    { label: 'Invited', count: '8', color: 'bg-blue-50 text-blue-700' },
-    { label: 'Confirmed', count: '4', color: 'bg-green-50 text-green-700' },
-    { label: 'Declined', count: '1', color: 'bg-rose-50 text-rose-700' },
-    { label: 'Needs reply', count: '3', color: 'bg-amber-50 text-amber-700' },
-  ]
-
-  return (
-    <div className="flex h-full min-h-[360px] items-center justify-center rounded-lg border border-[#D8E4F2] bg-white p-5 shadow-[0_18px_42px_-36px_rgba(15,23,42,0.3)]">
-      <div className="w-full max-w-xl">
-        <div className="rounded-lg border border-[#D8E4F2] bg-[#F8FBFF] p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-black uppercase text-[#71849D]">Tennis Match</p>
-              <h3 className="mt-2 text-2xl font-black text-[#071A44]">Saturday 10:00 AM</h3>
-              <p className="mt-1 text-sm font-semibold text-[#52667F]">Ontario Racquet Club</p>
-            </div>
-            <span className="rounded-full bg-[#0d6efd] px-3 py-1 text-xs font-black text-white">Doubles</span>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {statuses.map((status) => (
-              <div key={status.label} className="rounded-lg border border-[#D8E4F2] bg-white p-4">
-                <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-black ${status.color}`}>
-                  {status.count}
-                </span>
-                <p className="mt-3 text-sm font-black text-[#071A44]">{status.label}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 rounded-lg bg-white p-4">
-            <div className="flex items-center justify-between text-sm font-black text-[#071A44]">
-              <span>Match flow</span>
-              <span>Clear</span>
-            </div>
-            <div className="mt-3 grid grid-cols-4 gap-2">
-              {[1, 2, 3, 4].map((item) => (
-                <div key={item} className="h-2 rounded-full bg-[#9BCB3C]" />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
