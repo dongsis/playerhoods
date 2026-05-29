@@ -33,6 +33,8 @@ type InviteSelectionMode = 'invite' | 'request'
 type AdditionMode = InviteSelectionMode
 type RemoveSelectionMode = 'confirmed' | 'invites' | 'requests'
 
+const ADD_PLAYERS_SECTION_LABEL = 'text-[9px] font-extrabold leading-[1.2] tracking-normal normal-case'
+
 type CandidateItem = {
   key: string
   id: string
@@ -1548,7 +1550,7 @@ export function MatchManagePanel({
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
             <div className="space-y-3 lg:col-span-3">
-              <div className="text-label mb-1 flex items-center text-[#94A3B8]">
+              <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-1 flex items-center text-[#94A3B8]`}>
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                 {panelMode === 'invite' ? 'Add by' : 'Action'}
               </div>
@@ -1597,7 +1599,7 @@ export function MatchManagePanel({
             </div>
 
             <div className="lg:col-span-5">
-              <div className="text-label mb-4 flex items-center text-[#94A3B8]">
+              <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-4 flex items-center text-[#94A3B8]`}>
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                 Choose players
               </div>
@@ -1747,7 +1749,7 @@ export function MatchManagePanel({
             </div>
 
             <div className="flex flex-col lg:col-span-4">
-              <div className="text-label mb-4 flex items-center text-[#94A3B8]">
+              <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-4 flex items-center text-[#94A3B8]`}>
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
                 {panelMode === 'remove' ? 'Pending Actions' : 'Summary'}
               </div>
