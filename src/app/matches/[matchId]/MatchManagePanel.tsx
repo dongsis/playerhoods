@@ -1550,7 +1550,7 @@ export function MatchManagePanel({
             <div className="space-y-3 lg:col-span-3">
               <div className="text-label mb-1 flex items-center text-[#94A3B8]">
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-                {panelMode === 'invite' ? 'Add By' : 'Action'}
+                {panelMode === 'invite' ? 'Add by' : 'Action'}
               </div>
               {panelMode === 'invite' ? (
                 <>
@@ -1599,7 +1599,7 @@ export function MatchManagePanel({
             <div className="lg:col-span-5">
               <div className="text-label mb-4 flex items-center text-[#94A3B8]">
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-                Select Target
+                Choose players
               </div>
               <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
                 {panelMode === 'invite' ? (

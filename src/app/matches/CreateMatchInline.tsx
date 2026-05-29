@@ -3310,7 +3310,7 @@ export function CreateMatchInline({
           <div className="w-full space-y-3 md:w-1/4">
             <div className="text-label mb-1 flex items-center text-[#94A3B8]">
               <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-              Add By
+              Add by
             </div>
             <button
               type="button"
@@ -3343,7 +3343,7 @@ export function CreateMatchInline({
           <div className="w-full md:flex-1">
             <div className="text-label mb-4 flex items-center text-[#94A3B8]">
               <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-              Select Target
+              Choose players
             </div>
             <div className="flex min-h-[200px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
               {!selectionMode ? (
