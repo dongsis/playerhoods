@@ -146,6 +146,7 @@ type Props = {
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
   onRequestPanelMode?: (mode: PanelMode) => void
+  onApplied?: () => void
 }
 
 function sortStrings(values: string[]) {
@@ -662,6 +663,7 @@ export function MatchManagePanel({
   onUpdateMatchDetails,
   onRemoveParticipant,
   onRequestPanelMode,
+  onApplied,
 }: Props) {
   const router = useRouter()
   const panelRef = useRef<HTMLElement | null>(null)
@@ -1186,6 +1188,7 @@ export function MatchManagePanel({
   }
 
   const handleApply = async () => {
+    let closesAfterApply = false
     setIsApplying(true)
     setError(null)
     setSuccess(null)
@@ -1260,18 +1263,22 @@ export function MatchManagePanel({
       setConfirmOpen(false)
       setSuccess('Changes applied.')
       window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
-      if (!embedded) {
-        router.refresh()
+      router.refresh()
+      if (onApplied) {
+        closesAfterApply = true
+        onApplied()
       }
     } catch (applyError) {
       const message = (applyError as { message?: string })?.message ?? ''
       setError(
         message.includes('contact_communication_opted_out')
             ? 'This contact has unsubscribed or has no reachable invitation channel.'
-            : message || 'Failed to apply changes',
+            : "Couldn't apply changes. Please try again.",
       )
     } finally {
-      setIsApplying(false)
+      if (!closesAfterApply) {
+        setIsApplying(false)
+      }
     }
   }
 

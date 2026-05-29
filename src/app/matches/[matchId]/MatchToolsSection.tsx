@@ -95,13 +95,27 @@ export function MatchToolsSection({
   const [lazyContactTargets, setLazyContactTargets] = useState<ContactPersonAdmissionTarget[]>(contactTargets)
   const [isLoadingInviteTargets, setIsLoadingInviteTargets] = useState(false)
   const [targetLoadError, setTargetLoadError] = useState<string | null>(null)
+  const [applySuccessMessage, setApplySuccessMessage] = useState<string | null>(null)
 
   useEffect(() => {
     setLoadedInviteMatchId(null)
     setLazyCandidateUsers(candidateUsers)
     setLazyContactTargets(contactTargets)
     setTargetLoadError(null)
+    setApplySuccessMessage(null)
   }, [matchId, candidateUsers, contactTargets])
+
+  useEffect(() => {
+    if (!applySuccessMessage) return
+
+    const timeout = window.setTimeout(() => {
+      setApplySuccessMessage(null)
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [applySuccessMessage])
 
   useEffect(() => {
     if (activeTab !== 'invite' || !showInviteTools || matchStatus !== 'active') return
@@ -175,6 +189,7 @@ export function MatchToolsSection({
     setActiveTab((current) => {
       const next = current === nextTab ? null : nextTab
       if (next) {
+        setApplySuccessMessage(null)
         requestAnimationFrame(() => {
           sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
         })
@@ -288,6 +303,12 @@ export function MatchToolsSection({
             {setTeamsHelper}
           </p>
         ) : null}
+
+        {applySuccessMessage ? (
+          <p className="basis-full rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
+            {applySuccessMessage}
+          </p>
+        ) : null}
       </div>
 
       {!formedActionsCollapsed && activeTab === 'invite' && showInviteTools && isLoadingInviteTargets ? (
@@ -319,6 +340,11 @@ export function MatchToolsSection({
           candidateGroups={candidateGroups}
           onUpdateMatchDetails={onUpdateMatchDetails}
           onRemoveParticipant={onRemoveParticipant}
+          onApplied={() => {
+            setLoadedInviteMatchId(null)
+            setActiveTab(null)
+            setApplySuccessMessage('Changes applied.')
+          }}
         />
       ) : null}
 
