@@ -1,0 +1,212 @@
+name: Codex PR Review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  guard:
+    name: Guard PR review trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.guard.outputs.should_run }}
+      pr_number: ${{ steps.guard.outputs.pr_number }}
+    steps:
+      - name: Validate trigger
+        id: guard
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let prNumber = null;
+            let shouldRun = false;
+
+            if (context.eventName === "pull_request_target") {
+              const pr = context.payload.pull_request;
+              if (pr.draft) {
+                core.info("Draft PR. Skipping.");
+                core.setOutput("should_run", "false");
+                return;
+              }
+              prNumber = pr.number;
+              shouldRun = true;
+            }
+
+            if (context.eventName === "issue_comment") {
+              const comment = context.payload.comment;
+              const issue = context.payload.issue;
+              if (!issue || !issue.pull_request || !comment) {
+                core.setOutput("should_run", "false");
+                return;
+              }
+
+              const body = (comment.body || "").trim();
+              if (!body.startsWith("/codex review")) {
+                core.setOutput("should_run", "false");
+                return;
+              }
+
+              const perm = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor
+              });
+
+              const allowed = ["admin", "write", "maintain"].includes(perm.data.permission);
+              if (!allowed) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `⚠️ /codex review ignored because @${context.actor} lacks write/maintain/admin permission.`
+                });
+                core.setOutput("should_run", "false");
+                return;
+              }
+
+              prNumber = issue.number;
+              shouldRun = true;
+            }
+
+            core.setOutput("should_run", String(shouldRun));
+            core.setOutput("pr_number", String(prNumber));
+
+  review:
+    name: Run Codex PR review
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    outputs:
+      final_message: ${{ steps.run_codex.outputs.final-message }}
+
+    steps:
+      - name: Checkout PR merge ref safely
+        uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ needs.guard.outputs.pr_number }}/merge
+          persist-credentials: false
+
+      - name: Fetch base/head and collect PR context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.guard.outputs.pr_number }}
+        run: |
+          gh pr view "$PR_NUMBER" \
+            --json number,title,body,labels,author,baseRefName,headRefName,files,commits,url \
+            > pr-context.json
+
+          BASE_REF=$(jq -r '.baseRefName' pr-context.json)
+          git fetch --no-tags origin "$BASE_REF" "+refs/pull/$PR_NUMBER/head:pr-head"
+
+          git diff --name-status "origin/$BASE_REF"...pr-head > pr-files.txt
+          git diff "origin/$BASE_REF"...pr-head > pr-diff.patch || true
+
+      - name: Build review prompt
+        run: |
+          mkdir -p .github/codex/runtime-prompts
+
+          cat > .github/codex/runtime-prompts/pr-review.md <<'EOF'
+          You are reviewing a PlayerHoods pull request.
+
+          Read:
+          - pr-context.json
+          - pr-files.txt
+          - pr-diff.patch
+          - AGENTS.md if present
+          - docs/00_RELEASE_GOVERNANCE.md if present
+          - docs/00_PRODUCTION_CHANGE_LOG.md if present
+          - relevant source files
+
+          Review focus:
+          1. Serious correctness bugs
+          2. Scope creep
+          3. State consistency regressions
+          4. Match lifecycle invariant violations
+          5. DB/migration governance violations
+          6. Notification/email/SMS risks
+          7. Missing validation or unsafe production assumptions
+
+          PlayerHoods hard rules:
+          - confirmed iff participant_accepted_at and org_approved_at are both present
+          - status is derived through reconcile
+          - removed truth is removed_at
+          - DB changes require append-only migration governance
+          - do not infer production deployment from GitHub commit
+          - do not infer Supabase Remote migration from local migration file
+          - no real SMS/email in tests
+          - avoid broad PRs when focused fix is possible
+
+          Output format:
+
+          ## Codex PR Review
+
+          ### Verdict
+          Choose one:
+          - PASS
+          - PASS_WITH_CAVEAT
+          - NEEDS_CHANGES
+          - BLOCKED
+
+          ### Findings
+          Numbered list, severity P0/P1/P2/P3.
+
+          ### Scope Check
+
+          ### Test/Validation Gaps
+
+          ### Merge Recommendation
+          EOF
+
+      - name: Run Codex review
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/runtime-prompts/pr-review.md
+          output-file: codex-pr-review.md
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-args: '["--ephemeral"]'
+
+  post_review:
+    name: Post Codex PR review
+    needs: [guard, review]
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Post review comment
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.guard.outputs.pr_number }}
+          CODEX_REVIEW: ${{ needs.review.outputs.final_message }}
+        with:
+          script: |
+            const prNumber = Number(process.env.PR_NUMBER);
+            const review = process.env.CODEX_REVIEW || "Codex review produced no output.";
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: review
+            });
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: ["codex-review-posted"]
+            });
