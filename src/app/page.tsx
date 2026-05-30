@@ -225,14 +225,14 @@ export default function HomePage() {
       <div className="relative overflow-hidden bg-[#F0F7FF]">
         <div className="absolute inset-0">
           <img
-            src="/homepage-hero-players-20260529.png"
+            src="/homepage-hero-players-clean-safe-area-20260530.png"
             alt=""
             aria-hidden="true"
             className="h-full w-full object-cover object-center"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#071A44]/42 via-white/10 to-[#071A44]/18" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#071A44]/28 via-white/8 to-[#F0F7FF]/56" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.68)_0%,rgba(255,255,255,0.44)_28%,rgba(255,255,255,0.04)_58%,rgba(7,26,68,0.2)_100%)]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#071A44]/36 via-white/8 to-[#071A44]/14" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#071A44]/20 via-white/8 to-[#F0F7FF]/52" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.78)_0%,rgba(255,255,255,0.52)_28%,rgba(255,255,255,0.08)_58%,rgba(7,26,68,0.18)_100%)]" />
         </div>
 
         <div className="relative z-10">
@@ -650,10 +650,11 @@ function HomeAuthOverlay({
 function HeroSection() {
   return (
     <section id="players" className="relative overflow-hidden">
-      <div className="mx-auto flex min-h-[calc(100vh-72px)] max-w-7xl flex-col justify-start px-4 pb-8 pt-8 text-[#071A44] sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-[calc(100svh-96px)] max-w-7xl flex-col justify-start px-4 pb-6 pt-7 text-[#071A44] sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-left">
-          <p className="mb-5 inline-flex rounded-full border border-[#D8F64C]/70 bg-[#071A44]/72 px-5 py-2 text-xs font-black uppercase text-[#E9FF4F] shadow-[0_0_24px_rgba(216,246,76,0.32)] backdrop-blur">
-            Tennis and Pickleball Players
+          <p className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full border border-[#CBEA35]/85 bg-white/86 px-5 py-2.5 text-sm font-black uppercase text-[#071A44] shadow-[0_12px_32px_rgba(7,26,68,0.18)] backdrop-blur-md">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[#9FC227] bg-[#D8F64C] shadow-[0_0_12px_rgba(216,246,76,0.55)]" aria-hidden="true" />
+            <span className="whitespace-nowrap">For Tennis + Pickleball Players</span>
           </p>
           <h1 className="max-w-4xl text-4xl font-black leading-[1.02] text-[#071A44] drop-shadow-[0_2px_18px_rgba(255,255,255,0.72)] md:text-6xl">
             Find your courts.
@@ -671,7 +672,7 @@ function HeroSection() {
           </p>
         </div>
 
-        <div className="mt-6 w-full">
+        <div className="mt-5 w-full">
           <FeatureCarousel />
         </div>
       </div>
@@ -746,16 +747,16 @@ function FeatureCarousel() {
 
   return (
     <div
-      className="relative min-h-[431px] overflow-hidden"
+      className="relative min-h-[472px] overflow-hidden"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
       <div
-        className={`absolute inset-0 overflow-hidden rounded-lg border border-[#D8E4F2] bg-white/90 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.34)] backdrop-blur-sm transition-all duration-500 ease-in-out ${motionClass}`}
+        className={`absolute inset-0 overflow-hidden rounded-lg border border-white/80 bg-white/95 shadow-[0_30px_74px_-38px_rgba(7,26,68,0.48)] backdrop-blur-md transition-all duration-500 ease-in-out ${motionClass}`}
       >
-        <div className="grid min-h-[430px] gap-0 lg:grid-cols-[0.78fr_1fr]">
+        <div className="grid min-h-[471px] gap-0 lg:grid-cols-[0.72fr_1.08fr]">
           <div className="order-2 flex flex-col justify-center px-6 py-6 sm:px-8 lg:order-1 lg:px-10">
             <p className="text-xs font-black uppercase text-[#0d6efd]">{activeSlide.imageTitle}</p>
             <h2 className="mt-3 max-w-xl text-3xl font-black leading-tight text-[#071A44] md:text-4xl">
@@ -794,7 +795,7 @@ function FeatureCarousel() {
             </div>
           </div>
 
-          <div className="order-1 bg-white/50 p-4 sm:p-6 lg:order-2 lg:p-8">
+          <div className="order-1 bg-white/72 p-4 sm:p-6 lg:order-2 lg:p-6">
             <CarouselVisual slide={activeSlide} />
           </div>
         </div>
@@ -808,13 +809,13 @@ function FeatureCarousel() {
 
 function CarouselVisual({ slide }: { slide: Slide }) {
   return (
-    <div className="relative flex h-full min-h-[300px] items-center justify-center overflow-hidden rounded-lg border border-[#D8E4F2] bg-white p-4 shadow-[0_18px_42px_-36px_rgba(15,23,42,0.3)]">
+    <div className="relative flex h-full min-h-[350px] items-center justify-center overflow-hidden rounded-lg border border-[#C8D7EA] bg-white p-3 shadow-[0_20px_48px_-34px_rgba(15,23,42,0.36)] sm:p-4">
       {slide.image ? (
         <img
           src={slide.image}
           alt=""
           aria-hidden="true"
-          className="h-full max-h-[390px] w-full object-contain"
+          className="h-full max-h-[438px] w-full object-contain"
         />
       ) : null}
     </div>
