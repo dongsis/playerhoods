@@ -102,6 +102,7 @@ export function MatchActions({
       } else if (options?.refreshAfter !== false) {
         router.refresh()
       }
+      window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
     } catch (err: unknown) {
       setLocalParticipation(previousParticipation)
       const message = (err as { message?: string })?.message || 'Action failed'
@@ -332,7 +333,6 @@ export function MatchActions({
                         const note = declineReason.trim()
                         closeDeclineDialog()
                         handleAction(() => userWithdraw(supabase, matchId, note), {
-                          refreshAfter: false,
                           optimistic: markDeclinedOptimistic,
                         })
                       }}
@@ -443,7 +443,6 @@ export function MatchActions({
                     const note = declineReason.trim()
                     closeDeclineDialog()
                     handleAction(() => userWithdraw(supabase, matchId, note), {
-                      refreshAfter: false,
                       optimistic: markDeclinedOptimistic,
                     })
                   }}
@@ -512,7 +511,6 @@ export function MatchActions({
                     const note = declineReason.trim()
                     closeDeclineDialog()
                     handleAction(() => userWithdraw(supabase, matchId, note), {
-                      refreshAfter: false,
                       optimistic: markDeclinedOptimistic,
                     })
                   }}
@@ -609,7 +607,6 @@ export function MatchActions({
                     const note = declineReason.trim()
                     closeDeclineDialog()
                     handleAction(() => userWithdraw(supabase, matchId, note), {
-                      refreshAfter: false,
                       optimistic: markDeclinedOptimistic,
                     })
                   }}
