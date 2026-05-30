@@ -65,7 +65,7 @@ export function renderInvitationEmail(data: InvitationEmailData): string {
     promoCtaUrl: registerUrl,
     secondaryTitle: 'Notification note',
     secondaryBody:
-      `PlayerHoods is helping ${inviterName} organize this match. You’ll only receive important updates, such as when the match is formed, cancelled, or key details change.`,
+      `PlayerHoods is helping ${inviterName} organize this match. You'll only receive important updates, such as when the match is formed, cancelled, or key details change.`,
     footerNoteHtml: `You received this because ${escapedInviter} invited you to this match. If you do not want to receive match invitations by email, you can <a href="${escapeHtml(unsubscribeUrl)}">unsubscribe here</a>.`,
     siteUrl: data.siteUrl,
   })

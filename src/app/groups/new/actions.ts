@@ -1,7 +1,7 @@
 'use server'
 
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import type { GroupLocationInput } from '@/lib/api/groups'
+import { replaceGroupLocations, type GroupLocationInput } from '@/lib/api/groups'
 
 interface GroupResult {
   id: string
@@ -54,11 +54,7 @@ export async function createGroupAction(input: {
   }
 
   if (input.locations && input.locations.length > 0) {
-    const { error: locationsError } = await supabase.rpc('rpc_group_locations_replace', {
-      p_group_id: group.id,
-      p_locations: input.locations,
-    })
-    if (locationsError) throw locationsError
+    await replaceGroupLocations(supabase, group.id, input.locations)
     const primaryVenueLocation = input.locations.find((location) => location.kind === 'venue' && location.is_primary)
     const firstVenueLocation = input.locations.find((location) => location.kind === 'venue')
     const primaryVenueId =

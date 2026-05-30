@@ -27,8 +27,13 @@ function getPublicRequestUrl(request: Request): string {
   return url.toString()
 }
 
+function shouldValidateTwilioSignature(): boolean {
+  return process.env.NODE_ENV === 'production'
+    || process.env.TWILIO_VALIDATE_INBOUND_SIGNATURE === 'true'
+}
+
 function isValidTwilioSignature(request: Request, form: FormData): boolean {
-  if (process.env.TWILIO_VALIDATE_INBOUND_SIGNATURE !== 'true') return true
+  if (!shouldValidateTwilioSignature()) return true
 
   const authToken = process.env.TWILIO_AUTH_TOKEN
   const signature = request.headers.get('x-twilio-signature')
@@ -52,10 +57,19 @@ function isValidTwilioSignature(request: Request, form: FormData): boolean {
 
 export async function POST(request: Request) {
   const contentType = request.headers.get('content-type') ?? ''
+  const isProduction = process.env.NODE_ENV === 'production'
   let from: string | null = null
   let body: string | null = null
 
   if (contentType.includes('application/json')) {
+    if (isProduction) {
+      return new NextResponse(twiml('Unsupported SMS webhook format.'), {
+        status: 415,
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+        },
+      })
+    }
     const payload = (await request.json().catch(() => null)) as { From?: string; from?: string; Body?: string; body?: string } | null
     from = payload?.From ?? payload?.from ?? null
     body = payload?.Body ?? payload?.body ?? null

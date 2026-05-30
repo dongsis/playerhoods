@@ -55,6 +55,7 @@ type Props = {
   candidateUsers: ScopeUser[]
   contactTargets: ContactPersonAdmissionTarget[]
   candidateGroups: Group[]
+  savedPlayerIds: string[]
   savedLineup: MatchLineupSnapshot | null
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
@@ -81,6 +82,7 @@ export function MatchToolsSection({
   candidateUsers,
   contactTargets,
   candidateGroups,
+  savedPlayerIds,
   savedLineup,
   onUpdateMatchDetails,
   onRemoveParticipant,
@@ -142,7 +144,10 @@ export function MatchToolsSection({
       .then(([admissionTargets, nextContactTargets]) => {
         if (cancelled || timedOut) return
         window.clearTimeout(loadTimeout)
-        const savedTargets = admissionTargets.filter((target) => target.source === 'invite_circle')
+        const savedPlayerIdSet = new Set(savedPlayerIds)
+        const savedTargets = admissionTargets.filter((target) =>
+          target.source === 'invite_circle' || savedPlayerIdSet.has(target.target_id),
+        )
         setLazyCandidateUsers(admissionTargetsToScopeUsers(savedTargets, { requireCanAdmit: true }))
         setLazyContactTargets(nextContactTargets)
         setLoadedInviteMatchId(matchId)
@@ -161,7 +166,7 @@ export function MatchToolsSection({
       cancelled = true
       window.clearTimeout(loadTimeout)
     }
-  }, [activeTab, loadedInviteMatchId, matchId, matchStatus, showInviteTools])
+  }, [activeTab, loadedInviteMatchId, matchId, matchStatus, savedPlayerIds, showInviteTools])
 
   if (!showInviteTools && !showRoundRobinTools) {
     return null

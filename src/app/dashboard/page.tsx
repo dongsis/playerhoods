@@ -84,13 +84,20 @@ function hasSelectedMatchConflict(items: MatchListItem[], selectedMatchId: strin
 
 export default async function DashboardPage({ searchParams }: Props) {
   const { notice, matchId } = await searchParams
-  const loaderData = await loadDashboardPageData()
-  const viewModel = buildDashboardPageViewModel(loaderData)
   const selectedMatchId = matchId?.trim() || null
+  const dashboardLoaderPromise = loadDashboardPageData()
+  const matchDetailLoaderPromise = selectedMatchId
+    ? loadMatchDetailPageData(selectedMatchId)
+    : Promise.resolve(null)
+
+  const [loaderData, matchDetailLoaderData] = await Promise.all([
+    dashboardLoaderPromise,
+    matchDetailLoaderPromise,
+  ])
+  const viewModel = buildDashboardPageViewModel(loaderData)
   let selectedMatchDetail = null
 
-  if (selectedMatchId) {
-    const matchDetailLoaderData = await loadMatchDetailPageData(selectedMatchId)
+  if (selectedMatchId && matchDetailLoaderData) {
     const matchDetailViewModel = buildMatchDetailPageViewModel(matchDetailLoaderData)
     const hasTimeConflict = hasSelectedMatchConflict(viewModel.items, selectedMatchId)
     const matchSnapshot = {

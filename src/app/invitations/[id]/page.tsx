@@ -636,28 +636,28 @@ export default async function InvitationPage({ params, searchParams }: Props) {
               <>
                 <h1 className="invitation-title">This match is formed</h1>
                 <p className="invitation-subtext">
-                  You&apos;re in the confirmed lineup for {matchKind} at {venueName ?? 'the venue'}.
+                  You're in the confirmed lineup for {matchKind} at {venueName ?? 'the venue'}.
                 </p>
               </>
             ) : shouldShowConfirmedLanding ? (
               <>
-                <h1 className="invitation-title">You&apos;re confirmed for this match</h1>
+                <h1 className="invitation-title">You're confirmed for this match</h1>
                 <p className="invitation-subtext">
                   {inviterName} added you as confirmed for {matchKind} at {venueName ?? 'the venue'}. If anything changed, you can update your response or message the host.
                 </p>
               </>
             ) : inv.status === 'accepted' ? (
               <>
-                <h1 className="invitation-title">You&apos;re in</h1>
+                <h1 className="invitation-title">You're in</h1>
                 <p className="invitation-subtext">
-                  You&apos;ve accepted this match invitation. The host will be notified that you&apos;re in.
+                  You've accepted this match invitation. The host will be notified that you're in.
                 </p>
               </>
             ) : inv.status === 'declined' ? (
               <>
-                <h1 className="invitation-title">You&apos;ve declined this invitation.</h1>
+                <h1 className="invitation-title">You've declined this invitation.</h1>
                 <p className="invitation-subtext">
-                  We&apos;ll let the host know.
+                  We'll let the host know.
                 </p>
               </>
             ) : (

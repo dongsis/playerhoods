@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState, useTransition, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { MatchListItem } from '@/lib/api/matches'
@@ -291,6 +291,8 @@ type MatchRowProps = {
   variant?: 'default' | 'incoming' | 'history'
   showRosterNames?: boolean
   isSelected?: boolean
+  isLoadingDetail?: boolean
+  onSelectMatch?: (matchId: string) => void
 }
 
 function getCompactRosterMeta(summaryLabel: string | null | undefined): string[] {
@@ -546,6 +548,8 @@ function MatchRow({
   variant = 'default',
   showRosterNames = true,
   isSelected = false,
+  isLoadingDetail = false,
+  onSelectMatch,
 }: MatchRowProps) {
   const {
     match,
@@ -642,6 +646,10 @@ function MatchRow({
           ? 'blue'
           : 'amber'
   const participantPreview = getParticipantPreview(participants, match.organizer_id)
+  const handleDetailsClick = () => {
+    onViewed?.(match.id)
+    onSelectMatch?.(match.id)
+  }
 
   const statusBadge = isCancelled ? (
     <StatusBadge label="Match cancelled" tone="red" />
@@ -802,12 +810,120 @@ function MatchRow({
         ) : null}
         <Link
           href={`/dashboard?matchId=${match.id}`}
-          onClick={() => onViewed?.(match.id)}
-          className="text-body-sub font-semibold text-[#1E293B] hover:text-[#0d6efd] whitespace-nowrap"
+          onClick={handleDetailsClick}
+          aria-current={isSelected ? 'page' : undefined}
+          className={[
+            'text-body-sub inline-flex min-w-[5.4rem] items-center justify-end gap-1.5 whitespace-nowrap font-semibold transition',
+            isLoadingDetail
+              ? 'pointer-events-none text-[#0d6efd]'
+              : isSelected
+              ? 'text-[#0d6efd]'
+              : 'text-[#1E293B] hover:text-[#0d6efd]',
+          ].join(' ')}
         >
-          Details →
+          {isLoadingDetail ? (
+            <>
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#BFDBFE] border-t-[#0d6efd]" aria-hidden="true" />
+              Loading
+            </>
+          ) : (
+            'Details ->'
+          )}
         </Link>
       </div>
+    </div>
+  )
+}
+
+function MatchDetailSkeleton() {
+  return (
+    <div className="space-y-5" aria-live="polite" aria-busy="true">
+      <div className="rounded-[24px] border border-[#D8E6F6] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+        <p className="text-label text-[#0d6efd]">Opening match</p>
+        <h2 className="mt-2 text-h2 font-black text-[#1E293B]">Loading selected match...</h2>
+        <p className="mt-2 text-body-main text-[#64748B]">
+          We are getting the latest lineup and match actions.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function SelectedMatchLoadingFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative" aria-busy="true" aria-live="polite">
+      {children}
+      <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex justify-center sm:inset-x-6">
+        <div className="inline-flex items-center gap-2 rounded-full border border-[#BFDBFE] bg-white/95 px-4 py-2 text-body-sub font-black text-[#0d6efd] shadow-[0_12px_28px_rgba(13,110,253,0.16)] backdrop-blur">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#BFDBFE] border-t-[#0d6efd]" aria-hidden="true" />
+          Loading selected match...
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProvisionalMatchDetailSummary({ item }: { item: MatchListItem }) {
+  const timeLabel = formatTimeWindow(
+    item.match.start_at_utc,
+    item.match.match_date,
+    item.match.start_time,
+    item.match.duration_minutes,
+    item.venueTimezone ?? 'UTC',
+  )
+  const gameType = item.match.game_type
+    ? item.match.game_type.charAt(0).toUpperCase() + item.match.game_type.slice(1)
+    : 'Match'
+  const confirmedParticipants = getSafeParticipants(item).filter((participant) => participant.status === 'confirmed')
+  const pendingParticipants = getSafeParticipants(item).filter((participant) => participant.status === 'pending')
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-[24px] border border-[#D8E6F6] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+        <p className="text-label text-[#0d6efd]">Selected match</p>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-h1 text-[#1E293B]">
+              {item.sportName ?? 'Match'} <span className="text-[#94A3B8]">&middot;</span> {gameType}
+            </h2>
+            <p className="mt-2 text-body-main font-semibold text-[#64748B]">
+              {timeLabel || 'Time TBD'}
+            </p>
+            {item.venueName ? (
+              <p className="mt-1 text-body-main font-bold text-[#1E293B]">{item.venueName}</p>
+            ) : null}
+          </div>
+          <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1.5 text-body-sub font-black text-[#0d6efd]">
+            {item.confirmedCount} / {item.match.required_count} players
+          </span>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+        <p className="text-label text-[#64748B]">Lineup preview</p>
+        <div className="mt-4 space-y-3">
+          {confirmedParticipants.length > 0 ? confirmedParticipants.slice(0, 4).map((participant) => (
+            <div key={participant.id} className="flex items-center gap-3 rounded-[18px] border border-[#E2E8F0] bg-[#F8FAFC] p-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0d6efd] text-sm font-black text-white">
+                {participant.display_name.slice(0, 1).toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <p className="text-body-main font-black text-[#1E293B]">{participant.display_name}</p>
+                <p className="text-body-sub text-[#64748B]">Confirmed</p>
+              </div>
+            </div>
+          )) : (
+            <p className="rounded-[18px] border border-dashed border-[#D7E1EE] bg-[#F8FAFC] px-4 py-4 text-body-main font-semibold text-[#94A3B8]">
+              No confirmed players yet.
+            </p>
+          )}
+        </div>
+        {pendingParticipants.length > 0 ? (
+          <p className="mt-4 text-body-sub font-semibold text-[#64748B]">
+            {pendingParticipants.length} waiting for player response.
+          </p>
+        ) : null}
+      </section>
     </div>
   )
 }
@@ -1492,7 +1608,34 @@ export function MatchesPanel({
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
   const [mobileCreateExpandSignal, setMobileCreateExpandSignal] = useState(0)
   const [desktopCreateExpanded, setDesktopCreateExpanded] = useState(false)
+  const [pendingMatchId, setPendingMatchId] = useState<string | null>(null)
+  const effectiveSelectedMatchId = pendingMatchId ?? selectedMatchId ?? null
+  const isMatchDetailLoading = Boolean(pendingMatchId)
+  const hasActiveMatchSelection = Boolean(effectiveSelectedMatchId)
   const hasSelectedMatchDetail = Boolean(selectedMatchId && selectedMatchDetail)
+  const pendingMatchItem = useMemo(
+    () => pendingMatchId ? items.find((item) => item.match.id === pendingMatchId) ?? null : null,
+    [items, pendingMatchId],
+  )
+
+  useEffect(() => {
+    if (pendingMatchId && selectedMatchId === pendingMatchId && selectedMatchDetail) {
+      setPendingMatchId(null)
+    }
+  }, [pendingMatchId, selectedMatchDetail, selectedMatchId])
+
+  useEffect(() => {
+    if (!pendingMatchId) return
+    const timeoutId = window.setTimeout(() => {
+      setPendingMatchId((current) => current === pendingMatchId ? null : current)
+    }, 15000)
+    return () => window.clearTimeout(timeoutId)
+  }, [pendingMatchId])
+
+  const handleSelectMatch = useCallback((matchId: string) => {
+    if (matchId === selectedMatchId && selectedMatchDetail) return
+    setPendingMatchId(matchId)
+  }, [selectedMatchDetail, selectedMatchId])
 
   const now = useMemo(() => new Date().toISOString(), [])
 
@@ -1575,7 +1718,7 @@ export function MatchesPanel({
     setDesktopCreateExpanded(expanded)
   }, [])
 
-  const renderStarterCard = () => starterCard && !hasSelectedMatchDetail ? (
+  const renderStarterCard = () => starterCard && !hasActiveMatchSelection ? (
     <FirstMatchStarterCard
       contactCount={starterCard.contactCount}
       firstMatchCreated={starterCard.firstMatchCreated}
@@ -1717,7 +1860,7 @@ export function MatchesPanel({
         <div
           className={[
             'grid items-start gap-6 transition-[grid-template-columns] duration-300',
-            hasSelectedMatchDetail
+            hasActiveMatchSelection
               ? 'lg:grid-cols-[minmax(720px,1.25fr)_minmax(500px,0.86fr)] xl:grid-cols-[minmax(820px,1.32fr)_minmax(520px,0.82fr)]'
               : desktopCreateExpanded
               ? 'lg:grid-cols-[minmax(680px,1.2fr)_minmax(430px,0.86fr)] xl:grid-cols-[minmax(760px,1.25fr)_minmax(500px,0.86fr)]'
@@ -1725,7 +1868,17 @@ export function MatchesPanel({
           ].join(' ')}
         >
           <section className="min-w-0">
-            {hasSelectedMatchDetail ? (
+            {isMatchDetailLoading ? (
+              hasSelectedMatchDetail ? (
+                <SelectedMatchLoadingFrame>{selectedMatchDetail}</SelectedMatchLoadingFrame>
+              ) : pendingMatchItem ? (
+                <SelectedMatchLoadingFrame>
+                  <ProvisionalMatchDetailSummary item={pendingMatchItem} />
+                </SelectedMatchLoadingFrame>
+              ) : (
+                <MatchDetailSkeleton />
+              )
+            ) : hasSelectedMatchDetail ? (
               selectedMatchDetail
             ) : (
             <CreateMatchInline
@@ -1773,8 +1926,10 @@ export function MatchesPanel({
                             userId={userId}
                             detailItems={items}
                             onViewed={onViewedMatch}
+                            onSelectMatch={handleSelectMatch}
                             variant="incoming"
-                            isSelected={selectedMatchId === item.match.id}
+                            isSelected={effectiveSelectedMatchId === item.match.id}
+                            isLoadingDetail={pendingMatchId === item.match.id}
                           />
                         ))}
                         {visibleCancelled.map((item) => (
@@ -1784,10 +1939,12 @@ export function MatchesPanel({
                             userId={userId}
                             detailItems={items}
                             onViewed={onViewedMatch}
+                            onSelectMatch={handleSelectMatch}
                             onDismissAlert={onDismissAlert}
                             showAcknowledge={isDismissibleAlert(item, now)}
                             variant="incoming"
-                            isSelected={selectedMatchId === item.match.id}
+                            isSelected={effectiveSelectedMatchId === item.match.id}
+                            isLoadingDetail={pendingMatchId === item.match.id}
                           />
                         ))}
                         {visibleRemoved.map((item) => (
@@ -1797,10 +1954,12 @@ export function MatchesPanel({
                             userId={userId}
                             detailItems={items}
                             onViewed={onViewedMatch}
+                            onSelectMatch={handleSelectMatch}
                             onDismissAlert={onDismissAlert}
                             showAcknowledge={isDismissibleAlert(item, now)}
                             variant="incoming"
-                            isSelected={selectedMatchId === item.match.id}
+                            isSelected={effectiveSelectedMatchId === item.match.id}
+                            isLoadingDetail={pendingMatchId === item.match.id}
                           />
                         ))}
                       </div>
@@ -1829,7 +1988,16 @@ export function MatchesPanel({
 
                           return (
                             <div key={item.match.id}>
-                              <MatchRow item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="incoming" isSelected={selectedMatchId === item.match.id} />
+                              <MatchRow
+                                item={item}
+                                userId={userId}
+                                detailItems={items}
+                                onViewed={onViewedMatch}
+                                onSelectMatch={handleSelectMatch}
+                                variant="incoming"
+                                isSelected={effectiveSelectedMatchId === item.match.id}
+                                isLoadingDetail={pendingMatchId === item.match.id}
+                              />
                               {expiring && onCancelMatch ? (
                                 <ExpiryBanner item={item} hoursLeft={hoursLeft} onCancel={onCancelMatch} />
                               ) : null}
@@ -1850,7 +2018,16 @@ export function MatchesPanel({
                     ) : (
                       <div className="space-y-2">
                         {lookingFor.map((item) => (
-                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} variant="incoming" isSelected={selectedMatchId === item.match.id} />
+                          <MatchRow
+                            key={item.match.id}
+                            item={item}
+                            userId={userId}
+                            detailItems={items}
+                            onSelectMatch={handleSelectMatch}
+                            variant="incoming"
+                            isSelected={effectiveSelectedMatchId === item.match.id}
+                            isLoadingDetail={pendingMatchId === item.match.id}
+                          />
                         ))}
                       </div>
                     )}
@@ -1869,7 +2046,17 @@ export function MatchesPanel({
                     <>
                       <div className="space-y-2">
                         {history.slice(0, historyShown).map((item) => (
-                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="history" isSelected={selectedMatchId === item.match.id} />
+                          <MatchRow
+                            key={item.match.id}
+                            item={item}
+                            userId={userId}
+                            detailItems={items}
+                            onViewed={onViewedMatch}
+                            onSelectMatch={handleSelectMatch}
+                            variant="history"
+                            isSelected={effectiveSelectedMatchId === item.match.id}
+                            isLoadingDetail={pendingMatchId === item.match.id}
+                          />
                         ))}
                       </div>
                       {historyShown < history.length ? (

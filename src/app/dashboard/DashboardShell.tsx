@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MatchListItem } from '@/lib/api/matches'
 import type { PlayersData } from '@/lib/api/players'
@@ -154,6 +154,19 @@ type DashboardLiveResponse = {
 
 type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
 const STARTER_DISMISS_MS = 24 * 60 * 60 * 1000
+
+function isExpectedLiveRefreshError(error: unknown): boolean {
+  const name = typeof error === 'object' && error !== null && 'name' in error
+    ? String((error as { name?: unknown }).name ?? '')
+    : ''
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  const normalized = `${name} ${message}`.toLowerCase()
+
+  return normalized.includes('abort')
+    || normalized.includes('cancel')
+    || normalized.includes('navigation')
+    || normalized.includes('failed to fetch')
+}
 
 function getStarterFormatStorageKey(userId: string) {
   return `dashboard:first-hood-format:${userId}`
@@ -312,8 +325,12 @@ export function DashboardShell({
   const [starterFormat, setStarterFormat] = useState<StarterMatchFormat>('unknown')
   const [starterDismissedAt, setStarterDismissedAt] = useState<number | null>(null)
   const [openContactComposerSignal, setOpenContactComposerSignal] = useState(0)
+  const liveRefreshInFlightRef = useRef(false)
 
   const refreshDashboardLive = useCallback(async () => {
+    if (liveRefreshInFlightRef.current) return
+    liveRefreshInFlightRef.current = true
+
     try {
       const response = await fetch('/api/dashboard/live', {
         method: 'GET',
@@ -334,7 +351,12 @@ export function DashboardShell({
       setLiveItems(payload.items ?? [])
       setInboxBadge(payload.inboxUnreadCount ?? 0)
     } catch (error) {
+      if (isExpectedLiveRefreshError(error)) {
+        return
+      }
       console.error('[DashboardShell] live refresh request failed:', error)
+    } finally {
+      liveRefreshInFlightRef.current = false
     }
   }, [])
 

@@ -73,6 +73,65 @@ function isMissingGroupLocationsSchemaError(error: { code?: string; message?: st
   )
 }
 
+function isSafeUpdateWhereClauseError(error: { code?: string; message?: string }) {
+  return error.code === '21000' && (error.message ?? '').toLowerCase().includes('where clause')
+}
+
+function normalizeGroupLocationRows(groupId: string, locations: GroupLocationInput[]) {
+  if (locations.length === 0) throw new Error('group_location_required')
+
+  const primaryIndex = locations.findIndex((location) => location.is_primary)
+  const effectivePrimaryIndex = primaryIndex >= 0 ? primaryIndex : 0
+
+  return locations.map((location, index) => {
+    const isPrimary = index === effectivePrimaryIndex
+
+    if (location.kind === 'venue') {
+      return {
+        group_id: groupId,
+        location_kind: 'venue' as const,
+        city_name: null,
+        region: null,
+        country: null,
+        venue_id: location.venue_id,
+        is_primary: isPrimary,
+      }
+    }
+
+    return {
+      group_id: groupId,
+      location_kind: 'city' as const,
+      city_name: location.city_name,
+      region: location.region ?? null,
+      country: location.country,
+      venue_id: null,
+      is_primary: isPrimary,
+    }
+  })
+}
+
+async function replaceGroupLocationsDirect(
+  supabase: Client,
+  groupId: string,
+  locations: GroupLocationInput[],
+): Promise<GroupLocation[]> {
+  const rows = normalizeGroupLocationRows(groupId, locations)
+
+  const { error: deleteError } = await supabase
+    .from('group_locations')
+    .delete()
+    .eq('group_id', groupId)
+  if (deleteError) throw deleteError
+
+  const { data, error: insertError } = await supabase
+    .from('group_locations')
+    .insert(rows)
+    .select('*')
+  if (insertError) throw insertError
+
+  return (data ?? []) as GroupLocation[]
+}
+
 export async function listGroupLocations(
   supabase: Client,
   groupId: string,
@@ -100,7 +159,12 @@ export async function replaceGroupLocations(
     p_group_id: groupId,
     p_locations: locations,
   })
-  if (error) throw error
+  if (error) {
+    if (isSafeUpdateWhereClauseError(error)) {
+      return replaceGroupLocationsDirect(supabase, groupId, locations)
+    }
+    throw error
+  }
   return (data ?? []) as GroupLocation[]
 }
 
