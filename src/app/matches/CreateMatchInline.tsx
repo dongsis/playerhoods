@@ -5,7 +5,6 @@ import type { ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
-import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import { SportSectionIcon } from '@/app/components/SportBallIcon'
 import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
@@ -225,22 +224,16 @@ function ContactAddIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' |
 
 function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="w-full rounded-2xl border border-dashed border-[#7FB2FF] bg-[#F8FBFF] px-4 py-3">
-      <div className="flex flex-col items-start gap-3">
-        <div className="flex items-start gap-3 self-stretch">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D7E3F4] bg-white text-[#0d6efd]">
-            <ContactAddIcon kind="people" />
-          </span>
-          <span className="min-w-0">
-            <h4 className="text-title-main text-[#0B1F44]">Need more players?</h4>
-          </span>
-        </div>
+    <div className="w-full rounded-xl border border-dashed border-[#D7E3F4] bg-white px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-body-sub font-semibold text-[#64748B]">Need someone not listed?</span>
         <button
           type="button"
           onClick={onAdd}
-          className="text-body-main inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
+          className="text-body-sub inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#D7E3F4] bg-[#F8FBFF] px-3 py-1.5 font-bold text-[#0B1F44] transition hover:border-[#B8C8DF] hover:bg-white"
         >
-          <span className="text-lg leading-none">+</span>
+          <ContactAddIcon kind="people" />
+          <span className="text-base leading-none">+</span>
           Add My Contact
         </button>
       </div>
@@ -2304,11 +2297,11 @@ export function CreateMatchInline({
           ? 'border-orange-200 bg-orange-50 text-orange-700'
           : availabilityWarning?.level === 'inactive'
             ? 'border-rose-200 bg-rose-50 text-rose-700'
-            : 'border-gray-200 bg-white text-gray-600'
+            : 'border-[#E2E8F0] bg-white text-[#334155]'
     const stateClasses = isSelected
       ? availabilityWarning
-        ? `${availabilityClasses} ring-2 ring-[#0d6efd]/20`
-        : 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] ring-2 ring-[#0d6efd]/15'
+        ? `${availabilityClasses} border-[#0d6efd] bg-[#eff6ff]`
+        : 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
       : contactUnavailable
         ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-75'
         : availabilityClasses
@@ -2328,34 +2321,36 @@ export function CreateMatchInline({
             : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`
         }
         className={[
-          'relative inline-flex items-center gap-1.5 rounded-full border shadow-sm transition hover:-translate-y-0.5 hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]',
+          'text-body-main flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]',
           contactUnavailable ? 'cursor-not-allowed hover:translate-y-0 hover:border-gray-200 hover:bg-gray-50 hover:text-gray-400' : '',
-          compact ? 'px-3 py-2 text-[11px]' : 'px-3 py-2 text-[11px]',
+          compact ? 'text-[12px]' : '',
           stateClasses,
         ].join(' ')}
       >
-        {candidate.kind === 'contact' ? (
-          <span className="pointer-events-none absolute -right-1 -top-1">
-            <ContactPlayerMark className="h-[0.95rem] w-[0.95rem]" variant="badge" />
-          </span>
-        ) : null}
-        <ParticipantQuickPreviewTrigger
-          target={{
-            userId: candidate.userId ?? null,
-            guestId: candidate.guestId ?? null,
-            displayName: candidate.name,
-            gender: candidate.gender,
-          }}
-        >
-          <span className="truncate">{candidate.name}</span>
-        </ParticipantQuickPreviewTrigger>
-        {showAvailability ? (
-          <span
-            className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
-            aria-label={availabilityLabel ?? 'Available'}
-            title={availabilityLabel ?? 'Available'}
-          />
-        ) : null}
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          {showAvailability ? (
+            <span
+              className={`inline-block h-2 w-2 shrink-0 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+              aria-label={availabilityLabel ?? 'Available'}
+              title={availabilityLabel ?? 'Available'}
+            />
+          ) : null}
+          <ParticipantQuickPreviewTrigger
+            target={{
+              userId: candidate.userId ?? null,
+              guestId: candidate.guestId ?? null,
+              displayName: candidate.name,
+              gender: candidate.gender,
+            }}
+          >
+            <span className="truncate font-semibold">{candidate.name}</span>
+          </ParticipantQuickPreviewTrigger>
+          {candidate.kind === 'contact' ? (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+              Contact
+            </span>
+          ) : null}
+        </span>
         {availabilityWarning ? (
           <span
             className="sr-only"
@@ -2368,6 +2363,15 @@ export function CreateMatchInline({
             {contactStatusLabel}
           </span>
         ) : null}
+        <span
+          className={[
+            'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
+            isSelected ? 'border-[#0d6efd] bg-[#0d6efd] text-white' : 'border-[#E2E8F0] bg-white text-transparent',
+          ].join(' ')}
+          aria-hidden="true"
+        >
+          ✓
+        </span>
       </button>
     )
   }
@@ -2429,11 +2433,11 @@ export function CreateMatchInline({
     const toneClasses =
       tone === 'green'
         ? selected
-          ? 'border-green-200 bg-green-50 text-green-700'
-          : 'border-gray-200 bg-white text-gray-600 hover:border-green-200 hover:bg-green-50 hover:text-green-700'
+          ? 'border-green-300 bg-green-50 text-green-700'
+          : 'border-[#E2E8F0] bg-white text-[#334155] hover:border-green-200 hover:bg-green-50 hover:text-green-700'
         : selected
-          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-          : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700'
+          ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
+          : 'border-[#E2E8F0] bg-white text-[#334155] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]'
 
     return (
       renderGroupHoverShell(group, (
@@ -2441,14 +2445,27 @@ export function CreateMatchInline({
           type="button"
           onClick={onToggle}
           className={[
-            'text-body-sub inline-flex items-center gap-1.5 rounded-full border px-3 py-2 font-medium shadow-sm transition',
+            'text-body-main flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left font-semibold transition',
             toneClasses,
           ].join(' ')}
           aria-pressed={selected}
         >
-          <span>{group.name}</span>
-          <span className="rounded bg-green-100 px-1 py-[1px] text-[6px] font-black uppercase tracking-[0.08em] text-green-800">
+          <span className="min-w-0 flex-1 truncate">{group.name}</span>
+          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-800">
             Group
+          </span>
+          <span
+            className={[
+              'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
+              selected
+                ? tone === 'green'
+                  ? 'border-green-600 bg-green-600 text-white'
+                  : 'border-[#0d6efd] bg-[#0d6efd] text-white'
+                : 'border-[#E2E8F0] bg-white text-transparent',
+            ].join(' ')}
+            aria-hidden="true"
+          >
+            ✓
           </span>
         </button>
       ))
@@ -2505,10 +2522,15 @@ export function CreateMatchInline({
         aria-pressed={isSelected}
         title={`${candidate.name}: ${candidate.sourceLabels.join(', ')}`}
         className={[
-          'text-body-sub inline-flex items-center gap-1.5 rounded-full border bg-white px-3 py-2 text-gray-600 shadow-sm transition hover:-translate-y-0.5 hover:border-green-300 hover:bg-green-50 hover:text-green-600',
-          isSelected ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200',
+          'text-body-main flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-green-300 hover:bg-green-50 hover:text-green-600',
+          isSelected ? 'border-green-300 bg-green-50 text-green-700' : 'border-[#E2E8F0] bg-white text-[#334155]',
         ].join(' ')}
       >
+        <span
+          className={`inline-block h-2 w-2 shrink-0 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+          aria-label={availabilityLabel ?? 'Available'}
+          title={availabilityLabel ?? 'Available'}
+        />
         <ParticipantQuickPreviewTrigger
           target={{
             userId: candidate.userId ?? null,
@@ -2517,13 +2539,17 @@ export function CreateMatchInline({
             gender: candidate.gender,
           }}
         >
-          <span className="truncate">{candidate.name}</span>
+          <span className="min-w-0 flex-1 truncate font-semibold">{candidate.name}</span>
         </ParticipantQuickPreviewTrigger>
         <span
-          className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
-          aria-label={availabilityLabel ?? 'Available'}
-          title={availabilityLabel ?? 'Available'}
-        />
+          className={[
+            'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
+            isSelected ? 'border-green-600 bg-green-600 text-white' : 'border-[#E2E8F0] bg-white text-transparent',
+          ].join(' ')}
+          aria-hidden="true"
+        >
+          ✓
+        </span>
       </button>
     )
   }
@@ -3388,6 +3414,16 @@ export function CreateMatchInline({
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col">
+                  <div className="mb-3 rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5">
+                    <p className="text-body-main font-bold text-[#1E293B]">
+                      {selectionMode === 'invite' ? 'Invite specific players' : 'Open spots to join'}
+                    </p>
+                    <p className="text-body-sub mt-0.5 font-semibold text-[#64748B]">
+                      {selectionMode === 'invite'
+                        ? 'Choose saved players or contacts to invite directly.'
+                        : 'Let eligible players request or join open spots.'}
+                    </p>
+                  </div>
                   <div className="mb-4 grid gap-2">
                     {selectionMode === 'invite' && (
                       <>
