@@ -1,0 +1,189 @@
+name: Production Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number"
+        required: false
+        type: number
+      issue_number:
+        description: "Issue number to update"
+        required: false
+        type: number
+      commit_sha:
+        description: "Expected production commit SHA"
+        required: false
+        type: string
+      smoke_type:
+        description: "Smoke type: light/full"
+        required: false
+        default: "light"
+        type: choice
+        options:
+          - light
+          - full
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  smoke:
+    name: Run production smoke
+    runs-on: ubuntu-latest
+
+    outputs:
+      result: ${{ steps.result.outputs.result }}
+      summary: ${{ steps.result.outputs.summary }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Basic production reachability check
+        env:
+          PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://www.playerhoods.com' }}
+        run: |
+          echo "Checking $PRODUCTION_BASE_URL"
+          curl -I --fail --max-time 30 "$PRODUCTION_BASE_URL/login"
+
+      - name: Check whether production smoke script exists
+        id: script
+        run: |
+          if npm run | grep -q "smoke:production"; then
+            echo "has_script=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_script=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run production smoke script
+        id: run_smoke
+        if: steps.script.outputs.has_script == 'true'
+        env:
+          PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL || 'https://www.playerhoods.com' }}
+          PRODUCTION_SMOKE_EMAIL: ${{ secrets.PRODUCTION_SMOKE_EMAIL }}
+          PRODUCTION_SMOKE_PASSWORD: ${{ secrets.PRODUCTION_SMOKE_PASSWORD }}
+          SMOKE_TYPE: ${{ github.event.inputs.smoke_type }}
+        run: |
+          npm run smoke:production
+
+      - name: Determine result
+        id: result
+        run: |
+          if [ "${{ steps.script.outputs.has_script }}" = "true" ]; then
+            echo "result=PASS" >> "$GITHUB_OUTPUT"
+            cat > summary.md <<'EOF'
+          Production smoke: PASS
+
+          The repository-defined npm run smoke:production script completed successfully.
+          EOF
+          else
+            echo "result=BLOCKED" >> "$GITHUB_OUTPUT"
+            cat > summary.md <<'EOF'
+          Production smoke: BLOCKED / PARTIAL
+
+          Production login page reachability passed, but no npm run smoke:production script exists.
+          Per PlayerHoods release governance, login reachability alone is not full production verification.
+          Manual or scripted production validation is still required.
+          EOF
+          fi
+
+          echo "summary<<EOF" >> "$GITHUB_OUTPUT"
+          cat summary.md >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+  post:
+    name: Post production smoke result
+    needs: smoke
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Post to PR and/or issue
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
+          COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
+          RESULT: ${{ needs.smoke.outputs.result }}
+          SUMMARY: ${{ needs.smoke.outputs.summary }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const result = process.env.RESULT;
+            const summary = process.env.SUMMARY;
+            const commit = process.env.COMMIT_SHA || "Unknown";
+            const prNumber = process.env.PR_NUMBER ? Number(process.env.PR_NUMBER) : null;
+            const issueNumber = process.env.ISSUE_NUMBER ? Number(process.env.ISSUE_NUMBER) : null;
+
+            const body = `## Production Smoke Result: ${result}
+
+            Commit: \`${commit}\`
+
+            ${summary}
+
+            Environment impact:
+            - GitHub main: ${commit}
+            - Vercel Production: must be confirmed separately if not checked by smoke script
+            - Supabase Remote: no change unless this task involved migrations
+            - Production verification: ${result}
+            `;
+
+            if (prNumber) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body
+              });
+            }
+
+            if (issueNumber) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body
+              });
+
+              if (result === "PASS") {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  labels: ["production-smoke-passed", "production-validated", "shipped"]
+                });
+
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  state: "closed"
+                });
+              } else {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  labels: ["production-smoke-blocked", "needs-owner-decision"]
+                });
+              }
+            }
