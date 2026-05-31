@@ -26,7 +26,13 @@ DECLARE
   v_event_count integer;
   v_delivery_count integer;
   v_reply text;
+  v_reply_2 text;
+  v_accepted_at timestamptz;
+  v_accepted_at_after_repeat timestamptz;
+  v_removed_at timestamptz;
+  v_consumed_count integer;
   v_unique_guard_ok boolean := false;
+  v_pending_anchor_unique_guard_ok boolean := false;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _issue48_results(
     test_name text,
@@ -144,6 +150,36 @@ BEGIN
     'pending_anchors=' || v_pending_anchor_count::text
   );
 
+  BEGIN
+    INSERT INTO public.email_invitations (
+      inviter_user_id,
+      target_email,
+      target_name,
+      related_type,
+      related_id,
+      status,
+      expires_at,
+      match_participant_id
+    ) VALUES (
+      v_org,
+      'issue48-contact-duplicate@example.test',
+      'Issue 48 Contact Duplicate',
+      'match',
+      v_match_id,
+      'pending',
+      now() + interval '30 days',
+      v_participant_id
+    );
+  EXCEPTION WHEN unique_violation THEN
+    v_pending_anchor_unique_guard_ok := true;
+  END;
+
+  INSERT INTO _issue48_results VALUES (
+    'unique index prevents duplicate pending email invitation anchor for one participant',
+    v_pending_anchor_unique_guard_ok,
+    'unique_guard=' || v_pending_anchor_unique_guard_ok::text
+  );
+
   v_invite_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'invite');
   v_confirmed_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'confirmed_lineup');
   v_reminder_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'match_reminder');
@@ -216,7 +252,44 @@ BEGIN
       || ' deliveries=' || v_delivery_count::text
   );
 
+  v_reply := public.rpc_sms_reply_handle(v_phone, 'NO ' || v_invite_code);
+
+  SELECT removed_at INTO v_removed_at
+  FROM public.match_participants
+  WHERE id = v_participant_id;
+
+  SELECT count(*) INTO v_consumed_count
+  FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id
+    AND code = v_invite_code
+    AND consumed_at IS NOT NULL;
+
+  INSERT INTO _issue48_results VALUES (
+    'pending invite NO declines/removes and consumes the active code',
+    v_removed_at IS NOT NULL
+      AND v_consumed_count = 1,
+    'reply=' || coalesce(v_reply, 'NULL')
+      || ' removed_at=' || coalesce(v_removed_at::text, 'NULL')
+      || ' consumed=' || v_consumed_count::text
+  );
+
+  UPDATE public.match_participants
+  SET removed_at = NULL,
+      removed_by = NULL,
+      removal_note = NULL
+  WHERE id = v_participant_id;
+  PERFORM public.match_participant_reconcile_status(v_participant_id);
+
+  UPDATE public.match_participant_sms_reply_codes
+  SET consumed_at = NULL
+  WHERE participant_id = v_participant_id
+    AND code = v_invite_code;
+
   v_reply := public.rpc_sms_reply_handle(v_phone, 'YES ' || v_invite_code);
+
+  SELECT participant_accepted_at INTO v_accepted_at
+  FROM public.match_participants
+  WHERE id = v_participant_id;
 
   SELECT count(*) INTO v_active_code_count
   FROM public.match_participant_sms_reply_codes
@@ -224,22 +297,97 @@ BEGIN
     AND consumed_at IS NULL;
 
   INSERT INTO _issue48_results VALUES (
-    'YES does not consume participant RSVP code so later Game On uses same code',
+    'pending invite YES accepts and keeps participant RSVP code active for later Game On',
     v_active_code_count = 1
+      AND v_accepted_at IS NOT NULL
       AND public.notification_create_or_get_sms_reply_code(v_participant_id, 'confirmed_lineup') = v_invite_code,
-    'reply=' || coalesce(v_reply, 'NULL') || ' active_codes=' || v_active_code_count::text
+    'reply=' || coalesce(v_reply, 'NULL')
+      || ' accepted_at=' || coalesce(v_accepted_at::text, 'NULL')
+      || ' active_codes=' || v_active_code_count::text
   );
 
-  UPDATE public.match_participant_sms_reply_codes
-  SET consumed_at = now()
+  v_reply_2 := public.rpc_sms_reply_handle(v_phone, 'YES ' || v_invite_code);
+
+  SELECT participant_accepted_at INTO v_accepted_at_after_repeat
+  FROM public.match_participants
+  WHERE id = v_participant_id;
+
+  SELECT count(*) INTO v_active_code_count
+  FROM public.match_participant_sms_reply_codes
   WHERE participant_id = v_participant_id
-    AND code = v_invite_code;
+    AND consumed_at IS NULL;
+
+  INSERT INTO _issue48_results VALUES (
+    'repeated YES after confirmation is idempotent and non-destructive',
+    v_accepted_at_after_repeat = v_accepted_at
+      AND v_active_code_count = 1,
+    'reply=' || coalesce(v_reply_2, 'NULL')
+      || ' first_accepted_at=' || coalesce(v_accepted_at::text, 'NULL')
+      || ' repeated_accepted_at=' || coalesce(v_accepted_at_after_repeat::text, 'NULL')
+      || ' active_codes=' || v_active_code_count::text
+  );
 
   v_reply := public.rpc_sms_reply_handle(v_phone, 'NO ' || v_invite_code);
 
+  SELECT removed_at INTO v_removed_at
+  FROM public.match_participants
+  WHERE id = v_participant_id;
+
+  SELECT count(*) INTO v_active_code_count
+  FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id
+    AND consumed_at IS NULL;
+
   INSERT INTO _issue48_results VALUES (
-    'old consumed duplicate code cannot drive decline or removal action',
-    v_reply like 'We could not find that invite code%',
+    'confirmed participant NO does not decline/remove or consume the shared RSVP code',
+    v_removed_at IS NULL
+      AND v_active_code_count = 1,
+    'reply=' || coalesce(v_reply, 'NULL')
+      || ' removed_at=' || coalesce(v_removed_at::text, 'NULL')
+      || ' active_codes=' || v_active_code_count::text
+  );
+
+  UPDATE public.match_participants
+  SET removed_at = NULL,
+      removed_by = NULL,
+      removal_note = NULL,
+      participant_accepted_at = v_accepted_at,
+      participant_accepted_via = 'sms_invitation'
+  WHERE id = v_participant_id;
+  PERFORM public.match_participant_reconcile_status(v_participant_id);
+
+  UPDATE public.match_participant_sms_reply_codes
+  SET consumed_at = NULL
+  WHERE participant_id = v_participant_id
+    AND code = v_invite_code;
+
+  v_reply := public.rpc_sms_reply_handle(v_phone, 'OUT ' || v_invite_code);
+
+  SELECT removed_at INTO v_removed_at
+  FROM public.match_participants
+  WHERE id = v_participant_id;
+
+  SELECT count(*) INTO v_consumed_count
+  FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id
+    AND code = v_invite_code
+    AND consumed_at IS NOT NULL;
+
+  INSERT INTO _issue48_results VALUES (
+    'confirmed participant OUT withdraws/removes and consumes the active code',
+    v_removed_at IS NOT NULL
+      AND v_consumed_count = 1,
+    'reply=' || coalesce(v_reply, 'NULL')
+      || ' removed_at=' || coalesce(v_removed_at::text, 'NULL')
+      || ' consumed=' || v_consumed_count::text
+  );
+
+  v_reply := public.rpc_sms_reply_handle(v_phone, 'YES ' || v_invite_code);
+
+  INSERT INTO _issue48_results VALUES (
+    'old consumed/superseded code is rejected after participant removal',
+    v_reply like 'We could not find that invite code%'
+      OR v_reply = 'This invite is no longer active.',
     'reply=' || coalesce(v_reply, 'NULL')
   );
 
