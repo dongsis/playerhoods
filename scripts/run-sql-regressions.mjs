@@ -87,6 +87,10 @@ const suites = [
     file: 'tests/test_runner_qa_core_business_logic.sql',
     functionName: 'test_runner_qa_core_business_logic',
   },
+  {
+    file: 'tests/test_runner_issue48_sms_rsvp_hotfix.sql',
+    functionName: 'test_runner_issue48_sms_rsvp_hotfix',
+  },
 ]
 
 for (const suite of suites) {
