@@ -119,6 +119,9 @@ jobs:
       reason: ${{ steps.inspect.outputs.reason }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
       - name: Inspect labels, files, checks
         id: inspect
         env:
