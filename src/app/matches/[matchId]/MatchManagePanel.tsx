@@ -640,7 +640,8 @@ function ConfirmationModal({
           <button
             type="button"
             onClick={onCancel}
-            className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50"
+            disabled={isApplying}
+            className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {confirmLabel === 'Remove Players' ? 'Cancel' : 'Back'}
           </button>
@@ -1201,6 +1202,8 @@ export function MatchManagePanel({
   }
 
   const handleApply = async () => {
+    if (isApplying) return
+
     let closesAfterApply = false
     setIsApplying(true)
     setError(null)
@@ -1823,7 +1826,7 @@ export function MatchManagePanel({
 
                       {inviteChanges.length === 0 ? (
                         <div className="text-body-main rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-4 text-[#CBD5E1]">
-                          No additions selected yet.
+                          No changes selected yet.
                         </div>
                       ) : (
                         <div className="space-y-2">
