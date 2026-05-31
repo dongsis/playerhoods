@@ -120,12 +120,81 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ needs.guard.outputs.issue_number }}
         run: |
+          set -euo pipefail
+
           gh issue view "$ISSUE_NUMBER" \
-            --json number,title,body,labels,comments,url,author,state \
+            --json number,title,body,labels,comments,url,author,state,closed,closedAt,updatedAt \
             > issue-context.json
+
+          jq '
+            .comments
+            | sort_by(.createdAt)
+            | reverse
+            | .[0:15]
+          ' issue-context.json > latest-comments.json
+
+          gh pr list --state open --limit 100 \
+            --json number,title,state,isDraft,baseRefName,headRefName,labels,mergeable,url,updatedAt \
+            > open-prs.json
+
+          gh pr list --state all --limit 30 \
+            --search "#${ISSUE_NUMBER} repo:${GITHUB_REPOSITORY}" \
+            --json number,title,state,isDraft,baseRefName,headRefName,labels,mergeable,mergedAt,url,updatedAt \
+            > linked-prs.json
+
+          jq -r '
+            [
+              .title,
+              (.body // ""),
+              (.comments[]?.body // "")
+            ]
+            | join("\n")
+            | scan("#[0-9]+")
+            | ltrimstr("#")
+          ' issue-context.json \
+            | sort -nu \
+            | grep -v "^${ISSUE_NUMBER}$" \
+            > referenced-issue-numbers.txt || true
+
+          echo "[]" > referenced-issues.json
+          if [ -s referenced-issue-numbers.txt ]; then
+            while read -r referenced_issue; do
+              [ -n "$referenced_issue" ] || continue
+              if gh issue view "$referenced_issue" \
+                --json number,title,state,labels,url,closed,closedAt,updatedAt \
+                > "referenced-issue-${referenced_issue}.json"; then
+                jq -s '.[0] + [.[1]]' referenced-issues.json "referenced-issue-${referenced_issue}.json" \
+                  > referenced-issues.tmp
+                mv referenced-issues.tmp referenced-issues.json
+              fi
+            done < referenced-issue-numbers.txt
+          fi
+
+          cat > context-inventory.md <<EOF
+          # AI Plan Context Inventory
+
+          Target issue: #${ISSUE_NUMBER}
+
+          Files collected:
+          - issue-context.json: full target issue JSON, including comments.
+          - latest-comments.json: 15 newest target issue comments.
+          - open-prs.json: current open PR list at plan time.
+          - linked-prs.json: PRs detectable by GitHub search for #${ISSUE_NUMBER}.
+          - referenced-issues.json: current labels/status for issue references mentioned in title/body/comments.
+
+          Planning rule:
+          Treat older comments as historical unless confirmed by current labels, current issue state, open-prs.json, linked-prs.json, or referenced-issues.json.
+          EOF
 
           echo "Issue context collected:"
           cat issue-context.json | head -c 2000 || true
+          echo
+          echo "Open PR count:"
+          jq 'length' open-prs.json
+          echo "Linked PR count:"
+          jq 'length' linked-prs.json
+          echo "Referenced issues:"
+          cat referenced-issue-numbers.txt || true
 
       - name: Build Codex planning prompt
         env:
@@ -140,10 +209,24 @@ jobs:
 
           Read:
           - issue-context.json
+          - latest-comments.json
+          - open-prs.json
+          - linked-prs.json
+          - referenced-issues.json
+          - context-inventory.md
           - AGENTS.md if present
           - docs/00_RELEASE_GOVERNANCE.md if present
           - docs/00_PRODUCTION_CHANGE_LOG.md if present
           - related code paths as needed
+
+          Context freshness rules:
+          - Treat the target issue JSON as the source of truth for the target issue.
+          - Treat open-prs.json as the source of truth for currently open PR blockers.
+          - Treat linked-prs.json as detectable PR history/current linkage, not proof of current blockage unless the PR is open.
+          - Treat referenced-issues.json as the source of truth for current status/labels of issues mentioned in comments.
+          - Treat older comments as historical unless they are confirmed by current labels, current issue state, open-prs.json, linked-prs.json, or referenced-issues.json.
+          - Do not repeat stale blocker claims from comments when the referenced issue is closed/shipped or the referenced PR is merged/closed.
+          - If comments mention blockers such as #6, #11, #36, #5, or PR #39, verify their current state from referenced-issues.json, linked-prs.json, and open-prs.json before calling the issue blocked.
 
           Required output:
 
