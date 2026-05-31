@@ -406,8 +406,10 @@ begin
 
   if v_body ~ '^(YES|Y|IN|ACCEPT)(\s+|$)' then
     v_action := 'accept';
-  elsif v_body ~ '^(NO|N|OUT|DECLINE)(\s+|$)' then
+  elsif v_body ~ '^(NO|N|DECLINE)(\s+|$)' then
     v_action := 'decline';
+  elsif v_body ~ '^(OUT)(\s+|$)' then
+    v_action := 'withdraw';
   elsif v_body ~ '^(DETAILS|INFO|LINK)(\s+|$)' then
     v_action := 'details';
   else
@@ -503,6 +505,10 @@ begin
   end if;
 
   if v_action = 'accept' then
+    if v_mp.participant_accepted_at is not null then
+      return 'You''re already marked as in.';
+    end if;
+
     update public.match_participants
     set participant_accepted_at = coalesce(participant_accepted_at, now()),
         participant_accepted_via = case when participant_accepted_at is null then 'sms_invitation' else participant_accepted_via end
@@ -539,6 +545,10 @@ begin
   end if;
 
   if v_action = 'decline' then
+    if v_mp.participant_accepted_at is not null then
+      return 'You''re already marked as in. Reply OUT ' || coalesce(v_code, v_code_row.code, 'with your code') || ' if you can''t make it.';
+    end if;
+
     if v_code_row.id is not null then
       update public.match_participant_sms_reply_codes
       set consumed_at = coalesce(consumed_at, now())
@@ -552,6 +562,21 @@ begin
 
     perform public.apply_participant_exit(v_candidate_id, v_match.organizer_id, 'withdraw', 'sms_declined');
     return 'You declined this match. We will not notify you again unless you are invited to another match.';
+  end if;
+
+  if v_action = 'withdraw' then
+    if v_mp.participant_accepted_at is null then
+      return 'Reply NO ' || coalesce(v_code, v_code_row.code, 'with your code') || ' to decline this invite, or YES to accept.';
+    end if;
+
+    if v_code_row.id is not null then
+      update public.match_participant_sms_reply_codes
+      set consumed_at = coalesce(consumed_at, now())
+      where id = v_code_row.id;
+    end if;
+
+    perform public.apply_participant_exit(v_candidate_id, v_match.organizer_id, 'withdraw', 'sms_out_after_confirmed');
+    return 'You are no longer marked as playing. The organizer has been notified.';
   end if;
 
   return 'Reply YES to accept, NO to decline, or DETAILS for the match link.';
