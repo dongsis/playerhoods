@@ -167,9 +167,9 @@ jobs:
         env:
           ISSUE_NUMBER: ${{ needs.guard.outputs.issue_number }}
         run: |
-          mkdir -p .github/codex/runtime-prompts
+          mkdir -p "$RUNNER_TEMP/codex-runtime-prompts"
 
-          cat > .github/codex/runtime-prompts/implement.md <<'EOF'
+          cat > "$RUNNER_TEMP/codex-runtime-prompts/implement.md" <<'EOF'
           You are Codex implementing a PlayerHoods issue.
 
           Read issue-context.json and repository instructions.
@@ -204,8 +204,8 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: .github/codex/runtime-prompts/implement.md
-          output-file: codex-implement.md
+          prompt-file: ${{ runner.temp }}/codex-runtime-prompts/implement.md
+          output-file: ${{ runner.temp }}/codex-implement.md
           sandbox: workspace-write
           safety-strategy: drop-sudo
           codex-args: '["--ephemeral"]'
