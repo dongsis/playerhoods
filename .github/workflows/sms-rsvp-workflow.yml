@@ -1,0 +1,119 @@
+name: SMS RSVP Workflow Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+      - release/current
+    paths:
+      - "src/lib/notifications/**"
+      - "src/lib/sms/**"
+      - "src/app/api/sms/**"
+      - "src/lib/api/matches.ts"
+      - "supabase/migrations/**"
+      - "tests/**"
+      - "scripts/run-sql-regressions.mjs"
+      - "package.json"
+      - ".github/workflows/sms-rsvp-workflow.yml"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sms-rsvp-gate:
+    name: SMS RSVP workflow regression gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check PR references an issue
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          BODY_FILE="$(mktemp)"
+          printf '%s\n' "$PR_BODY" > "$BODY_FILE"
+
+          if ! grep -Eiq "(Fixes|Closes|Resolves|Related to) #[0-9]+" "$BODY_FILE"; then
+            echo "PR body must reference the GitHub issue, e.g. Fixes #47 or Related to #47."
+            exit 1
+          fi
+
+      - name: Review migration expectation
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          git fetch origin "${{ github.base_ref }}"
+          CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          echo "$CHANGED"
+
+          DB_LOGIC_TOUCH="$(echo "$CHANGED" | grep -E '^(supabase/migrations/|tests/|scripts/run-sql-regressions\.mjs$)' || true)"
+          SMS_RUNTIME_TOUCH="$(echo "$CHANGED" | grep -E '^(src/lib/notifications/notification-service\.ts|src/lib/sms/|src/app/api/sms/|src/lib/api/matches\.ts)$' || true)"
+          MIGRATION_TOUCH="$(echo "$CHANGED" | grep -E '^supabase/migrations/.*\.sql$' || true)"
+
+          if [ -n "$DB_LOGIC_TOUCH$SMS_RUNTIME_TOUCH" ] && [ -z "$MIGRATION_TOUCH" ]; then
+            if echo "$PR_LABELS" | grep -Eiq '(^|,)no-migration-needed(,|$)' || echo "$PR_BODY" | grep -Eiq 'no migration needed|no-migration-needed'; then
+              echo "No migration found, but PR explicitly documents no migration needed."
+            else
+              echo "::warning::SMS/notification/match/invitation logic changed without a Supabase migration. Add a migration, the no-migration-needed label, or a no migration needed explanation in the PR body."
+            fi
+          fi
+
+      - name: Check forbidden legacy SMS copy
+        run: |
+          git fetch origin "${{ github.base_ref }}"
+          CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -E '^(src|supabase|tests)/' || true)"
+
+          if [ -z "$CHANGED" ]; then
+            echo "No src/supabase/tests files changed; skipping forbidden copy check."
+            exit 0
+          fi
+
+          if echo "$CHANGED" | xargs grep -n "This is not the final lineup yet"; then
+            echo "Forbidden legacy SMS copy found: This is not the final lineup yet"
+            exit 1
+          fi
+
+          if echo "$CHANGED" | xargs grep -n "We will send Game On if the host forms the match"; then
+            echo "Forbidden legacy SMS copy found: We will send Game On if the host forms the match"
+            exit 1
+          fi
+
+      - name: Build verification
+        run: npm run verify:build
+
+      - name: SQL regression
+        run: npm run verify:sql
+
+      - name: Advisory SMS RSVP targeted regression
+        run: |
+          HAS_SCRIPT="$(node -e "const p=require('./package.json'); process.stdout.write(p.scripts && p.scripts['test:sms-rsvp'] ? 'yes' : 'no')")"
+
+          if [ "$HAS_SCRIPT" != "yes" ]; then
+            echo "::warning::Skipping SMS RSVP targeted regression because package.json has no test:sms-rsvp script yet."
+            echo "SMS RSVP targeted regression: skipped, script missing" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ ! -f "tests/test_runner_sms_rsvp_workflow.sql" ]; then
+            echo "::warning::Skipping SMS RSVP targeted regression because tests/test_runner_sms_rsvp_workflow.sql is missing."
+            echo "SMS RSVP targeted regression: skipped, SQL runner missing" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          npm run test:sms-rsvp
+          echo "SMS RSVP targeted regression: passed" >> "$GITHUB_STEP_SUMMARY"
