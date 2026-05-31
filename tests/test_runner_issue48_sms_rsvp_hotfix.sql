@@ -306,7 +306,11 @@ BEGIN
       || ' active_codes=' || v_active_code_count::text
   );
 
-  v_reply_2 := public.rpc_sms_reply_handle(v_phone, 'YES ' || v_invite_code);
+  BEGIN
+    v_reply_2 := public.rpc_sms_reply_handle(v_phone, 'YES ' || v_invite_code);
+  EXCEPTION WHEN OTHERS THEN
+    v_reply_2 := 'ERROR ' || SQLSTATE || ': ' || SQLERRM;
+  END;
 
   SELECT participant_accepted_at INTO v_accepted_at_after_repeat
   FROM public.match_participants
@@ -320,7 +324,8 @@ BEGIN
   INSERT INTO _issue48_results VALUES (
     'repeated YES after confirmation is idempotent and non-destructive',
     v_accepted_at_after_repeat = v_accepted_at
-      AND v_active_code_count = 1,
+      AND v_active_code_count = 1
+      AND v_reply_2 not like 'ERROR %',
     'reply=' || coalesce(v_reply_2, 'NULL')
       || ' first_accepted_at=' || coalesce(v_accepted_at::text, 'NULL')
       || ' repeated_accepted_at=' || coalesce(v_accepted_at_after_repeat::text, 'NULL')
