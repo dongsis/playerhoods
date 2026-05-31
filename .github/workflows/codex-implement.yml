@@ -223,15 +223,7 @@ jobs:
         if: steps.changes.outputs.has_changes == 'true'
         run: |
           npm ci
-
-          if npm run | grep -q "build:clean"; then
-            npm run build:clean
-          elif npm run | grep -q "build"; then
-            npm run build
-          else
-            echo "No build script found."
-          fi
-
+          npm run build
           npx tsc --noEmit
 
       - name: Commit changes
