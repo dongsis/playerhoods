@@ -262,8 +262,16 @@ begin
       select ei.id into v_invitation_id
       from public.email_invitations ei
       where ei.match_participant_id = v_mp.id
-        and ei.status = 'pending'
-      order by ei.created_at desc
+        and ei.status <> 'canceled'
+      order by
+        case ei.status
+          when 'pending' then 0
+          when 'accepted' then 1
+          when 'declined' then 2
+          when 'expired' then 3
+          else 4
+        end,
+        ei.created_at desc
       limit 1;
 
       if v_invitation_id is null then
@@ -294,8 +302,16 @@ begin
           select ei.id into v_invitation_id
           from public.email_invitations ei
           where ei.match_participant_id = v_mp.id
-            and ei.status = 'pending'
-          order by ei.created_at desc
+            and ei.status <> 'canceled'
+          order by
+            case ei.status
+              when 'pending' then 0
+              when 'accepted' then 1
+              when 'declined' then 2
+              when 'expired' then 3
+              else 4
+            end,
+            ei.created_at desc
           limit 1;
         end;
       end if;
@@ -500,6 +516,14 @@ begin
   v_match_id := v_match.id;
   v_link := public.notification_magic_link_for_participant(v_candidate_id);
 
+  if v_match.id is null then
+    return 'This invite is no longer active.';
+  end if;
+
+  if v_action in ('accept', 'decline', 'withdraw') and v_match.status <> 'active' then
+    return 'This invite is no longer active.';
+  end if;
+
   if v_action = 'details' then
     return 'View match details here: ' || coalesce(v_link, '/matches/' || v_match_id::text);
   end if;
@@ -607,6 +631,7 @@ declare
   v_target_phone text := nullif(btrim(coalesce(p_target_phone, '')), '');
   v_email_opted_out boolean := false;
   v_sms_opted_out boolean := false;
+  v_anchor_count int := 0;
   v_anchor_mp_id uuid;
 begin
   if v_uid is null then
@@ -621,6 +646,24 @@ begin
     raise exception 'email_or_phone_required';
   end if;
 
+  if not exists (
+    select 1
+    from public.matches m
+    where m.id = p_related_id
+      and m.organizer_id = v_uid
+  ) then
+    raise exception 'not_match_organizer';
+  end if;
+
+  if not exists (
+    select 1
+    from public.matches m
+    where m.id = p_related_id
+      and m.status = 'active'
+  ) then
+    raise exception 'match_not_active';
+  end if;
+
   v_email_opted_out := v_target_email is not null and public.is_contact_communication_opted_out('email', v_target_email, 'match_invites');
   v_sms_opted_out := v_target_phone is not null and public.is_contact_communication_opted_out('sms', v_target_phone, 'match_invites');
 
@@ -628,20 +671,27 @@ begin
     raise exception 'contact_communication_opted_out';
   end if;
 
-  select mp.id
-  into v_anchor_mp_id
+  select count(*), min(mp.id::text)::uuid
+  into v_anchor_count, v_anchor_mp_id
   from public.match_participants mp
   join public.guests g on g.id = mp.guest_id
   where mp.match_id = p_related_id
+    and mp.removed_at is null
     and (
       (v_target_email is not null and lower(btrim(coalesce(g.email, ''))) = v_target_email)
       or (
         v_target_phone is not null
         and regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') = regexp_replace(v_target_phone, '\D', '', 'g')
       )
-    )
-  order by mp.created_at desc
-  limit 1;
+    );
+
+  if v_anchor_count > 1 then
+    raise exception 'anchor_ambiguous_guest_participant';
+  end if;
+
+  if v_anchor_count = 0 then
+    v_anchor_mp_id := null;
+  end if;
 
   if v_anchor_mp_id is not null then
     select * into v_inv

@@ -14,6 +14,9 @@ DECLARE
   v_venue_id uuid := '48000000-0000-0000-0000-000000000003'::uuid;
   v_match_id uuid := '48000000-0000-0000-0000-000000000004'::uuid;
   v_participant_id uuid := '48000000-0000-0000-0000-000000000005'::uuid;
+  v_other_user uuid := '48000000-0000-0000-0000-000000000006'::uuid;
+  v_guest_id_2 uuid := '48000000-0000-0000-0000-000000000007'::uuid;
+  v_participant_id_2 uuid := '48000000-0000-0000-0000-000000000008'::uuid;
   v_phone text := '+15555554848';
   v_invite_code text;
   v_confirmed_code text;
@@ -31,8 +34,12 @@ DECLARE
   v_accepted_at_after_repeat timestamptz;
   v_removed_at timestamptz;
   v_consumed_count integer;
+  v_total_anchor_count integer;
   v_unique_guard_ok boolean := false;
   v_pending_anchor_unique_guard_ok boolean := false;
+  v_not_org_guard_ok boolean := false;
+  v_inactive_match_guard_ok boolean := false;
+  v_ambiguous_anchor_guard_ok boolean := false;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _issue48_results(
     test_name text,
@@ -47,16 +54,18 @@ BEGIN
   DELETE FROM public.match_participant_notification_events WHERE participant_id = v_participant_id;
   DELETE FROM public.match_participant_sms_reply_codes WHERE participant_id = v_participant_id;
   DELETE FROM public.email_invitations WHERE match_participant_id = v_participant_id OR related_id = v_match_id;
-  DELETE FROM public.match_participant_actions WHERE match_participant_id = v_participant_id OR match_id = v_match_id;
-  DELETE FROM public.match_participants WHERE id = v_participant_id OR match_id = v_match_id;
+  DELETE FROM public.match_participant_actions WHERE match_participant_id IN (v_participant_id, v_participant_id_2) OR match_id = v_match_id;
+  DELETE FROM public.match_participants WHERE id IN (v_participant_id, v_participant_id_2) OR match_id = v_match_id;
   DELETE FROM public.matches WHERE id = v_match_id;
-  DELETE FROM public.guests WHERE id = v_guest_id;
+  DELETE FROM public.guests WHERE id IN (v_guest_id, v_guest_id_2);
   DELETE FROM public.venues WHERE id = v_venue_id;
-  DELETE FROM public.profiles WHERE id = v_org;
-  DELETE FROM auth.users WHERE id = v_org;
+  DELETE FROM public.profiles WHERE id IN (v_org, v_other_user);
+  DELETE FROM auth.users WHERE id IN (v_org, v_other_user);
 
   INSERT INTO auth.users (id, email, email_confirmed_at)
-  VALUES (v_org, 'issue48-organizer@example.test', now());
+  VALUES
+    (v_org, 'issue48-organizer@example.test', now()),
+    (v_other_user, 'issue48-other@example.test', now());
 
   INSERT INTO public.profiles (
     id,
@@ -71,6 +80,24 @@ BEGIN
     '',
     '',
     'Issue 48 Organizer',
+    'available',
+    'recommended',
+    true
+  );
+
+  INSERT INTO public.profiles (
+    id,
+    first_name,
+    last_name,
+    display_name,
+    availability_status,
+    discovery_volume,
+    accepting_new_invites
+  ) VALUES (
+    v_other_user,
+    '',
+    '',
+    'Issue 48 Other User',
     'available',
     'recommended',
     true
@@ -180,6 +207,106 @@ BEGIN
     'unique_guard=' || v_pending_anchor_unique_guard_ok::text
   );
 
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_other_user::text, 'role', 'authenticated')::text, true);
+
+  BEGIN
+    PERFORM public.rpc_email_invitation_create('issue48-contact@example.test', 'Issue 48 Contact', 'match', v_match_id, null, v_phone);
+  EXCEPTION WHEN OTHERS THEN
+    v_not_org_guard_ok := SQLERRM = 'not_match_organizer';
+  END;
+
+  INSERT INTO _issue48_results VALUES (
+    'rpc_email_invitation_create rejects non-organizer callers',
+    v_not_org_guard_ok,
+    'guard=' || v_not_org_guard_ok::text
+  );
+
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_org::text, 'role', 'authenticated')::text, true);
+
+  UPDATE public.matches
+  SET status = 'cancelled'
+  WHERE id = v_match_id;
+
+  BEGIN
+    PERFORM public.rpc_email_invitation_create('issue48-contact@example.test', 'Issue 48 Contact', 'match', v_match_id, null, v_phone);
+  EXCEPTION WHEN OTHERS THEN
+    v_inactive_match_guard_ok := SQLERRM = 'match_not_active';
+  END;
+
+  UPDATE public.matches
+  SET status = 'active'
+  WHERE id = v_match_id;
+
+  INSERT INTO _issue48_results VALUES (
+    'rpc_email_invitation_create rejects inactive matches',
+    v_inactive_match_guard_ok,
+    'guard=' || v_inactive_match_guard_ok::text
+  );
+
+  INSERT INTO public.guests (id, display_name, created_by, email, phone, status)
+  VALUES (v_guest_id_2, 'Issue 48 Contact Duplicate Person', v_org, 'issue48-contact@example.test', v_phone, 'active');
+
+  INSERT INTO public.match_participants (
+    id,
+    match_id,
+    join_method,
+    guest_id,
+    created_by,
+    nominated_by,
+    org_approved_at,
+    org_approved_by
+  ) VALUES (
+    v_participant_id_2,
+    v_match_id,
+    'nominated',
+    v_guest_id_2,
+    v_org,
+    v_org,
+    now(),
+    v_org
+  );
+
+  BEGIN
+    PERFORM public.rpc_email_invitation_create('issue48-contact@example.test', 'Issue 48 Contact', 'match', v_match_id, null, v_phone);
+  EXCEPTION WHEN OTHERS THEN
+    v_ambiguous_anchor_guard_ok := SQLERRM = 'anchor_ambiguous_guest_participant';
+  END;
+
+  INSERT INTO _issue48_results VALUES (
+    'rpc_email_invitation_create rejects ambiguous contact anchors',
+    v_ambiguous_anchor_guard_ok,
+    'guard=' || v_ambiguous_anchor_guard_ok::text
+  );
+
+  DELETE FROM public.match_participants WHERE id = v_participant_id_2;
+  DELETE FROM public.guests WHERE id = v_guest_id_2;
+
+  UPDATE public.email_invitations
+  SET status = 'accepted'
+  WHERE match_participant_id = v_participant_id
+    AND status = 'pending';
+
+  SELECT public.notification_match_payload(v_participant_id, 'confirmed_lineup', '{}'::jsonb)
+  INTO v_payload;
+
+  SELECT count(*) INTO v_pending_anchor_count
+  FROM public.email_invitations
+  WHERE match_participant_id = v_participant_id
+    AND status = 'pending';
+
+  SELECT count(*) INTO v_total_anchor_count
+  FROM public.email_invitations
+  WHERE match_participant_id = v_participant_id
+    AND status <> 'canceled';
+
+  INSERT INTO _issue48_results VALUES (
+    'notification_match_payload reuses accepted anchor without creating pending regression',
+    v_pending_anchor_count = 0
+      AND v_total_anchor_count = 1,
+    'pending_anchors=' || v_pending_anchor_count::text
+      || ' total_non_canceled=' || v_total_anchor_count::text
+  );
+
   v_invite_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'invite');
   v_confirmed_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'confirmed_lineup');
   v_reminder_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'match_reminder');
@@ -251,6 +378,42 @@ BEGIN
       || ' events=' || v_event_count::text
       || ' deliveries=' || v_delivery_count::text
   );
+
+  UPDATE public.matches
+  SET status = 'cancelled'
+  WHERE id = v_match_id;
+
+  v_reply := public.rpc_sms_reply_handle(v_phone, 'YES ' || v_invite_code);
+  v_reply_2 := public.rpc_sms_reply_handle(v_phone, 'NO ' || v_invite_code);
+  PERFORM public.rpc_sms_reply_handle(v_phone, 'OUT ' || v_invite_code);
+
+  SELECT participant_accepted_at, removed_at
+  INTO v_accepted_at, v_removed_at
+  FROM public.match_participants
+  WHERE id = v_participant_id;
+
+  SELECT count(*) INTO v_active_code_count
+  FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id
+    AND consumed_at IS NULL;
+
+  INSERT INTO _issue48_results VALUES (
+    'explicit SMS code replies on non-active matches do not mutate or consume',
+    v_accepted_at IS NULL
+      AND v_removed_at IS NULL
+      AND v_active_code_count = 1
+      AND v_reply = 'This invite is no longer active.'
+      AND v_reply_2 = 'This invite is no longer active.',
+    'yes_reply=' || coalesce(v_reply, 'NULL')
+      || ' no_reply=' || coalesce(v_reply_2, 'NULL')
+      || ' accepted_at=' || coalesce(v_accepted_at::text, 'NULL')
+      || ' removed_at=' || coalesce(v_removed_at::text, 'NULL')
+      || ' active_codes=' || v_active_code_count::text
+  );
+
+  UPDATE public.matches
+  SET status = 'active'
+  WHERE id = v_match_id;
 
   v_reply := public.rpc_sms_reply_handle(v_phone, 'NO ' || v_invite_code);
 
