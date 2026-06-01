@@ -87,7 +87,12 @@ declare
   v_existing text;
   v_code text;
   v_attempt int := 0;
-  v_purpose text := coalesce(nullif(p_purpose, ''), 'invite');
+  v_requested_purpose text := coalesce(nullif(p_purpose, ''), 'invite');
+  v_purpose text := case
+    when coalesce(nullif(p_purpose, ''), 'invite') in ('invite', 'confirmed_lineup', 'critical_update')
+      then coalesce(nullif(p_purpose, ''), 'invite')
+    else 'critical_update'
+  end;
 begin
   select * into v_mp
   from public.match_participants
@@ -125,7 +130,10 @@ begin
     update public.match_participant_sms_reply_codes
     set phone_e164 = v_rec.phone_e164,
         metadata = coalesce(metadata, '{}'::jsonb)
-          || jsonb_build_object('last_requested_purpose', v_purpose)
+          || jsonb_build_object(
+            'last_requested_purpose', v_requested_purpose,
+            'stored_purpose', v_purpose
+          )
     where id = v_existing_id;
     return v_existing;
   end if;
@@ -150,7 +158,10 @@ begin
         v_code,
         v_purpose,
         now() + interval '30 days',
-        jsonb_build_object('last_requested_purpose', v_purpose)
+        jsonb_build_object(
+          'last_requested_purpose', v_requested_purpose,
+          'stored_purpose', v_purpose
+        )
       );
       return v_code;
     exception when unique_violation then

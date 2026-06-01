@@ -17,10 +17,16 @@ DECLARE
   v_other_user uuid := '48000000-0000-0000-0000-000000000006'::uuid;
   v_guest_id_2 uuid := '48000000-0000-0000-0000-000000000007'::uuid;
   v_participant_id_2 uuid := '48000000-0000-0000-0000-000000000008'::uuid;
+  v_guest_id_3 uuid := '48000000-0000-0000-0000-000000000009'::uuid;
+  v_participant_id_3 uuid := '48000000-0000-0000-0000-000000000010'::uuid;
   v_phone text := '+15555554848';
+  v_phone_3 text := '+15555554849';
   v_invite_code text;
   v_confirmed_code text;
   v_reminder_code text;
+  v_cold_reminder_code text;
+  v_cold_reminder_purpose text;
+  v_cold_reminder_requested_purpose text;
   v_payload jsonb;
   v_delivery_1 uuid;
   v_delivery_2 uuid;
@@ -53,14 +59,14 @@ BEGIN
 
   DELETE FROM public.notification_deliveries
   WHERE payload->>'match_id' = v_match_id::text
-     OR payload->>'match_participant_id' = v_participant_id::text;
-  DELETE FROM public.match_participant_notification_events WHERE participant_id = v_participant_id;
-  DELETE FROM public.match_participant_sms_reply_codes WHERE participant_id = v_participant_id;
-  DELETE FROM public.email_invitations WHERE match_participant_id = v_participant_id OR related_id = v_match_id;
-  DELETE FROM public.match_participant_actions WHERE match_participant_id IN (v_participant_id, v_participant_id_2) OR match_id = v_match_id;
-  DELETE FROM public.match_participants WHERE id IN (v_participant_id, v_participant_id_2) OR match_id = v_match_id;
+     OR payload->>'match_participant_id' IN (v_participant_id::text, v_participant_id_3::text);
+  DELETE FROM public.match_participant_notification_events WHERE participant_id IN (v_participant_id, v_participant_id_3);
+  DELETE FROM public.match_participant_sms_reply_codes WHERE participant_id IN (v_participant_id, v_participant_id_3);
+  DELETE FROM public.email_invitations WHERE match_participant_id IN (v_participant_id, v_participant_id_3) OR related_id = v_match_id;
+  DELETE FROM public.match_participant_actions WHERE match_participant_id IN (v_participant_id, v_participant_id_2, v_participant_id_3) OR match_id = v_match_id;
+  DELETE FROM public.match_participants WHERE id IN (v_participant_id, v_participant_id_2, v_participant_id_3) OR match_id = v_match_id;
   DELETE FROM public.matches WHERE id = v_match_id;
-  DELETE FROM public.guests WHERE id IN (v_guest_id, v_guest_id_2);
+  DELETE FROM public.guests WHERE id IN (v_guest_id, v_guest_id_2, v_guest_id_3);
   DELETE FROM public.venues WHERE id = v_venue_id;
   DELETE FROM public.profiles WHERE id IN (v_org, v_other_user);
   DELETE FROM auth.users WHERE id IN (v_org, v_other_user);
@@ -324,6 +330,60 @@ BEGIN
 
   DELETE FROM public.match_participants WHERE id = v_participant_id_2;
   DELETE FROM public.guests WHERE id = v_guest_id_2;
+
+  INSERT INTO public.guests (id, display_name, created_by, email, phone, status)
+  VALUES (v_guest_id_3, 'Issue 48 Cold Reminder', v_org, 'issue48-reminder@example.test', v_phone_3, 'active');
+
+  INSERT INTO public.match_participants (
+    id,
+    match_id,
+    join_method,
+    guest_id,
+    created_by,
+    nominated_by,
+    org_approved_at,
+    org_approved_by
+  ) VALUES (
+    v_participant_id_3,
+    v_match_id,
+    'nominated',
+    v_guest_id_3,
+    v_org,
+    v_org,
+    now(),
+    v_org
+  );
+
+  SELECT public.notification_match_payload(v_participant_id_3, 'match_reminder', '{}'::jsonb)
+  INTO v_payload;
+
+  SELECT v_payload->>'reply_code'
+  INTO v_cold_reminder_code;
+
+  SELECT purpose, metadata->>'last_requested_purpose'
+  INTO v_cold_reminder_purpose, v_cold_reminder_requested_purpose
+  FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id_3
+    AND consumed_at IS NULL
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  SELECT count(*) INTO v_active_code_count
+  FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id_3
+    AND consumed_at IS NULL;
+
+  INSERT INTO _issue48_results VALUES (
+    'cold match_reminder payload creates one active SMS code without violating purpose constraint',
+    v_active_code_count = 1
+      AND v_cold_reminder_code IS NOT NULL
+      AND v_cold_reminder_purpose = 'critical_update'
+      AND v_cold_reminder_requested_purpose = 'match_reminder',
+    'active_codes=' || v_active_code_count::text
+      || ' code=' || coalesce(v_cold_reminder_code, 'NULL')
+      || ' stored_purpose=' || coalesce(v_cold_reminder_purpose, 'NULL')
+      || ' requested_purpose=' || coalesce(v_cold_reminder_requested_purpose, 'NULL')
+  );
 
   UPDATE public.email_invitations
   SET status = 'accepted'
