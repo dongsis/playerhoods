@@ -609,15 +609,18 @@ $$;
 
 grant execute on function public.rpc_sms_reply_handle(text, text) to anon, authenticated, service_role;
 
-drop function if exists public.rpc_email_invitation_create(text, text, text, uuid, timestamptz);
+-- PostgreSQL cannot remove default arguments with CREATE OR REPLACE.
+-- Recreate the 6-arg signature without defaults so the restored 5-arg
+-- compatibility wrapper is not ambiguous for legacy callers.
+drop function if exists public.rpc_email_invitation_create(text, text, text, uuid, timestamptz, text);
 
 create or replace function public.rpc_email_invitation_create(
   p_target_email text,
   p_target_name text,
   p_related_type text,
   p_related_id uuid,
-  p_expires_at timestamptz default null,
-  p_target_phone text default null
+  p_expires_at timestamptz,
+  p_target_phone text
 )
 returns public.email_invitations
 language plpgsql
@@ -765,7 +768,33 @@ begin
 end;
 $$;
 
+create or replace function public.rpc_email_invitation_create(
+  p_target_email text,
+  p_target_name text,
+  p_related_type text,
+  p_related_id uuid,
+  p_expires_at timestamptz default null
+)
+returns public.email_invitations
+language sql
+security definer
+set search_path to public
+as $$
+  select public.rpc_email_invitation_create(
+    p_target_email,
+    p_target_name,
+    p_related_type,
+    p_related_id,
+    p_expires_at,
+    null::text
+  );
+$$;
+
 comment on function public.rpc_email_invitation_create(text, text, text, uuid, timestamptz, text) is
   'Creates a match invitation and suppresses opted-out contact channels before emitting the send event. Issue #48: reuses an existing pending participant anchor when present.';
 
+comment on function public.rpc_email_invitation_create(text, text, text, uuid, timestamptz) is
+  'Compatibility wrapper for pre-SMS invitation callers. Issue #48: delegates to the guarded implementation without dropping the legacy external signature.';
+
 grant execute on function public.rpc_email_invitation_create(text, text, text, uuid, timestamptz, text) to authenticated, service_role;
+grant execute on function public.rpc_email_invitation_create(text, text, text, uuid, timestamptz) to authenticated, service_role;

@@ -66,8 +66,11 @@ This hotfix addresses Issue #48 SMS RSVP code and invitation-anchor duplication 
 - Enforces one pending `email_invitations` anchor per match participant while preserving historical accepted, declined, expired, and canceled invitation rows.
 - Reuses stable non-canceled contact invitation anchors in notification payloads instead of silently creating a fresh pending anchor after an accepted, declined, or expired result.
 - Restores invitation RPC guards for organizer ownership, active matches, non-removed participant anchors, and ambiguous contact matches.
+- Preserves the legacy 5-argument `rpc_email_invitation_create` signature as a compatibility wrapper around the guarded implementation.
+- Recreates the 6-argument `rpc_email_invitation_create` signature without default arguments so legacy 5-argument calls resolve unambiguously; both external signatures remain available after migration.
 - Guards explicit SMS RSVP codes so `YES`, `NO`, and `OUT` do not mutate non-active matches.
 - Updates post-formation critical update SMS copy to use `OUT` only and keeps cancellation SMS non-actionable.
+- Adds `docs/PR52_REMOTE_MIGRATION_APPLY_PLAN.md` with duplicate-cleanup checks, post-apply verification SQL, and forward-only rollback guidance.
 
 ### Verification Evidence
 
@@ -79,6 +82,7 @@ This hotfix addresses Issue #48 SMS RSVP code and invitation-anchor duplication 
 | SMS copy guard | Pending | Must pass before merge |
 | Build/typecheck | Pending | Must pass before merge |
 | Codex PR review | Pending | Must be PASS or PASS_WITH_CAVEAT before merge |
+| Remote apply plan | Added | `docs/PR52_REMOTE_MIGRATION_APPLY_PLAN.md`; not executed |
 | Vercel Production | Not deployed | No production deployment performed by this PR |
 | Supabase Remote | Not applied | Remote migration apply requires explicit owner approval |
 | Real SMS/email/provider traffic | Not sent | Regression work must not call real providers |

@@ -37,6 +37,9 @@ DECLARE
   v_total_anchor_count integer;
   v_unique_guard_ok boolean := false;
   v_pending_anchor_unique_guard_ok boolean := false;
+  v_compat_signature_exists boolean := false;
+  v_compat_not_org_guard_ok boolean := false;
+  v_compat_pending_anchor_reuse_ok boolean := false;
   v_not_org_guard_ok boolean := false;
   v_inactive_match_guard_ok boolean := false;
   v_ambiguous_anchor_guard_ok boolean := false;
@@ -207,7 +210,35 @@ BEGIN
     'unique_guard=' || v_pending_anchor_unique_guard_ok::text
   );
 
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'rpc_email_invitation_create'
+      AND pg_get_function_identity_arguments(p.oid) = 'p_target_email text, p_target_name text, p_related_type text, p_related_id uuid, p_expires_at timestamp with time zone'
+  )
+  INTO v_compat_signature_exists;
+
+  INSERT INTO _issue48_results VALUES (
+    'legacy 5-arg rpc_email_invitation_create signature remains available',
+    v_compat_signature_exists,
+    'exists=' || v_compat_signature_exists::text
+  );
+
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_other_user::text, 'role', 'authenticated')::text, true);
+
+  BEGIN
+    PERFORM public.rpc_email_invitation_create('issue48-contact@example.test'::text, 'Issue 48 Contact'::text, 'match'::text, v_match_id, null::timestamptz);
+  EXCEPTION WHEN OTHERS THEN
+    v_compat_not_org_guard_ok := SQLERRM = 'not_match_organizer';
+  END;
+
+  INSERT INTO _issue48_results VALUES (
+    'legacy 5-arg rpc_email_invitation_create rejects non-organizer callers',
+    v_compat_not_org_guard_ok,
+    'guard=' || v_compat_not_org_guard_ok::text
+  );
 
   BEGIN
     PERFORM public.rpc_email_invitation_create('issue48-contact@example.test', 'Issue 48 Contact', 'match', v_match_id, null, v_phone);
@@ -222,6 +253,19 @@ BEGIN
   );
 
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_org::text, 'role', 'authenticated')::text, true);
+
+  PERFORM public.rpc_email_invitation_create('issue48-contact@example.test'::text, 'Issue 48 Contact'::text, 'match'::text, v_match_id, null::timestamptz);
+
+  SELECT count(*) = 1 INTO v_compat_pending_anchor_reuse_ok
+  FROM public.email_invitations
+  WHERE match_participant_id = v_participant_id
+    AND status = 'pending';
+
+  INSERT INTO _issue48_results VALUES (
+    'legacy 5-arg rpc_email_invitation_create reuses pending participant anchor',
+    v_compat_pending_anchor_reuse_ok,
+    'reuse=' || v_compat_pending_anchor_reuse_ok::text
+  );
 
   UPDATE public.matches
   SET status = 'cancelled'
