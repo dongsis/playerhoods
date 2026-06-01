@@ -519,6 +519,39 @@ BEGIN
   SET status = 'active'
   WHERE id = v_match_id;
 
+  v_reply := public.rpc_sms_reply_handle(v_phone, 'NO');
+
+  SELECT removed_at INTO v_removed_at
+  FROM public.match_participants
+  WHERE id = v_participant_id;
+
+  SELECT count(*) INTO v_consumed_count
+  FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id
+    AND code = v_invite_code
+    AND consumed_at IS NOT NULL;
+
+  INSERT INTO _issue48_results VALUES (
+    'single pending invite NO without code declines/removes and consumes the active code',
+    v_removed_at IS NOT NULL
+      AND v_consumed_count = 1,
+    'reply=' || coalesce(v_reply, 'NULL')
+      || ' removed_at=' || coalesce(v_removed_at::text, 'NULL')
+      || ' consumed=' || v_consumed_count::text
+  );
+
+  UPDATE public.match_participants
+  SET removed_at = NULL,
+      removed_by = NULL,
+      removal_note = NULL
+  WHERE id = v_participant_id;
+  PERFORM public.match_participant_reconcile_status(v_participant_id);
+
+  UPDATE public.match_participant_sms_reply_codes
+  SET consumed_at = NULL
+  WHERE participant_id = v_participant_id
+    AND code = v_invite_code;
+
   v_reply := public.rpc_sms_reply_handle(v_phone, 'NO ' || v_invite_code);
 
   SELECT removed_at INTO v_removed_at

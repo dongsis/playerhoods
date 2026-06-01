@@ -503,8 +503,7 @@ begin
       return 'You have multiple invites. Reply ' || coalesce(v_response, 'YES with the invite code.');
     end if;
 
-    select c.participant_id
-    into v_candidate_id
+    select c.* into v_code_row
     from public.match_participant_sms_reply_codes c
     join public.match_participants mp on mp.id = c.participant_id
     join public.matches m on m.id = c.match_id
@@ -516,6 +515,8 @@ begin
       and m.status = 'active'
     order by c.created_at asc, c.participant_id::text asc
     limit 1;
+
+    v_candidate_id := v_code_row.participant_id;
   end if;
 
   select * into v_mp from public.match_participants where id = v_candidate_id for update;
