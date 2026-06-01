@@ -552,6 +552,10 @@ BEGIN
   WHERE participant_id = v_participant_id
     AND code = v_invite_code;
 
+  DELETE FROM public.match_participant_actions
+  WHERE match_participant_id = v_participant_id
+    AND action_type = 'decline';
+
   v_reply := public.rpc_sms_reply_handle(v_phone, 'NO ' || v_invite_code);
 
   SELECT removed_at INTO v_removed_at
