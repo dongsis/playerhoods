@@ -21,6 +21,7 @@ type MatchSmsData = MatchInfo & {
   magicLinkPath?: string | null
   changeSet?: Record<string, unknown> | null
   isFormed?: boolean
+  recipientName?: string | null
 }
 
 function normalizeBaseUrl(siteUrl: string | null | undefined): string {
@@ -67,8 +68,10 @@ function formatSmsTime(value: string | null | undefined): string | null {
   }).format(date)
 }
 
-function formatSummaryParts(gameType: string | null | undefined, matchDate: string | null | undefined, venueName: string | null | undefined) {
-  return [formatGameType(gameType), matchDate ?? null, venueName?.trim() || null].filter(Boolean).join(' - ')
+function formatSmsDateTime(matchDate: string | null | undefined, startTime: string | null | undefined): string {
+  const date = formatSmsDate(matchDate) ?? 'TBD'
+  const time = formatSmsTime(startTime) ?? 'TBD'
+  return `${date}, ${time}`
 }
 
 function matchLink(match: Pick<MatchSmsData, 'matchId' | 'siteUrl' | 'magicLinkPath'>): string {
@@ -79,105 +82,159 @@ function matchLink(match: Pick<MatchSmsData, 'matchId' | 'siteUrl' | 'magicLinkP
   return `${normalizeBaseUrl(match.siteUrl)}/matches/${match.matchId}`
 }
 
+function recipientPrefix(prefix: string, recipientName: string | null | undefined, fallback: string): string {
+  const name = recipientName?.trim()
+  return name ? `${prefix}, ${name}.` : fallback
+}
+
 export function renderInvitationSms(data: InvitationSmsData): string {
   const baseUrl = normalizeBaseUrl(data.siteUrl)
   const gameType = formatGameType(data.matchSummary?.game_type)
   const date = formatSmsDate(data.matchSummary?.match_date)
+  const time = formatSmsTime(data.matchSummary?.start_time)
   const venueName = data.matchSummary?.club_name?.trim()
   const token = formatInvitationToken(data.invitationId)
   const invitationUrl = `${baseUrl}/i/${token}`
-  const unsubscribeUrl = data.unsubscribeUrl ?? `${baseUrl}/stop/${token}`
-  const title = gameType === 'match' ? "You're invited to a PlayerHoods match:" : `You're invited to a PlayerHoods ${gameType} match:`
-  const detailLines = [date, venueName].filter(Boolean)
-  const replyText = data.replyCode ? `Reply YES ${data.replyCode} if you can play, or NO ${data.replyCode} if you can't.` : null
+  const detailLines = [[date, time].filter(Boolean).join(', ') || null, venueName].filter(Boolean)
+  const replyText = data.replyCode ? `Reply YES ${data.replyCode} or NO ${data.replyCode}.` : null
   return [
-    title.replace('invited to', 'invited to confirm availability for'),
+    `${data.inviterDisplayName} invited you to ${gameType}:`,
     ...detailLines,
     '',
     replyText,
-    'This is not the final lineup yet. We will send Game On if the host forms the match.',
     `Details: ${invitationUrl}`,
-    `Stop invites: ${unsubscribeUrl}`,
   ].filter((line): line is string => line != null).join('\n')
 }
 
 export function renderGuestParticipantInviteSms(match: MatchInfo, inviterName: string): string {
-  const summary = formatSummaryParts(match.gameType, match.matchDate, match.venueName)
-  return `${inviterName} invited you to a PlayerHoods match${summary ? ` (${summary})` : ''}. Details: ${matchLink(match)}`
-}
-
-export function renderGuestOrgApprovedSms(match: MatchInfo, inviterName: string): string {
-  const summary = formatSummaryParts(match.gameType, match.matchDate, match.venueName)
-  return `${inviterName} invited you to a PlayerHoods match${summary ? ` (${summary})` : ''}. Details: ${matchLink(match)}`
-}
-
-export function renderGuestDelegateConfirmedSms(match: MatchInfo): string {
-  const summary = formatSummaryParts(match.gameType, match.matchDate, match.venueName)
-  return `You're confirmed for your PlayerHoods match${summary ? ` (${summary})` : ''}. Details: ${matchLink(match)}`
-}
-
-export function renderGameFormedSms(match: MatchInfo): string {
-  const summary = formatSummaryParts(match.gameType, match.matchDate, match.venueName)
-  return `Your PlayerHoods match is formed${summary ? ` (${summary})` : ''}. Details: ${matchLink(match)}`
-}
-
-export function renderMatchTimeChangeSms(match: MatchInfo): string {
-  const date = formatSmsDate(match.matchDate) ?? 'TBD'
-  const time = formatSmsTime(match.startTime) ?? 'TBD'
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
   return [
-    'PlayerHoods update: match time changed to',
-    `${date}, ${time}`,
+    `${inviterName} invited you to ${formatGameType(match.gameType)}:`,
+    dateTime,
     location,
     '',
     `Details: ${matchLink(match)}`,
   ].join('\n')
 }
 
-export function renderMatchRemovedSms(match: MatchInfo): string {
-  const summary = formatSummaryParts(match.gameType, match.matchDate, match.venueName)
-  return `You were removed from a PlayerHoods match${summary ? ` (${summary})` : ''}. Details: ${matchLink(match)}`
+export function renderGuestOrgApprovedSms(match: MatchInfo, inviterName: string): string {
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
+  const location = match.venueName ?? 'TBD'
+  return [
+    `${inviterName} invited you to ${formatGameType(match.gameType)}:`,
+    dateTime,
+    location,
+    '',
+    `Details: ${matchLink(match)}`,
+  ].join('\n')
 }
 
-export function renderMatchInviteSms(match: MatchSmsData): string {
-  const date = formatSmsDate(match.matchDate) ?? 'TBD'
-  const time = formatSmsTime(match.startTime) ?? 'TBD'
+export function renderGuestDelegateConfirmedSms(match: MatchInfo): string {
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
-  const replyText = match.replyCode ? `Reply YES ${match.replyCode} if you can play, or NO ${match.replyCode} if you can't.` : null
   return [
-    "You're invited to confirm availability for a PlayerHoods match:",
-    `${date}, ${time}`,
+    "You're confirmed:",
+    dateTime,
+    location,
+    '',
+    `Details: ${matchLink(match)}`,
+  ].join('\n')
+}
+
+export function renderGameFormedSms(match: MatchInfo): string {
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
+  const location = match.venueName ?? 'TBD'
+  return [
+    'Game on.',
+    '',
+    dateTime,
+    location,
+    '',
+    `Details: ${matchLink(match)}`,
+  ].join('\n')
+}
+
+export function renderMatchTimeChangeSms(match: MatchInfo): string {
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
+  const location = match.venueName ?? 'TBD'
+  return [
+    `Update: match time changed to ${dateTime}, ${location}.`,
+    `Details: ${matchLink(match)}`,
+  ].join(' ')
+}
+
+export function renderMatchRemovedSms(match: MatchInfo): string {
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
+  const location = match.venueName ?? 'TBD'
+  return [
+    'You were removed from this match:',
+    dateTime,
+    location,
+    '',
+    `Details: ${matchLink(match)}`,
+  ].join('\n')
+}
+
+export function renderMatchInviteSms(match: MatchSmsData, organizerName = 'Someone'): string {
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
+  const location = match.venueName ?? 'TBD'
+  const replyText = match.replyCode ? `Reply YES ${match.replyCode} or NO ${match.replyCode}.` : null
+  return [
+    `${organizerName} invited you to ${formatGameType(match.gameType)}:`,
+    dateTime,
     location,
     '',
     replyText,
-    'This is not the final lineup yet. We will send Game On if the host forms the match.',
     `Details: ${matchLink(match)}`,
   ].filter((line): line is string => line != null).join('\n')
 }
 
 export function renderConfirmedLineupSms(match: MatchSmsData): string {
-  const date = formatSmsDate(match.matchDate) ?? 'TBD'
-  const time = formatSmsTime(match.startTime) ?? 'TBD'
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
-  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
-  return `Game on. You're confirmed to play: ${date} at ${time}, ${location}.${outText} We'll only notify you again if the match is cancelled or key details change.`
+  const outText = match.replyCode ? `Reply OUT ${match.replyCode} if you can't make it.` : null
+  return [
+    recipientPrefix('Game on', match.recipientName, 'Game on.'),
+    '',
+    dateTime,
+    location,
+    '',
+    outText,
+    "We'll only text if plans change.",
+  ].filter((line): line is string => line != null).join('\n')
 }
 
 export function renderMatchReminderSms(match: MatchSmsData): string {
-  const date = formatSmsDate(match.matchDate) ?? 'TBD'
-  const time = formatSmsTime(match.startTime) ?? 'TBD'
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
-  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
-  return `Reminder: you're in for ${formatGameType(match.gameType)} on ${date} at ${time}, ${location}.${outText} Details: ${matchLink(match)}`
+  const outText = match.replyCode ? `Reply OUT ${match.replyCode} if you can't make it.` : null
+  return [
+    recipientPrefix('Reminder', match.recipientName, 'Match reminder.'),
+    '',
+    dateTime,
+    location,
+    '',
+    outText,
+    `Details: ${matchLink(match)}`,
+  ].filter((line): line is string => line != null).join('\n')
 }
 
 export function renderHostOfflineConfirmationSms(match: MatchSmsData, hostName = 'Someone'): string {
-  const date = formatSmsDate(match.matchDate) ?? 'TBD'
-  const time = formatSmsTime(match.startTime) ?? 'TBD'
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
-  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if anything changed.` : ''
-  const formedText = match.isFormed ? ' for a formed match' : ''
-  return `${hostName} added you as confirmed${formedText}: ${formatGameType(match.gameType)} at ${location} on ${date} ${time}.${outText} Details: ${matchLink(match)}`
+  const outText = match.replyCode ? `Reply OUT ${match.replyCode} if you can't make it.` : null
+  const opening = match.recipientName?.trim()
+    ? `Hi ${match.recipientName.trim()}, ${hostName} added you as confirmed:`
+    : `${hostName} added you as confirmed:`
+  return [
+    opening,
+    dateTime,
+    location,
+    '',
+    outText,
+    `Details: ${matchLink(match)}`,
+  ].filter((line): line is string => line != null).join('\n')
 }
 
 function summarizeChangeSet(changeSet: Record<string, unknown> | null | undefined): string {
@@ -194,15 +251,22 @@ export function renderCriticalUpdateSms(match: MatchSmsData): string {
   const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
 
   if (isTimeChange) {
-    const date = formatSmsDate(match.matchDate) ?? 'TBD'
-    const time = formatSmsTime(match.startTime) ?? 'TBD'
+    const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
     const location = match.venueName ?? 'TBD'
-    return `PlayerHoods update: match time changed to ${date} at ${time}, ${location}.${outText} Details: ${matchLink(match)}`
+    return `Update: match time changed to ${dateTime}, ${location}.${outText} Details: ${matchLink(match)}`
   }
 
-  return `PlayerHoods update: ${summary}.${outText} Details: ${matchLink(match)}`
+  return `Update: ${summary}.${outText} Details: ${matchLink(match)}`
 }
 
 export function renderCancellationSms(match: MatchSmsData): string {
-  return `PlayerHoods update: this match has been cancelled. Details: ${matchLink(match)}`
+  const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
+  const location = match.venueName ?? 'TBD'
+  return [
+    'This match was cancelled:',
+    dateTime,
+    location,
+    '',
+    `Details: ${matchLink(match)}`,
+  ].join('\n')
 }

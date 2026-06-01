@@ -322,7 +322,7 @@ async function processNotificationDeliveryRows(
       subject = invitationSubject(organizerDisplayName, m.venueName)
       emailFrom = inviteSenderFrom(organizerDisplayName)
       html = playerhoodsMatchInviteEmail(m, organizerDisplayName)
-      smsBody = renderMatchInviteSms(m)
+      smsBody = renderMatchInviteSms(m, organizerDisplayName)
     } else if (templateType === 'confirmed_lineup') {
       const m = buildMatchInfo(payload)
       const organizerDisplayName = (payload.inviter_display_name as string) ?? (await getMatchOrganizerName(supabase, m.matchId)) ?? 'Someone'
