@@ -28,7 +28,7 @@ This governance patch defines Codex autonomous Draft PR work rules:
 - Allows Codex to continue scoped CI/build/typecheck/lint/SQL/test fixes inside an approved Draft PR without asking after every failure.
 - Defines hard stop gates for Ready for Review, merge, deploy, Supabase Remote migrations, real provider traffic, destructive DB work, product scope expansion, and approved product rule changes.
 - Adds Ready Packet and Environment Impact Report sections to the PR template.
-- Creates or updates Codex workflow labels for auto-fix, human-decision, product-blocked, secrets-blocked, and ready-for-review-request states.
+- Records that Codex workflow labels for auto-fix, human-decision, product-blocked, secrets-blocked, and ready-for-review-request states are managed as GitHub metadata outside the repository diff.
 
 ### Verification Evidence
 
