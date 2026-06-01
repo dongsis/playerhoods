@@ -95,6 +95,10 @@ const suites = [
     file: 'tests/test_runner_issue58_reminder_only_drain.sql',
     functionName: 'test_runner_issue58_reminder_only_drain',
   },
+  {
+    file: 'tests/test_runner_issue61_sms_copy_payload_rpc.sql',
+    functionName: 'test_runner_issue61_sms_copy_payload_rpc',
+  },
 ]
 
 for (const suite of suites) {

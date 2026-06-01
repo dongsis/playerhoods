@@ -92,6 +92,8 @@ function buildMatchInfo(payload: Record<string, unknown>): {
   magicLinkPath: string | null
   changeSet: Record<string, unknown> | null
   isFormed: boolean
+  recipientName: string | null
+  venueTimezone: string | null
 } {
   return {
     matchId: (payload.match_id as string) ?? '',
@@ -104,6 +106,8 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     magicLinkPath: (payload.magic_link_path as string) ?? null,
     changeSet: (payload.change_set as Record<string, unknown>) ?? null,
     isFormed: Boolean(payload.is_formed),
+    recipientName: (payload.recipient_name as string) ?? null,
+    venueTimezone: (payload.venue_timezone as string) ?? null,
   }
 }
 
@@ -247,6 +251,8 @@ async function processNotificationDeliveryRows(
       venue_name?: string
       reply_code?: string
       magic_link_path?: string
+      recipient_name?: string
+      venue_timezone?: string
       change_set?: Record<string, unknown>
     }
 
