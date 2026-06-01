@@ -186,6 +186,7 @@ For production-related, release, deployment, migration, notification, SMS, email
 
 ```text
 Environment Impact Report
+- Current status:
 - Local code:
 - GitHub:
 - Vercel Preview:
