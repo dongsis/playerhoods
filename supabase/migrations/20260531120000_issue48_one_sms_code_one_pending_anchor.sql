@@ -129,6 +129,11 @@ begin
   if v_existing is not null then
     update public.match_participant_sms_reply_codes
     set phone_e164 = v_rec.phone_e164,
+        expires_at = case
+          when expires_at is null or expires_at > now() + interval '30 days'
+            then expires_at
+          else now() + interval '30 days'
+        end,
         metadata = coalesce(metadata, '{}'::jsonb)
           || jsonb_build_object(
             'last_requested_purpose', v_requested_purpose,
@@ -171,12 +176,25 @@ begin
         where c.participant_id = p_participant_id
           and c.consumed_at is null
       ) then
-        select c.code into v_existing
+        select c.id, c.code into v_existing_id, v_existing
         from public.match_participant_sms_reply_codes c
         where c.participant_id = p_participant_id
           and c.consumed_at is null
         order by c.created_at desc
         limit 1;
+        update public.match_participant_sms_reply_codes c
+        set phone_e164 = v_rec.phone_e164,
+            expires_at = case
+              when c.expires_at is null or c.expires_at > now() + interval '30 days'
+                then c.expires_at
+              else now() + interval '30 days'
+            end,
+            metadata = coalesce(c.metadata, '{}'::jsonb)
+              || jsonb_build_object(
+                'last_requested_purpose', v_requested_purpose,
+                'stored_purpose', v_purpose
+              )
+        where c.id = v_existing_id;
         return v_existing;
       end if;
 

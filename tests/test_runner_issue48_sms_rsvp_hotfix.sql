@@ -27,6 +27,7 @@ DECLARE
   v_cold_reminder_code text;
   v_cold_reminder_purpose text;
   v_cold_reminder_requested_purpose text;
+  v_code_expires_at timestamptz;
   v_payload jsonb;
   v_delivery_1 uuid;
   v_delivery_2 uuid;
@@ -429,6 +430,27 @@ BEGIN
       || ' invite=' || coalesce(v_invite_code, 'NULL')
       || ' confirmed=' || coalesce(v_confirmed_code, 'NULL')
       || ' reminder=' || coalesce(v_reminder_code, 'NULL')
+  );
+
+  UPDATE public.match_participant_sms_reply_codes
+  SET expires_at = now() + interval '1 hour'
+  WHERE participant_id = v_participant_id
+    AND consumed_at IS NULL;
+
+  v_reminder_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'match_reminder');
+
+  SELECT expires_at INTO v_code_expires_at
+  FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id
+    AND consumed_at IS NULL
+  LIMIT 1;
+
+  INSERT INTO _issue48_results VALUES (
+    'reused SMS code refreshes expiration window for newly sent reminder',
+    v_reminder_code = v_invite_code
+      AND v_code_expires_at >= now() + interval '29 days',
+    'code=' || coalesce(v_reminder_code, 'NULL')
+      || ' expires_at=' || coalesce(v_code_expires_at::text, 'NULL')
   );
 
   BEGIN
