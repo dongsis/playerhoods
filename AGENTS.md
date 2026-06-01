@@ -102,6 +102,103 @@ Each fix must be committed separately with a clear message.
 
 Do not create large mixed commits unless the user explicitly approves.
 
+## Codex Autonomous Draft PR Rules
+
+Once a product plan or issue scope is approved, Codex may continue implementation inside the Draft PR without asking after every CI/test failure when all of these are true:
+
+- The work stays inside the approved issue scope.
+- The work stays on the approved issue branch.
+- The pull request remains Draft.
+- No production deployment is performed.
+- No Supabase Remote migration is applied.
+- No real SMS, email, or external provider traffic is triggered.
+- No destructive migration, data deletion, table drop, column drop, or RPC drop is introduced.
+- Product behavior is not expanded beyond the approved plan.
+
+While those conditions hold, Codex may:
+
+- Edit implementation files within approved scope.
+- Add or update tests.
+- Add append-only local migrations only when the approved issue explicitly requires DB work and migration governance is satisfied.
+- Run local checks, build, typecheck, lint, SQL regression, and targeted tests.
+- Fix build, typecheck, lint, SQL regression, targeted test, and CI failures as long as the fix stays within the approved scope.
+- Push commits to the working branch.
+- Update the Draft PR description.
+- Comment progress on the issue or PR.
+- Update Draft PR comments.
+- Keep iterating in the Draft PR until required checks pass or a stop condition is reached.
+
+Codex must not ask the user after every CI failure when the failure is within approved scope and the PR is still Draft.
+
+Codex must stop and ask for explicit approval before:
+
+- Marking a PR Ready for Review.
+- Merging a PR.
+- Deploying to production.
+- Applying Supabase Remote migrations.
+- Sending real SMS, email, or provider traffic.
+- Closing a core issue.
+- Expanding product scope or changing approved product rules.
+- Deleting data.
+- Destructive DB changes.
+- Dropping tables, columns, RPCs, or other DB objects.
+- Rewriting historical migrations.
+
+Codex must also stop when:
+
+- Product behavior is ambiguous.
+- The issue scope needs expansion.
+- A migration is destructive or not clearly append-only.
+- A CI failure appears unrelated and fixing it would broaden scope.
+- Real provider credentials or production data would be involved.
+- The PR is ready to leave Draft.
+
+## Draft PR Lifecycle
+
+When approved autonomous implementation work is happening inside a Draft PR:
+
+1. Keep pushing scoped fixes while the PR remains Draft.
+2. Do not ask the user after every CI failure.
+3. When all required checks pass, post a Ready Packet.
+4. Ask permission before marking the PR Ready for Review.
+
+Ready Packet format:
+
+```text
+Issue / PR:
+Branch:
+Scope completed:
+Runtime behavior changed: Yes/No
+Migration changed: Yes/No
+Remote migration applied: Yes/No
+Deploy performed: Yes/No
+Real SMS/email/provider traffic: Yes/No
+Checks:
+Remaining risks:
+Decision requested:
+```
+
+Use the Ready Packet to separate facts from decisions. Do not imply that GitHub, Vercel Production, Supabase Remote, or production validation are the same state.
+
+## Environment Impact Report
+
+For production-related, release, deployment, migration, notification, SMS, email, or external-provider work, final reports must include an Environment Impact Report:
+
+```text
+Environment Impact Report
+- Current status:
+- Local code:
+- GitHub:
+- Vercel Preview:
+- Vercel Production:
+- Supabase Local:
+- Supabase Remote:
+- Production verification:
+- Unknowns:
+```
+
+If a field was not touched or not verified, say so explicitly. Do not infer Supabase Remote state from local migration files. Do not infer production deployment from a GitHub commit or merged PR.
+
 ## Deployment Rules
 
 Never deploy production from a dirty worktree.
