@@ -62,6 +62,25 @@ export type DeliveryRow = {
   attempt_count: number
 }
 
+export type ReminderDrainPreview = {
+  dueReminderCandidates: {
+    total: number
+    byChannel: Array<{ channel: string | null; count: number }>
+  }
+  queuedReminderDeliveries: {
+    total: number
+    byChannel: Array<{ channel: string | null; count: number }>
+  }
+  wouldProcess: {
+    total: number
+    byNotificationType: Array<{ notificationType: string; channel: string | null; count: number }>
+  }
+  skippedNonReminderQueuedDeliveries: {
+    total: number
+    byNotificationType: Array<{ notificationType: string; channel: string | null; count: number }>
+  }
+}
+
 function buildMatchInfo(payload: Record<string, unknown>): {
   matchId: string
   gameType: string
@@ -204,17 +223,10 @@ async function enrichInvitationContext(
   }
 }
 
-/** Process queued notification deliveries. Call after invitation create or via cron. */
-export async function processQueuedNotificationDeliveries(
+async function processNotificationDeliveryRows(
   supabase: SupabaseClient,
-  limit = 10
+  deliveries: DeliveryRow[],
 ): Promise<{ processed: number; sent: number; failed: number }> {
-  const { data: rows, error } = await supabase.rpc('rpc_get_queued_deliveries', {
-    p_limit: limit,
-  })
-  if (error) throw error
-
-  const deliveries = (rows ?? []) as DeliveryRow[]
   let sent = 0
   let failed = 0
 
@@ -384,6 +396,19 @@ export async function processQueuedNotificationDeliveries(
   return { processed: deliveries.length, sent, failed }
 }
 
+/** Process queued notification deliveries. Call after invitation create or via the generic drain route. */
+export async function processQueuedNotificationDeliveries(
+  supabase: SupabaseClient,
+  limit = 10
+): Promise<{ processed: number; sent: number; failed: number }> {
+  const { data: rows, error } = await supabase.rpc('rpc_get_queued_deliveries', {
+    p_limit: limit,
+  })
+  if (error) throw error
+
+  return processNotificationDeliveryRows(supabase, (rows ?? []) as DeliveryRow[])
+}
+
 export async function drainQueuedNotificationDeliveries(
   supabase: SupabaseClient,
   options?: { batchSize?: number; maxBatches?: number },
@@ -396,6 +421,54 @@ export async function drainQueuedNotificationDeliveries(
 
   for (let index = 0; index < maxBatches; index += 1) {
     const result = await processQueuedNotificationDeliveries(supabase, batchSize)
+    processed += result.processed
+    sent += result.sent
+    failed += result.failed
+
+    if (result.processed < batchSize) {
+      break
+    }
+  }
+
+  return { processed, sent, failed }
+}
+
+export async function previewReminderDeliveryDrain(
+  supabase: SupabaseClient,
+  limit = 10,
+): Promise<ReminderDrainPreview> {
+  const { data, error } = await supabase.rpc('notification_reminder_drain_preview', {
+    p_limit: limit,
+  })
+  if (error) throw error
+
+  return data as ReminderDrainPreview
+}
+
+export async function processQueuedReminderDeliveries(
+  supabase: SupabaseClient,
+  limit = 10,
+): Promise<{ processed: number; sent: number; failed: number }> {
+  const { data: rows, error } = await supabase.rpc('rpc_get_queued_reminder_deliveries', {
+    p_limit: limit,
+  })
+  if (error) throw error
+
+  return processNotificationDeliveryRows(supabase, (rows ?? []) as DeliveryRow[])
+}
+
+export async function drainQueuedReminderDeliveries(
+  supabase: SupabaseClient,
+  options?: { batchSize?: number; maxBatches?: number },
+): Promise<{ processed: number; sent: number; failed: number }> {
+  const batchSize = Math.max(1, options?.batchSize ?? 10)
+  const maxBatches = Math.max(1, options?.maxBatches ?? 5)
+  let processed = 0
+  let sent = 0
+  let failed = 0
+
+  for (let index = 0; index < maxBatches; index += 1) {
+    const result = await processQueuedReminderDeliveries(supabase, batchSize)
     processed += result.processed
     sent += result.sent
     failed += result.failed

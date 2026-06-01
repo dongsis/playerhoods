@@ -22,6 +22,7 @@ export async function middleware(request: NextRequest) {
   const isSeoFileRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   const isDevHelperRoute = pathname.startsWith('/dev/')
   const isNotificationDrainRoute = pathname === '/api/notifications/drain'
+    || pathname === '/api/notifications/drain-reminders'
   const isSmsInboundRoute = pathname === '/api/sms/inbound'
   const isCanonicalLocalAuthRoute = isLoginRoute || isAuthCallback || isResetPasswordRoute
 
