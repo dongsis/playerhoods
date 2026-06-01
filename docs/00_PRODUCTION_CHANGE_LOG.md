@@ -14,6 +14,33 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-01 - PATCH-20260601-create-match-invite-copy
+
+**Type:** Patch
+**Code Commit:** PR #59 branch head; final merge commit pending
+**Migration:** None
+**Status:** GitHub PR only; not merged; no Vercel Production deploy; no Supabase Remote change
+
+### Summary
+
+This patch clarifies Create Match invite selection wording so selected invitees are not described using lineup-capacity wording.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed | `npm run build:clean` |
+| Lint | Not completed | `next lint` prompted for ESLint setup; no config changes created |
+| Preview visual check | Auth-blocked | `/matches` redirects to login without a safe authenticated session |
+| Vercel Production | Not deployed | No production deployment performed by this PR |
+| Supabase Remote | Not changed | No migration or remote database change |
+
+### Safety
+
+- Copy-only UI change.
+- No match capacity, invitation, notification, or backend logic changed.
+- No database, Supabase, middleware, delivery, or `processDeliveriesAction` code changed.
+
 ## 2026-06-01 - GOV-20260601-autonomous-draft-pr-rules
 
 **Type:** Governance
