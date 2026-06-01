@@ -1646,20 +1646,19 @@ export function CreateMatchInline({
   )
   const hasOpenJoinScope = selectedScopeUsers.length > 0 || selectedScopeGroups.length > 0
   const openSpotCount = hasOpenJoinScope ? Math.max(requiredCount - invitedTargetCount, 0) : 0
-  const selectedPlayerPlanCount = Math.min(requiredCount, invitedTargetCount + openSpotCount)
-  const remainingPlayersNeeded = Math.max(requiredCount - selectedPlayerPlanCount, 0)
-  const playersNeededCopy = selectedPlayerPlanCount === 0
+  const hasPlayerSelectionPlan = invitedTargetCount > 0 || hasOpenJoinScope
+  const playersNeededCopy = !hasPlayerSelectionPlan
     ? `Players needed: ${requiredCount}`
-    : `${selectedPlayerPlanCount} of ${requiredCount} selected`
-  const playersProgressCopy = selectedPlayerPlanCount === 0
+    : invitedTargetCount > 0
+      ? `${invitedTargetCount} ${invitedTargetCount === 1 ? 'invitee' : 'invitees'} selected`
+      : 'Open to Join selected'
+  const playersProgressCopy = !hasPlayerSelectionPlan
     ? null
-    : remainingPlayersNeeded > 0
-      ? `${remainingPlayersNeeded} more needed`
-      : 'Ready to review'
-  const inviteSummaryCopy = `${invitedTargetCount} selected to invite when this match is posted`
+    : 'Ready to review'
+  const inviteSummaryCopy = `${invitedTargetCount} ${invitedTargetCount === 1 ? 'player' : 'players'} will be invited when this match is posted.`
   const openJoinSummaryCopy = openSpotCount > 0
     ? `${openSpotCount} open ${openSpotCount === 1 ? 'spot' : 'spots'} for eligible players to request`
-    : 'Request scope selected; no open spots remain after invitations'
+    : 'No open spots will remain after these invitations.'
   const hasSavedOrContactInvitePlayers = availableInviteOptions.length > 0
 
   const organizerNoteSentences = useMemo(
