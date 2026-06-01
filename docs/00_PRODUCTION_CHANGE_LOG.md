@@ -50,6 +50,56 @@ This governance patch defines Codex autonomous Draft PR work rules:
 
 - PR #49 also adds `.github/pull_request_template.md`; merge sequencing or manual conflict resolution is required before both PRs can land.
 
+## 2026-06-01 - DBFIX-20260601-issue48-sms-rsvp-one-code
+
+**Type:** Structural DB/SMS hotfix
+**Code Commit:** PR #52 branch head; final merge commit pending
+**Migration:** `20260531120000_issue48_one_sms_code_one_pending_anchor.sql`
+**Status:** GitHub PR only; not merged; no Vercel Production deploy; Supabase Remote not applied
+
+### Summary
+
+This hotfix addresses Issue #48 SMS RSVP code and invitation-anchor duplication risk:
+
+- Enforces one active unconsumed SMS RSVP code per match participant.
+- Keeps SMS code purpose as metadata/history instead of splitting active RSVP codes by invite, confirmed lineup, reminder, or critical update.
+- Enforces one pending `email_invitations` anchor per match participant while preserving historical accepted, declined, expired, and canceled invitation rows.
+- Reuses stable non-canceled contact invitation anchors in notification payloads instead of silently creating a fresh pending anchor after an accepted, declined, or expired result.
+- Restores invitation RPC guards for organizer ownership, active matches, non-removed participant anchors, and ambiguous contact matches.
+- Preserves the legacy 5-argument `rpc_email_invitation_create` signature as a compatibility wrapper around the guarded implementation.
+- Renames and revokes the previous 6-argument `rpc_email_invitation_create` implementation, then recreates the same external 6-argument signature without default arguments so legacy 5-argument calls resolve unambiguously; both external signatures remain available after migration.
+- Guards explicit SMS RSVP codes so `YES`, `NO`, and `OUT` do not mutate non-active matches.
+- Updates post-formation critical update SMS copy to use `OUT` only and keeps cancellation SMS non-actionable.
+- Adds `docs/PR52_REMOTE_MIGRATION_APPLY_PLAN.md` with duplicate-cleanup checks, post-apply verification SQL, and forward-only rollback guidance.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| SQL Regression Check | Pending | Must pass in CI before merge |
+| Full SQL suite | Pending | Must pass before merge |
+| Issue #48 runner | Pending | Must pass before merge |
+| SMS copy guard | Pending | Must pass before merge |
+| Build/typecheck | Pending | Must pass before merge |
+| Codex PR review | Pending | Must be PASS or PASS_WITH_CAVEAT before merge |
+| Remote apply plan | Added | `docs/PR52_REMOTE_MIGRATION_APPLY_PLAN.md`; not executed |
+| Vercel Production | Not deployed | No production deployment performed by this PR |
+| Supabase Remote | Not applied | Remote migration apply requires explicit owner approval |
+| Real SMS/email/provider traffic | Not sent | Regression work must not call real providers |
+| Production verification | Not verified | Requires post-merge, post-remote-apply controlled validation |
+
+### Rollback
+
+- Database rollback must be forward-only via a follow-up migration restoring prior function definitions or relaxing new indexes if required.
+- Data cleanup is not perfectly reversible from database state alone because superseded SMS codes are consumed and duplicate pending anchors are canceled with metadata.
+- Code rollback alone is insufficient after remote migration apply; Supabase Remote state must be handled explicitly.
+
+### Known Risks
+
+- Supabase Remote apply must happen in a controlled window with invite/SMS mutation traffic quiet to avoid concurrent rows between cleanup and unique-index creation.
+- Twilio/carrier validation is separate from this SQL-focused hotfix.
+- GitHub merge, Vercel Production deployment, Supabase Remote migration apply, and production verification are separate states and must not be inferred from each other.
+
 ## 2026-05-25 - PATCH-20260525-contact-notification-public-links
 
 **Type:** Patch

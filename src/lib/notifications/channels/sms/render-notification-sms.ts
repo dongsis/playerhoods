@@ -191,29 +191,18 @@ function summarizeChangeSet(changeSet: Record<string, unknown> | null | undefine
 export function renderCriticalUpdateSms(match: MatchSmsData): string {
   const summary = summarizeChangeSet(match.changeSet)
   const isTimeChange = Boolean(match.changeSet && ('start_time' in match.changeSet || 'match_date' in match.changeSet))
+  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
 
   if (isTimeChange) {
     const date = formatSmsDate(match.matchDate) ?? 'TBD'
     const time = formatSmsTime(match.startTime) ?? 'TBD'
     const location = match.venueName ?? 'TBD'
-    const replyText = match.replyCode ? `Reply YES ${match.replyCode} to join, or NO ${match.replyCode} to decline.` : null
-    return [
-      'PlayerHoods update: match time changed to',
-      `${date}, ${time}`,
-      location,
-      '',
-      replyText,
-      `Details: ${matchLink(match)}`,
-    ].filter((line): line is string => line != null).join('\n')
+    return `PlayerHoods update: match time changed to ${date} at ${time}, ${location}.${outText} Details: ${matchLink(match)}`
   }
 
-  const outText = match.replyCode ? ` Reply OUT ${match.replyCode} if you can't make it.` : ''
   return `PlayerHoods update: ${summary}.${outText} Details: ${matchLink(match)}`
 }
 
 export function renderCancellationSms(match: MatchSmsData): string {
-  const date = formatSmsDate(match.matchDate) ?? 'TBD'
-  const time = formatSmsTime(match.startTime) ?? 'TBD'
-  const location = match.venueName ?? 'TBD'
-  return `PlayerHoods update: this match has been cancelled. ${date} at ${time}, ${location}. Details: ${matchLink(match)}`
+  return `PlayerHoods update: this match has been cancelled. Details: ${matchLink(match)}`
 }

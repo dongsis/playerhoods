@@ -1042,7 +1042,7 @@ BEGIN
 
     PERFORM set_config('request.jwt.claims', json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text, true);
     SELECT * INTO v_inv
-    FROM public.rpc_email_invitation_create(v_real_email, 'TR template E02', 'match', v_mid, NULL);
+    FROM public.rpc_email_invitation_create(v_real_email, 'TR template E02'::text, 'match'::text, v_mid, NULL::timestamptz);
 
     PERFORM set_config('request.jwt.claims', json_build_object('sub', REAL_UID::text, 'role', 'authenticated')::text, true);
     PERFORM public.rpc_email_invitation_accept(v_inv.id);

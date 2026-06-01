@@ -11,7 +11,7 @@
     "start:prod": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"& './scripts/start-prod.ps1'\"",
     "restart:prod": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"& './scripts/restart-prod.ps1'\"",
     "lint": "next lint",
-    "verify:build": "node scripts/verify-build.mjs",
+    "verify:build": "node scripts/check-issue48-sms-copy.mjs && node scripts/verify-build.mjs",
     "verify:sql": "node scripts/run-sql-regressions.mjs",
     "verify": "npm run verify:build && npm run verify:sql",
     "qa:seed": "node scripts/seed-qa-flows.mjs",
