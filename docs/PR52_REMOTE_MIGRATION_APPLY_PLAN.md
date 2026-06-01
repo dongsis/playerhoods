@@ -59,13 +59,13 @@ Current queued invite/SMS delivery state:
 ```sql
 select
   channel,
-  status,
+  delivery_status,
   count(*) as delivery_count
 from public.notification_deliveries
 where channel in ('sms', 'email')
-  and status in ('queued', 'processing', 'retry')
-group by channel, status
-order by channel, status;
+  and delivery_status in ('queued', 'sending')
+group by channel, delivery_status
+order by channel, delivery_status;
 ```
 
 Existing active reply-code volume:
@@ -184,20 +184,20 @@ rpc_email_invitation_create(p_target_email text, p_target_name text, p_related_t
 rpc_email_invitation_create(p_target_email text, p_target_name text, p_related_type text, p_related_id uuid, p_expires_at timestamp with time zone, p_target_phone text)
 ```
 
-The 6-argument signature is transactionally recreated by the migration without default arguments. This avoids PostgreSQL overload ambiguity while preserving both the legacy 5-argument contract and the SMS-capable 6-argument contract after the migration has completed.
+The previous 6-argument implementation is transactionally renamed out of the public contract and revoked, then the migration recreates the same 6-argument external signature without default arguments. This avoids PostgreSQL overload ambiguity while preserving both the legacy 5-argument contract and the SMS-capable 6-argument contract after the migration has completed.
 
 Confirm no real-provider validation traffic was sent by the SQL checks:
 
 ```sql
 select
   channel,
-  status,
+  delivery_status,
   count(*) as delivery_count
 from public.notification_deliveries
 where channel in ('sms', 'email')
   and created_at >= now() - interval '30 minutes'
-group by channel, status
-order by channel, status;
+group by channel, delivery_status
+order by channel, delivery_status;
 ```
 
 This query is observational only. Do not drain or process queued production deliveries unless separately approved.

@@ -44,7 +44,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Start clean local Supabase database
-        run: supabase db start
+        run: supabase start
 
       - name: Reset local database with migrations and seed data
         run: supabase db reset

@@ -622,9 +622,24 @@ $$;
 grant execute on function public.rpc_sms_reply_handle(text, text) to anon, authenticated, service_role;
 
 -- PostgreSQL cannot remove default arguments with CREATE OR REPLACE.
--- Recreate the 6-arg signature without defaults so the restored 5-arg
--- compatibility wrapper is not ambiguous for legacy callers.
-drop function if exists public.rpc_email_invitation_create(text, text, text, uuid, timestamptz, text);
+-- Rename the previous 6-arg implementation, then recreate the same external
+-- 6-arg signature without defaults so the restored 5-arg compatibility wrapper
+-- is not ambiguous for legacy callers.
+do $$
+begin
+  if to_regprocedure('public.rpc_email_invitation_create(text,text,text,uuid,timestamptz,text)') is not null
+     and to_regprocedure('public.rpc_email_invitation_create_issue48_previous(text,text,text,uuid,timestamptz,text)') is null then
+    alter function public.rpc_email_invitation_create(text, text, text, uuid, timestamptz, text)
+      rename to rpc_email_invitation_create_issue48_previous;
+  end if;
+end $$;
+
+do $$
+begin
+  if to_regprocedure('public.rpc_email_invitation_create_issue48_previous(text,text,text,uuid,timestamptz,text)') is not null then
+    execute 'revoke all on function public.rpc_email_invitation_create_issue48_previous(text, text, text, uuid, timestamptz, text) from public, anon, authenticated, service_role';
+  end if;
+end $$;
 
 create or replace function public.rpc_email_invitation_create(
   p_target_email text,

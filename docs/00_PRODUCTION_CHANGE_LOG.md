@@ -67,7 +67,7 @@ This hotfix addresses Issue #48 SMS RSVP code and invitation-anchor duplication 
 - Reuses stable non-canceled contact invitation anchors in notification payloads instead of silently creating a fresh pending anchor after an accepted, declined, or expired result.
 - Restores invitation RPC guards for organizer ownership, active matches, non-removed participant anchors, and ambiguous contact matches.
 - Preserves the legacy 5-argument `rpc_email_invitation_create` signature as a compatibility wrapper around the guarded implementation.
-- Recreates the 6-argument `rpc_email_invitation_create` signature without default arguments so legacy 5-argument calls resolve unambiguously; both external signatures remain available after migration.
+- Renames and revokes the previous 6-argument `rpc_email_invitation_create` implementation, then recreates the same external 6-argument signature without default arguments so legacy 5-argument calls resolve unambiguously; both external signatures remain available after migration.
 - Guards explicit SMS RSVP codes so `YES`, `NO`, and `OUT` do not mutate non-active matches.
 - Updates post-formation critical update SMS copy to use `OUT` only and keeps cancellation SMS non-actionable.
 - Adds `docs/PR52_REMOTE_MIGRATION_APPLY_PLAN.md` with duplicate-cleanup checks, post-apply verification SQL, and forward-only rollback guidance.
