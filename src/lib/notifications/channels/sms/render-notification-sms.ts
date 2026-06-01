@@ -22,6 +22,7 @@ type MatchSmsData = MatchInfo & {
   changeSet?: Record<string, unknown> | null
   isFormed?: boolean
   recipientName?: string | null
+  venueTimezone?: string | null
 }
 
 function normalizeBaseUrl(siteUrl: string | null | undefined): string {
