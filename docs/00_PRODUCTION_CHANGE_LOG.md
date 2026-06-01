@@ -17,7 +17,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-01 - GOV-20260601-autonomous-draft-pr-rules
 
 **Type:** Governance
-**Code Commit:** PR #53 branch head; final merge commit pending
+**Code Commit:** Unknown - final merge commit pending
 **Migration:** None
 **Status:** GitHub PR only; not merged; no deploy; no Supabase Remote change
 
