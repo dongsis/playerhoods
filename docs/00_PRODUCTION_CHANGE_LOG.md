@@ -14,6 +14,42 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-01 - GOV-20260601-autonomous-draft-pr-rules
+
+**Type:** Governance
+**Code Commit:** PR #53 pending merge
+**Migration:** None
+**Status:** GitHub PR only; not merged; no deploy; no Supabase Remote change
+
+### Summary
+
+This governance patch defines Codex autonomous Draft PR work rules:
+
+- Allows Codex to continue scoped CI/build/typecheck/lint/SQL/test fixes inside an approved Draft PR without asking after every failure.
+- Defines hard stop gates for Ready for Review, merge, deploy, Supabase Remote migrations, real provider traffic, destructive DB work, product scope expansion, and approved product rule changes.
+- Adds Ready Packet and Environment Impact Report sections to the PR template.
+- Creates or updates Codex workflow labels for auto-fix, human-decision, product-blocked, secrets-blocked, and ready-for-review-request states.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Local diff check | Passed | `git diff --check origin/main...HEAD` |
+| Runtime behavior | Not changed | Governance-only docs/template changes |
+| Supabase Remote | Not applied | No migration in this PR |
+| Vercel Production | Not deployed | No production deploy performed |
+| Production verification | Not applicable | Governance-only change; no production runtime behavior changed |
+
+### Rollback
+
+- Revert the governance commit or apply a follow-up governance patch restoring the previous AGENTS and PR template wording.
+- No database rollback is required.
+- No Vercel Production rollback is required.
+
+### Known Risks
+
+- PR #49 also adds `.github/pull_request_template.md`; merge sequencing or manual conflict resolution is required before both PRs can land.
+
 ## 2026-05-25 - PATCH-20260525-contact-notification-public-links
 
 **Type:** Patch

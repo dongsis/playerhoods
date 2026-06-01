@@ -153,15 +153,14 @@ Codex must also stop when:
 - Real provider credentials or production data would be involved.
 - The PR is ready to leave Draft.
 
-## Required Draft PR Lifecycle
+## Draft PR Lifecycle
 
-For approved autonomous implementation work:
+When approved autonomous implementation work is happening inside a Draft PR:
 
-1. Open a Draft PR.
-2. Keep pushing scoped fixes while the PR remains Draft.
-3. Do not ask the user after every CI failure.
-4. When all required checks pass, post a Ready Packet.
-5. Ask permission before marking the PR Ready for Review.
+1. Keep pushing scoped fixes while the PR remains Draft.
+2. Do not ask the user after every CI failure.
+3. When all required checks pass, post a Ready Packet.
+4. Ask permission before marking the PR Ready for Review.
 
 Ready Packet format:
 
