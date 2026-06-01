@@ -102,9 +102,9 @@ Each fix must be committed separately with a clear message.
 
 Do not create large mixed commits unless the user explicitly approves.
 
-## Autonomous Draft PR Work Rules
+## Codex Autonomous Draft PR Rules
 
-After an issue plan is approved, Codex may keep working without additional user approval only when all of these are true:
+Once a product plan or issue scope is approved, Codex may continue implementation inside the Draft PR without asking after every CI/test failure when all of these are true:
 
 - The work stays inside the approved issue scope.
 - The work stays on the approved issue branch.
@@ -121,10 +121,11 @@ While those conditions hold, Codex may:
 - Add or update tests.
 - Add append-only local migrations only when the approved issue explicitly requires DB work and migration governance is satisfied.
 - Run local checks, build, typecheck, lint, SQL regression, and targeted tests.
-- Investigate and fix build, typecheck, lint, SQL regression, test, and CI failures caused by the approved change.
+- Fix build, typecheck, lint, SQL regression, targeted test, and CI failures as long as the fix stays within the approved scope.
 - Push commits to the working branch.
 - Update the Draft PR description.
 - Comment progress on the issue or PR.
+- Update Draft PR comments.
 - Keep iterating in the Draft PR until required checks pass or a stop condition is reached.
 
 Codex must not ask the user after every CI failure when the failure is within approved scope and the PR is still Draft.
@@ -139,6 +140,7 @@ Codex must stop and ask for explicit approval before:
 - Closing a core issue.
 - Expanding product scope or changing approved product rules.
 - Deleting data.
+- Destructive DB changes.
 - Dropping tables, columns, RPCs, or other DB objects.
 - Rewriting historical migrations.
 
@@ -167,10 +169,11 @@ Ready Packet format:
 Issue / PR:
 Branch:
 Scope completed:
-Runtime behavior changed:
-Migration changed:
-Remote migration applied:
-Deploy performed:
+Runtime behavior changed: Yes/No
+Migration changed: Yes/No
+Remote migration applied: Yes/No
+Deploy performed: Yes/No
+Real SMS/email/provider traffic: Yes/No
 Checks:
 Remaining risks:
 Decision requested:
@@ -184,15 +187,14 @@ For production-related, release, deployment, migration, notification, SMS, email
 
 ```text
 Environment Impact Report
-- GitHub branch / PR:
+- Local code:
+- GitHub:
 - Vercel Preview:
 - Vercel Production:
 - Supabase Local:
 - Supabase Remote:
-- Migrations changed:
-- Remote migrations applied:
-- Real SMS/email/provider traffic:
-- Production smoke:
+- Production verification:
+- Unknowns:
 ```
 
 If a field was not touched or not verified, say so explicitly. Do not infer Supabase Remote state from local migration files. Do not infer production deployment from a GitHub commit or merged PR.
