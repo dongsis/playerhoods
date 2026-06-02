@@ -4,9 +4,11 @@ import { getSiteOrigin } from '@/lib/site-url'
 
 type InvitationSmsData = {
   inviterDisplayName: string
+  recipientName?: string | null
   invitationId: string
   matchSummary?: {
     game_type: string | null
+    sport_name?: string | null
     match_date: string | null
     start_time?: string | null
     club_name: string | null
@@ -46,6 +48,14 @@ function normalizeBaseUrl(siteUrl: string | null | undefined): string {
 function formatGameType(gameType: string | null | undefined): string {
   if (!gameType) return 'match'
   return gameType.replace(/_/g, ' ')
+}
+
+function formatActivityLabel(sportName: string | null | undefined, gameType: string | null | undefined): string {
+  const sport = sportName?.trim()
+  const format = formatGameType(gameType)
+  if (!sport) return format
+  if (format === 'match') return sport
+  return `${sport} ${format}`
 }
 
 function formatSmsDate(value: string | null | undefined): string | null {
@@ -90,7 +100,7 @@ function recipientPrefix(prefix: string, recipientName: string | null | undefine
 
 export function renderInvitationSms(data: InvitationSmsData): string {
   const baseUrl = normalizeBaseUrl(data.siteUrl)
-  const gameType = formatGameType(data.matchSummary?.game_type)
+  const activity = formatActivityLabel(data.matchSummary?.sport_name, data.matchSummary?.game_type)
   const date = formatSmsDate(data.matchSummary?.match_date)
   const time = formatSmsTime(data.matchSummary?.start_time)
   const venueName = data.matchSummary?.club_name?.trim()
@@ -98,8 +108,12 @@ export function renderInvitationSms(data: InvitationSmsData): string {
   const invitationUrl = `${baseUrl}/i/${token}`
   const detailLines = [[date, time].filter(Boolean).join(', ') || null, venueName].filter(Boolean)
   const replyText = data.replyCode ? `Reply YES ${data.replyCode} or NO ${data.replyCode}.` : null
+  const recipientName = data.recipientName?.trim()
+  const opening = recipientName
+    ? `Hi ${recipientName}, ${data.inviterDisplayName} invited you to ${activity}:`
+    : `${data.inviterDisplayName} invited you to ${activity}:`
   return [
-    `${data.inviterDisplayName} invited you to ${gameType}:`,
+    opening,
     ...detailLines,
     '',
     replyText,
