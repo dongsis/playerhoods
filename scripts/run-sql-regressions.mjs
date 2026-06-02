@@ -103,6 +103,10 @@ const suites = [
     file: 'tests/test_runner_issue61_sms_copy_payload_rpc.sql',
     functionName: 'test_runner_issue61_sms_copy_payload_rpc',
   },
+  {
+    file: 'tests/test_runner_issue66_invite_sms_payload_code.sql',
+    functionName: 'test_runner_issue66_invite_sms_payload_code',
+  },
 ]
 
 for (const suite of suites) {

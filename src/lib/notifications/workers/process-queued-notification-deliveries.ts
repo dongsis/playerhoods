@@ -164,19 +164,21 @@ async function enrichInvitationContext(
   invitationId: string,
   fallback: {
     inviterDisplayName: string
-    matchSummary: { game_type: string | null; match_date: string | null; start_time?: string | null; club_name: string | null } | null
+    recipientName: string | null
+    matchSummary: { game_type: string | null; sport_name?: string | null; match_date: string | null; start_time?: string | null; club_name: string | null } | null
   },
 ): Promise<typeof fallback> {
   if (!invitationId) return fallback
 
   const { data: invitation } = await supabase
     .from('email_invitations')
-    .select('inviter_user_id, related_type, related_id')
+    .select('inviter_user_id, target_name, related_type, related_id')
     .eq('id', invitationId)
     .maybeSingle()
 
   const invitationRow = invitation as {
     inviter_user_id?: string | null
+    target_name?: string | null
     related_type?: string | null
     related_id?: string | null
   } | null
@@ -184,27 +186,44 @@ async function enrichInvitationContext(
   const inviterDisplayName =
     (await getProfileDisplayName(supabase, invitationRow?.inviter_user_id)) ??
     fallback.inviterDisplayName
+  const recipientName = invitationRow?.target_name?.trim() || fallback.recipientName
 
-  if (fallback.matchSummary?.club_name && fallback.matchSummary.match_date && fallback.matchSummary.start_time) {
-    return { inviterDisplayName, matchSummary: fallback.matchSummary }
+  if (
+    fallback.matchSummary?.club_name
+    && fallback.matchSummary.match_date
+    && fallback.matchSummary.start_time
+    && fallback.matchSummary.sport_name
+  ) {
+    return { inviterDisplayName, recipientName, matchSummary: fallback.matchSummary }
   }
 
   if (invitationRow?.related_type !== 'match' || !invitationRow.related_id) {
-    return { inviterDisplayName, matchSummary: fallback.matchSummary }
+    return { inviterDisplayName, recipientName, matchSummary: fallback.matchSummary }
   }
 
   const { data: match } = await supabase
     .from('matches')
-    .select('game_type, match_date, start_time, venue_id')
+    .select('game_type, sport_id, match_date, start_time, venue_id')
     .eq('id', invitationRow.related_id)
     .maybeSingle()
 
   const matchRow = match as {
     game_type?: string | null
+    sport_id?: number | null
     match_date?: string | null
     start_time?: string | null
     venue_id?: string | null
   } | null
+
+  let sportName = fallback.matchSummary?.sport_name ?? null
+  if (!sportName && matchRow?.sport_id != null) {
+    const { data: sport } = await supabase
+      .from('sports')
+      .select('display_name')
+      .eq('id', matchRow.sport_id)
+      .maybeSingle()
+    sportName = (sport as { display_name?: string | null } | null)?.display_name ?? null
+  }
 
   let venueName = fallback.matchSummary?.club_name ?? null
   if (!venueName && matchRow?.venue_id) {
@@ -218,8 +237,10 @@ async function enrichInvitationContext(
 
   return {
     inviterDisplayName,
+    recipientName,
     matchSummary: {
       game_type: matchRow?.game_type ?? fallback.matchSummary?.game_type ?? null,
+      sport_name: sportName,
       match_date: matchRow?.match_date ?? fallback.matchSummary?.match_date ?? null,
       start_time: matchRow?.start_time ?? fallback.matchSummary?.start_time ?? null,
       club_name: venueName,
@@ -240,7 +261,9 @@ async function processNotificationDeliveryRows(
       invitation_id?: string
       inviter_display_name?: string
       target_email?: string
-      match_summary?: { game_type?: string | null; match_date?: string | null; start_time?: string | null; club_name?: string | null }
+      target_name?: string
+      recipient_name?: string
+      match_summary?: { game_type?: string | null; sport_name?: string | null; match_date?: string | null; start_time?: string | null; club_name?: string | null }
       nominator_display_name?: string
       match_id?: string
       match_participant_id?: string
@@ -251,7 +274,6 @@ async function processNotificationDeliveryRows(
       venue_name?: string
       reply_code?: string
       magic_link_path?: string
-      recipient_name?: string
       venue_timezone?: string
       change_set?: Record<string, unknown>
     }
@@ -267,14 +289,16 @@ async function processNotificationDeliveryRows(
     if (templateType === 'invitation') {
       const ms = payload.match_summary
       const fallbackMatchSummary = ms
-        ? { game_type: ms.game_type ?? null, match_date: ms.match_date ?? null, start_time: ms.start_time ?? null, club_name: ms.club_name ?? null }
+        ? { game_type: ms.game_type ?? null, sport_name: ms.sport_name ?? null, match_date: ms.match_date ?? null, start_time: ms.start_time ?? null, club_name: ms.club_name ?? null }
         : null
       const invitationId = (payload.invitation_id as string) ?? ''
       const context = await enrichInvitationContext(supabase, invitationId, {
         inviterDisplayName: (payload.inviter_display_name as string) ?? 'Someone',
+        recipientName: ((payload.recipient_name as string) ?? (payload.target_name as string) ?? null)?.trim() || null,
         matchSummary: fallbackMatchSummary,
       })
       const inviterDisplayName = context.inviterDisplayName
+      const recipientName = context.recipientName
       const matchSummary = context.matchSummary
       const unsubscribeUrl = `${SITE_URL}/unsubscribe?invitation=${encodeURIComponent(invitationId)}&channel=email&scope=contact_invites`
       subject = invitationSubject(inviterDisplayName, matchSummary?.club_name)
@@ -294,6 +318,7 @@ async function processNotificationDeliveryRows(
       })
       smsBody = renderInvitationSms({
         inviterDisplayName,
+        recipientName,
         invitationId,
         matchSummary,
         siteUrl: SMS_SITE_URL,
