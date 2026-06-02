@@ -96,6 +96,10 @@ const suites = [
     functionName: 'test_runner_issue58_reminder_only_drain',
   },
   {
+    file: 'tests/test_runner_issue55_daily_reminder_cron.sql',
+    functionName: 'test_runner_issue55_daily_reminder_cron',
+  },
+  {
     file: 'tests/test_runner_issue61_sms_copy_payload_rpc.sql',
     functionName: 'test_runner_issue61_sms_copy_payload_rpc',
   },

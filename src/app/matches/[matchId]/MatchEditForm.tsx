@@ -53,8 +53,7 @@ const SINGLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
 ]
 
 const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
-  { value: 1440, label: '1 day before' },
-  { value: 120, label: '2 hours before' },
+  { value: 1440, label: 'Send a reminder the day before at 5:00 PM.' },
   { value: null, label: 'No reminder' },
 ]
 
@@ -434,7 +433,7 @@ export function MatchEditForm({
             })}
           </div>
           <p style={{ margin: 0, color: '#64748b', fontSize: '0.75rem', lineHeight: 1.45 }}>
-            Contacts receive only useful match updates, not chat.
+            Same-day matches skipped; only confirmed players receive the day-before reminder.
           </p>
         </div>
 

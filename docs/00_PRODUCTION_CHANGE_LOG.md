@@ -14,6 +14,56 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-01 - SCHED-20260601-issue55-reminder-cron
+
+**Type:** Mini Release
+**Code Commit:** Draft PR branch head; final merge commit pending
+**Migration:** `20260602003000_issue55_daily_reminder_cron.sql`
+**Status:** GitHub Draft PR only; not merged; no Vercel Production deploy; no Supabase Remote change
+
+### Summary
+
+This patch wires Vercel Cron to the #58 reminder-only notification drain path and narrows reminder eligibility to a daily day-before sweep:
+
+- Adds `vercel.json` with one cron entry for `/api/notifications/drain-reminders`.
+- Uses a Hobby-compatible daily schedule: `0 21 * * *` (21:00 UTC, around 5:00 PM in Ontario during summer time).
+- Adds `GET /api/notifications/drain-reminders` for Vercel Cron, protected by `CRON_SECRET`.
+- Preserves manual `POST /api/notifications/drain-reminders` with `NOTIFICATION_DRAIN_SECRET`.
+- Does not schedule or modify the generic `/api/notifications/drain` route.
+- Updates reminder eligibility so only tomorrow's formed matches with confirmed participants are eligible.
+- Skips same-day, past, unformed, pending, declined, withdrawn, removed, and non-reminder deliveries.
+- Updates Create Match reminder copy for the day-before 5:00 PM model.
+- Adds a static guard to verify the cron target stays reminder-only.
+- Adds rollout notes in `docs/ISSUE55_REMINDER_CRON_ROLLOUT.md`.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally | `npm run verify:build` |
+| SQL regression | Blocked locally; CI required | `npm run verify:sql` could not connect to local Docker daemon |
+| SQL runner syntax | Passed locally | `node --check scripts/run-sql-regressions.mjs` |
+| Static cron guard | Passed locally | `node scripts/check-issue55-reminder-cron.mjs` |
+| #58 reminder guard | Passed locally | `node scripts/check-issue58-reminder-drain.mjs` |
+| Generic drain not scheduled | Passed | Static guard and `vercel.json` review |
+| Vercel Production | Not deployed | No production deployment performed by this PR |
+| Supabase Remote | Not changed | Migration is local/GitHub only until owner-approved remote apply |
+| Real SMS/email/provider traffic | Not sent | Do not call drain endpoints during PR validation |
+| Production verification | Not verified | Requires owner-approved merge/deploy and first-cron observation |
+
+### Rollback
+
+- Fast operational disable: remove or rotate `CRON_SECRET`, or disable Cron Jobs in Vercel.
+- Code rollback: revert the cron wiring commit or remove `vercel.json` in a follow-up PR.
+- Database rollback: forward-only migration restoring the prior reminder eligibility functions if needed.
+
+### Known Risks
+
+- Vercel Cron uses `GET` and `CRON_SECRET`; production must set `CRON_SECRET` before the cron can authenticate.
+- Vercel Cron scheduling is UTC and Hobby cron is daily / not minute-precise.
+- Scheduled jobs can cause real day-before reminder sends after deployment if due reminder candidates exist.
+- Owner approval is required before merge, production deployment, and first-cron observation.
+
 ## 2026-06-01 - PATCH-20260601-create-match-invite-copy
 
 **Type:** Patch
