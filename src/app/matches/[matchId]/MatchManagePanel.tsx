@@ -168,6 +168,10 @@ function getInitials(name: string) {
     .join('') || '?'
 }
 
+function looksLikeInternalUserLabel(label: string) {
+  return /^user\s+[a-f0-9]{4,}$/i.test(label.trim())
+}
+
 function normalizeCandidateName(name: string) {
   return name
     .trim()
@@ -1347,7 +1351,7 @@ export function MatchManagePanel({
   const requestSummaryItems: SummaryEntry[] = [
     ...visibleRequestUsers.map((user) => ({
       key: `request-user-${user.id}`,
-      label: user.name,
+      label: looksLikeInternalUserLabel(user.name) ? 'Open spot' : user.name,
       kind: 'user' as const,
       availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
         kind: 'user',
