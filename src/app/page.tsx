@@ -228,7 +228,7 @@ export default function HomePage() {
             src="/homepage-hero-close-player-group-mobile-20260601.png"
             alt=""
             aria-hidden="true"
-            className="h-auto w-full object-contain object-top sm:hidden"
+            className="h-[252px] w-full object-cover object-top sm:hidden"
           />
           <img
             src="/homepage-hero-players-clean-safe-area-20260530.png"
