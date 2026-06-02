@@ -53,6 +53,14 @@ function isActiveConfirmedParticipant(participant: Pick<MatchParticipant, 'statu
   return participant.status === 'confirmed' && participant.removed_at === null
 }
 
+function isCanonicalConfirmedParticipant(
+  participant: Pick<MatchParticipant, 'participant_accepted_at' | 'org_approved_at' | 'removed_at'>,
+): boolean {
+  return participant.participant_accepted_at !== null
+    && participant.org_approved_at !== null
+    && participant.removed_at === null
+}
+
 function isActivePendingParticipant(participant: Pick<MatchParticipant, 'status' | 'removed_at'>): boolean {
   return participant.status === 'pending' && participant.removed_at === null
 }
@@ -1456,7 +1464,7 @@ function getLineupShortWarning(
   participants: MatchParticipantEnriched[],
   confirmedCount: number,
 ): MatchLineupShortWarning | null {
-  if (!match.formed_at || confirmedCount >= match.required_count) {
+  if (match.status !== 'active' || !match.formed_at || confirmedCount >= match.required_count) {
     return null
   }
 
@@ -1641,6 +1649,7 @@ export async function getMatchListData(
     const confirmed = enriched.filter(isActiveConfirmedParticipant)
     const pending = enriched.filter(isActivePendingParticipant)
     const waiting = enriched.filter(isActiveWaitingListParticipant)
+    const canonicalConfirmedCount = enriched.filter(isCanonicalConfirmedParticipant).length
     const myParticipant = userId
       ? (enriched.find(
           p =>
@@ -1650,7 +1659,7 @@ export async function getMatchListData(
         ) ?? null)
       : null
     const rosterInsight = deriveMatchRosterInsight(match, enriched)
-    const lineupShortWarning = getLineupShortWarning(match, enriched, confirmed.length)
+    const lineupShortWarning = getLineupShortWarning(match, enriched, canonicalConfirmedCount)
 
     return {
       match,
@@ -2060,8 +2069,9 @@ export async function getMatchDetailData(
   )
   const scopeGroups = ((scopeGroupsRes.data ?? []) as { id: string; name: string }[])
   const rosterInsight = deriveMatchRosterInsight(match, enriched)
+  const canonicalConfirmedCount = enriched.filter(isCanonicalConfirmedParticipant).length
   const lineupShortWarning = isOrganizer
-    ? getLineupShortWarning(match, enriched, confirmed.length)
+    ? getLineupShortWarning(match, enriched, canonicalConfirmedCount)
     : null
   const confirmedVisibleToParticipants = enriched
     .filter((participant) =>

@@ -13,6 +13,7 @@ declare
   v_actor uuid := auth.uid();
   v_organizer uuid;
   v_match_formed_at timestamptz;
+  v_match_status public.match_status;
   v_should_notify_organizer_exit boolean := false;
 begin
   -- Removed: notify delegator, notify host when a formed lineup becomes short,
@@ -20,22 +21,18 @@ begin
   if (new.removed_at is distinct from old.removed_at) and new.removed_at is not null then
     v_kind := 'delegate_target_removed';
 
-    select m.organizer_id, m.formed_at
-      into v_organizer, v_match_formed_at
+    select m.organizer_id, m.formed_at, m.status
+      into v_organizer, v_match_formed_at, v_match_status
     from public.matches m
     where m.id = new.match_id;
 
     v_should_notify_organizer_exit :=
       v_organizer is not null
+      and v_match_status = 'active'::public.match_status
       and v_match_formed_at is not null
       and new.removed_at >= v_match_formed_at
-      and (
-        old.status = 'confirmed'::public.match_participant_status
-        or (
-          old.participant_accepted_at is not null
-          and old.org_approved_at is not null
-        )
-      );
+      and old.participant_accepted_at is not null
+      and old.org_approved_at is not null;
 
     -- Notify delegator.
     if new.user_id is not null and new.manual_confirmed_by is not null then
@@ -102,7 +99,7 @@ end;
 $$;
 
 comment on function public.trg_notify_delegator_on_mp_change() is
-  'Issue #72: participant removal notifier. Preserves existing delegator/removed-user notifications and also notifies the organizer when a formed match loses a previously confirmed lineup participant.';
+  'Issue #72: participant removal notifier. Preserves existing delegator/removed-user notifications and also notifies the organizer when an active formed match loses a canonically confirmed lineup participant.';
 
 grant all on function public.trg_notify_delegator_on_mp_change() to anon;
 grant all on function public.trg_notify_delegator_on_mp_change() to authenticated;
@@ -128,6 +125,28 @@ as $$
       false
     ),
     'trigger function contains formed-match organizer exit notification branch'::text
+  union all
+  select
+    'host_exit_requires_active_match'::text,
+    coalesce(
+      pg_get_functiondef(to_regprocedure('public.trg_notify_delegator_on_mp_change()'))
+        like '%v_match_status = ''active''::public.match_status%',
+      false
+    ),
+    'organizer lineup-short notification is limited to active matches'::text
+  union all
+  select
+    'host_exit_requires_canonical_confirmation'::text,
+    coalesce(
+      pg_get_functiondef(to_regprocedure('public.trg_notify_delegator_on_mp_change()'))
+        like '%old.participant_accepted_at is not null%'
+        and pg_get_functiondef(to_regprocedure('public.trg_notify_delegator_on_mp_change()'))
+          like '%old.org_approved_at is not null%'
+        and pg_get_functiondef(to_regprocedure('public.trg_notify_delegator_on_mp_change()'))
+          not like '%old.status = ''confirmed''%',
+      false
+    ),
+    'organizer lineup-short notification uses canonical confirmation timestamps, not status fallback'::text
   union all
   select
     'removed_at_trigger_present'::text,

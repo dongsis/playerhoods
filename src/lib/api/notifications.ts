@@ -158,7 +158,7 @@ export async function getNotifications(
         .in('id', matchIds),
       supabase
         .from('match_participants')
-        .select('match_id, status, removed_at')
+        .select('match_id, participant_accepted_at, org_approved_at, removed_at')
         .in('match_id', matchIds),
     ])
 
@@ -168,8 +168,14 @@ export async function getNotifications(
     matchMap = new Map(
       ((matches ?? []) as NotificationMatchSnapshot[]).map((match) => [match.id, match]),
     )
-    for (const participant of (matchParticipants ?? []) as Array<Pick<MatchParticipant, 'match_id' | 'status' | 'removed_at'>>) {
-      if (participant.status !== 'confirmed' || participant.removed_at !== null) continue
+    for (const participant of (matchParticipants ?? []) as Array<Pick<MatchParticipant, 'match_id' | 'participant_accepted_at' | 'org_approved_at' | 'removed_at'>>) {
+      if (
+        participant.participant_accepted_at === null
+        || participant.org_approved_at === null
+        || participant.removed_at !== null
+      ) {
+        continue
+      }
       matchConfirmedCountMap.set(
         participant.match_id,
         (matchConfirmedCountMap.get(participant.match_id) ?? 0) + 1,

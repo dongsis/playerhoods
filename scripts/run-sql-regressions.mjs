@@ -107,6 +107,10 @@ const suites = [
     file: 'tests/test_runner_issue66_invite_sms_payload_code.sql',
     functionName: 'test_runner_issue66_invite_sms_payload_code',
   },
+  {
+    file: 'tests/test_runner_issue72_host_exit_visibility.sql',
+    functionName: 'test_runner_issue72_host_exit_visibility',
+  },
 ]
 
 for (const suite of suites) {
