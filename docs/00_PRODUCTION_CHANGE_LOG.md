@@ -14,6 +14,57 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-02 - DBFIX-20260602-issue73-sms-out-disambiguation
+
+**Type:** Patch
+**Code Commit:** PR #74 branch head; final merge commit pending
+**Migration:** `20260602120000_issue73_sms_out_disambiguation.sql`
+**Status:** GitHub PR review only; not merged; no Vercel Production deploy; Supabase Remote not applied; production not verified
+
+### Summary
+
+This patch fixes Issue #73 SMS `OUT` no-code disambiguation:
+
+- Bare `OUT` now lists active withdraw-eligible matches only.
+- Bare `OUT` excludes pending invites that require `YES {code}` or `NO {code}`.
+- Bare `OUT` multi-candidate copy says `matches`, not `invites`.
+- Bare `YES` and bare `NO` continue to list pending invite candidates only.
+- Coded `OUT {code}` behavior is preserved, including pending-code guidance to use `YES` or `NO`.
+- Existing 4-6 character active codes and newer 2-character active codes remain supported.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| GitHub PR | Pending | PR #74 is Ready for Review; not merged |
+| Build/typecheck | Passed in GitHub | PR #74 Build and typecheck check passed |
+| SQL regression | Passed in GitHub | PR #74 SQL regression check passed, including `test_runner_issue73_sms_out_disambiguation` |
+| Codex PR review | Needs changes at entry creation time | Review requested this production change log entry |
+| Vercel Preview | Passed | PR #74 preview deployment reported Ready |
+| Vercel Production | Not deployed | No production deployment performed |
+| Supabase Remote | Not applied | Remote migration apply requires separate owner approval |
+| Production verification | Not verified | No production validation performed |
+| Real SMS/email/provider traffic | Not sent | No drain or provider path called |
+
+### Current Status
+
+- GitHub: PR #74 only; not merged into `main`.
+- Vercel Production: not deployed.
+- Supabase Remote: migration not applied.
+- Production rollout: not started.
+- Production verification: not verified.
+
+### Rollback
+
+- Before merge or remote migration: close PR #74 or revert the PR branch commit.
+- After merge but before Supabase Remote migration: revert PR #74 and redeploy the previous production commit if it was deployed.
+- After Supabase Remote migration apply: apply a follow-up forward migration restoring the previous `rpc_sms_reply_handle(text, text)` behavior, then revert/redeploy compatible code if needed.
+
+### Known Risks
+
+- Supabase Remote migration and production validation remain owner-gated.
+- No production users are affected until the PR is merged, deployed if needed, and the Supabase Remote migration is explicitly applied.
+
 ## 2026-06-01 - SCHED-20260601-issue55-reminder-cron
 
 **Type:** Mini Release
