@@ -9,6 +9,11 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+  v_org uuid := '58000000-0000-0000-0000-000000000001'::uuid;
+  v_player uuid := '58000000-0000-0000-0000-000000000002'::uuid;
+  v_venue_id uuid := '58000000-0000-0000-0000-000000000003'::uuid;
+  v_match_id uuid := '58000000-0000-0000-0000-000000000004'::uuid;
+  v_participant_id uuid := '58000000-0000-0000-0000-000000000005'::uuid;
   v_invite_id uuid := gen_random_uuid();
   v_reminder_id uuid := gen_random_uuid();
   v_critical_id uuid := gen_random_uuid();
@@ -29,7 +34,113 @@ BEGIN
   DELETE FROM _issue58_results;
 
   DELETE FROM public.notification_deliveries
-  WHERE destination LIKE 'issue58-%@example.test';
+  WHERE destination LIKE 'issue58-%@example.test'
+     OR id IN (v_invite_id, v_reminder_id, v_critical_id)
+     OR payload->>'match_id' = v_match_id::text
+     OR payload->>'match_participant_id' = v_participant_id::text;
+  DELETE FROM public.match_participant_notification_events
+  WHERE participant_id = v_participant_id;
+  DELETE FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id;
+  DELETE FROM public.email_invitations
+  WHERE match_participant_id = v_participant_id
+     OR related_id = v_match_id;
+  DELETE FROM public.match_participant_actions
+  WHERE match_participant_id = v_participant_id
+     OR match_id = v_match_id;
+  DELETE FROM public.match_participants
+  WHERE id = v_participant_id
+     OR match_id = v_match_id;
+  DELETE FROM public.matches WHERE id = v_match_id;
+  DELETE FROM public.venues WHERE id = v_venue_id;
+  DELETE FROM public.profiles WHERE id IN (v_org, v_player);
+  DELETE FROM auth.users WHERE id IN (v_org, v_player);
+
+  INSERT INTO auth.users (id, email, email_confirmed_at)
+  VALUES
+    (v_org, 'issue58-organizer@example.test', now()),
+    (v_player, 'issue58-reminder@example.test', now());
+
+  INSERT INTO public.profiles (
+    id,
+    first_name,
+    last_name,
+    display_name,
+    availability_status,
+    discovery_volume,
+    accepting_new_invites
+  ) VALUES
+    (v_org, '', '', 'Issue 58 Organizer', 'available', 'recommended', true),
+    (v_player, '', '', 'Issue 58 Reminder Player', 'available', 'recommended', true);
+
+  INSERT INTO public.venues (id, name, timezone)
+  VALUES (v_venue_id, 'Issue 58 Courts', 'America/Toronto');
+
+  INSERT INTO public.matches (
+    id,
+    organizer_id,
+    status,
+    venue_id,
+    court_ids,
+    match_date,
+    start_time,
+    duration_minutes,
+    game_type,
+    required_count,
+    invitation_scope_group_ids,
+    can_participants_invite_users,
+    can_participants_add_guests,
+    can_participants_manage_participants,
+    formed_at,
+    player_reminder_minutes,
+    created_at
+  ) VALUES (
+    v_match_id,
+    v_org,
+    'active',
+    v_venue_id,
+    '{}'::uuid[],
+    (now() at time zone 'America/Toronto')::date + 1,
+    '18:30'::time,
+    90,
+    'tennis',
+    4,
+    '{}'::uuid[],
+    true,
+    true,
+    true,
+    now() - interval '1 day',
+    1440,
+    now()
+  );
+
+  INSERT INTO public.match_participants (
+    id,
+    match_id,
+    join_method,
+    user_id,
+    created_by,
+    nominated_by,
+    status,
+    confirmed_at,
+    participant_accepted_at,
+    participant_accepted_via,
+    org_approved_at,
+    org_approved_by
+  ) VALUES (
+    v_participant_id,
+    v_match_id,
+    'invited',
+    v_player,
+    v_org,
+    v_org,
+    'confirmed',
+    now(),
+    now(),
+    'in_app',
+    now(),
+    v_org
+  );
 
   INSERT INTO public.notification_deliveries (
     id,
@@ -56,7 +167,7 @@ BEGIN
       'issue58-reminder@example.test',
       'queued',
       0,
-      jsonb_build_object('template_type', 'match_reminder', 'match_id', gen_random_uuid(), 'match_participant_id', gen_random_uuid())
+      jsonb_build_object('template_type', 'match_reminder', 'match_id', v_match_id, 'match_participant_id', v_participant_id)
     ),
     (
       v_critical_id,
@@ -160,7 +271,26 @@ BEGIN
     v_preview_after::text;
 
   DELETE FROM public.notification_deliveries
-  WHERE id IN (v_invite_id, v_reminder_id, v_critical_id);
+  WHERE id IN (v_invite_id, v_reminder_id, v_critical_id)
+     OR payload->>'match_id' = v_match_id::text
+     OR payload->>'match_participant_id' = v_participant_id::text;
+  DELETE FROM public.match_participant_notification_events
+  WHERE participant_id = v_participant_id;
+  DELETE FROM public.match_participant_sms_reply_codes
+  WHERE participant_id = v_participant_id;
+  DELETE FROM public.email_invitations
+  WHERE match_participant_id = v_participant_id
+     OR related_id = v_match_id;
+  DELETE FROM public.match_participant_actions
+  WHERE match_participant_id = v_participant_id
+     OR match_id = v_match_id;
+  DELETE FROM public.match_participants
+  WHERE id = v_participant_id
+     OR match_id = v_match_id;
+  DELETE FROM public.matches WHERE id = v_match_id;
+  DELETE FROM public.venues WHERE id = v_venue_id;
+  DELETE FROM public.profiles WHERE id IN (v_org, v_player);
+  DELETE FROM auth.users WHERE id IN (v_org, v_player);
 
   RETURN QUERY
   SELECT r.test_name, r.ok, r.details

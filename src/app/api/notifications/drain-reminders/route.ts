@@ -14,11 +14,13 @@ function isDryRun(request: Request): boolean {
   return value === '1' || value === 'true'
 }
 
-export async function POST(request: Request) {
-  const secret = process.env.NOTIFICATION_DRAIN_SECRET
+function isAuthorized(request: Request, secret: string | undefined): boolean {
   const authorization = request.headers.get('authorization')
+  return Boolean(secret && authorization === `Bearer ${secret}`)
+}
 
-  if (!secret || authorization !== `Bearer ${secret}`) {
+async function handleReminderDrain(request: Request, secret: string | undefined) {
+  if (!isAuthorized(request, secret)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 })
   }
 
@@ -50,4 +52,12 @@ export async function POST(request: Request) {
     before,
     after,
   })
+}
+
+export async function POST(request: Request) {
+  return handleReminderDrain(request, process.env.NOTIFICATION_DRAIN_SECRET)
+}
+
+export async function GET(request: Request) {
+  return handleReminderDrain(request, process.env.CRON_SECRET)
 }

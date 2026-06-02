@@ -15,7 +15,8 @@ const worker = read('src/lib/notifications/workers/process-queued-notification-d
 const migration = read('supabase/migrations/20260601150000_reminder_only_delivery_drain.sql')
 
 assert(route.includes('NOTIFICATION_DRAIN_SECRET'), 'drain-reminders route must require NOTIFICATION_DRAIN_SECRET')
-assert(route.includes('authorization !== `Bearer ${secret}`'), 'drain-reminders route must reject invalid bearer auth')
+assert(route.includes('authorization === `Bearer ${secret}`'), 'drain-reminders route must validate bearer auth')
+assert(route.includes("return NextResponse.json({ error: 'not_found' }, { status: 404 })"), 'drain-reminders route must reject invalid bearer auth')
 assert(route.includes('dryRun'), 'drain-reminders route must expose dry-run handling')
 assert(route.includes('drainQueuedReminderDeliveries'), 'drain-reminders route must use reminder-only drain helper')
 assert(!route.includes('drainQueuedNotificationDeliveries'), 'drain-reminders route must not use generic drain helper')
@@ -26,6 +27,13 @@ assert(worker.includes("notification_reminder_drain_preview"), 'worker must call
 assert(migration.includes("nd.payload->>'template_type' = 'match_reminder'"), 'claimant must filter to match_reminder payloads')
 assert(!migration.includes('DROP FUNCTION IF EXISTS public.rpc_get_queued_deliveries'), 'migration must not replace generic queued delivery claimant')
 
-assert(!existsSync('vercel.json'), 'issue #58 must not add Vercel cron config')
+if (existsSync('vercel.json')) {
+  const vercelConfig = JSON.parse(read('vercel.json'))
+  const cronPaths = (vercelConfig.crons ?? []).map((cron) => cron.path)
+  assert(
+    !cronPaths.includes('/api/notifications/drain'),
+    'Vercel cron must not target generic notification drain'
+  )
+}
 
 console.log('Issue #58 reminder-only drain guard passed')

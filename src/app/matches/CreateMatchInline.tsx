@@ -145,8 +145,7 @@ const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
 ]
 
 const PLAYER_REMINDER_OPTIONS: { value: number | null; label: string }[] = [
-  { value: 1440, label: '1 day before' },
-  { value: 120, label: '2 hours before' },
+  { value: 1440, label: 'Send a reminder the day before at 5:00 PM.' },
   { value: null, label: 'No reminder' },
 ]
 
@@ -3339,7 +3338,7 @@ export function CreateMatchInline({
                 })}
               </div>
               <p className="mt-1 text-[11px] font-medium leading-snug text-[#64748B]">
-                Contacts receive only useful match updates, not chat.
+                Same-day matches skipped; only confirmed players receive the day-before reminder.
               </p>
             </div>
           </div>
