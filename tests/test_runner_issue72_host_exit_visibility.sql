@@ -18,6 +18,8 @@ DECLARE
   v_formed_at timestamptz := now() - interval '30 minutes';
   v_before integer;
   v_after integer;
+  v_delegate_count integer;
+  v_host_legacy_count integer;
   v_display_name text;
   v_status public.match_status;
 BEGIN
@@ -47,7 +49,8 @@ BEGIN
     true
   );
 
-  -- Active, formed, canonically confirmed participant exit: notify host once.
+  -- Active, formed, canonically confirmed participant exit: notify host once
+  -- with the distinct host kind while preserving non-host delegator semantics.
   INSERT INTO public.matches (
     organizer_id, status, match_date, start_time, duration_minutes,
     game_type, required_count, formed_at, created_at
@@ -59,17 +62,19 @@ BEGIN
 
   INSERT INTO public.match_participants (
     match_id, user_id, status, join_method, created_by,
-    participant_accepted_at, participant_accepted_via, org_approved_at, org_approved_by
+    participant_accepted_at, participant_accepted_via, org_approved_at, org_approved_by,
+    manual_confirmed_by
   ) VALUES (
     v_match_id, v_player, 'confirmed', 'invited', v_host,
-    v_formed_at - interval '10 minutes', 'in_app', v_formed_at - interval '10 minutes', v_host
+    v_formed_at - interval '10 minutes', 'delegate_manual', v_formed_at - interval '10 minutes', v_host,
+    v_other
   )
   RETURNING id INTO v_mp_id;
 
   SELECT count(*)::integer INTO v_before
   FROM public.notifications
   WHERE recipient_user_id = v_host
-    AND kind = 'delegate_target_removed'
+    AND kind = 'host_lineup_short_after_formed'
     AND match_id = v_match_id
     AND match_participant_id = v_mp_id;
 
@@ -86,6 +91,20 @@ BEGIN
   SELECT count(*)::integer INTO v_after
   FROM public.notifications
   WHERE recipient_user_id = v_host
+    AND kind = 'host_lineup_short_after_formed'
+    AND match_id = v_match_id
+    AND match_participant_id = v_mp_id;
+
+  SELECT count(*)::integer INTO v_delegate_count
+  FROM public.notifications
+  WHERE recipient_user_id = v_other
+    AND kind = 'delegate_target_removed'
+    AND match_id = v_match_id
+    AND match_participant_id = v_mp_id;
+
+  SELECT count(*)::integer INTO v_host_legacy_count
+  FROM public.notifications
+  WHERE recipient_user_id = v_host
     AND kind = 'delegate_target_removed'
     AND match_id = v_match_id
     AND match_participant_id = v_mp_id;
@@ -95,6 +114,20 @@ BEGIN
     'host notification fires once for active formed canonical confirmed exit',
     v_after - v_before = 1,
     'delta=' || (v_after - v_before)::text
+  );
+
+  INSERT INTO _issue72_results
+  VALUES (
+    'non-host delegator keeps legacy delegate removed notification',
+    v_delegate_count = 1,
+    'delegate_count=' || v_delegate_count::text
+  );
+
+  INSERT INTO _issue72_results
+  VALUES (
+    'host formed-exit notification does not reuse legacy delegate kind',
+    v_host_legacy_count = 0,
+    'host_legacy_count=' || v_host_legacy_count::text
   );
 
   -- Status alone is not canonical confirmation and must not notify the host.
@@ -117,7 +150,7 @@ BEGIN
   SELECT count(*)::integer INTO v_before
   FROM public.notifications
   WHERE recipient_user_id = v_host
-    AND kind = 'delegate_target_removed'
+    AND kind = 'host_lineup_short_after_formed'
     AND match_id = v_match_id
     AND match_participant_id = v_mp_id;
 
@@ -130,7 +163,7 @@ BEGIN
   SELECT count(*)::integer INTO v_after
   FROM public.notifications
   WHERE recipient_user_id = v_host
-    AND kind = 'delegate_target_removed'
+    AND kind = 'host_lineup_short_after_formed'
     AND match_id = v_match_id
     AND match_participant_id = v_mp_id;
 
@@ -163,7 +196,7 @@ BEGIN
   SELECT count(*)::integer INTO v_before
   FROM public.notifications
   WHERE recipient_user_id = v_host
-    AND kind = 'delegate_target_removed'
+    AND kind = 'host_lineup_short_after_formed'
     AND match_id = v_match_id
     AND match_participant_id = v_mp_id;
 
@@ -176,7 +209,7 @@ BEGIN
   SELECT count(*)::integer INTO v_after
   FROM public.notifications
   WHERE recipient_user_id = v_host
-    AND kind = 'delegate_target_removed'
+    AND kind = 'host_lineup_short_after_formed'
     AND match_id = v_match_id
     AND match_participant_id = v_mp_id;
 
@@ -211,7 +244,7 @@ BEGIN
     SELECT count(*)::integer INTO v_before
     FROM public.notifications
     WHERE recipient_user_id = v_host
-      AND kind = 'delegate_target_removed'
+      AND kind = 'host_lineup_short_after_formed'
       AND match_id = v_match_id
       AND match_participant_id = v_mp_id;
 
@@ -224,7 +257,7 @@ BEGIN
     SELECT count(*)::integer INTO v_after
     FROM public.notifications
     WHERE recipient_user_id = v_host
-      AND kind = 'delegate_target_removed'
+      AND kind = 'host_lineup_short_after_formed'
       AND match_id = v_match_id
       AND match_participant_id = v_mp_id;
 

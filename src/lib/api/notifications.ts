@@ -69,7 +69,7 @@ export async function getNotifications(
     .limit(limit)
 
   if (viewerUserId) {
-    query = query.or(`actor_user_id.is.null,actor_user_id.neq.${viewerUserId},kind.eq.delegate_target_removed`)
+    query = query.or(`actor_user_id.is.null,actor_user_id.neq.${viewerUserId},kind.eq.host_lineup_short_after_formed`)
   }
 
   const { data, error } = await query
@@ -203,7 +203,7 @@ export async function getUnreadNotificationCount(supabase: SupabaseClient): Prom
     .is('read_at', null)
 
   if (viewerUserId) {
-    query = query.or(`actor_user_id.is.null,actor_user_id.neq.${viewerUserId},kind.eq.delegate_target_removed`)
+    query = query.or(`actor_user_id.is.null,actor_user_id.neq.${viewerUserId},kind.eq.host_lineup_short_after_formed`)
   }
 
   const { count, error } = await query

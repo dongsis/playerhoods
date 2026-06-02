@@ -34,7 +34,8 @@ const KIND_LABELS: Record<string, string> = {
   group_contact_joined_playerhoods: 'Group contact joined PlayerHoods',
   match_contact_joined_playerhoods: 'Match contact joined PlayerHoods',
   delegate_target_confirmed: 'Your invited person was confirmed',
-  delegate_target_removed: 'Lineup changed',
+  delegate_target_removed: 'Your invited person was removed',
+  host_lineup_short_after_formed: 'Lineup changed',
   court_plan_updated: 'Court plan updated',
   waiting_list_promoted: 'You are now in the match',
   group_added: 'You were added to a group',
@@ -91,7 +92,7 @@ function getParticipantExitAction(notification: NotificationWithContext): 'left'
 }
 
 function getHostExitCopy(notification: NotificationWithContext): { title: string; body: string } | null {
-  if (notification.kind !== 'delegate_target_removed' || !notification.participant_snapshot) {
+  if (notification.kind !== 'host_lineup_short_after_formed' || !notification.participant_snapshot) {
     return null
   }
 

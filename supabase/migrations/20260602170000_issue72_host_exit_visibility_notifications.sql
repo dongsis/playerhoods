@@ -34,7 +34,9 @@ begin
       and old.participant_accepted_at is not null
       and old.org_approved_at is not null;
 
-    -- Notify delegator.
+    -- Notify delegator with the legacy kind. When the organizer is also the
+    -- legacy delegator for a formed-lineup exit, the host-specific notification
+    -- below replaces the ambiguous delegator row.
     if new.user_id is not null and new.manual_confirmed_by is not null then
       v_delegator := new.manual_confirmed_by;
     elsif new.user_id is not null and new.nominated_by is not null then
@@ -43,7 +45,9 @@ begin
       v_delegator := v_organizer;
     end if;
 
-    if v_delegator is not null then
+    if v_delegator is not null
+      and not (v_should_notify_organizer_exit and v_delegator = v_organizer)
+    then
       insert into public.notifications (
         recipient_user_id, kind, match_id, match_participant_id, actor_user_id, note
       ) values (
@@ -51,11 +55,11 @@ begin
       );
     end if;
 
-    if v_should_notify_organizer_exit and v_organizer is distinct from v_delegator then
+    if v_should_notify_organizer_exit then
       insert into public.notifications (
         recipient_user_id, kind, match_id, match_participant_id, actor_user_id, note
       ) values (
-        v_organizer, v_kind, new.match_id, new.id, v_actor, new.removal_note
+        v_organizer, 'host_lineup_short_after_formed', new.match_id, new.id, v_actor, new.removal_note
       );
     end if;
 
@@ -99,7 +103,7 @@ end;
 $$;
 
 comment on function public.trg_notify_delegator_on_mp_change() is
-  'Issue #72: participant removal notifier. Preserves existing delegator/removed-user notifications and also notifies the organizer when an active formed match loses a canonically confirmed lineup participant.';
+  'Issue #72: participant removal notifier. Preserves non-host delegator/removed-user notifications and notifies the organizer with host_lineup_short_after_formed when an active formed match loses a canonically confirmed lineup participant.';
 
 grant all on function public.trg_notify_delegator_on_mp_change() to anon;
 grant all on function public.trg_notify_delegator_on_mp_change() to authenticated;
@@ -121,10 +125,10 @@ as $$
     'host_exit_logic_present'::text,
     coalesce(
       pg_get_functiondef(to_regprocedure('public.trg_notify_delegator_on_mp_change()'))
-        like '%v_should_notify_organizer_exit%',
+        like '%host_lineup_short_after_formed%',
       false
     ),
-    'trigger function contains formed-match organizer exit notification branch'::text
+    'trigger function contains distinct formed-match organizer exit notification kind'::text
   union all
   select
     'host_exit_requires_active_match'::text,

@@ -111,6 +111,10 @@ const suites = [
     file: 'tests/test_runner_issue72_host_exit_visibility.sql',
     functionName: 'test_runner_issue72_host_exit_visibility',
   },
+  {
+    file: 'tests/test_runner_issue73_sms_out_disambiguation.sql',
+    functionName: 'test_runner_issue73_sms_out_disambiguation',
+  },
 ]
 
 for (const suite of suites) {
