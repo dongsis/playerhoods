@@ -28,9 +28,9 @@ This patch improves host visibility when an active formed match loses a canonica
 - Keeps match lifecycle/status semantics unchanged; matches remain Game On/Formed when the lineup becomes short.
 - Adds host-only lineup-short warnings on match list/detail read models for active matches only.
 - Enriches host Inbox removal notifications with participant display name, exit time, match snapshot, and canonical confirmed count.
-- Updates the participant-removal notification trigger to notify the organizer with `host_lineup_short_after_formed` only when an active formed match loses a participant with both `participant_accepted_at` and `org_approved_at` set.
+- Updates the participant-removal notification trigger to notify the organizer with `host_lineup_short_after_formed` only when an active formed match becomes short after losing a participant with both `participant_accepted_at` and `org_approved_at` set.
 - Preserves legacy non-host `delegate_target_removed` wording/semantics and removed-user notification paths.
-- Adds Issue #72 SQL regression coverage for canonical confirmation, host-vs-delegator notification separation, active-match suppression, pre-formation suppression, duplicate normal-path notification prevention, and Contact Player display-name resolution.
+- Adds Issue #72 SQL regression coverage for canonical confirmation, host-vs-delegator notification separation, active-match suppression, pre-formation suppression, duplicate normal-path notification prevention, and Contact Player display-name resolver behavior.
 
 ### Verification Evidence
 

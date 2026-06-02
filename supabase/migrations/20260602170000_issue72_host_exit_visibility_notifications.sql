@@ -14,6 +14,8 @@ declare
   v_organizer uuid;
   v_match_formed_at timestamptz;
   v_match_status public.match_status;
+  v_match_required_count integer;
+  v_remaining_confirmed_count integer := 0;
   v_should_notify_organizer_exit boolean := false;
 begin
   -- Removed: notify delegator, notify host when a formed lineup becomes short,
@@ -21,8 +23,8 @@ begin
   if (new.removed_at is distinct from old.removed_at) and new.removed_at is not null then
     v_kind := 'delegate_target_removed';
 
-    select m.organizer_id, m.formed_at, m.status
-      into v_organizer, v_match_formed_at, v_match_status
+    select m.organizer_id, m.formed_at, m.status, m.required_count
+      into v_organizer, v_match_formed_at, v_match_status, v_match_required_count
     from public.matches m
     where m.id = new.match_id;
 
@@ -33,6 +35,20 @@ begin
       and new.removed_at >= v_match_formed_at
       and old.participant_accepted_at is not null
       and old.org_approved_at is not null;
+
+    if v_should_notify_organizer_exit then
+      select count(*)::integer
+        into v_remaining_confirmed_count
+      from public.match_participants mp
+      where mp.match_id = new.match_id
+        and mp.id <> new.id
+        and mp.removed_at is null
+        and mp.participant_accepted_at is not null
+        and mp.org_approved_at is not null;
+
+      v_should_notify_organizer_exit :=
+        v_remaining_confirmed_count < coalesce(v_match_required_count, 0);
+    end if;
 
     -- Notify delegator with the legacy kind. When the organizer is also the
     -- legacy delegator for a formed-lineup exit, the host-specific notification
@@ -51,7 +67,7 @@ begin
       insert into public.notifications (
         recipient_user_id, kind, match_id, match_participant_id, actor_user_id, note
       ) values (
-        v_delegator, v_kind, new.match_id, new.id, v_actor, new.removal_note
+        v_delegator, v_kind, new.match_id, new.id, v_actor, null
       );
     end if;
 
@@ -103,7 +119,7 @@ end;
 $$;
 
 comment on function public.trg_notify_delegator_on_mp_change() is
-  'Issue #72: participant removal notifier. Preserves non-host delegator/removed-user notifications and notifies the organizer with host_lineup_short_after_formed when an active formed match loses a canonically confirmed lineup participant.';
+  'Issue #72: participant removal notifier. Preserves non-host delegator/removed-user notifications and notifies the organizer with host_lineup_short_after_formed when an active formed match becomes short after losing a canonically confirmed lineup participant.';
 
 grant all on function public.trg_notify_delegator_on_mp_change() to anon;
 grant all on function public.trg_notify_delegator_on_mp_change() to authenticated;
@@ -151,6 +167,19 @@ as $$
       false
     ),
     'organizer lineup-short notification uses canonical confirmation timestamps, not status fallback'::text
+  union all
+  select
+    'host_exit_requires_lineup_short'::text,
+    coalesce(
+      pg_get_functiondef(to_regprocedure('public.trg_notify_delegator_on_mp_change()'))
+        like '%v_remaining_confirmed_count < coalesce(v_match_required_count, 0)%'
+        and pg_get_functiondef(to_regprocedure('public.trg_notify_delegator_on_mp_change()'))
+          like '%mp.participant_accepted_at is not null%'
+        and pg_get_functiondef(to_regprocedure('public.trg_notify_delegator_on_mp_change()'))
+          like '%mp.org_approved_at is not null%',
+      false
+    ),
+    'organizer lineup-short notification requires remaining canonical lineup to be below required count'::text
   union all
   select
     'removed_at_trigger_present'::text,
