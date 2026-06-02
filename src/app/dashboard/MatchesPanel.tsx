@@ -288,6 +288,7 @@ type MatchRowProps = {
   onViewed?: (matchId: string) => void
   onDismissAlert?: (matchId: string) => void
   showAcknowledge?: boolean
+  showOverlapWarning?: boolean
   variant?: 'default' | 'incoming' | 'history'
   showRosterNames?: boolean
   isSelected?: boolean
@@ -545,6 +546,7 @@ function MatchRow({
   onViewed,
   onDismissAlert,
   showAcknowledge = false,
+  showOverlapWarning = false,
   variant = 'default',
   showRosterNames = true,
   isSelected = false,
@@ -621,16 +623,13 @@ function MatchRow({
     match.duration_minutes,
     venueTimezone ?? 'UTC',
   )
-  const hasBoardConflict = !isHistoryRow && hasTimeConflictWithItems(item, detailItems)
   const playerCountLabel = `${confirmedCount}/${match.required_count}`
   const boardCourtLabel = getBoardCourtLabel(courtState.badgeLabel)
   const courtTbdBoardLabel = boardCourtLabel === 'Court TBD'
   const boardStatusLabel = isCancelled
     ? 'Match cancelled'
-    : hasBoardConflict
-      ? `⚠ Overlaps · ${playerCountLabel}`
-      : courtTbdBoardLabel && !isFormed
-        ? `Court TBD · ${playerCountLabel}`
+    : courtTbdBoardLabel && !isFormed
+      ? `Court TBD · ${playerCountLabel}`
       : isFormed
         ? `Formed · ${playerCountLabel}`
         : confirmedCount >= match.required_count
@@ -638,9 +637,7 @@ function MatchRow({
           : playerCountLabel
   const boardStatusTone: 'green' | 'amber' | 'blue' | 'red' | 'slate' = isCancelled
     ? 'red'
-    : hasBoardConflict
-      ? 'red'
-      : isFormed
+    : isFormed
         ? 'green'
         : confirmedCount >= match.required_count
           ? 'blue'
@@ -702,6 +699,7 @@ function MatchRow({
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             {showSportIcon ? <InlineSportBadge sportName={sportName} /> : null}
+            {showOverlapWarning ? <StatusBadge label="OVERLAPS" tone="red" /> : null}
             <StatusBadge label={boardStatusLabel} tone={boardStatusTone} />
             {!isCancelled && boardCourtLabel && !courtTbdBoardLabel ? (
               <span className="text-body-sub font-semibold text-[#64748B]">
@@ -1457,7 +1455,7 @@ function MobileStatusBadge({
   tone = 'neutral',
 }: {
   label: string
-  tone?: 'neutral' | 'orange' | 'green' | 'blue'
+  tone?: 'neutral' | 'orange' | 'green' | 'blue' | 'red'
 }) {
   const toneClass =
     tone === 'green'
@@ -1466,6 +1464,8 @@ function MobileStatusBadge({
         ? 'border-[#F4C7B8] bg-[#eff6ff] text-[#0d6efd]'
         : tone === 'blue'
           ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#0d6efd]'
+          : tone === 'red'
+            ? 'border-[#FECACA] bg-[#FEF2F2] text-[#DC2626]'
           : 'border-[#D7E1EE] bg-white text-[#64748B]'
 
   return (
@@ -1478,9 +1478,11 @@ function MobileStatusBadge({
 function MobileMatchCard({
   item,
   userId,
+  showOverlapWarning = false,
 }: {
   item: MatchListItem
   userId: string
+  showOverlapWarning?: boolean
 }) {
   const { weekday, month, day } = getMobileDateParts(item, item.venueTimezone)
   const hostLabel = getOrganizerLabel(item)
@@ -1523,6 +1525,7 @@ function MobileMatchCard({
               {item.venueName ? <p className="mt-1 text-body-main text-[#1E293B]">{item.venueName}</p> : null}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
+              {showOverlapWarning ? <MobileStatusBadge label="OVERLAPS" tone="red" /> : null}
               <MobileStatusBadge
                 label={item.isFormed ? 'Formed' : item.confirmedCount >= item.match.required_count ? 'Ready' : `${item.confirmedCount}/${item.match.required_count}`}
                 tone={item.isFormed ? 'green' : item.confirmedCount >= item.match.required_count ? 'blue' : 'orange'}
@@ -1808,7 +1811,7 @@ export function MatchesPanel({
               ) : (
                 <div className="space-y-4">
                   {lookingFor.map((item) => (
-                    <MobileMatchCard key={`mobile-looking-${item.match.id}`} item={item} userId={userId} />
+                    <MobileMatchCard key={`mobile-looking-${item.match.id}`} item={item} userId={userId} showOverlapWarning={hasTimeConflictWithItems(item, incoming)} />
                   ))}
                 </div>
               )}
@@ -2025,6 +2028,7 @@ export function MatchesPanel({
                             detailItems={items}
                             onSelectMatch={handleSelectMatch}
                             variant="incoming"
+                            showOverlapWarning={hasTimeConflictWithItems(item, incoming)}
                             isSelected={effectiveSelectedMatchId === item.match.id}
                             isLoadingDetail={pendingMatchId === item.match.id}
                           />
