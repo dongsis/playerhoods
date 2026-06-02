@@ -225,10 +225,16 @@ export default function HomePage() {
       <div className="relative overflow-hidden bg-[#F0F7FF]">
         <div className="absolute inset-0">
           <img
-            src="/homepage-hero-players-20260529.png"
+            src="/homepage-hero-close-player-group-mobile-20260601.png"
             alt=""
             aria-hidden="true"
-            className="h-full w-full object-cover object-[58%_center] sm:object-center"
+            className="h-auto w-full object-contain object-top sm:hidden"
+          />
+          <img
+            src="/homepage-hero-players-clean-safe-area-20260530.png"
+            alt=""
+            aria-hidden="true"
+            className="hidden h-full w-full object-cover object-center sm:block"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-white/82 via-white/48 to-[#071A44]/10" />
           <div className="absolute inset-0 bg-gradient-to-b from-white/36 via-white/8 to-[#F0F7FF]/62" />
