@@ -52,6 +52,7 @@ export type MatchDetailPageViewModel = {
   pendingCount: number
   waitingCount: number
   rosterInsight: MatchRosterInsight
+  lineupShortWarning: MatchDetailLoaderData['detail']['lineupShortWarning']
   timeLabel: string
   spotsNeeded: number
   savedPlayerIds: string[]
@@ -87,6 +88,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     pendingCount,
     waitingCount,
     rosterInsight,
+    lineupShortWarning,
     activities,
     messages,
     organizerName,
@@ -218,6 +220,7 @@ export function buildMatchDetailPageViewModel(loaderData: MatchDetailLoaderData)
     pendingCount,
     waitingCount,
     rosterInsight,
+    lineupShortWarning,
     timeLabel: formatTimeWindow(
       match.start_at_utc,
       match.match_date,

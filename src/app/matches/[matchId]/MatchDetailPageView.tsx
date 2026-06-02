@@ -83,6 +83,18 @@ function formatMatchDayLabel(matchDate: string | null | undefined): string | nul
   }).format(date)
 }
 
+function formatLineupChangeTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return 'recently'
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
+}
+
 type MatchDetailPageViewProps = {
   viewModel: MatchDetailPageViewModel
   embedded?: boolean
@@ -123,6 +135,7 @@ function MatchHeaderSection({
     venueCourts,
     courtState,
     rosterInsight,
+    lineupShortWarning,
   } = viewModel
   const showMatchFormedBanner =
     match.status === 'active' &&
@@ -342,6 +355,12 @@ function MatchHeaderSection({
                     Time conflict detected. This overlaps with another match{conflictDateLabel ? ` on ${conflictDateLabel}` : ''}.
                   </div>
                 ) : null}
+              </div>
+            ) : null}
+
+            {lineupShortWarning ? (
+              <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] font-bold leading-relaxed text-[#92400E]">
+                Lineup changed after Game On: {lineupShortWarning.playerName} {lineupShortWarning.actionLabel} at {formatLineupChangeTime(lineupShortWarning.happenedAt)}. {lineupShortWarning.confirmedCount} of {lineupShortWarning.targetCount} players are confirmed.
               </div>
             ) : null}
 

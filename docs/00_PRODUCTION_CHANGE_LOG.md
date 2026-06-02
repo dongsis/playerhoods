@@ -14,6 +14,47 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-02 - PATCH-20260602-issue72-host-exit-visibility
+
+**Type:** Patch
+**Code Commit:** PR #75 branch head; final merge commit pending
+**Migration:** `20260602170000_issue72_host_exit_visibility_notifications.sql`
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy; no Supabase Remote change
+
+### Summary
+
+This patch improves host visibility when an active formed match loses a canonically confirmed lineup participant:
+
+- Keeps match lifecycle/status semantics unchanged; matches remain Game On/Formed when the lineup becomes short.
+- Adds host-only lineup-short warnings on match list/detail read models for active matches only.
+- Enriches host Inbox removal notifications with participant display name, exit time, match snapshot, and canonical confirmed count.
+- Updates the participant-removal notification trigger to notify the organizer with `host_lineup_short_after_formed` only when an active formed match becomes short after losing a participant with both `participant_accepted_at` and `org_approved_at` set.
+- Preserves legacy non-host `delegate_target_removed` wording/semantics and removed-user notification paths.
+- Adds Issue #72 SQL regression coverage for canonical confirmation, host-vs-delegator notification separation, active-match suppression, pre-formation suppression, duplicate normal-path notification prevention, and Contact Player display-name resolver behavior.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally at PR stage | `npx tsc --noEmit`; `npm run build` |
+| Diff whitespace | Passed locally at PR stage | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Pending GitHub PR check; blocked locally if Docker is unavailable | GitHub SQL regression required after push; local `npm run verify:sql` depends on Docker/Supabase local availability |
+| Vercel Preview | PR-stage | Preview only; no production deployment performed by this PR |
+| Supabase Remote | Not applied | Migration is committed for review only; owner approval required before remote apply |
+| Real SMS/email/provider traffic | Not sent | This patch does not touch SMS/email drains or provider sends |
+| Production verification | Not verified | Requires owner-approved merge/deploy and Supabase Remote migration apply |
+
+### Rollback
+
+- Code rollback: revert the PR #75 merge commit or follow up with a targeted revert of the Issue #72 UI/read-model changes.
+- Database rollback: forward-only migration restoring the previous `trg_notify_delegator_on_mp_change()` behavior if needed.
+- No production rollback has been performed because this entry is PR/Preview stage only.
+
+### Known Risks
+
+- Local SQL verification can remain blocked when Docker Desktop / Supabase local is unavailable; rely on GitHub SQL regression before review approval.
+- The organizer notification is designed for the normal lifecycle path where `removed_at` is written once. A future non-normal write that changes a non-null `removed_at` timestamp again could create another host removal notification.
+
 ## 2026-06-02 - DBFIX-20260602-issue73-sms-out-disambiguation
 
 **Type:** Patch

@@ -53,6 +53,14 @@ function isActiveConfirmedParticipant(participant: Pick<MatchParticipant, 'statu
   return participant.status === 'confirmed' && participant.removed_at === null
 }
 
+function isCanonicalConfirmedParticipant(
+  participant: Pick<MatchParticipant, 'participant_accepted_at' | 'org_approved_at' | 'removed_at'>,
+): boolean {
+  return participant.participant_accepted_at !== null
+    && participant.org_approved_at !== null
+    && participant.removed_at === null
+}
+
 function isActivePendingParticipant(participant: Pick<MatchParticipant, 'status' | 'removed_at'>): boolean {
   return participant.status === 'pending' && participant.removed_at === null
 }
@@ -78,6 +86,16 @@ export type MatchParticipantEnriched = MatchParticipant & {
   saved_by_viewer?: boolean
   contact_player_person_id?: string | null
   linked_user_id?: string | null
+}
+
+/** Host-facing summary for formed matches that became short after a lineup exit. */
+export type MatchLineupShortWarning = {
+  playerName: string
+  happenedAt: string
+  actionLabel: 'left' | 'declined' | 'was removed'
+  confirmedCount: number
+  targetCount: number
+  leftCount: number
 }
 
 /** Flattened activity row for ActivityFeed — all names resolved server-side. */
@@ -109,6 +127,7 @@ export type MatchListItem = {
   participants: MatchParticipantEnriched[]
   myParticipant: MatchParticipantEnriched | null
   rosterInsight: MatchRosterInsight
+  lineupShortWarning: MatchLineupShortWarning | null
 }
 
 export type MatchDetailData = {
@@ -130,6 +149,7 @@ export type MatchDetailData = {
   myGroupInvites: MatchGroupInvite[]
   sportName: string  // v1.6.3
   rosterInsight: MatchRosterInsight
+  lineupShortWarning: MatchLineupShortWarning | null
 }
 
 export type MatchProxyDashboardRow = PersonMatchProxy & {
@@ -1415,6 +1435,69 @@ function resolveNameFromMaps(
   return profileMap.get(userId) ?? 'Unknown'
 }
 
+function getExitActionLabel(
+  participant: Pick<MatchParticipantEnriched, 'removed_by' | 'user_id' | 'removal_note'>,
+): MatchLineupShortWarning['actionLabel'] {
+  const removalNote = (participant.removal_note ?? '').toLowerCase()
+
+  if (removalNote.includes('declined')) return 'declined'
+  if (
+    participant.removed_by &&
+    participant.user_id &&
+    participant.removed_by === participant.user_id
+  ) {
+    return 'left'
+  }
+  if (
+    removalNote.includes('withdraw') ||
+    removalNote.includes('left') ||
+    removalNote.includes('out_after_formed') ||
+    removalNote.includes('out_after_confirmed')
+  ) {
+    return 'left'
+  }
+  return 'was removed'
+}
+
+function getLineupShortWarning(
+  match: Match,
+  participants: MatchParticipantEnriched[],
+  confirmedCount: number,
+): MatchLineupShortWarning | null {
+  if (match.status !== 'active' || !match.formed_at || confirmedCount >= match.required_count) {
+    return null
+  }
+
+  const formedAtMs = new Date(match.formed_at).getTime()
+  const exitedAfterFormation = participants
+    .filter((participant) => {
+      if (!participant.removed_at) return false
+      const removedAtMs = new Date(participant.removed_at).getTime()
+      if (Number.isNaN(removedAtMs) || removedAtMs < formedAtMs) return false
+
+      return participant.participant_accepted_at !== null && participant.org_approved_at !== null
+    })
+    .sort((a, b) => {
+      const aTime = a.removed_at ? new Date(a.removed_at).getTime() : 0
+      const bTime = b.removed_at ? new Date(b.removed_at).getTime() : 0
+      return bTime - aTime
+    })
+
+  const latestExit = exitedAfterFormation[0]
+  if (!latestExit?.removed_at) {
+    return null
+  }
+
+  return {
+    playerName: latestExit.display_name,
+    happenedAt: latestExit.removed_at,
+    actionLabel: getExitActionLabel(latestExit),
+    confirmedCount,
+    targetCount: match.required_count,
+    leftCount: exitedAfterFormation.length,
+  }
+}
+
 /**
  * Fetch all visible matches for the list page, enriched with:
  * - venue timezone (for time formatting)
@@ -1566,6 +1649,7 @@ export async function getMatchListData(
     const confirmed = enriched.filter(isActiveConfirmedParticipant)
     const pending = enriched.filter(isActivePendingParticipant)
     const waiting = enriched.filter(isActiveWaitingListParticipant)
+    const canonicalConfirmedCount = enriched.filter(isCanonicalConfirmedParticipant).length
     const myParticipant = userId
       ? (enriched.find(
           p =>
@@ -1575,6 +1659,7 @@ export async function getMatchListData(
         ) ?? null)
       : null
     const rosterInsight = deriveMatchRosterInsight(match, enriched)
+    const lineupShortWarning = getLineupShortWarning(match, enriched, canonicalConfirmedCount)
 
     return {
       match,
@@ -1593,6 +1678,7 @@ export async function getMatchListData(
       participants: enriched,
       myParticipant,
       rosterInsight,
+      lineupShortWarning,
     }
   })
 }
@@ -1983,6 +2069,10 @@ export async function getMatchDetailData(
   )
   const scopeGroups = ((scopeGroupsRes.data ?? []) as { id: string; name: string }[])
   const rosterInsight = deriveMatchRosterInsight(match, enriched)
+  const canonicalConfirmedCount = enriched.filter(isCanonicalConfirmedParticipant).length
+  const lineupShortWarning = isOrganizer
+    ? getLineupShortWarning(match, enriched, canonicalConfirmedCount)
+    : null
   const confirmedVisibleToParticipants = enriched
     .filter((participant) =>
       participant.status === 'confirmed' &&
@@ -2065,6 +2155,7 @@ export async function getMatchDetailData(
       myGroupInvites,
     sportName: (sportRes.data as { display_name: string } | null)?.display_name ?? 'Unknown',
     rosterInsight,
+    lineupShortWarning,
   }
 }
 
