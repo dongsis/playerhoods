@@ -8,7 +8,7 @@ import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-d
 import { SUPPORT_EMAIL } from '@/lib/legal'
 import {
   getPrioritizedQuickCityGroups,
-  sortCityNamesByProvincePriority,
+  sortCityOptionsByProvincePriority,
 } from '@/lib/location-city-priority'
 import type { DiscoveryVolume, Profile, Sport, UserPlayCity, UserSport, Venue } from '@/lib/types/database'
 import type { LocationCityOption } from '@/lib/api/location-municipalities'
@@ -78,6 +78,40 @@ function normalizeCityName(value: string) {
 
 function normalizeCityKey(value: string | null | undefined) {
   return normalizeSearchText(normalizeCityName(value ?? ''))
+}
+
+function normalizeTupleCity(value: string | null | undefined) {
+  return normalizeCityName(value ?? '').toLowerCase()
+}
+
+function normalizeTuplePart(value: string | null | undefined, fallback: string) {
+  return (value?.trim() || fallback).toLowerCase()
+}
+
+function getPlayCityTupleKey(city: PlayCityRecord) {
+  return [
+    normalizeTupleCity(city.city_name),
+    normalizeTuplePart(city.region, DEFAULT_PLAY_REGION),
+    normalizeTuplePart(city.country, DEFAULT_PLAY_COUNTRY),
+  ].join('|')
+}
+
+function getVenueCityTupleKey(venue: VenueOption) {
+  return [
+    normalizeTupleCity(venue.city),
+    normalizeTuplePart(venue.province, DEFAULT_PLAY_REGION),
+    normalizeTuplePart(venue.country, DEFAULT_PLAY_COUNTRY),
+  ].join('|')
+}
+
+function normalizeCityOption(city: LocationCityOption): PlayCityRecord | null {
+  const cityName = normalizeCityName(city.city_name)
+  if (!cityName) return null
+  return {
+    city_name: cityName,
+    region: city.region ?? DEFAULT_PLAY_REGION,
+    country: city.country ?? DEFAULT_PLAY_COUNTRY,
+  }
 }
 
 function getRegionDisplayName(region: string | null | undefined): string {
@@ -193,30 +227,29 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     [existing],
   )
 
-  const availableCities = useMemo(
-    () =>
-      sortCityNamesByProvincePriority(Array.from(
-        new Set(
-          cityOptions
-            .map((city) => normalizeCityName(city.city_name))
-            .filter(Boolean),
-        ),
-      ), DEFAULT_PLAY_REGION),
-    [cityOptions],
-  )
+  const availableCityOptions = useMemo(() => {
+    const map = new Map<string, PlayCityRecord>()
+    for (const city of sortCityOptionsByProvincePriority(cityOptions, DEFAULT_PLAY_REGION)) {
+      const option = normalizeCityOption(city)
+      if (!option) continue
+      const key = getPlayCityTupleKey(option)
+      if (!map.has(key)) {
+        map.set(key, option)
+      }
+    }
+    return Array.from(map.values())
+  }, [cityOptions])
 
-  const cityMetaMap = useMemo(() => {
-    const map = new Map<string, { region: string | null; country: string | null }>()
-    for (const city of cityOptions) {
-      const cityName = normalizeCityName(city.city_name)
-      if (!cityName || map.has(cityName.toLowerCase())) continue
-      map.set(cityName.toLowerCase(), {
-        region: city.region ?? DEFAULT_PLAY_REGION,
-        country: city.country ?? DEFAULT_PLAY_COUNTRY,
-      })
+  const cityOptionByNameMap = useMemo(() => {
+    const map = new Map<string, PlayCityRecord>()
+    for (const city of availableCityOptions) {
+      const cityNameKey = normalizeCityName(city.city_name).toLowerCase()
+      if (!map.has(cityNameKey)) {
+        map.set(cityNameKey, city)
+      }
     }
     return map
-  }, [cityOptions])
+  }, [availableCityOptions])
 
   const [displayName, setDisplayName] = useState(initialDisplayName)
   const [selectedSportIds, setSelectedSportIds] = useState<number[]>(() => initialSports.map((sport) => sport.sport_id))
@@ -267,11 +300,12 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
 
   const filteredCities = useMemo(() => {
     const query = normalizeQuery(cityInput)
-    return availableCities.filter((city) => {
-      if (selectedCities.some((entry) => entry.city_name === city)) return false
-      return !query || city.toLowerCase().includes(query)
+    return availableCityOptions.filter((city) => {
+      if (selectedCities.some((entry) => getPlayCityTupleKey(entry) === getPlayCityTupleKey(city))) return false
+      const searchText = normalizeSearchText([city.city_name, city.region ?? '', city.country ?? ''].join(' '))
+      return !query || searchText.includes(query)
     })
-  }, [availableCities, cityInput, selectedCities])
+  }, [availableCityOptions, cityInput, selectedCities])
   const quickCityGroups = useMemo(
     () => getPrioritizedQuickCityGroups(cityOptions, selectedCities.map((city) => city.city_name), DEFAULT_PLAY_REGION),
     [cityOptions, selectedCities],
@@ -284,11 +318,11 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
   const availableFilteredVenues = useMemo(() => {
     const query = normalizeSearchText(clubInput)
     const queryTokens = query ? query.split(' ') : []
-    const selectedCityKeys = new Set(selectedCities.map((city) => normalizeCityKey(city.city_name)))
+    const selectedCityKeys = new Set(selectedCities.map((city) => getPlayCityTupleKey(city)))
     return venues
       .filter((venue) => {
-        const venueCityKey = normalizeCityKey(venue.city)
-        if (!venueCityKey || !selectedCityKeys.has(venueCityKey)) return false
+        const venueCityKey = getVenueCityTupleKey(venue)
+        if (!normalizeCityKey(venue.city) || !selectedCityKeys.has(venueCityKey)) return false
         if (selectedVenues.some((selectedVenue) => selectedVenue.id === venue.id)) return false
         const searchBlob = normalizeSearchText([
           getVenueDisplayName(venue as Venue),
@@ -313,17 +347,21 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     setErrorMessages((current) => ({ ...current, sports: '' }))
   }
 
-  const addCity = (cityName: string) => {
-    const normalized = normalizeCityName(cityName)
-    if (!normalized) return
-    if (!cityMetaMap.has(normalized.toLowerCase())) {
+  const addCity = (city: string | PlayCityRecord) => {
+    const option = typeof city === 'string'
+      ? cityOptionByNameMap.get(normalizeCityName(city).toLowerCase()) ?? null
+      : city
+    if (!option) {
       setErrorMessages((current) => ({
         ...current,
         cities: 'Choose a city from the approved city list.',
       }))
       return
     }
-    if (selectedCities.some((city) => city.city_name === normalized)) return
+
+    const cityKey = getPlayCityTupleKey(option)
+    if (!normalizeCityKey(option.city_name)) return
+    if (selectedCities.some((selectedCity) => getPlayCityTupleKey(selectedCity) === cityKey)) return
 
     if (selectedCities.length >= 8) {
       setErrorMessages((current) => ({
@@ -333,17 +371,12 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
       return
     }
 
-    const meta = cityMetaMap.get(normalized.toLowerCase()) ?? {
-      region: DEFAULT_PLAY_REGION,
-      country: DEFAULT_PLAY_COUNTRY,
-    }
-
     setSelectedCities((current) => [
       ...current,
       {
-        city_name: normalized,
-        region: meta.region,
-        country: meta.country,
+        city_name: option.city_name,
+        region: option.region,
+        country: option.country,
       },
     ])
     setCityInput('')
@@ -351,10 +384,10 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     setErrorMessages((current) => ({ ...current, cities: '' }))
   }
 
-  const removeCity = (cityName: string) => {
-    const cityKey = normalizeCityKey(cityName)
-    setSelectedCities((current) => current.filter((city) => city.city_name !== cityName))
-    setSelectedVenues((current) => current.filter((venue) => normalizeCityKey(venue.city) !== cityKey))
+  const removeCity = (cityToRemove: PlayCityRecord) => {
+    const cityKey = getPlayCityTupleKey(cityToRemove)
+    setSelectedCities((current) => current.filter((city) => getPlayCityTupleKey(city) !== cityKey))
+    setSelectedVenues((current) => current.filter((venue) => getVenueCityTupleKey(venue) !== cityKey))
     setErrorMessages((current) => ({ ...current, cities: '' }))
   }
 
@@ -512,14 +545,14 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
           <div className="flex flex-wrap gap-2">
             {selectedCities.map((city) => (
               <span
-                key={city.city_name}
+                key={getPlayCityTupleKey(city)}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-[#D7E0EC] bg-white px-3 py-2 text-body-main text-[#334155]"
               >
                 <MapPinIcon className="h-3.5 w-3.5 text-[#94A3B8]" />
                 {city.city_name}
                 <button
                   type="button"
-                  onClick={() => removeCity(city.city_name)}
+                  onClick={() => removeCity(city)}
                   className="ml-1 text-[#94A3B8] transition hover:text-rose-500"
                   aria-label={`Remove ${city.city_name}`}
                 >
@@ -572,15 +605,15 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
               {filteredCities.length > 0 ? (
                 filteredCities.map((city) => (
                   <button
-                    key={city}
+                    key={getPlayCityTupleKey(city)}
                     type="button"
                     onClick={() => addCity(city)}
                     className="group flex min-h-[48px] w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left transition hover:bg-[#F0F7FF] focus:bg-[#F0F7FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0d6efd] last:border-b-0"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-[15px] font-semibold text-[#1E293B]">{city}</span>
+                      <span className="block truncate text-[15px] font-semibold text-[#1E293B]">{city.city_name}</span>
                       <span className="mt-0.5 block truncate text-body-sub text-[#64748B]">
-                        City in {getRegionDisplayName(cityMetaMap.get(city.toLowerCase())?.region ?? DEFAULT_PLAY_REGION)}
+                        City in {getRegionDisplayName(city.region)}
                       </span>
                     </span>
                     <span className="shrink-0 rounded-full border border-[#BFD8FF] bg-[#F0F7FF] px-3 py-1 text-body-sub font-semibold text-[#0d6efd] transition group-hover:bg-white">
