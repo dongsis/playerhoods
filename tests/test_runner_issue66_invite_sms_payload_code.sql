@@ -24,6 +24,7 @@ DECLARE
   v_code text;
   v_reused_code text;
   v_reply text;
+  v_payload jsonb;
   v_removed_at timestamptz;
   v_consumed_count integer;
   v_active_code_count integer;
@@ -81,6 +82,13 @@ BEGIN
   INSERT INTO public.venues (id, name, timezone)
   VALUES (v_venue_id, 'Issue 66 Courts', 'America/Toronto');
 
+  INSERT INTO public.sports (id, code, display_name, is_active)
+  VALUES (1, 'tennis', 'tennis', true)
+  ON CONFLICT (id) DO UPDATE
+  SET code = excluded.code,
+      display_name = excluded.display_name,
+      is_active = excluded.is_active;
+
   INSERT INTO public.guests (id, display_name, created_by, email, phone, status)
   VALUES
     (v_guest_id, 'Issue 66 Player', v_org, 'issue66-player@example.test', v_phone, 'active'),
@@ -137,6 +145,7 @@ BEGIN
 
   v_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'invite');
   v_reused_code := public.notification_create_or_get_sms_reply_code(v_participant_id, 'confirmed_lineup');
+  v_payload := public.notification_match_payload(v_participant_id, 'invite', '{}'::jsonb);
 
   INSERT INTO _issue66_results VALUES (
     'new generated RSVP code is two safe characters',
@@ -156,6 +165,15 @@ BEGIN
     'invite=' || coalesce(v_code, 'NULL')
       || ' confirmed=' || coalesce(v_reused_code, 'NULL')
       || ' active_codes=' || v_active_code_count::text
+  );
+
+  INSERT INTO _issue66_results VALUES (
+    'match_invite payload includes recipient name and sport name',
+    v_payload->>'template_type' = 'match_invite'
+      AND v_payload->>'recipient_name' = 'Issue 66 Player'
+      AND v_payload->>'sport_name' = 'tennis'
+      AND v_payload->>'game_type' = 'doubles',
+    'payload=' || coalesce(v_payload::text, 'NULL')
   );
 
   v_reply := public.rpc_sms_reply_handle(v_phone, 'YES ' || v_code);

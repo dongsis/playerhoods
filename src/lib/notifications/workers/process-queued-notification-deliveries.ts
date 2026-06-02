@@ -93,6 +93,7 @@ function buildMatchInfo(payload: Record<string, unknown>): {
   changeSet: Record<string, unknown> | null
   isFormed: boolean
   recipientName: string | null
+  sportName: string | null
   venueTimezone: string | null
 } {
   return {
@@ -107,6 +108,7 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     changeSet: (payload.change_set as Record<string, unknown>) ?? null,
     isFormed: Boolean(payload.is_formed),
     recipientName: (payload.recipient_name as string) ?? null,
+    sportName: (payload.sport_name as string) ?? null,
     venueTimezone: (payload.venue_timezone as string) ?? null,
   }
 }
@@ -268,6 +270,7 @@ async function processNotificationDeliveryRows(
       match_id?: string
       match_participant_id?: string
       game_type?: string
+      sport_name?: string
       match_date?: string
       start_time?: string
       club_name?: string
