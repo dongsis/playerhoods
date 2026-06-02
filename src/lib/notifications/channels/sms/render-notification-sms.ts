@@ -24,6 +24,7 @@ type MatchSmsData = MatchInfo & {
   changeSet?: Record<string, unknown> | null
   isFormed?: boolean
   recipientName?: string | null
+  sportName?: string | null
   venueTimezone?: string | null
 }
 
@@ -51,7 +52,7 @@ function formatGameType(gameType: string | null | undefined): string {
 }
 
 function formatActivityLabel(sportName: string | null | undefined, gameType: string | null | undefined): string {
-  const sport = sportName?.trim()
+  const sport = sportName?.trim().toLowerCase()
   const format = formatGameType(gameType)
   if (!sport) return format
   if (format === 'match') return sport
@@ -195,8 +196,13 @@ export function renderMatchInviteSms(match: MatchSmsData, organizerName = 'Someo
   const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
   const replyText = match.replyCode ? `Reply YES ${match.replyCode} or NO ${match.replyCode}.` : null
+  const activity = formatActivityLabel(match.sportName, match.gameType)
+  const recipientName = match.recipientName?.trim()
+  const opening = recipientName
+    ? `Hi ${recipientName}, ${organizerName} invited you to ${activity}:`
+    : `${organizerName} invited you to ${activity}:`
   return [
-    `${organizerName} invited you to ${formatGameType(match.gameType)}:`,
+    opening,
     dateTime,
     location,
     '',
