@@ -26,6 +26,7 @@ import {
   hostOfflineConfirmationEmail,
   matchReminderEmail,
   playerhoodsMatchInviteEmail,
+  publicMatchSignupVerificationEmail,
 } from '@/lib/email/templates'
 import { formatInvitationToken } from '@/lib/invitations/invitation-token'
 import { NotificationService } from '@/lib/notifications/notification-service'
@@ -279,6 +280,9 @@ async function processNotificationDeliveryRows(
       magic_link_path?: string
       venue_timezone?: string
       change_set?: Record<string, unknown>
+      public_token?: string
+      signup_id?: string
+      verification_token?: string
     }
 
     let subject = ''
@@ -328,6 +332,23 @@ async function processNotificationDeliveryRows(
         unsubscribeUrl: `${SMS_SITE_URL}/stop/${formatInvitationToken(invitationId)}`,
         replyCode,
       })
+    } else if (templateType === 'public_match_signup_verification') {
+      const m = buildMatchInfo(payload)
+      const publicToken = String(payload.public_token ?? '')
+      const signupId = String(payload.signup_id ?? '')
+      const verificationToken = String(payload.verification_token ?? '')
+      if (!publicToken || !signupId || !verificationToken) {
+        continue
+      }
+      const verificationUrl =
+        `${SITE_URL}/join/${encodeURIComponent(publicToken)}/verify?signup=${encodeURIComponent(signupId)}&token=${encodeURIComponent(verificationToken)}`
+      subject = 'Verify your email for this PlayerHoods match'
+      html = publicMatchSignupVerificationEmail(
+        m,
+        ((payload.recipient_name as string) ?? null)?.trim() || null,
+        verificationUrl,
+      )
+      smsBody = ''
     } else if (templateType === 'guest_nominated') {
       const m = buildMatchInfo(payload)
       subject = "You're invited to a match"

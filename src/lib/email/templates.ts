@@ -198,6 +198,30 @@ export function playerhoodsMatchInviteEmail(m: MatchInfo, organizerName = 'Someo
   })
 }
 
+export function publicMatchSignupVerificationEmail(
+  m: MatchInfo,
+  recipientName: string | null,
+  verificationUrl: string,
+): string {
+  const name = recipientName?.trim() || 'there'
+  const venueName = m.venueName || 'the venue'
+
+  return renderEmailLayout({
+    eyebrow: 'Email verification',
+    title: 'Verify your email',
+    introHtml: `Hi ${escapeHtml(name)},<br><br>Verify your email to finish asking for a spot in the <strong>${escapeHtml(m.gameType || 'match')}</strong> at <strong>${escapeHtml(venueName)}</strong>.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'Verify email',
+    ctaUrl: verificationUrl,
+    ctaHint: 'This creates a pending request. The host still needs to add you to the lineup.',
+    secondaryTitle: 'What happens next',
+    secondaryBody:
+      'After verification, the host can review your request. You are not confirmed for the match until the host adds you to the lineup.',
+    footerNote: 'You received this because this email was used for a public PlayerHoods match signup.',
+    siteUrl: m.siteUrl,
+  })
+}
+
 export function confirmedLineupEmail(m: MatchInfo, organizerName = 'Someone'): string {
   const venueName = m.venueName || 'the venue'
   const inviterName = organizerName.trim() || 'Someone'

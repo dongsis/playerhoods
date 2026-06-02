@@ -86,6 +86,17 @@ export type MatchParticipantEnriched = MatchParticipant & {
   saved_by_viewer?: boolean
   contact_player_person_id?: string | null
   linked_user_id?: string | null
+  public_signup_source?: 'public_match_signup' | null
+  public_signup_email_verified?: boolean
+  public_signup_status?: string | null
+}
+
+type PublicSignupParticipantMetadata = {
+  match_participant_id: string
+  match_id: string
+  source: 'public_match_signup'
+  email_verified: boolean
+  signup_status: string
 }
 
 /** Host-facing summary for formed matches that became short after a lineup exit. */
@@ -1871,6 +1882,23 @@ export async function getMatchDetailData(
       return new Map<string, boolean>()
     }
   })()
+  const publicSignupMetadataByParticipantId = new Map<string, PublicSignupParticipantMetadata>()
+  if (isOrganizerViewer) {
+    try {
+      const { data, error } = await supabase.rpc('rpc_public_match_signup_participant_metadata', {
+        p_match_id: matchId,
+      })
+      if (error) {
+        logMatchDetailSoftFailure(matchId, 'public_match_signup_participant_metadata', error)
+      } else {
+        for (const row of (data ?? []) as PublicSignupParticipantMetadata[]) {
+          publicSignupMetadataByParticipantId.set(row.match_participant_id, row)
+        }
+      }
+    } catch (error) {
+      logMatchDetailSoftFailure(matchId, 'public_match_signup_participant_metadata', error)
+    }
+  }
 
   const resolve = (uid: string | null, gid: string | null) =>
     resolveNameFromMaps(uid, gid, profileMap, guestMap)
@@ -1880,6 +1908,7 @@ export async function getMatchDetailData(
     ?? resolve(match.organizer_id, null)
 
   const enriched: MatchParticipantEnriched[] = participants.map(p => {
+    const publicSignupMetadata = publicSignupMetadataByParticipantId.get(p.id) ?? null
     const linkedUserId = p.guest_id ? participantLinkedToUser.get(p.id) : null
     const effectiveUserId = p.user_id ?? linkedUserId
     const profileDisplay = effectiveUserId ? profileDisplayMap.get(effectiveUserId) : null
@@ -1906,6 +1935,9 @@ export async function getMatchDetailData(
       ),
       contact_player_person_id: guestPersonId,
       linked_user_id: linkedUserId,
+      public_signup_source: publicSignupMetadata?.source ?? null,
+      public_signup_email_verified: publicSignupMetadata?.email_verified ?? false,
+      public_signup_status: publicSignupMetadata?.signup_status ?? null,
     }
   })
 
