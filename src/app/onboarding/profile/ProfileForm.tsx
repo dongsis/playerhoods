@@ -76,6 +76,16 @@ function normalizeCityName(value: string) {
   return value.trim().replace(/\s+/g, ' ')
 }
 
+function normalizeCityKey(value: string | null | undefined) {
+  return normalizeSearchText(normalizeCityName(value ?? ''))
+}
+
+function getRegionDisplayName(region: string | null | undefined): string {
+  const normalized = region?.trim().toUpperCase()
+  if (normalized === 'ON') return 'Ontario'
+  return region?.trim() || 'your region'
+}
+
 function getVenueMetaLine(venue: VenueOption): string {
   const cityRegion = [venue.city?.trim(), venue.province?.trim()]
     .filter((value): value is string => Boolean(value))
@@ -253,6 +263,8 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [])
 
+  const citySearchHasText = cityInput.trim().length > 0
+
   const filteredCities = useMemo(() => {
     const query = normalizeQuery(cityInput)
     return availableCities.filter((city) => {
@@ -265,14 +277,18 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     [cityOptions, selectedCities],
   )
 
+  const venueSearchScopeLabel = selectedCities.length === 1
+    ? `Searching in ${selectedCities[0].city_name}`
+    : `Searching in ${selectedCities.length} selected cities`
+
   const availableFilteredVenues = useMemo(() => {
     const query = normalizeSearchText(clubInput)
     const queryTokens = query ? query.split(' ') : []
-    const selectedCityNames = new Set(selectedCities.map((city) => normalizeCityName(city.city_name).toLowerCase()))
+    const selectedCityKeys = new Set(selectedCities.map((city) => normalizeCityKey(city.city_name)))
     return venues
       .filter((venue) => {
-        const venueCity = normalizeCityName(venue.city ?? '').toLowerCase()
-        if (!query && (!venueCity || !selectedCityNames.has(venueCity))) return false
+        const venueCityKey = normalizeCityKey(venue.city)
+        if (!venueCityKey || !selectedCityKeys.has(venueCityKey)) return false
         if (selectedVenues.some((selectedVenue) => selectedVenue.id === venue.id)) return false
         const searchBlob = normalizeSearchText([
           getVenueDisplayName(venue as Venue),
@@ -285,12 +301,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
         ].join(' '))
         return queryTokens.length === 0 || queryTokens.every((token) => searchBlob.includes(token))
       })
-      .sort((left, right) => {
-        const leftInSelectedCity = selectedCityNames.has(normalizeCityName(left.city ?? '').toLowerCase())
-        const rightInSelectedCity = selectedCityNames.has(normalizeCityName(right.city ?? '').toLowerCase())
-        if (leftInSelectedCity !== rightInSelectedCity) return leftInSelectedCity ? -1 : 1
-        return getVenueFullName(left).localeCompare(getVenueFullName(right))
-      })
+      .sort((left, right) => getVenueFullName(left).localeCompare(getVenueFullName(right)))
   }, [clubInput, selectedCities, selectedVenues, venues])
 
   const toggleSport = (sportId: number) => {
@@ -341,8 +352,9 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
   }
 
   const removeCity = (cityName: string) => {
+    const cityKey = normalizeCityKey(cityName)
     setSelectedCities((current) => current.filter((city) => city.city_name !== cityName))
-    setSelectedVenues((current) => current.filter((venue) => normalizeCityName(venue.city ?? '') !== cityName))
+    setSelectedVenues((current) => current.filter((venue) => normalizeCityKey(venue.city) !== cityKey))
     setErrorMessages((current) => ({ ...current, cities: '' }))
   }
 
@@ -535,7 +547,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
             />
           </div>
 
-          {quickCityGroups.length > 0 ? (
+          {!citySearchHasText && quickCityGroups.length > 0 ? (
             <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
               {quickCityGroups.map((group) => (
                 <div key={group.label} className="flex shrink-0 items-center gap-1.5">
@@ -555,22 +567,29 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
             </div>
           ) : null}
 
-          {isCityDropdownOpen && selectedCities.length < 8 ? (
-            <div className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
+          {isCityDropdownOpen && selectedCities.length < 8 && citySearchHasText ? (
+            <div className="mt-2 max-h-80 w-full overflow-y-auto rounded-[20px] border border-[#BFD8FF] bg-white shadow-[0_18px_40px_-28px_rgba(13,110,253,0.28)]">
               {filteredCities.length > 0 ? (
                 filteredCities.map((city) => (
                   <button
                     key={city}
                     type="button"
                     onClick={() => addCity(city)}
-                    className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-body-main text-[#334155] transition hover:bg-[#F8FBFF] last:border-b-0"
+                    className="group flex min-h-[48px] w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left transition hover:bg-[#F0F7FF] focus:bg-[#F0F7FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0d6efd] last:border-b-0"
                   >
-                    <span>{city}</span>
-                    <span className="text-label text-[#94A3B8]">Add</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[15px] font-semibold text-[#1E293B]">{city}</span>
+                      <span className="mt-0.5 block truncate text-body-sub text-[#64748B]">
+                        City in {getRegionDisplayName(cityMetaMap.get(city.toLowerCase())?.region ?? DEFAULT_PLAY_REGION)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 rounded-full border border-[#BFD8FF] bg-[#F0F7FF] px-3 py-1 text-body-sub font-semibold text-[#0d6efd] transition group-hover:bg-white">
+                      Add
+                    </span>
                   </button>
                 ))
               ) : (
-                <div className="px-4 py-3 text-body-sub text-[#94A3B8]">
+                <div className="px-4 py-4 text-body-sub text-[#64748B]">
                   No cities found matching "{cityInput}".
                 </div>
               )}
@@ -621,11 +640,22 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
         ) : null}
 
         {selectedCities.length === 0 ? (
-          <div className="rounded-[20px] border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4 text-body-sub text-[#64748B]">
-            Please select at least one city above to find clubs or venues.
+          <div className="flex items-center rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-[#94A3B8]">
+            <BuildingIcon className="mr-2 h-4 w-4" />
+            <input
+              type="text"
+              value=""
+              placeholder="Select a city first to search clubs or venues."
+              className="flex-1 cursor-not-allowed border-0 bg-transparent p-0 text-body-main text-[#64748B] shadow-none placeholder:text-[#64748B] focus:ring-0"
+              disabled
+              readOnly
+            />
           </div>
         ) : (
           <div ref={clubDropdownRef} className="relative">
+            <div className="mb-2 text-label font-semibold text-[#0d6efd]">
+              {venueSearchScopeLabel}
+            </div>
             <div className="flex items-center rounded-2xl border border-[#D7E0EC] bg-white px-4 py-3 focus-within:border-[#0d6efd]">
               <BuildingIcon className="mr-2 h-4 w-4 text-[#94A3B8]" />
               <input
@@ -666,10 +696,9 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                     ))}
                   </div>
                 ) : (
-                  <div className="px-4 py-3 text-body-sub text-[#94A3B8]">
-                    {clubInput.trim()
-                      ? 'No matching clubs or venues found.'
-                      : 'No new clubs or venues found for your selected cities.'}
+                  <div className="px-4 py-4">
+                    <div className="text-body-main font-semibold text-[#1E293B]">No venues found in selected cities.</div>
+                    <div className="mt-1 text-body-sub text-[#64748B]">Add another city above to search more venues.</div>
                   </div>
                 )}
               </div>
