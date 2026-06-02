@@ -13,7 +13,7 @@ function getSignupErrorCode(error: unknown): string {
       : ''
 
   if (message.includes('display_name_required')) return 'name-required'
-  if (message.includes('email_required')) return 'email-required'
+  if (message.includes('email_required')) return 'contact-required'
   if (message.includes('email_invalid')) return 'email-invalid'
   if (message.includes('signup_link_not_found')) return 'link-not-found'
   if (message.includes('match_not_active')) return 'match-not-active'
@@ -26,12 +26,20 @@ function redirectToSignup(token: string, params: Record<string, string>) {
 }
 
 export async function startPublicMatchSignupAction(token: string, formData: FormData): Promise<void> {
-  const displayName = String(formData.get('display_name') ?? '')
-  const email = String(formData.get('email') ?? '')
-  const phone = String(formData.get('phone') ?? '')
+  const displayName = String(formData.get('display_name') ?? '').trim()
+  const email = String(formData.get('email') ?? '').trim()
+  const phone = String(formData.get('phone') ?? '').trim()
   const marketingOptIn = formData.get('marketing_email_opt_in') === 'on'
   const supabase = createSupabasePublicServerClient()
   let notice = 'check-email'
+
+  if (!email && !phone) {
+    redirectToSignup(token, { error: 'contact-required' })
+  }
+
+  if (!email && phone) {
+    redirectToSignup(token, { error: 'sms-coming-next' })
+  }
 
   try {
     const { data, error } = await supabase.rpc('rpc_public_match_signup_start', {

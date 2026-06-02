@@ -69,8 +69,11 @@ function getErrorMessage(code: string | undefined): string | null {
   switch (code) {
     case 'name-required':
       return 'Name is required.'
+    case 'contact-required':
     case 'email-required':
-      return 'Email is required.'
+      return 'Enter an email or phone to sign up.'
+    case 'sms-coming-next':
+      return 'SMS verification is coming next. Please use email for this signup.'
     case 'email-invalid':
       return 'Enter a valid email address.'
     case 'match-not-active':
@@ -205,10 +208,32 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           gap: 6px;
         }
 
+        .public-signup-contact-group {
+          border: 0;
+          display: grid;
+          gap: 10px;
+          margin: 0;
+          padding: 0;
+        }
+
         .public-signup-label {
           color: #405474;
           font-size: 0.78rem;
           font-weight: 850;
+        }
+
+        .public-signup-helper {
+          color: #526784;
+          font-size: 0.84rem;
+          font-weight: 700;
+          line-height: 1.45;
+          margin: -2px 0 0;
+        }
+
+        .public-signup-input-label {
+          color: #526784;
+          font-size: 0.74rem;
+          font-weight: 820;
         }
 
         .public-signup-input {
@@ -288,7 +313,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           <p className="public-signup-kicker">Open to Join</p>
           <h1 className="public-signup-title">{context.host_display_name} opened this match</h1>
           <p className="public-signup-subtext">
-            Add your name and verified email to ask for a spot. The host still needs to add you to the lineup.
+            Add your name and a verified contact method to ask for a spot. The host still needs to add you to the lineup.
           </p>
 
           <div className="public-signup-summary" aria-label="Match summary">
@@ -307,15 +332,22 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
                 <input className="public-signup-input" name="display_name" autoComplete="name" required maxLength={120} />
               </label>
 
-              <label className="public-signup-field">
-                <span className="public-signup-label">Email</span>
-                <input className="public-signup-input" name="email" type="email" autoComplete="email" required />
-              </label>
+              <fieldset className="public-signup-contact-group">
+                <legend className="public-signup-label">Email or phone</legend>
+                <p className="public-signup-helper">
+                  We'll verify your signup by email or SMS. Email verification is available now; SMS verification is coming next.
+                </p>
 
-              <label className="public-signup-field">
-                <span className="public-signup-label">Phone optional</span>
-                <input className="public-signup-input" name="phone" type="tel" autoComplete="tel" />
-              </label>
+                <label className="public-signup-field">
+                  <span className="public-signup-input-label">Email</span>
+                  <input className="public-signup-input" name="email" type="email" autoComplete="email" />
+                </label>
+
+                <label className="public-signup-field">
+                  <span className="public-signup-input-label">Phone</span>
+                  <input className="public-signup-input" name="phone" type="tel" autoComplete="tel" />
+                </label>
+              </fieldset>
 
               <label className="public-signup-check">
                 <input name="marketing_email_opt_in" type="checkbox" />
