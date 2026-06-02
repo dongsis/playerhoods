@@ -225,14 +225,20 @@ export default function HomePage() {
       <div className="relative overflow-hidden bg-[#F0F7FF]">
         <div className="absolute inset-0">
           <img
+            src="/homepage-hero-close-player-group-mobile-20260601.png"
+            alt=""
+            aria-hidden="true"
+            className="h-[252px] w-full object-cover object-top sm:hidden"
+          />
+          <img
             src="/homepage-hero-players-clean-safe-area-20260530.png"
             alt=""
             aria-hidden="true"
-            className="h-full w-full object-cover object-center"
+            className="hidden h-full w-full object-cover object-center sm:block"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#071A44]/36 via-white/8 to-[#071A44]/14" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#071A44]/20 via-white/8 to-[#F0F7FF]/52" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.78)_0%,rgba(255,255,255,0.52)_28%,rgba(255,255,255,0.08)_58%,rgba(7,26,68,0.18)_100%)]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-white/82 via-white/48 to-[#071A44]/10" />
+          <div className="absolute inset-0 bg-gradient-to-b from-white/36 via-white/8 to-[#F0F7FF]/62" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_40%_16%,rgba(255,255,255,0.9)_0%,rgba(255,255,255,0.58)_30%,rgba(255,255,255,0.14)_58%,rgba(7,26,68,0.14)_100%)]" />
         </div>
 
         <div className="relative z-10">
@@ -259,16 +265,16 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="clubs" className="bg-[#071A44] px-4 py-16 text-white sm:px-6 lg:px-8">
+      <section id="clubs" className="bg-[#EAF3FF] px-4 py-16 text-[#071A44] sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div>
-            <p className="text-xs font-black uppercase text-[#9BCB3C]">
+            <p className="text-xs font-black uppercase text-[#0d6efd]">
               For Organizers
             </p>
-            <h2 className="mt-3 max-w-3xl text-3xl font-black leading-tight text-white md:text-4xl">
+            <h2 className="mt-3 max-w-3xl text-3xl font-black leading-tight text-[#071A44] md:text-4xl">
               Help your players find the next game without turning every match into message chasing.
             </h2>
-            <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-white/78">
+            <p className="mt-4 max-w-2xl text-base font-semibold leading-7 text-[#52667F]">
               Built for hosts, captains, and community organizers who need a simpler way to gather
               players, fill spots, and keep familiar groups active.
             </p>
@@ -276,9 +282,9 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => openAuth('register')}
-            className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white px-7 text-sm font-black text-[#071A44] transition hover:bg-[#EEF6FF]"
+            className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#0d6efd] px-7 text-sm font-black text-white shadow-[0_14px_30px_rgba(13,110,253,0.24)] transition hover:bg-[#0b5ed7]"
           >
-            Explore Organizer Features
+            Create Your First Match
           </button>
         </div>
       </section>
@@ -650,10 +656,10 @@ function HomeAuthOverlay({
 function HeroSection() {
   return (
     <section id="players" className="relative overflow-hidden">
-      <div className="mx-auto flex min-h-[calc(100svh-96px)] max-w-7xl flex-col justify-start px-4 pb-6 pt-7 text-[#071A44] sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl text-left">
-          <p className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full border border-[#CBEA35]/85 bg-white/86 px-5 py-2.5 text-sm font-black uppercase text-[#071A44] shadow-[0_12px_32px_rgba(7,26,68,0.18)] backdrop-blur-md">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[#9FC227] bg-[#D8F64C] shadow-[0_0_12px_rgba(216,246,76,0.55)]" aria-hidden="true" />
+      <div className="mx-auto flex min-h-[calc(100svh-72px)] max-w-7xl flex-col justify-start px-4 pb-8 pt-8 text-[#071A44] sm:px-6 lg:px-8">
+        <div className="max-w-4xl text-left">
+          <p className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full border border-[#A9CE23] bg-[#D8F64C] px-5 py-2.5 text-sm font-black uppercase text-[#071A44] shadow-[0_12px_32px_rgba(7,26,68,0.18)]">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[#071A44]/15 bg-white shadow-[0_0_12px_rgba(255,255,255,0.75)]" aria-hidden="true" />
             <span className="whitespace-nowrap">For Tennis + Pickleball Players</span>
           </p>
           <h1 className="max-w-4xl text-4xl font-black leading-[1.02] text-[#071A44] drop-shadow-[0_2px_18px_rgba(255,255,255,0.72)] md:text-6xl">
@@ -747,7 +753,7 @@ function FeatureCarousel() {
 
   return (
     <div
-      className="relative min-h-[472px] overflow-hidden"
+      className="relative mx-auto min-h-[414px] w-full max-w-5xl overflow-hidden"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
@@ -756,10 +762,10 @@ function FeatureCarousel() {
       <div
         className={`absolute inset-0 overflow-hidden rounded-lg border border-white/80 bg-white/95 shadow-[0_30px_74px_-38px_rgba(7,26,68,0.48)] backdrop-blur-md transition-all duration-500 ease-in-out ${motionClass}`}
       >
-        <div className="grid min-h-[471px] gap-0 lg:grid-cols-[0.72fr_1.08fr]">
-          <div className="order-2 flex flex-col justify-center px-6 py-6 sm:px-8 lg:order-1 lg:px-10">
+        <div className="grid min-h-[413px] gap-0 lg:grid-cols-[0.76fr_1fr]">
+          <div className="order-2 flex flex-col justify-center px-6 py-5 sm:px-8 lg:order-1 lg:px-9">
             <p className="text-xs font-black uppercase text-[#0d6efd]">{activeSlide.imageTitle}</p>
-            <h2 className="mt-3 max-w-xl text-3xl font-black leading-tight text-[#071A44] md:text-4xl">
+            <h2 className="mt-3 max-w-xl text-2xl font-black leading-tight text-[#071A44] md:text-3xl">
               {activeSlide.title}
             </h2>
             <p className="mt-4 max-w-lg text-base font-medium leading-7 text-[#52667F]">
@@ -772,7 +778,7 @@ function FeatureCarousel() {
               {activeSlide.cta}
             </a>
 
-            <div className="mt-6 flex flex-wrap gap-2">
+            <div className="mt-5 flex flex-wrap gap-2">
               {slides.map((slide, index) => (
                 <button
                   key={slide.key}
@@ -795,7 +801,7 @@ function FeatureCarousel() {
             </div>
           </div>
 
-          <div className="order-1 bg-white/72 p-4 sm:p-6 lg:order-2 lg:p-6">
+          <div className="order-1 bg-white/72 p-4 sm:p-5 lg:order-2">
             <CarouselVisual slide={activeSlide} />
           </div>
         </div>
@@ -809,13 +815,13 @@ function FeatureCarousel() {
 
 function CarouselVisual({ slide }: { slide: Slide }) {
   return (
-    <div className="relative flex h-full min-h-[350px] items-center justify-center overflow-hidden rounded-lg border border-[#C8D7EA] bg-white p-3 shadow-[0_20px_48px_-34px_rgba(15,23,42,0.36)] sm:p-4">
+    <div className="relative flex h-full min-h-[306px] items-center justify-center overflow-hidden rounded-lg border border-[#C8D7EA] bg-white p-3 shadow-[0_20px_48px_-34px_rgba(15,23,42,0.36)] sm:p-4">
       {slide.image ? (
         <img
           src={slide.image}
           alt=""
           aria-hidden="true"
-          className="h-full max-h-[438px] w-full object-contain"
+          className="h-full max-h-[366px] w-full object-contain"
         />
       ) : null}
     </div>
