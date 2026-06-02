@@ -179,10 +179,10 @@ BEGIN
     participant_accepted_at,
     participant_accepted_via
   ) VALUES
-    (v_participant_pending_1, v_match_pending_1, 'nominated', v_guest_pending_1, v_org, v_org, v_org, v_org, null, null),
-    (v_participant_pending_2, v_match_pending_2, 'nominated', v_guest_pending_2, v_org, v_org, v_org, v_org, null, null),
-    (v_participant_confirmed_1, v_match_confirmed_1, 'nominated', v_guest_confirmed_1, v_org, v_org, v_org, v_org, now(), 'sms_invitation'),
-    (v_participant_confirmed_2, v_match_confirmed_2, 'nominated', v_guest_confirmed_2, v_org, v_org, v_org, v_org, now(), 'sms_invitation');
+    (v_participant_pending_1, v_match_pending_1, 'nominated', v_guest_pending_1, v_org, v_org, now(), v_org, null, null),
+    (v_participant_pending_2, v_match_pending_2, 'nominated', v_guest_pending_2, v_org, v_org, now(), v_org, null, null),
+    (v_participant_confirmed_1, v_match_confirmed_1, 'nominated', v_guest_confirmed_1, v_org, v_org, now(), v_org, now(), 'sms_invitation'),
+    (v_participant_confirmed_2, v_match_confirmed_2, 'nominated', v_guest_confirmed_2, v_org, v_org, now(), v_org, now(), 'sms_invitation');
 
   INSERT INTO public.match_participant_sms_reply_codes (
     match_id,
