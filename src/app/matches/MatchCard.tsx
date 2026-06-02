@@ -54,6 +54,18 @@ function StatusBadge({
   )
 }
 
+function formatLineupShortTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return 'recently'
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
+}
+
 export function MatchCard({ item, userId }: Props) {
   const {
     match,
@@ -69,6 +81,7 @@ export function MatchCard({ item, userId }: Props) {
 
   const isOrganizer = userId === match.organizer_id
   const isCancelled = match.status === 'cancelled'
+  const lineupShortWarning = isOrganizer ? item.lineupShortWarning : null
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -193,7 +206,17 @@ export function MatchCard({ item, userId }: Props) {
             {myParticipant?.status === 'waiting_list' ? (
               <StatusBadge label="Waiting list" tone="slate" />
             ) : null}
+            {lineupShortWarning ? (
+              <StatusBadge label="Lineup short" tone="amber" />
+            ) : null}
           </div>
+
+          {lineupShortWarning ? (
+            <p className="text-body-sub mt-2 font-semibold text-[#B45309]">
+              {lineupShortWarning.confirmedCount}/{lineupShortWarning.targetCount} confirmed &middot; {lineupShortWarning.leftCount} left after Game On
+              {' '}({lineupShortWarning.playerName} {lineupShortWarning.actionLabel} {formatLineupShortTime(lineupShortWarning.happenedAt)})
+            </p>
+          ) : null}
 
           {visiblePlayers.length > 0 ? (
             <div className="mt-4">

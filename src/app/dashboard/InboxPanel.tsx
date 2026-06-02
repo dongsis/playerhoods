@@ -34,7 +34,7 @@ const KIND_LABELS: Record<string, string> = {
   group_contact_joined_playerhoods: 'Group contact joined PlayerHoods',
   match_contact_joined_playerhoods: 'Match contact joined PlayerHoods',
   delegate_target_confirmed: 'Your invited person was confirmed',
-  delegate_target_removed: 'Your invited person was removed',
+  delegate_target_removed: 'Lineup changed',
   court_plan_updated: 'Court plan updated',
   waiting_list_promoted: 'You are now in the match',
   group_added: 'You were added to a group',
@@ -53,6 +53,80 @@ function formatTime(iso: string): string {
   if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`
   if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}h ago`
   return d.toLocaleDateString()
+}
+
+function formatNotificationDateTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return 'that time'
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function getParticipantExitAction(notification: NotificationWithContext): 'left' | 'declined' | 'was removed' {
+  const participant = notification.participant_snapshot
+  const removalNote = (participant?.removal_note ?? notification.note ?? '').toLowerCase()
+
+  if (removalNote.includes('declined')) return 'declined'
+  if (
+    participant?.removed_by &&
+    participant.user_id &&
+    participant.removed_by === participant.user_id
+  ) {
+    return 'left'
+  }
+  if (
+    removalNote.includes('withdraw') ||
+    removalNote.includes('left') ||
+    removalNote.includes('out_after_formed') ||
+    removalNote.includes('out_after_confirmed')
+  ) {
+    return 'left'
+  }
+  return 'was removed'
+}
+
+function getHostExitCopy(notification: NotificationWithContext): { title: string; body: string } | null {
+  if (notification.kind !== 'delegate_target_removed' || !notification.participant_snapshot) {
+    return null
+  }
+
+  const playerName = notification.participant_display_name || 'Player'
+  const action = getParticipantExitAction(notification)
+  const happenedAt = notification.participant_snapshot.removed_at ?? notification.created_at
+  const timeLabel = formatNotificationDateTime(happenedAt)
+  const match = notification.match_snapshot
+  const confirmedCount = notification.match_confirmed_count
+  const targetCount = match?.required_count
+  const isStillFormed = Boolean(match?.formed_at && match.status === 'active')
+
+  if (action === 'declined') {
+    return {
+      title: `${playerName} declined your invitation`,
+      body: `${playerName} declined your invitation at ${timeLabel}.`,
+    }
+  }
+
+  if (action === 'was removed') {
+    return {
+      title: `${playerName} was removed from the lineup`,
+      body: `${playerName} was removed from the lineup at ${timeLabel}.`,
+    }
+  }
+
+  const countCopy =
+    typeof confirmedCount === 'number' && typeof targetCount === 'number'
+      ? `, but the lineup is now ${confirmedCount} of ${targetCount}`
+      : ''
+
+  return {
+    title: `${playerName} left your match`,
+    body: `${playerName} left your confirmed lineup at ${timeLabel}. ${isStillFormed ? 'Your match is still Game On' : 'The lineup changed'}${countCopy}.`,
+  }
 }
 
 function getNotificationTone(kind: string): string {
@@ -339,7 +413,10 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
               </li>
             )
           })}
-          {items.map(n => (
+          {items.map(n => {
+            const hostExitCopy = getHostExitCopy(n)
+
+            return (
             <li
               key={n.id}
               className={[
@@ -352,12 +429,17 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
                   <span className={`text-label inline-flex items-center rounded-full px-2.5 py-1 ring-1 ${getNotificationTone(n.kind)}`}>
                     {getLabel(n)}
                   </span>
-                  {n.actor_name && (
+                  {n.actor_name && !hostExitCopy && (
                     <span className="text-title-main text-gray-900">by {n.actor_name}</span>
                   )}
                   <span className="text-body-sub text-gray-400">{formatTime(n.created_at)}</span>
                 </div>
-                {n.note && (
+                {hostExitCopy ? (
+                  <>
+                    <h3 className="mt-2 text-title-main text-gray-900">{hostExitCopy.title}</h3>
+                    <p className="text-body-sub mt-1 text-gray-600">{hostExitCopy.body}</p>
+                  </>
+                ) : n.note && (
                   <p className="text-body-sub mt-1 truncate text-gray-600">{n.note}</p>
                 )}
                 {n.match_id && (
@@ -379,7 +461,8 @@ export function InboxPanel({ onUnreadChange }: { onUnreadChange?: (n: number) =>
                 </button>
               )}
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
     </div>
