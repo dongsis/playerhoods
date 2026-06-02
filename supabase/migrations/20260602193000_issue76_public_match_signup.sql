@@ -260,9 +260,9 @@ begin
   end if;
 
   select * into v_match
-  from public.matches
-  where id = v_link.match_id
-    and status = 'active';
+  from public.matches m
+  where m.id = v_link.match_id
+    and m.status = 'active';
 
   if not found then
     raise exception 'match_not_active';
@@ -289,17 +289,17 @@ begin
 
   update public.public_match_signups
   set status = 'expired'
-  where match_id = v_match.id
-    and email_sha256 = v_email_hash
-    and status = 'pending_verification'
-    and verification_expires_at < now();
+  where public_match_signups.match_id = v_match.id
+    and public_match_signups.email_sha256 = v_email_hash
+    and public_match_signups.status = 'pending_verification'
+    and public_match_signups.verification_expires_at < now();
 
   select * into v_signup
   from public.public_match_signups
-  where match_id = v_match.id
-    and email_sha256 = v_email_hash
-    and status in ('pending_verification', 'participant_created')
-  order by created_at desc
+  where public_match_signups.match_id = v_match.id
+    and public_match_signups.email_sha256 = v_email_hash
+    and public_match_signups.status in ('pending_verification', 'participant_created')
+  order by public_match_signups.created_at desc
   limit 1
   for update;
 
@@ -456,9 +456,9 @@ begin
   end if;
 
   select * into v_match
-  from public.matches
-  where id = v_signup.match_id
-    and status = 'active';
+  from public.matches m
+  where m.id = v_signup.match_id
+    and m.status = 'active';
 
   if not found then
     raise exception 'match_not_active';
@@ -510,10 +510,10 @@ begin
 
   select * into v_mp
   from public.match_participants
-  where match_id = v_match.id
-    and guest_id = v_guest_id
-    and status <> 'removed'
-  order by created_at desc
+  where match_participants.match_id = v_match.id
+    and match_participants.guest_id = v_guest_id
+    and match_participants.status <> 'removed'
+  order by match_participants.created_at desc
   limit 1
   for update;
 
@@ -699,6 +699,8 @@ begin
       return;
     end if;
 
+    -- Compatibility fallback for non-match-participant invitation records.
+    -- Match participant invitations must never bypass NotificationPolicy.
     if v_inv.target_email is not null and trim(v_inv.target_email) <> '' then
       insert into public.notification_deliveries (
         email_invitation_id,
