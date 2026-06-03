@@ -14,6 +14,59 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-02 - STRUCTURAL-20260602-issue76-public-match-signup
+
+**Type:** Structural Release
+**Code Commit:** PR #77 branch head; final merge commit pending
+**Migration:** `20260602193000_issue76_public_match_signup.sql`
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy; Supabase Remote not applied; production not verified
+
+### Summary
+
+This structural release adds the Issue #76 public match signup link flow:
+
+- Hosts can create/copy an Open to Join public match signup link.
+- Public signup requires name plus email for the active V1 verification channel; phone is optional metadata only.
+- Email verification must complete before a match participant is created.
+- Verified public signups create or reuse a system-level ownerless Contact Player/person identity and create a pending `requested` match participant.
+- Organizer approval remains required before the participant enters the confirmed lineup.
+- Host-facing metadata stays PII-safe: display name, public signup source, email verified flag, and pending/participant status only.
+- Raw email, phone, marketing consent, token, and hash values are not exposed to host/public UI.
+- Marketing opt-in may be captured, but marketing campaign sending is not part of this release.
+- SMS/phone verification remains deferred to follow-up Issue #79.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Pending final PR validation | `npx tsc --noEmit`; `npm run build` required before merge approval |
+| Diff whitespace | Pending final PR validation | `git diff --check` required before merge approval |
+| SQL regression | Pending GitHub PR check | Local `npm run verify:sql` depends on Docker/Supabase local availability; GitHub SQL regression required before merge approval |
+| Vercel Preview | PR-stage only | Preview only; no production deployment performed by this entry |
+| Supabase Remote | Not applied | Migration requires separate owner approval at production gate |
+| Real SMS/email/provider traffic | Not sent by Codex | No production drain or provider delivery may run without owner approval |
+| Production verification | Not verified | Requires owner-approved merge, remote migration apply, production deployment, and smoke verification |
+
+### Release Order
+
+1. Merge PR #77 only after owner merge approval.
+2. Apply the Supabase Remote migration at the approved production gate before or immediately after the Vercel Production deployment reaches the merge commit.
+3. Confirm the remote migration applied successfully.
+4. Confirm Vercel Production is serving the merge commit.
+5. Smoke test public link creation, email verification, pending request visibility, Add to Lineup, and PII-safe host display.
+
+### Rollback
+
+- Before Supabase Remote migration apply: revert the PR merge commit or redeploy the previous production commit.
+- After Supabase Remote migration apply: use a forward-only migration/feature disable path to stop public signup usage, then revert or patch app code as needed.
+- Do not delete legacy schema objects as rollback.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- App code calls new public signup RPCs, so production code and Supabase Remote schema must be released in a coordinated gate.
+- Local SQL verification may remain blocked when Docker Desktop / Supabase local is unavailable; rely on GitHub SQL regression before review approval.
+
 ## 2026-06-02 - PATCH-20260602-issue72-host-exit-visibility
 
 **Type:** Patch

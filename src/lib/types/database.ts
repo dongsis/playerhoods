@@ -1779,6 +1779,17 @@ export interface Database {
           signup_status: string
         }[]
       }
+      rpc_get_queued_deliveries_for_template: {
+        Args: { p_template_type: string; p_channel?: string | null; p_limit?: number | null }
+        Returns: {
+          id: string
+          channel: string
+          provider: string | null
+          destination: string
+          payload: Json
+          attempt_count: number
+        }[]
+      }
       // v1.7: Guest / Contact Player flows
       rpc_match_nominate_guest: {
         Args: { p_match_id: string; p_guest_id: string }

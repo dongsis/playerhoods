@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { createSupabasePublicServerClient } from '@/lib/supabase/server'
+import { drainQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
 
 function getSignupErrorCode(error: unknown): string {
   const message =
@@ -51,8 +52,19 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
     })
     if (error) throw error
     const status = Array.isArray(data) ? data[0]?.status : null
+    const verificationRequired = Array.isArray(data) ? data[0]?.verification_required === true : false
     if (status === 'already_verified') {
       notice = 'already-submitted'
+    }
+    if (verificationRequired) {
+      await drainQueuedNotificationDeliveries(supabase, {
+        batchSize: 5,
+        maxBatches: 2,
+        templateType: 'public_match_signup_verification',
+        channel: 'email',
+      }).catch((deliveryError) => {
+        console.error('[public-signup] verification delivery drain failed:', deliveryError)
+      })
     }
   } catch (error) {
     redirectToSignup(token, { error: getSignupErrorCode(error) })

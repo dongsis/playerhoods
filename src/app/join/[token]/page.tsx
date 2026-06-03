@@ -110,7 +110,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const pageError = getErrorMessage(pageParams.error)
   const pageNotice =
     pageParams.notice === 'check-email'
-      ? 'Check your email to verify this signup. Your request is not sent to the host until your email is verified.'
+      ? "If this signup can be verified, we'll send a verification email shortly. Please wait a few minutes before requesting another one."
       : pageParams.notice === 'already-submitted'
         ? 'If this email has already been verified, the request is already waiting for the host.'
         : null

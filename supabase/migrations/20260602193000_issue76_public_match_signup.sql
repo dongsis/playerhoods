@@ -249,6 +249,7 @@ declare
   v_token uuid := gen_random_uuid();
   v_token_hash text;
   v_event_id uuid;
+  v_verification_cooldown constant interval := interval '5 minutes';
 begin
   select * into v_link
   from public.public_match_signup_links
@@ -305,6 +306,15 @@ begin
 
   if found and v_signup.status = 'participant_created' then
     return query select v_signup.id, 'already_verified'::text, false;
+    return;
+  end if;
+
+  if found
+    and v_signup.status = 'pending_verification'
+    and v_signup.verification_sent_at is not null
+    and v_signup.verification_sent_at > now() - v_verification_cooldown
+  then
+    return query select v_signup.id, 'verification_sent'::text, true;
     return;
   end if;
 
@@ -508,11 +518,19 @@ begin
     returning * into v_identity;
   end if;
 
+  -- Keep the canonical removed_at truth aligned with legacy status-based unique indexes.
+  update public.match_participants
+  set status = 'removed'
+  where match_participants.match_id = v_match.id
+    and match_participants.guest_id = v_guest_id
+    and match_participants.removed_at is not null
+    and match_participants.status is distinct from 'removed';
+
   select * into v_mp
   from public.match_participants
   where match_participants.match_id = v_match.id
     and match_participants.guest_id = v_guest_id
-    and match_participants.status <> 'removed'
+    and match_participants.removed_at is null
   order by match_participants.created_at desc
   limit 1
   for update;
@@ -621,6 +639,46 @@ begin
     and s.status = 'participant_created';
 end;
 $$;
+
+create or replace function public.rpc_get_queued_deliveries_for_template(
+  p_template_type text,
+  p_channel text default null,
+  p_limit integer default 10
+)
+returns table(
+  id uuid,
+  channel text,
+  provider text,
+  destination text,
+  payload jsonb,
+  attempt_count integer
+)
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  return query
+  update public.notification_deliveries d
+  set delivery_status = 'sending',
+      attempt_count = d.attempt_count + 1,
+      last_attempt_at = now()
+  where d.id in (
+    select nd.id
+    from public.notification_deliveries nd
+    where nd.delivery_status = 'queued'
+      and nd.payload->>'template_type' = p_template_type
+      and (p_channel is null or nd.channel = p_channel)
+    order by nd.created_at asc
+    limit p_limit
+    for update skip locked
+  )
+  returning d.id, d.channel, d.provider, d.destination, d.payload, d.attempt_count;
+end;
+$$;
+
+comment on function public.rpc_get_queued_deliveries_for_template(text, text, integer) is
+  'Worker helper for scoped drains. Used by public signup to process only email verification deliveries without draining unrelated notification/SMS queues.';
 
 create or replace function public.rpc_process_domain_event(p_event_id uuid)
 returns void
@@ -764,4 +822,5 @@ grant execute on function public.rpc_public_match_signup_context(uuid) to anon, 
 grant execute on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) to anon, authenticated, service_role;
 grant execute on function public.rpc_public_match_signup_verify(uuid, uuid, text) to anon, authenticated, service_role;
 grant execute on function public.rpc_public_match_signup_participant_metadata(uuid) to authenticated, service_role;
+grant execute on function public.rpc_get_queued_deliveries_for_template(text, text, integer) to anon, authenticated, service_role;
 grant execute on function public.rpc_process_domain_event(uuid) to authenticated, service_role;

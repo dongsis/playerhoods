@@ -63,6 +63,13 @@ export type DeliveryRow = {
   attempt_count: number
 }
 
+type DeliveryDrainOptions = {
+  batchSize?: number
+  maxBatches?: number
+  templateType?: string
+  channel?: 'email' | 'sms'
+}
+
 export type ReminderDrainPreview = {
   dueReminderCandidates: {
     total: number
@@ -454,11 +461,18 @@ async function processNotificationDeliveryRows(
 /** Process queued notification deliveries. Call after invitation create or via the generic drain route. */
 export async function processQueuedNotificationDeliveries(
   supabase: SupabaseClient,
-  limit = 10
+  limit = 10,
+  filters?: Pick<DeliveryDrainOptions, 'templateType' | 'channel'>,
 ): Promise<{ processed: number; sent: number; failed: number }> {
-  const { data: rows, error } = await supabase.rpc('rpc_get_queued_deliveries', {
-    p_limit: limit,
-  })
+  const { data: rows, error } = filters?.templateType
+    ? await supabase.rpc('rpc_get_queued_deliveries_for_template', {
+        p_template_type: filters.templateType,
+        p_channel: filters.channel ?? null,
+        p_limit: limit,
+      })
+    : await supabase.rpc('rpc_get_queued_deliveries', {
+        p_limit: limit,
+      })
   if (error) throw error
 
   return processNotificationDeliveryRows(supabase, (rows ?? []) as DeliveryRow[])
@@ -466,7 +480,7 @@ export async function processQueuedNotificationDeliveries(
 
 export async function drainQueuedNotificationDeliveries(
   supabase: SupabaseClient,
-  options?: { batchSize?: number; maxBatches?: number },
+  options?: DeliveryDrainOptions,
 ): Promise<{ processed: number; sent: number; failed: number }> {
   const batchSize = Math.max(1, options?.batchSize ?? 10)
   const maxBatches = Math.max(1, options?.maxBatches ?? 5)
@@ -475,7 +489,10 @@ export async function drainQueuedNotificationDeliveries(
   let failed = 0
 
   for (let index = 0; index < maxBatches; index += 1) {
-    const result = await processQueuedNotificationDeliveries(supabase, batchSize)
+    const result = await processQueuedNotificationDeliveries(supabase, batchSize, {
+      templateType: options?.templateType,
+      channel: options?.channel,
+    })
     processed += result.processed
     sent += result.sent
     failed += result.failed
