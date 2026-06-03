@@ -35,6 +35,7 @@ This structural release adds the Issue #76 public match signup link flow:
 - Marketing opt-in may be captured, but marketing campaign sending is not part of this release.
 - SMS/phone verification remains deferred to follow-up Issue #79.
 - Public signup verification email provider sends are gated to Vercel Production or explicit `PUBLIC_MATCH_SIGNUP_VERIFICATION_EMAIL_DELIVERY` enablement; preview/local attempts record skipped delivery audit only.
+- Public signup compatibility/audit rows use a restricted configured system actor; the organizer is never used as fallback owner for public signup Contact Player rows.
 
 ### Verification Evidence
 
@@ -44,18 +45,37 @@ This structural release adds the Issue #76 public match signup link flow:
 | Diff whitespace | Passed locally | `git diff --check` |
 | SQL regression | Passed in GitHub PR check | Local `npm run verify:sql` remains blocked when Docker/Supabase local is unavailable; GitHub SQL regression is the completed SQL evidence |
 | Vercel Preview | PR-stage only | Preview only; no production deployment performed by this entry |
-| Supabase Remote | Not applied | Migration requires separate owner approval at production gate; remote system actor preflight is required before enabling verification |
+| Supabase Remote | Not applied | Migration requires separate owner approval at production gate; restricted system actor config and preflight are required before merging/deploying app code |
 | Real SMS/email/provider traffic | Not sent by Codex | No production drain or provider delivery may run without owner approval |
 | Production verification | Not verified | Requires owner-approved merge, remote migration apply, production deployment, and smoke verification |
 
 ### Release Order
 
-1. Merge PR #77 only after owner merge approval.
-2. Before enabling verification in production, confirm Supabase Remote has the system actor auth user `00000000-0000-0000-0000-000000000001`; do not infer this from local seed files.
-3. Apply the Supabase Remote migration at the approved production gate before or immediately after the Vercel Production deployment reaches the merge commit.
-4. Confirm the remote migration applied successfully.
-5. Confirm Vercel Production is serving the merge commit and has email provider configuration available for verification delivery.
-6. Smoke test public link creation, email verification, pending request visibility, Add to Lineup, and PII-safe host display.
+1. Create or select a dedicated production system actor through the controlled Supabase Auth Admin / Dashboard process. Do not insert directly into `auth.users` with ad-hoc SQL.
+2. Apply the Supabase Remote migration at the approved L5 production gate before merging PR #77.
+3. Set `public.public_match_signup_config.system_actor_user_id` to the approved system actor in the restricted singleton config row.
+4. Run the production preflight query confirming config exists, the configured actor id is present, and the actor exists in `auth.users`.
+5. Merge PR #77 only after the remote migration and config preflight pass.
+6. Confirm Vercel Production is serving the merge commit and has email provider configuration available for verification delivery.
+7. Smoke test public link creation, email verification delivery, pending request visibility, Add to Lineup, and PII-safe host display.
+
+### Production Preflight
+
+Run after the remote migration is applied and the restricted system actor config is set:
+
+```sql
+select
+  cfg.system_actor_user_id as configured_actor_id,
+  exists (
+    select 1
+    from auth.users u
+    where u.id = cfg.system_actor_user_id
+  ) as system_actor_exists
+from public.public_match_signup_config cfg
+where cfg.singleton_key = true;
+```
+
+Expected result: exactly one row and `system_actor_exists = true`.
 
 ### Rollback
 
@@ -67,7 +87,7 @@ This structural release adds the Issue #76 public match signup link flow:
 ### Known Risks
 
 - App code calls new public signup RPCs, so production code and Supabase Remote schema must be released in a coordinated gate.
-- Verification requires the Supabase Remote system actor `00000000-0000-0000-0000-000000000001`; verify this in the remote auth schema during the production gate.
+- Verification fails closed until the restricted `public_match_signup_config` row points to a real Supabase Auth system actor. This is intentional and must be preflighted before merge.
 - Local SQL verification may remain blocked when Docker Desktop / Supabase local is unavailable; rely on GitHub SQL regression before review approval.
 
 ## 2026-06-02 - PATCH-20260602-issue72-host-exit-visibility

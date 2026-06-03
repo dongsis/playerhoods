@@ -90,6 +90,20 @@ create index if not exists idx_public_match_signups_participant
   on public.public_match_signups(match_participant_id)
   where match_participant_id is not null;
 
+create table if not exists public.public_match_signup_config (
+  singleton_key boolean primary key default true,
+  system_actor_user_id uuid not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint public_match_signup_config_singleton_key_check check (singleton_key)
+);
+
+comment on table public.public_match_signup_config is
+  'Restricted public signup setup config. system_actor_user_id must be a controlled Supabase Auth user and is verified by RPC/preflight before participant creation.';
+
+comment on column public.public_match_signup_config.system_actor_user_id is
+  'Configured system actor used only for public signup compatibility/audit created_by fields. Do not use the organizer as fallback.';
+
 drop trigger if exists set_updated_at__public_match_signup_links on public.public_match_signup_links;
 create trigger set_updated_at__public_match_signup_links
 before update on public.public_match_signup_links
@@ -108,9 +122,16 @@ before update on public.public_match_signups
 for each row
 execute function public.tg__set_updated_at();
 
+drop trigger if exists set_updated_at__public_match_signup_config on public.public_match_signup_config;
+create trigger set_updated_at__public_match_signup_config
+before update on public.public_match_signup_config
+for each row
+execute function public.tg__set_updated_at();
+
 alter table public.public_match_signup_links enable row level security;
 alter table public.public_match_signup_identities enable row level security;
 alter table public.public_match_signups enable row level security;
+alter table public.public_match_signup_config enable row level security;
 
 drop policy if exists public_match_signup_links_no_direct_select on public.public_match_signup_links;
 create policy public_match_signup_links_no_direct_select
@@ -133,12 +154,21 @@ create policy public_match_signups_no_direct_select
   to authenticated
   using (false);
 
+drop policy if exists public_match_signup_config_no_direct_select on public.public_match_signup_config;
+create policy public_match_signup_config_no_direct_select
+  on public.public_match_signup_config
+  for select
+  to authenticated
+  using (false);
+
 revoke all on public.public_match_signup_links from anon, authenticated;
 revoke all on public.public_match_signup_identities from anon, authenticated;
 revoke all on public.public_match_signups from anon, authenticated;
+revoke all on public.public_match_signup_config from anon, authenticated;
 grant all on public.public_match_signup_links to service_role;
 grant all on public.public_match_signup_identities to service_role;
 grant all on public.public_match_signups to service_role;
+grant all on public.public_match_signup_config to service_role;
 
 create or replace function public.rpc_public_match_signup_link_get_or_create(
   p_match_id uuid
@@ -560,7 +590,7 @@ security definer
 set search_path to 'public'
 as $$
 declare
-  v_system_actor_id constant uuid := '00000000-0000-0000-0000-000000000001'::uuid;
+  v_system_actor_id uuid;
   v_signup public.public_match_signups%rowtype;
   v_link public.public_match_signup_links%rowtype;
   v_match public.matches%rowtype;
@@ -625,6 +655,14 @@ begin
 
   if not found then
     raise exception 'match_not_active';
+  end if;
+
+  select cfg.system_actor_user_id into v_system_actor_id
+  from public.public_match_signup_config cfg
+  where cfg.singleton_key = true;
+
+  if v_system_actor_id is null then
+    raise exception 'public_signup_system_actor_not_configured';
   end if;
 
   if not exists (select 1 from auth.users u where u.id = v_system_actor_id) then

@@ -773,6 +773,13 @@ export type PublicMatchSignup = {
   updated_at: string
 }
 
+export type PublicMatchSignupConfig = {
+  singleton_key: boolean
+  system_actor_user_id: string
+  created_at: string
+  updated_at: string
+}
+
 export type MatchMessage = {
   id: string
   match_id: string
@@ -1136,6 +1143,12 @@ export interface Database {
         Row: PublicMatchSignupIdentity
         Insert: Partial<PublicMatchSignupIdentity> & { email_sha256: string; person_id: string; guest_id: string }
         Update: Partial<PublicMatchSignupIdentity>
+        Relationships: []
+      }
+      public_match_signup_config: {
+        Row: PublicMatchSignupConfig
+        Insert: Partial<PublicMatchSignupConfig> & { system_actor_user_id: string }
+        Update: Partial<PublicMatchSignupConfig>
         Relationships: []
       }
       public_match_signups: {

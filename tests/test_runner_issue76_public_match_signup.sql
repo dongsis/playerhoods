@@ -9,7 +9,8 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_system uuid := '00000000-0000-0000-0000-000000000001'::uuid;
+  v_system uuid := '76000000-0000-0000-0000-000000000076'::uuid;
+  v_invalid_system uuid := '76000000-0000-0000-0000-000000000077'::uuid;
   v_host uuid := '76000000-0000-0000-0000-000000000001'::uuid;
   v_venue uuid := '76000000-0000-0000-0000-000000000002'::uuid;
   v_match uuid := '76000000-0000-0000-0000-000000000003'::uuid;
@@ -20,6 +21,8 @@ DECLARE
   v_disabled_token uuid;
   v_signup record;
   v_signup_two record;
+  v_missing_config_signup record;
+  v_invalid_config_signup record;
   v_verify record;
   v_verify_two record;
   v_token text;
@@ -50,6 +53,8 @@ DECLARE
   v_anon_delivery_result_allowed boolean;
   v_anon_verify_allowed boolean;
   v_auth_verify_allowed boolean;
+  v_anon_config_select_allowed boolean;
+  v_auth_config_select_allowed boolean;
   v_disabled_context_count integer;
   v_link_throttle record;
   v_i integer;
@@ -74,6 +79,7 @@ BEGIN
   WHERE match_id IN (v_match, v_match_two);
   DELETE FROM public.public_match_signup_identities
   WHERE email_sha256 = v_hash;
+  DELETE FROM public.public_match_signup_config;
   DELETE FROM public.match_participant_actions
   WHERE match_id IN (v_match, v_match_two);
   DELETE FROM public.match_participants
@@ -90,6 +96,8 @@ BEGIN
   DELETE FROM public.venues WHERE id = v_venue;
   DELETE FROM public.profiles WHERE id = v_host;
   DELETE FROM auth.users WHERE id = v_host;
+  DELETE FROM public.profiles WHERE id = v_invalid_system;
+  DELETE FROM auth.users WHERE id = v_invalid_system;
 
   INSERT INTO auth.users (id, email, email_confirmed_at)
   VALUES (v_system, 'system-actor@example.test', now())
@@ -177,16 +185,26 @@ BEGIN
   )
   INTO v_auth_verify_allowed;
 
+  SELECT has_table_privilege('anon', 'public.public_match_signup_config', 'select')
+  INTO v_anon_config_select_allowed;
+
+  SELECT has_table_privilege('authenticated', 'public.public_match_signup_config', 'select')
+  INTO v_auth_config_select_allowed;
+
   INSERT INTO _issue76_results VALUES (
-    'public signup mutation RPCs are service-only and not client-callable',
+    'public signup mutation RPCs and system actor config are service-only',
     v_anon_start_allowed = false
       AND v_anon_delivery_result_allowed = false
       AND v_anon_verify_allowed = false
-      AND v_auth_verify_allowed = false,
+      AND v_auth_verify_allowed = false
+      AND v_anon_config_select_allowed = false
+      AND v_auth_config_select_allowed = false,
     'start_anon_execute=' || coalesce(v_anon_start_allowed::text, 'null')
       || ', delivery_audit_anon_execute=' || coalesce(v_anon_delivery_result_allowed::text, 'null')
       || ', verify_anon_execute=' || coalesce(v_anon_verify_allowed::text, 'null')
       || ', verify_auth_execute=' || coalesce(v_auth_verify_allowed::text, 'null')
+      || ', config_anon_select=' || coalesce(v_anon_config_select_allowed::text, 'null')
+      || ', config_auth_select=' || coalesce(v_auth_config_select_allowed::text, 'null')
   );
 
   PERFORM set_config(
@@ -247,6 +265,68 @@ BEGIN
       SQLERRM
     );
   END;
+
+  SELECT * INTO v_missing_config_signup
+  FROM public.rpc_public_match_signup_start(
+    v_link_two.public_token,
+    'Missing Config Public Signup',
+    'issue76-missing-config@example.test',
+    null,
+    false
+  )
+  LIMIT 1;
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_verify(
+      v_link_two.public_token,
+      v_missing_config_signup.signup_id,
+      v_missing_config_signup.verification_token
+    );
+    INSERT INTO _issue76_results VALUES ('missing system actor config fails closed', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'missing system actor config fails closed',
+      SQLERRM LIKE '%public_signup_system_actor_not_configured%',
+      SQLERRM
+    );
+  END;
+
+  INSERT INTO public.public_match_signup_config(singleton_key, system_actor_user_id)
+  VALUES (true, v_invalid_system)
+  ON CONFLICT (singleton_key) DO UPDATE
+  SET system_actor_user_id = excluded.system_actor_user_id;
+
+  SELECT * INTO v_invalid_config_signup
+  FROM public.rpc_public_match_signup_start(
+    v_link_two.public_token,
+    'Invalid Config Public Signup',
+    'issue76-invalid-config@example.test',
+    null,
+    false
+  )
+  LIMIT 1;
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_verify(
+      v_link_two.public_token,
+      v_invalid_config_signup.signup_id,
+      v_invalid_config_signup.verification_token
+    );
+    INSERT INTO _issue76_results VALUES ('non-existing configured system actor fails closed', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'non-existing configured system actor fails closed',
+      SQLERRM LIKE '%public_signup_system_actor_missing%',
+      SQLERRM
+    );
+  END;
+
+  INSERT INTO public.public_match_signup_config(singleton_key, system_actor_user_id)
+  VALUES (true, v_system)
+  ON CONFLICT (singleton_key) DO UPDATE
+  SET system_actor_user_id = excluded.system_actor_user_id;
 
   SELECT * INTO v_signup
   FROM public.rpc_public_match_signup_start(
