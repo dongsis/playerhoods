@@ -65,7 +65,7 @@ create table if not exists public.public_match_signups (
     status in ('pending_verification', 'participant_created', 'expired', 'cancelled')
   ),
   constraint public_match_signups_delivery_status_check check (
-    verification_delivery_status in ('not_requested', 'queued', 'sent', 'failed', 'throttled')
+    verification_delivery_status in ('not_requested', 'queued', 'sent', 'failed', 'skipped', 'throttled')
   ),
   constraint public_match_signups_delivery_attempt_count_check check (
     verification_delivery_attempt_count >= 0
@@ -478,7 +478,7 @@ security definer
 set search_path to 'public'
 as $$
 begin
-  if p_delivery_status not in ('sent', 'failed') then
+  if p_delivery_status not in ('sent', 'failed', 'skipped') then
     raise exception 'invalid_delivery_status';
   end if;
 
@@ -522,8 +522,15 @@ begin
     1,
     now(),
     case when p_delivery_status = 'sent' then now() else null end,
-    case when p_delivery_status = 'failed' then 'public_signup_verification_send_failed' else null end,
-    case when p_delivery_status = 'failed' then left(coalesce(nullif(btrim(p_error), ''), 'send_failed'), 500) else null end,
+    case
+      when p_delivery_status = 'failed' then 'public_signup_verification_send_failed'
+      when p_delivery_status = 'skipped' then 'public_signup_verification_delivery_skipped'
+      else null
+    end,
+    case
+      when p_delivery_status in ('failed', 'skipped') then left(coalesce(nullif(btrim(p_error), ''), 'send_failed'), 500)
+      else null
+    end,
     jsonb_build_object(
       'template_type', 'public_match_signup_verification',
       'delivery_audit_only', true,

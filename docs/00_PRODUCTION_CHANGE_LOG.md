@@ -34,6 +34,7 @@ This structural release adds the Issue #76 public match signup link flow:
 - Raw email, phone, marketing consent, token, and hash values are not exposed to host/public UI.
 - Marketing opt-in may be captured, but marketing campaign sending is not part of this release.
 - SMS/phone verification remains deferred to follow-up Issue #79.
+- Public signup verification email provider sends are gated to Vercel Production or explicit `PUBLIC_MATCH_SIGNUP_VERIFICATION_EMAIL_DELIVERY` enablement; preview/local attempts record skipped delivery audit only.
 
 ### Verification Evidence
 
@@ -52,7 +53,7 @@ This structural release adds the Issue #76 public match signup link flow:
 1. Merge PR #77 only after owner merge approval.
 2. Apply the Supabase Remote migration at the approved production gate before or immediately after the Vercel Production deployment reaches the merge commit.
 3. Confirm the remote migration applied successfully.
-4. Confirm Vercel Production is serving the merge commit.
+4. Confirm Vercel Production is serving the merge commit and has email provider configuration available for verification delivery.
 5. Smoke test public link creation, email verification, pending request visibility, Add to Lineup, and PII-safe host display.
 
 ### Rollback

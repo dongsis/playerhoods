@@ -761,7 +761,7 @@ export type PublicMatchSignup = {
   match_notification_consent_at: string
   verification_token_hash: string
   verification_sent_at: string | null
-  verification_delivery_status: 'not_requested' | 'queued' | 'sent' | 'failed' | 'throttled'
+  verification_delivery_status: 'not_requested' | 'queued' | 'sent' | 'failed' | 'skipped' | 'throttled'
   verification_delivery_attempt_count: number
   verification_delivery_last_attempt_at: string | null
   verification_delivery_sent_at: string | null
@@ -1772,7 +1772,7 @@ export interface Database {
       rpc_public_match_signup_record_delivery_result: {
         Args: {
           p_signup_id: string
-          p_delivery_status: 'sent' | 'failed'
+          p_delivery_status: 'sent' | 'failed' | 'skipped'
           p_error?: string | null
         }
         Returns: void

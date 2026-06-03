@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
-import { createSupabasePublicServerClient } from '@/lib/supabase/server'
+import { verifyPublicMatchSignupAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,43 +10,30 @@ type Props = {
   searchParams: Promise<{
     signup?: string
     token?: string
+    status?: string
+    error?: string
   }>
-}
-
-type VerifyResult = {
-  status: string
-  match_id: string
-  match_participant_id: string
-  participant_status: string
-  display_name: string
 }
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
 
-function getVerifyErrorMessage(error: unknown): string {
-  const message =
-    error &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof (error as { message?: unknown }).message === 'string'
-      ? (error as { message: string }).message
-      : ''
-
-  if (message.includes('verification_token_expired')) {
+function getVerifyErrorMessage(code: string | undefined): string | null {
+  switch (code) {
+  case 'expired':
     return 'This verification link expired. Submit the signup form again to get a new email.'
-  }
-  if (message.includes('verification_token_invalid')) {
+  case 'invalid':
     return 'This verification link is not valid.'
-  }
-  if (message.includes('match_not_active')) {
+  case 'match-not-active':
     return 'This match is no longer open for public signup.'
-  }
-  if (message.includes('signup_link_not_found')) {
+  case 'link-not-found':
     return 'This signup link is no longer available.'
+  case 'failed':
+    return 'Could not verify this signup. Please submit the form again.'
+  default:
+    return null
   }
-  return 'Could not verify this signup. Please submit the form again.'
 }
 
 export default async function PublicMatchSignupVerifyPage({ params, searchParams }: Props) {
@@ -54,31 +41,20 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
   const pageParams = await searchParams
   const signupId = pageParams.signup ?? ''
   const verificationToken = pageParams.token ?? ''
+  const errorMessage = getVerifyErrorMessage(pageParams.error)
+  const isVerified = pageParams.status === 'verified'
+  const hasVerificationInput = isUuid(signupId) && isUuid(verificationToken)
 
-  if (!isUuid(publicToken) || !isUuid(signupId) || !isUuid(verificationToken)) {
+  if (!isUuid(publicToken)) {
     notFound()
   }
 
-  const supabase = createSupabasePublicServerClient()
-  let result: VerifyResult | null = null
-  let errorMessage: string | null = null
-
-  try {
-    const { data, error } = await supabase.rpc('rpc_public_match_signup_verify', {
-      p_public_token: publicToken,
-      p_signup_id: signupId,
-      p_verification_token: verificationToken,
-    })
-    if (error) throw error
-    result = ((data ?? []) as VerifyResult[])[0] ?? null
-    if (!result) {
-      errorMessage = 'Could not verify this signup. Please submit the form again.'
-    }
-  } catch (error) {
-    errorMessage = getVerifyErrorMessage(error)
+  if (!isVerified && !errorMessage && !hasVerificationInput) {
+    notFound()
   }
 
-  const isVerified = Boolean(result && !errorMessage)
+  const isPendingConfirmation = !isVerified && !errorMessage && hasVerificationInput
+  const verifyAction = verifyPublicMatchSignupAction.bind(null, publicToken)
 
   return (
     <div className="public-signup-verify-page">
@@ -171,6 +147,22 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           font-weight: 850;
           text-decoration: none;
         }
+
+        .public-signup-verify-form {
+          margin-top: 24px;
+        }
+
+        .public-signup-verify-button {
+          appearance: none;
+          background: #2554d9;
+          border: 0;
+          border-radius: 14px;
+          color: #ffffff;
+          cursor: pointer;
+          font-size: 0.95rem;
+          font-weight: 900;
+          padding: 12px 18px;
+        }
       `}</style>
 
       <main className="public-signup-verify-shell">
@@ -181,12 +173,12 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
         <section className="public-signup-verify-card">
           <p className="public-signup-verify-kicker">Open to Join</p>
           <h1 className="public-signup-verify-title">
-            {isVerified ? 'Email verified' : 'Verification failed'}
+            {isVerified ? 'Email verified' : errorMessage ? 'Verification failed' : 'Verify your email'}
           </h1>
           <p className="public-signup-verify-body">
             {isVerified
-              ? `Thanks, ${result?.display_name ?? 'player'}. Your request is pending host approval. You are not in the confirmed lineup yet.`
-              : errorMessage}
+              ? 'Thanks. Your request is pending host approval. You are not in the confirmed lineup yet.'
+              : errorMessage ?? 'Confirm this signup request. The host will still need to add you to the lineup.'}
           </p>
 
           {isVerified ? (
@@ -195,6 +187,16 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
               <span className="public-signup-verify-pill green">Email verified</span>
               <span className="public-signup-verify-pill orange">Pending approval</span>
             </div>
+          ) : null}
+
+          {isPendingConfirmation ? (
+            <form action={verifyAction} className="public-signup-verify-form">
+              <input type="hidden" name="signup" value={signupId} />
+              <input type="hidden" name="token" value={verificationToken} />
+              <button type="submit" className="public-signup-verify-button">
+                Verify email
+              </button>
+            </form>
           ) : null}
 
           <Link href={`/join/${publicToken}`} className="public-signup-verify-link">
