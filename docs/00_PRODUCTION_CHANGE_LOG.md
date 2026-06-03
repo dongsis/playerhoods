@@ -14,6 +14,45 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-03 - PATCH-20260603-remove-onboarding-intro-carousel
+
+**Type:** Patch
+**Code Commit:** Local branch `codex/remove-onboarding-intro-carousel`; final commit pending
+**Migration:** None
+**Status:** Local Draft only; not merged; no Vercel Production deploy; no Supabase Remote change
+
+### Summary
+
+This patch removes the repeated post-login onboarding intro carousel as a required step before profile setup:
+
+- New or incomplete users with incomplete profile setup are routed directly to `/onboarding/profile`.
+- Users with completed profile/legal gates but incomplete next-step review are routed to `/onboarding/next-steps`.
+- Completed users continue to their requested `next` path, normally `/dashboard`.
+- `/onboarding/intro` is retained as a compatibility redirect only.
+- Homepage hero carousel and dashboard marketing content are unchanged.
+- No DB, migration, notification, email, SMS, delivery worker, or drain behavior is changed.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally | `npm run verify:build`; `npx tsc --noEmit` |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| Homepage hero carousel | Not code-touched | No homepage carousel logic or slide content changes |
+| Supabase Remote | Not applied | No migration or remote DB action |
+| Real SMS/email/provider traffic | Not sent | No notification/email/SMS code or drains touched |
+| Production verification | Not verified | Requires owner-approved merge/deploy and smoke validation |
+
+### Rollback
+
+- Revert the eventual PR/commit for this patch to restore `/onboarding/intro` as the post-login profile setup entry.
+- No database rollback is required because no migration or Supabase Remote change is included.
+
+### Known Risks
+
+- This is a production-visible routing change; manual smoke should verify fresh, incomplete, and completed user routing after deployment.
+- Historical users with `onboarding_completed = true` but missing legal timestamps remain gated by the existing legal/profile routing behavior.
+
 ## 2026-06-02 - PATCH-20260602-issue72-host-exit-visibility
 
 **Type:** Patch

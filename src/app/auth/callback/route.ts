@@ -36,22 +36,26 @@ function buildPostAuthRedirect({
   notice,
   onboardingCompleted,
   onboardingProfileCompleted,
+  hasLegalAgreement,
 }: {
   requestUrl: URL
   next: string
   notice?: string
   onboardingCompleted: boolean
   onboardingProfileCompleted: boolean
+  hasLegalAgreement: boolean
 }) {
-  if (!onboardingCompleted) {
-    if (onboardingProfileCompleted) {
+  const onboardingFullyComplete = onboardingCompleted && hasLegalAgreement
+
+  if (!onboardingFullyComplete) {
+    if (onboardingProfileCompleted && hasLegalAgreement) {
       const nextStepsUrl = new URL('/onboarding/next-steps', requestUrl.origin)
       nextStepsUrl.searchParams.set('next', next)
       if (notice) nextStepsUrl.searchParams.set('notice', notice)
       return nextStepsUrl
     }
 
-    const onboardingUrl = new URL('/onboarding/intro', requestUrl.origin)
+    const onboardingUrl = new URL('/onboarding/profile', requestUrl.origin)
     onboardingUrl.searchParams.set('next', next)
     if (notice) onboardingUrl.searchParams.set('notice', notice)
     return onboardingUrl
@@ -136,9 +140,17 @@ export async function GET(request: NextRequest) {
     if (user) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('onboarding_completed, onboarding_profile_completed')
+        .select(
+          'onboarding_completed, onboarding_profile_completed, age_confirmed_at, terms_accepted_at, privacy_accepted_at, responsible_use_accepted_at',
+        )
         .eq('id', user.id)
         .maybeSingle()
+      const hasLegalAgreement = Boolean(
+        profile?.age_confirmed_at &&
+          profile?.terms_accepted_at &&
+          profile?.privacy_accepted_at &&
+          profile?.responsible_use_accepted_at,
+      )
 
       redirectUrl = buildPostAuthRedirect({
         requestUrl,
@@ -146,6 +158,7 @@ export async function GET(request: NextRequest) {
         notice: isEmailVerificationFlow ? 'email-verified' : undefined,
         onboardingCompleted: Boolean(profile?.onboarding_completed),
         onboardingProfileCompleted: Boolean(profile?.onboarding_profile_completed),
+        hasLegalAgreement,
       })
     }
 

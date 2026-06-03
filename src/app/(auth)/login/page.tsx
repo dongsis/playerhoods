@@ -13,6 +13,42 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 type Mode = 'login' | 'register' | 'forgot'
 type NoticeKey = 'password-updated' | 'reset-link-invalid' | 'email-verified' | null
+type PostAuthProfile = {
+  onboarding_completed: boolean | null
+  onboarding_profile_completed: boolean | null
+  age_confirmed_at: string | null
+  terms_accepted_at: string | null
+  privacy_accepted_at: string | null
+  responsible_use_accepted_at: string | null
+}
+
+const POST_AUTH_PROFILE_SELECT =
+  'onboarding_completed, onboarding_profile_completed, age_confirmed_at, terms_accepted_at, privacy_accepted_at, responsible_use_accepted_at'
+
+function hasLegalAgreement(profile: PostAuthProfile | null) {
+  return Boolean(
+    profile?.age_confirmed_at &&
+      profile?.terms_accepted_at &&
+      profile?.privacy_accepted_at &&
+      profile?.responsible_use_accepted_at,
+  )
+}
+
+function buildPostAuthDestination(nextPath: string, profile: PostAuthProfile | null) {
+  const hasLegal = hasLegalAgreement(profile)
+  if (profile?.onboarding_completed && hasLegal) {
+    return nextPath
+  }
+
+  const params = new URLSearchParams()
+  params.set('next', nextPath)
+
+  if (profile?.onboarding_profile_completed && hasLegal) {
+    return `/onboarding/next-steps?${params.toString()}`
+  }
+
+  return `/onboarding/profile?${params.toString()}`
+}
 
 export default function LoginPage() {
   const searchParams = useSearchParams()
@@ -60,10 +96,43 @@ export default function LoginPage() {
     window.location.replace(homeAuthUrl.toString())
   }, [oauthAccessToken, oauthCode, searchParams])
 
-  function redirectToNext() {
+  async function getPostAuthDestination(supabase: ReturnType<typeof createSupabaseBrowserClient>) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return nextPath
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select(POST_AUTH_PROFILE_SELECT)
+        .eq('id', user.id)
+        .maybeSingle<PostAuthProfile>()
+
+      if (profileError) {
+        console.error('[auth:post-auth-profile]', profileError)
+        return nextPath
+      }
+
+      return buildPostAuthDestination(nextPath, profile)
+    } catch (error) {
+      console.error('[auth:post-auth-destination]', error)
+      return nextPath
+    }
+  }
+
+  async function redirectToNext(
+    supabase = createSupabaseBrowserClient(),
+    method: 'assign' | 'replace' = 'replace',
+  ) {
     if (redirectingRef.current) return
     redirectingRef.current = true
-    window.location.replace(nextPath)
+    const destination = await getPostAuthDestination(supabase)
+    if (method === 'assign') {
+      window.location.assign(destination)
+      return
+    }
+    window.location.replace(destination)
   }
 
   useEffect(() => {
@@ -122,7 +191,7 @@ export default function LoginPage() {
 
       const { data } = await supabase.auth.getSession()
       if (!cancelled && data.session) {
-        redirectToNext()
+        await redirectToNext(supabase)
         return
       }
 
@@ -139,7 +208,7 @@ export default function LoginPage() {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled || !session) return
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        redirectToNext()
+        void redirectToNext(supabase)
       }
     })
 
@@ -194,7 +263,7 @@ export default function LoginPage() {
         return
       }
 
-      window.location.assign(nextPath)
+      await redirectToNext(supabase, 'assign')
     } catch (err) {
       console.error('[auth:login]', err)
       setError(mapAuthErrorToUiMessage('login'))
@@ -284,7 +353,7 @@ export default function LoginPage() {
       }
 
       if (data.session) {
-        window.location.assign('/onboarding/intro')
+        await redirectToNext(supabase, 'assign')
         return
       }
 
