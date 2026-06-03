@@ -1804,6 +1804,10 @@ export interface Database {
         Args: { p_guest_ids: string[] }
         Returns: { guest_id: string; person_id: string | null; display_name: string; avatar_url: string | null; primary_sport_id: number | null; linked_user_id: string | null }[]
       }
+      rpc_my_verified_emails: {
+        Args: Record<string, never>
+        Returns: UserVerifiedEmail[]
+      }
       // v1.6.3: Sports RPCs
       rpc_sports_list: {
         Args: Record<string, never>
