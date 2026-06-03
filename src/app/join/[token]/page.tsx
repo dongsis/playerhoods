@@ -80,6 +80,8 @@ function getErrorMessage(code: string | undefined): string | null {
       return 'This match is no longer open for signup.'
     case 'link-not-found':
       return 'This signup link is no longer available.'
+    case 'email-delivery-unavailable':
+      return 'Could not send the verification email. Please try again.'
     case 'failed':
       return 'Could not submit your signup. Please try again.'
     default:
