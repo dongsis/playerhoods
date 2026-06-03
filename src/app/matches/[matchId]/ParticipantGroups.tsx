@@ -1319,15 +1319,12 @@ export function ParticipantGroups({
 
   const savedPlayerIdSet = new Set(savedPlayerIds)
 
-  // Removed first — used to exclude duplicates from confirmed/pending
+  // Keep removed history visible without suppressing fresh active rows
+  // that reuse the same Contact Player identity.
   const removed = participants.filter(p => p.status === 'removed')
-  const removedIdentityIds = new Set(
-    removed.map(p => p.guest_id ?? p.user_id).filter((id): id is string => !!id)
-  )
 
-  // Confirmed participants — exclude anyone who is also in removed (handles duplicate rows for same guest/user)
+  // Confirmed participants
   const confirmed = participants.filter(p => {
-    if (removedIdentityIds.has(p.guest_id ?? p.user_id ?? '')) return false
     return p.status === 'confirmed' && p.removed_at === null
   })
   const isLineupFull = confirmed.length >= requiredCount
@@ -1337,10 +1334,9 @@ export function ParticipantGroups({
       ? 'Ready Lineup'
       : 'Lineup so far'
 
-  // Pending — exclude anyone in removed
+  // Pending
   const pending = participants.filter(
-    p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
-      p.status === 'pending' && p.join_method !== 'guest_add'
+    p => p.status === 'pending' && p.removed_at === null && p.join_method !== 'guest_add'
   )
   const playersWhoWantToJoin = pending.filter(
     p => p.join_method === 'requested' && p.org_approved_at === null
@@ -1355,8 +1351,7 @@ export function ParticipantGroups({
     ? waitingForConfirmation
     : waitingForConfirmation.filter((p) => p.proxy_manageable_by_viewer === true)
   const waiting = participants.filter(
-    p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
-      p.status === 'waiting_list' && p.join_method !== 'guest_add'
+    p => p.status === 'waiting_list' && p.removed_at === null && p.join_method !== 'guest_add'
   )
   const visibleWaiting = isOrganizer
     ? waiting

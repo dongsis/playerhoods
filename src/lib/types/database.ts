@@ -768,7 +768,7 @@ export type PublicMatchSignup = {
   verification_delivery_error: string | null
   verification_expires_at: string
   verified_at: string | null
-  status: 'pending_verification' | 'participant_created' | 'expired' | 'cancelled'
+  status: 'pending_verification' | 'participant_created' | 'participant_removed' | 'expired' | 'cancelled'
   created_at: string
   updated_at: string
 }

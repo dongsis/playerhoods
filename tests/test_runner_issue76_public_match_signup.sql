@@ -15,13 +15,19 @@ DECLARE
   v_venue uuid := '76000000-0000-0000-0000-000000000002'::uuid;
   v_match uuid := '76000000-0000-0000-0000-000000000003'::uuid;
   v_match_two uuid := '76000000-0000-0000-0000-000000000004'::uuid;
+  v_match_unavailable uuid := '76000000-0000-0000-0000-000000000005'::uuid;
+  v_match_disabled_after_start uuid := '76000000-0000-0000-0000-000000000006'::uuid;
   v_link record;
   v_link_two record;
+  v_unavailable_link record;
+  v_disabled_after_start_link record;
   v_context record;
   v_disabled_token uuid;
   v_signup record;
   v_signup_two record;
   v_rerequest record;
+  v_unavailable_signup record;
+  v_disabled_after_start_signup record;
   v_missing_config_signup record;
   v_invalid_config_signup record;
   v_verify record;
@@ -61,9 +67,11 @@ DECLARE
   v_anon_config_select_allowed boolean;
   v_auth_config_select_allowed boolean;
   v_disabled_context_count integer;
+  v_unavailable_context_count integer;
   v_link_throttle record;
   v_i integer;
   v_old_signup_status text;
+  v_signup_status_check text;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _issue76_results(
     test_name text,
@@ -73,25 +81,25 @@ BEGIN
   DELETE FROM _issue76_results;
 
   DELETE FROM public.notification_deliveries
-  WHERE payload->>'match_id' IN (v_match::text, v_match_two::text)
+  WHERE payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text)
      OR destination = v_email;
   DELETE FROM public.domain_events
   WHERE aggregate_type = 'public_match_signup'
-     OR payload->>'match_id' IN (v_match::text, v_match_two::text);
+     OR payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text);
   DELETE FROM public.public_match_signups
-  WHERE match_id IN (v_match, v_match_two)
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start)
      OR email_sha256 = v_hash;
   DELETE FROM public.public_match_signup_links
-  WHERE match_id IN (v_match, v_match_two);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start);
   DELETE FROM public.public_match_signup_identities
   WHERE email_sha256 = v_hash;
   DELETE FROM public.public_match_signup_config;
   DELETE FROM public.match_participant_actions
-  WHERE match_id IN (v_match, v_match_two);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start);
   DELETE FROM public.match_participants
-  WHERE match_id IN (v_match, v_match_two);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start);
   DELETE FROM public.matches
-  WHERE id IN (v_match, v_match_two);
+  WHERE id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start);
   DELETE FROM public.guests
   WHERE email = v_email
      OR id IN (
@@ -135,7 +143,9 @@ BEGIN
     duration_minutes
   ) VALUES
     (v_match, v_host, 'active', v_venue, 1, 'issue76_public_signup', 2, current_date + 7, '18:00'::time, 90),
-    (v_match_two, v_host, 'active', v_venue, 1, 'issue76_public_signup_two', 2, current_date + 8, '19:00'::time, 90);
+    (v_match_two, v_host, 'active', v_venue, 1, 'issue76_public_signup_two', 2, current_date + 8, '19:00'::time, 90),
+    (v_match_unavailable, v_host, 'active', v_venue, 1, 'issue76_public_signup_inactive', 2, current_date + 9, '20:00'::time, 90),
+    (v_match_disabled_after_start, v_host, 'active', v_venue, 1, 'issue76_public_signup_disabled_after_start', 2, current_date + 10, '21:00'::time, 90);
 
   SELECT pg_get_constraintdef(c.oid)
   INTO v_constraint_def
@@ -161,6 +171,21 @@ BEGIN
       AND v_constraint_def NOT LIKE '%public_signup_email_verified%'
       AND v_public_signup_enum_count = 0,
     coalesce(v_constraint_def, 'missing_constraint')
+  );
+
+  SELECT pg_get_constraintdef(c.oid)
+  INTO v_signup_status_check
+  FROM pg_constraint c
+  JOIN pg_class rel ON rel.oid = c.conrelid
+  JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+  WHERE nsp.nspname = 'public'
+    AND rel.relname = 'public_match_signups'
+    AND c.conname = 'public_match_signups_status_check';
+
+  INSERT INTO _issue76_results VALUES (
+    'public signup status constraint accepts participant_removed terminal state',
+    v_signup_status_check LIKE '%participant_removed%',
+    coalesce(v_signup_status_check, 'missing_signup_status_check')
   );
 
   SELECT has_function_privilege(
@@ -227,9 +252,20 @@ BEGIN
   FROM public.rpc_public_match_signup_link_get_or_create(v_match_two)
   LIMIT 1;
 
+  SELECT * INTO v_unavailable_link
+  FROM public.rpc_public_match_signup_link_get_or_create(v_match_unavailable)
+  LIMIT 1;
+
+  SELECT * INTO v_disabled_after_start_link
+  FROM public.rpc_public_match_signup_link_get_or_create(v_match_disabled_after_start)
+  LIMIT 1;
+
   INSERT INTO _issue76_results VALUES (
     'organizer can create public signup link',
-    v_link.public_token IS NOT NULL AND v_link_two.public_token IS NOT NULL,
+    v_link.public_token IS NOT NULL
+      AND v_link_two.public_token IS NOT NULL
+      AND v_unavailable_link.public_token IS NOT NULL
+      AND v_disabled_after_start_link.public_token IS NOT NULL,
     coalesce(v_link.public_token::text, 'missing_link')
   );
 
@@ -259,6 +295,131 @@ BEGIN
     v_disabled_context_count = 0,
     'disabled_context_rows=' || v_disabled_context_count::text
   );
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_start(
+      v_disabled_token,
+      'Disabled Link Public Signup',
+      'issue76-disabled-link@example.test',
+      null,
+      false
+    );
+    INSERT INTO _issue76_results VALUES ('disabled public signup links reject signup start', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'disabled public signup links reject signup start',
+      SQLERRM LIKE '%signup_link_not_found%',
+      SQLERRM
+    );
+  END;
+
+  SELECT * INTO v_unavailable_signup
+  FROM public.rpc_public_match_signup_start(
+    v_unavailable_link.public_token,
+    'Inactive Match Public Signup',
+    'issue76-inactive-match@example.test',
+    null,
+    false
+  )
+  LIMIT 1;
+
+  UPDATE public.matches
+  SET status = 'cancelled'
+  WHERE id = v_match_unavailable;
+
+  SELECT count(*)::integer INTO v_unavailable_context_count
+  FROM public.rpc_public_match_signup_context(v_unavailable_link.public_token);
+
+  INSERT INTO _issue76_results VALUES (
+    'inactive public signup matches do not return public match context',
+    v_unavailable_context_count = 0,
+    'inactive_context_rows=' || v_unavailable_context_count::text
+  );
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_host::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_link_get_or_create(v_match_unavailable);
+    INSERT INTO _issue76_results VALUES ('inactive matches cannot create or reuse public signup links', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'inactive matches cannot create or reuse public signup links',
+      SQLERRM LIKE '%match_not_active%',
+      SQLERRM
+    );
+  END;
+
+  PERFORM set_config('request.jwt.claims', '{}'::text, true);
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_start(
+      v_unavailable_link.public_token,
+      'Inactive Match Public Signup Again',
+      'issue76-inactive-match-again@example.test',
+      null,
+      false
+    );
+    INSERT INTO _issue76_results VALUES ('inactive matches reject public signup start', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'inactive matches reject public signup start',
+      SQLERRM LIKE '%match_not_active%',
+      SQLERRM
+    );
+  END;
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_verify(
+      v_unavailable_link.public_token,
+      v_unavailable_signup.signup_id,
+      v_unavailable_signup.verification_token
+    );
+    INSERT INTO _issue76_results VALUES ('inactive matches reject public signup verification confirmation', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'inactive matches reject public signup verification confirmation',
+      SQLERRM LIKE '%match_not_active%',
+      SQLERRM
+    );
+  END;
+
+  SELECT * INTO v_disabled_after_start_signup
+  FROM public.rpc_public_match_signup_start(
+    v_disabled_after_start_link.public_token,
+    'Disabled After Start Public Signup',
+    'issue76-disabled-after-start@example.test',
+    null,
+    false
+  )
+  LIMIT 1;
+
+  UPDATE public.public_match_signup_links
+  SET disabled_at = now()
+  WHERE id = v_disabled_after_start_link.link_id;
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_verify(
+      v_disabled_after_start_link.public_token,
+      v_disabled_after_start_signup.signup_id,
+      v_disabled_after_start_signup.verification_token
+    );
+    INSERT INTO _issue76_results VALUES ('disabled links reject public signup verification confirmation', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'disabled links reject public signup verification confirmation',
+      SQLERRM LIKE '%signup_link_not_found%',
+      SQLERRM
+    );
+  END;
 
   BEGIN
     PERFORM *

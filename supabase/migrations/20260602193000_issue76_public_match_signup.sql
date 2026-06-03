@@ -205,6 +205,10 @@ begin
     raise exception 'not_match_organizer';
   end if;
 
+  if v_match.status <> 'active' then
+    raise exception 'match_not_active';
+  end if;
+
   select * into v_link
   from public.public_match_signup_links l
   where l.match_id = p_match_id
@@ -244,10 +248,12 @@ security definer
 set search_path to 'public'
 as $$
 begin
+  -- Public signup details are exposed only for enabled links on active matches.
+  -- Disabled, cancelled, archived, or missing matches intentionally return no row.
   return query
   select
     m.id,
-    (l.disabled_at is null and m.status = 'active') as signup_open,
+    true as signup_open,
     m.status::text,
     coalesce(nullif(btrim(p.display_name), ''), 'the host') as host_display_name,
     m.game_type,
@@ -263,6 +269,7 @@ begin
   left join public.venues v on v.id = m.venue_id
   where l.public_token = p_public_token
     and l.disabled_at is null
+    and m.status = 'active'
   limit 1;
 end;
 $$;
@@ -647,6 +654,26 @@ begin
     raise exception 'verification_token_invalid';
   end if;
 
+  select * into v_link
+  from public.public_match_signup_links
+  where id = v_signup.link_id
+    and public_token = p_public_token
+    and disabled_at is null;
+
+  if not found then
+    raise exception 'signup_link_not_found';
+  end if;
+
+  select * into v_match
+  from public.matches m
+  where m.id = v_signup.match_id
+    and m.id = v_link.match_id
+    and m.status = 'active';
+
+  if not found then
+    raise exception 'match_not_active';
+  end if;
+
   if v_signup.status = 'participant_created' then
     if v_signup.match_participant_id is not null then
       select * into v_mp
@@ -676,25 +703,6 @@ begin
     set status = 'expired'
     where id = v_signup.id;
     raise exception 'verification_token_expired';
-  end if;
-
-  select * into v_link
-  from public.public_match_signup_links
-  where id = v_signup.link_id
-    and public_token = p_public_token
-    and disabled_at is null;
-
-  if not found then
-    raise exception 'signup_link_not_found';
-  end if;
-
-  select * into v_match
-  from public.matches m
-  where m.id = v_signup.match_id
-    and m.status = 'active';
-
-  if not found then
-    raise exception 'match_not_active';
   end if;
 
   select cfg.system_actor_user_id into v_system_actor_id
