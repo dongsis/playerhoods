@@ -6,12 +6,9 @@ import { getVenueDisplayName } from '@/lib/venues/display'
 import { completeFirstOnboardingAction } from './actions'
 import { DEFAULT_PLAY_COUNTRY, DEFAULT_PLAY_REGION } from '@/lib/play-location-defaults'
 import { SUPPORT_EMAIL } from '@/lib/legal'
-import {
-  getPrioritizedQuickCityGroups,
-  sortCityNamesByProvincePriority,
-} from '@/lib/location-city-priority'
+import { sortCityOptionsByProvincePriority } from '@/lib/location-city-priority'
 import type { DiscoveryVolume, Profile, Sport, UserPlayCity, UserSport, Venue } from '@/lib/types/database'
-import type { LocationCityOption } from '@/lib/api/location-municipalities'
+import { normalizeProvinceCode, type LocationCityOption } from '@/lib/api/location-municipalities'
 
 type PlayCityRecord = {
   city_name: string
@@ -74,6 +71,57 @@ function normalizeSearchText(value: string | null | undefined): string {
 
 function normalizeCityName(value: string) {
   return value.trim().replace(/\s+/g, ' ')
+}
+
+function normalizeCityKey(value: string | null | undefined) {
+  return normalizeSearchText(normalizeCityName(value ?? ''))
+}
+
+function normalizeTupleCity(value: string | null | undefined) {
+  return normalizeCityName(value ?? '').toLowerCase()
+}
+
+function normalizeTupleRegion(value: string | null | undefined) {
+  return normalizeProvinceCode(value) || normalizeProvinceCode(DEFAULT_PLAY_REGION)
+}
+
+function normalizeTupleCountry(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase() || DEFAULT_PLAY_COUNTRY.toLowerCase()
+  if (normalized === 'ca' || normalized === 'can' || normalized === 'canada') return 'ca'
+  if (normalized === 'us' || normalized === 'usa' || normalized === 'united states' || normalized === 'united states of america') return 'us'
+  return normalized
+}
+
+function getPlayCityTupleKey(city: PlayCityRecord) {
+  return [
+    normalizeTupleCity(city.city_name),
+    normalizeTupleRegion(city.region),
+    normalizeTupleCountry(city.country),
+  ].join('|')
+}
+
+function getVenueCityTupleKey(venue: VenueOption) {
+  return [
+    normalizeTupleCity(venue.city),
+    normalizeTupleRegion(venue.province),
+    normalizeTupleCountry(venue.country),
+  ].join('|')
+}
+
+function normalizeCityOption(city: LocationCityOption): PlayCityRecord | null {
+  const cityName = normalizeCityName(city.city_name)
+  if (!cityName) return null
+  return {
+    city_name: cityName,
+    region: city.region ?? DEFAULT_PLAY_REGION,
+    country: city.country ?? DEFAULT_PLAY_COUNTRY,
+  }
+}
+
+function getRegionDisplayName(region: string | null | undefined): string {
+  const normalized = region?.trim().toUpperCase()
+  if (normalized === 'ON') return 'Ontario'
+  return region?.trim() || 'your region'
 }
 
 function getVenueMetaLine(venue: VenueOption): string {
@@ -183,29 +231,17 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     [existing],
   )
 
-  const availableCities = useMemo(
-    () =>
-      sortCityNamesByProvincePriority(Array.from(
-        new Set(
-          cityOptions
-            .map((city) => normalizeCityName(city.city_name))
-            .filter(Boolean),
-        ),
-      ), DEFAULT_PLAY_REGION),
-    [cityOptions],
-  )
-
-  const cityMetaMap = useMemo(() => {
-    const map = new Map<string, { region: string | null; country: string | null }>()
-    for (const city of cityOptions) {
-      const cityName = normalizeCityName(city.city_name)
-      if (!cityName || map.has(cityName.toLowerCase())) continue
-      map.set(cityName.toLowerCase(), {
-        region: city.region ?? DEFAULT_PLAY_REGION,
-        country: city.country ?? DEFAULT_PLAY_COUNTRY,
-      })
+  const availableCityOptions = useMemo(() => {
+    const map = new Map<string, PlayCityRecord>()
+    for (const city of sortCityOptionsByProvincePriority(cityOptions, DEFAULT_PLAY_REGION)) {
+      const option = normalizeCityOption(city)
+      if (!option) continue
+      const key = getPlayCityTupleKey(option)
+      if (!map.has(key)) {
+        map.set(key, option)
+      }
     }
-    return map
+    return Array.from(map.values())
   }, [cityOptions])
 
   const [displayName, setDisplayName] = useState(initialDisplayName)
@@ -253,26 +289,38 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [])
 
+  const citySearchHasText = cityInput.trim().length > 0
+
   const filteredCities = useMemo(() => {
     const query = normalizeQuery(cityInput)
-    return availableCities.filter((city) => {
-      if (selectedCities.some((entry) => entry.city_name === city)) return false
-      return !query || city.toLowerCase().includes(query)
+    return availableCityOptions.filter((city) => {
+      if (selectedCities.some((entry) => getPlayCityTupleKey(entry) === getPlayCityTupleKey(city))) return false
+      const searchText = normalizeSearchText([city.city_name, city.region ?? '', city.country ?? ''].join(' '))
+      return !query || searchText.includes(query)
     })
-  }, [availableCities, cityInput, selectedCities])
-  const quickCityGroups = useMemo(
-    () => getPrioritizedQuickCityGroups(cityOptions, selectedCities.map((city) => city.city_name), DEFAULT_PLAY_REGION),
-    [cityOptions, selectedCities],
-  )
+  }, [availableCityOptions, cityInput, selectedCities])
+  const quickCityGroups = useMemo(() => {
+    const selectedCityKeys = new Set(selectedCities.map((city) => getPlayCityTupleKey(city)))
+    const defaultRegion = normalizeTupleRegion(DEFAULT_PLAY_REGION)
+    const cities = availableCityOptions
+      .filter((city) => normalizeTupleRegion(city.region) === defaultRegion)
+      .filter((city) => !selectedCityKeys.has(getPlayCityTupleKey(city)))
+      .slice(0, 10)
+    return cities.length > 0 ? [{ label: defaultRegion, cities }] : []
+  }, [availableCityOptions, selectedCities])
+
+  const venueSearchScopeLabel = selectedCities.length === 1
+    ? `Searching in ${selectedCities[0].city_name}`
+    : `Searching in ${selectedCities.length} selected cities`
 
   const availableFilteredVenues = useMemo(() => {
     const query = normalizeSearchText(clubInput)
     const queryTokens = query ? query.split(' ') : []
-    const selectedCityNames = new Set(selectedCities.map((city) => normalizeCityName(city.city_name).toLowerCase()))
+    const selectedCityKeys = new Set(selectedCities.map((city) => getPlayCityTupleKey(city)))
     return venues
       .filter((venue) => {
-        const venueCity = normalizeCityName(venue.city ?? '').toLowerCase()
-        if (!query && (!venueCity || !selectedCityNames.has(venueCity))) return false
+        const venueCityKey = getVenueCityTupleKey(venue)
+        if (!normalizeCityKey(venue.city) || !selectedCityKeys.has(venueCityKey)) return false
         if (selectedVenues.some((selectedVenue) => selectedVenue.id === venue.id)) return false
         const searchBlob = normalizeSearchText([
           getVenueDisplayName(venue as Venue),
@@ -285,12 +333,7 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
         ].join(' '))
         return queryTokens.length === 0 || queryTokens.every((token) => searchBlob.includes(token))
       })
-      .sort((left, right) => {
-        const leftInSelectedCity = selectedCityNames.has(normalizeCityName(left.city ?? '').toLowerCase())
-        const rightInSelectedCity = selectedCityNames.has(normalizeCityName(right.city ?? '').toLowerCase())
-        if (leftInSelectedCity !== rightInSelectedCity) return leftInSelectedCity ? -1 : 1
-        return getVenueFullName(left).localeCompare(getVenueFullName(right))
-      })
+      .sort((left, right) => getVenueFullName(left).localeCompare(getVenueFullName(right)))
   }, [clubInput, selectedCities, selectedVenues, venues])
 
   const toggleSport = (sportId: number) => {
@@ -302,17 +345,10 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     setErrorMessages((current) => ({ ...current, sports: '' }))
   }
 
-  const addCity = (cityName: string) => {
-    const normalized = normalizeCityName(cityName)
-    if (!normalized) return
-    if (!cityMetaMap.has(normalized.toLowerCase())) {
-      setErrorMessages((current) => ({
-        ...current,
-        cities: 'Choose a city from the approved city list.',
-      }))
-      return
-    }
-    if (selectedCities.some((city) => city.city_name === normalized)) return
+  const addCity = (option: PlayCityRecord) => {
+    const cityKey = getPlayCityTupleKey(option)
+    if (!normalizeCityKey(option.city_name)) return
+    if (selectedCities.some((selectedCity) => getPlayCityTupleKey(selectedCity) === cityKey)) return
 
     if (selectedCities.length >= 8) {
       setErrorMessages((current) => ({
@@ -322,17 +358,12 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
       return
     }
 
-    const meta = cityMetaMap.get(normalized.toLowerCase()) ?? {
-      region: DEFAULT_PLAY_REGION,
-      country: DEFAULT_PLAY_COUNTRY,
-    }
-
     setSelectedCities((current) => [
       ...current,
       {
-        city_name: normalized,
-        region: meta.region,
-        country: meta.country,
+        city_name: option.city_name,
+        region: option.region,
+        country: option.country,
       },
     ])
     setCityInput('')
@@ -340,9 +371,10 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
     setErrorMessages((current) => ({ ...current, cities: '' }))
   }
 
-  const removeCity = (cityName: string) => {
-    setSelectedCities((current) => current.filter((city) => city.city_name !== cityName))
-    setSelectedVenues((current) => current.filter((venue) => normalizeCityName(venue.city ?? '') !== cityName))
+  const removeCity = (cityToRemove: PlayCityRecord) => {
+    const cityKey = getPlayCityTupleKey(cityToRemove)
+    setSelectedCities((current) => current.filter((city) => getPlayCityTupleKey(city) !== cityKey))
+    setSelectedVenues((current) => current.filter((venue) => getVenueCityTupleKey(venue) !== cityKey))
     setErrorMessages((current) => ({ ...current, cities: '' }))
   }
 
@@ -500,14 +532,14 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
           <div className="flex flex-wrap gap-2">
             {selectedCities.map((city) => (
               <span
-                key={city.city_name}
+                key={getPlayCityTupleKey(city)}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-[#D7E0EC] bg-white px-3 py-2 text-body-main text-[#334155]"
               >
                 <MapPinIcon className="h-3.5 w-3.5 text-[#94A3B8]" />
                 {city.city_name}
                 <button
                   type="button"
-                  onClick={() => removeCity(city.city_name)}
+                  onClick={() => removeCity(city)}
                   className="ml-1 text-[#94A3B8] transition hover:text-rose-500"
                   aria-label={`Remove ${city.city_name}`}
                 >
@@ -535,19 +567,19 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
             />
           </div>
 
-          {quickCityGroups.length > 0 ? (
+          {!citySearchHasText && quickCityGroups.length > 0 ? (
             <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
               {quickCityGroups.map((group) => (
                 <div key={group.label} className="flex shrink-0 items-center gap-1.5">
                   {group.cities.map((city) => (
                     <button
-                      key={city}
+                      key={getPlayCityTupleKey(city)}
                       type="button"
                       onClick={() => addCity(city)}
                       disabled={selectedCities.length >= 8 || loading}
                       className="inline-flex h-8 shrink-0 items-center rounded-full border border-[#D7E0EC] bg-white px-3 text-body-sub font-semibold text-[#334155] transition hover:border-[#0d6efd] hover:text-[#071A44] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {city}
+                      {city.city_name}
                     </button>
                   ))}
                 </div>
@@ -555,22 +587,29 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
             </div>
           ) : null}
 
-          {isCityDropdownOpen && selectedCities.length < 8 ? (
-            <div className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_20px_42px_-34px_rgba(15,23,42,0.24)]">
+          {isCityDropdownOpen && selectedCities.length < 8 && citySearchHasText ? (
+            <div className="mt-2 max-h-80 w-full overflow-y-auto rounded-[20px] border border-[#BFD8FF] bg-white shadow-[0_18px_40px_-28px_rgba(13,110,253,0.28)]">
               {filteredCities.length > 0 ? (
                 filteredCities.map((city) => (
                   <button
-                    key={city}
+                    key={getPlayCityTupleKey(city)}
                     type="button"
                     onClick={() => addCity(city)}
-                    className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-body-main text-[#334155] transition hover:bg-[#F8FBFF] last:border-b-0"
+                    className="group flex min-h-[48px] w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left transition hover:bg-[#F0F7FF] focus:bg-[#F0F7FF] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0d6efd] last:border-b-0"
                   >
-                    <span>{city}</span>
-                    <span className="text-label text-[#94A3B8]">Add</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[15px] font-semibold text-[#1E293B]">{city.city_name}</span>
+                      <span className="mt-0.5 block truncate text-body-sub text-[#64748B]">
+                        City in {getRegionDisplayName(city.region)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 rounded-full border border-[#BFD8FF] bg-[#F0F7FF] px-3 py-1 text-body-sub font-semibold text-[#0d6efd] transition group-hover:bg-white">
+                      Add
+                    </span>
                   </button>
                 ))
               ) : (
-                <div className="px-4 py-3 text-body-sub text-[#94A3B8]">
+                <div className="px-4 py-4 text-body-sub text-[#64748B]">
                   No cities found matching "{cityInput}".
                 </div>
               )}
@@ -621,11 +660,22 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
         ) : null}
 
         {selectedCities.length === 0 ? (
-          <div className="rounded-[20px] border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4 text-body-sub text-[#64748B]">
-            Please select at least one city above to find clubs or venues.
+          <div className="flex items-center rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-[#94A3B8]">
+            <BuildingIcon className="mr-2 h-4 w-4" />
+            <input
+              type="text"
+              value=""
+              placeholder="Select a city first to search clubs or venues."
+              className="flex-1 cursor-not-allowed border-0 bg-transparent p-0 text-body-main text-[#64748B] shadow-none placeholder:text-[#64748B] focus:ring-0"
+              disabled
+              readOnly
+            />
           </div>
         ) : (
           <div ref={clubDropdownRef} className="relative">
+            <div className="mb-2 text-label font-semibold text-[#0d6efd]">
+              {venueSearchScopeLabel}
+            </div>
             <div className="flex items-center rounded-2xl border border-[#D7E0EC] bg-white px-4 py-3 focus-within:border-[#0d6efd]">
               <BuildingIcon className="mr-2 h-4 w-4 text-[#94A3B8]" />
               <input
@@ -666,10 +716,9 @@ export function ProfileForm({ existing, next, sports, venues, cityOptions, initi
                     ))}
                   </div>
                 ) : (
-                  <div className="px-4 py-3 text-body-sub text-[#94A3B8]">
-                    {clubInput.trim()
-                      ? 'No matching clubs or venues found.'
-                      : 'No new clubs or venues found for your selected cities.'}
+                  <div className="px-4 py-4">
+                    <div className="text-body-main font-semibold text-[#1E293B]">No venues found in selected cities.</div>
+                    <div className="mt-1 text-body-sub text-[#64748B]">Add another city above to search more venues.</div>
                   </div>
                 )}
               </div>

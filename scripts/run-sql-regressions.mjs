@@ -119,6 +119,10 @@ const suites = [
     file: 'tests/test_runner_issue76_public_match_signup.sql',
     functionName: 'test_runner_issue76_public_match_signup',
   },
+  {
+    file: 'tests/test_runner_issue87_exposed_auth_users_view.sql',
+    functionName: 'test_runner_issue87_exposed_auth_users_view',
+  },
 ]
 
 for (const suite of suites) {

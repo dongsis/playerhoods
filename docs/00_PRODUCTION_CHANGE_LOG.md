@@ -14,6 +14,56 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-03 - SECURITY-20260603-issue87-verified-email-view-access
+
+**Type:** Security Hotfix
+**Code Commit:** PR #87 branch head; final merge commit pending
+**Migration:** `20260603020000_issue87_verified_email_view_security.sql`
+**Status:** GitHub PR only; not merged; no Vercel Production deploy; Supabase Remote not applied; production not verified
+
+### Summary
+
+This security hotfix addresses the Supabase Advisor critical finding for `public.v_user_verified_emails`:
+
+- `public.v_user_verified_emails` is a normal public-schema view derived partly from `auth.users.email`.
+- Direct `anon` and `authenticated` access is revoked in the migration.
+- A caller-scoped `rpc_my_verified_emails()` RPC returns only the current authenticated user's verified email rows.
+- Dashboard loading becomes RPC-first with a temporary server-side fallback to the existing view for the merge-before-migration window.
+- No `auth.users` rows are modified, no data is backfilled or deleted, and no provider traffic is touched.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Pending PR validation | `npx tsc --noEmit`; `npm run build` required before merge |
+| Diff whitespace | Pending PR validation | `git diff --check` required before merge |
+| SQL regression | Pending GitHub PR check | Issue #87 runner verifies view grants and caller-scoped RPC behavior |
+| Vercel Preview | PR-stage only | Preview only; no production deployment performed by this entry |
+| Supabase Remote | Not applied | Migration requires separate owner L5 approval |
+| Real SMS/email/provider traffic | Not sent | This patch does not touch delivery code |
+| Production verification | Not verified | Requires owner-approved merge/deploy, remote migration apply, and dashboard smoke |
+
+### Release Order
+
+1. Merge #87 app code after owner approval so production can use RPC-first behavior with a temporary server-side fallback.
+2. Let Vercel Production auto-deploy the merge commit.
+3. At explicit L5 gate, apply the Supabase Remote migration.
+4. Confirm `anon` and `authenticated` cannot select `public.v_user_verified_emails`.
+5. Confirm authenticated dashboard loading works through `rpc_my_verified_emails()`.
+6. Confirm Supabase Advisor critical issue is resolved or reduced.
+7. Resume #77 Phase B only after this security hotfix is complete.
+
+### Rollback
+
+- Before Supabase Remote migration apply: revert the app change or redeploy the previous production commit.
+- After Supabase Remote migration apply: use a forward-only migration to restore a safe compatible read path if needed. Do not restore broad public view access except as an explicitly approved emergency rollback.
+- Do not run production notification/email/SMS drains during rollback.
+
+### Known Risks
+
+- The remote migration must not be applied before production app code has the RPC-first/fallback path unless a separate no-downtime plan is approved.
+- The temporary fallback should stop being used after the remote migration because direct `authenticated` view access is revoked.
+
 ## 2026-06-02 - STRUCTURAL-20260602-issue76-public-match-signup
 
 **Type:** Structural Release
