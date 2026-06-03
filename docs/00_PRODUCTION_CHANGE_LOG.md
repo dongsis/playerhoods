@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-03 - PATCH-20260603-remove-onboarding-intro-carousel
 
 **Type:** Patch
-**Code Commit:** Local branch `codex/remove-onboarding-intro-carousel`; final commit pending
+**Code Commit:** GitHub PR #86 branch `codex/remove-onboarding-intro-carousel`; functional commit `78b33991d5e35d01cd66a9663eccf3637e52a225`
 **Migration:** None
-**Status:** Local Draft only; not merged; no Vercel Production deploy; no Supabase Remote change
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy; no Supabase Remote change
 
 ### Summary
 
