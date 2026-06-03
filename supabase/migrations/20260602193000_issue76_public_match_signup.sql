@@ -232,6 +232,7 @@ begin
   left join public.sports s on s.id = m.sport_id
   left join public.venues v on v.id = m.venue_id
   where l.public_token = p_public_token
+    and l.disabled_at is null
   limit 1;
 end;
 $$;
@@ -810,5 +811,8 @@ revoke all on function public.rpc_public_match_signup_record_delivery_result(uui
 revoke all on function public.rpc_public_match_signup_record_delivery_result(uuid, text, text) from anon;
 revoke all on function public.rpc_public_match_signup_record_delivery_result(uuid, text, text) from authenticated;
 grant execute on function public.rpc_public_match_signup_record_delivery_result(uuid, text, text) to service_role;
-grant execute on function public.rpc_public_match_signup_verify(uuid, uuid, text) to anon, authenticated, service_role;
+revoke all on function public.rpc_public_match_signup_verify(uuid, uuid, text) from public;
+revoke all on function public.rpc_public_match_signup_verify(uuid, uuid, text) from anon;
+revoke all on function public.rpc_public_match_signup_verify(uuid, uuid, text) from authenticated;
+grant execute on function public.rpc_public_match_signup_verify(uuid, uuid, text) to service_role;
 grant execute on function public.rpc_public_match_signup_participant_metadata(uuid) to authenticated, service_role;

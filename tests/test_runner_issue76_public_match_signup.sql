@@ -17,6 +17,7 @@ DECLARE
   v_link record;
   v_link_two record;
   v_context record;
+  v_disabled_token uuid;
   v_signup record;
   v_signup_two record;
   v_verify record;
@@ -47,6 +48,9 @@ DECLARE
   v_public_signup_enum_count integer;
   v_anon_start_allowed boolean;
   v_anon_delivery_result_allowed boolean;
+  v_anon_verify_allowed boolean;
+  v_auth_verify_allowed boolean;
+  v_disabled_context_count integer;
   v_link_throttle record;
   v_i integer;
 BEGIN
@@ -159,12 +163,30 @@ BEGIN
   )
   INTO v_anon_delivery_result_allowed;
 
+  SELECT has_function_privilege(
+    'anon',
+    'public.rpc_public_match_signup_verify(uuid,uuid,text)',
+    'execute'
+  )
+  INTO v_anon_verify_allowed;
+
+  SELECT has_function_privilege(
+    'authenticated',
+    'public.rpc_public_match_signup_verify(uuid,uuid,text)',
+    'execute'
+  )
+  INTO v_auth_verify_allowed;
+
   INSERT INTO _issue76_results VALUES (
-    'public signup start and delivery audit mutations are service-only and not anon-callable',
+    'public signup mutation RPCs are service-only and not client-callable',
     v_anon_start_allowed = false
-      AND v_anon_delivery_result_allowed = false,
+      AND v_anon_delivery_result_allowed = false
+      AND v_anon_verify_allowed = false
+      AND v_auth_verify_allowed = false,
     'start_anon_execute=' || coalesce(v_anon_start_allowed::text, 'null')
       || ', delivery_audit_anon_execute=' || coalesce(v_anon_delivery_result_allowed::text, 'null')
+      || ', verify_anon_execute=' || coalesce(v_anon_verify_allowed::text, 'null')
+      || ', verify_auth_execute=' || coalesce(v_auth_verify_allowed::text, 'null')
   );
 
   PERFORM set_config(
@@ -199,6 +221,19 @@ BEGIN
       AND v_context.match_id = v_match
       AND v_context.host_display_name = 'Issue 76 Host',
     coalesce(v_context.match_status, 'missing_context')
+  );
+
+  INSERT INTO public.public_match_signup_links(match_id, public_token, created_by, disabled_at)
+  VALUES (v_match, gen_random_uuid(), v_host, now())
+  RETURNING public_token INTO v_disabled_token;
+
+  SELECT count(*)::integer INTO v_disabled_context_count
+  FROM public.rpc_public_match_signup_context(v_disabled_token);
+
+  INSERT INTO _issue76_results VALUES (
+    'disabled public signup links do not return match context',
+    v_disabled_context_count = 0,
+    'disabled_context_rows=' || v_disabled_context_count::text
   );
 
   BEGIN

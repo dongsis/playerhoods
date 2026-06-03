@@ -335,7 +335,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
               <fieldset className="public-signup-contact-group">
                 <legend className="public-signup-label">Email or phone</legend>
                 <p className="public-signup-helper">
-                  We'll verify your signup by email or SMS. Email verification is available now; SMS verification is coming next.
+                  Email verification is available now. SMS verification is coming next; please use email for this signup.
                 </p>
 
                 <label className="public-signup-field">
