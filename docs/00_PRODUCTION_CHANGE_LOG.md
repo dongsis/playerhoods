@@ -64,6 +64,112 @@ This security hotfix addresses the Supabase Advisor critical finding for `public
 - The remote migration must not be applied before production app code has the RPC-first/fallback path unless a separate no-downtime plan is approved.
 - The temporary fallback should stop being used after the remote migration because direct `authenticated` view access is revoked.
 
+## 2026-06-02 - STRUCTURAL-20260602-issue76-public-match-signup
+
+**Type:** Structural Release
+**Code Commit:** PR #77 branch head; final merge commit pending
+**Migrations:** `20260602193000_issue76_public_match_signup.sql`; `20260603161348_issue76_public_signup_rpc_grant_hardening.sql`
+**Status:** GitHub PR / Vercel Preview only; app not merged; no Vercel Production deploy; base Supabase Remote migration and system actor config applied; corrective grant-hardening migration pending; production not verified
+
+### Summary
+
+This structural release adds the Issue #76 public match signup link flow:
+
+- Hosts can create/copy an Open to Join public match signup link.
+- Public signup requires name plus email for the active V1 verification channel; phone is optional metadata only.
+- Email verification must complete before a match participant is created.
+- Verified public signups create or reuse a system-level ownerless Contact Player/person identity and create a pending `requested` match participant.
+- Organizer approval remains required before the participant enters the confirmed lineup.
+- Host-facing metadata stays PII-safe: display name, public signup source, email verified flag, and pending/participant status only.
+- Raw email, phone, marketing consent, token, and hash values are not exposed to host/public UI.
+- Marketing opt-in may be captured, but marketing campaign sending is not part of this release.
+- SMS/phone verification remains deferred to follow-up Issue #79.
+- Public signup verification email provider sends are gated to Vercel Production or explicit `PUBLIC_MATCH_SIGNUP_VERIFICATION_EMAIL_DELIVERY` enablement; preview/local attempts record skipped delivery audit only.
+- Production smoke must prove the verification email is actually delivered by the configured production email provider. Queue/audit row creation alone is not enough.
+- Public signup compatibility/audit rows use a restricted configured system actor; the organizer is never used as fallback owner for public signup Contact Player rows.
+- The corrective grant-hardening migration revokes default/PUBLIC and `anon` execute from host/authenticated-only public signup RPCs while preserving the public context RPC and service-only mutation RPC boundaries.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check` |
+| SQL regression | Passed in GitHub PR check | Local `npm run verify:sql` remains blocked when Docker/Supabase local is unavailable; GitHub SQL regression is the completed SQL evidence |
+| Vercel Preview | PR-stage only | Preview only; no production deployment performed by this entry |
+| Supabase Remote base migration | Applied | `20260602193000_issue76_public_match_signup.sql` was applied remotely before app merge at the approved L5 gate |
+| Supabase Remote config | Written | `public.public_match_signup_config.system_actor_user_id` points to the approved production system actor |
+| Supabase Remote corrective migration | Pending | `20260603161348_issue76_public_signup_rpc_grant_hardening.sql` must be applied before merging PR #77 |
+| Real SMS/email/provider traffic | Not sent by Codex | No production drain or provider delivery may run without owner approval; production smoke must use only the approved public signup verification email path |
+| Production verification | Not verified | Requires owner-approved corrective migration apply, PR merge, production deployment, and smoke verification |
+
+### Release Order
+
+Current production DB state before PR #77 merge:
+
+- `20260602193000_issue76_public_match_signup.sql` has already been applied to Supabase Remote.
+- `public.public_match_signup_config.system_actor_user_id` has already been written to the approved production system actor.
+- `20260603161348_issue76_public_signup_rpc_grant_hardening.sql` is still pending remote apply and must be applied before PR #77 merge.
+
+Remaining release order:
+
+1. At explicit L5 approval, apply `20260603161348_issue76_public_signup_rpc_grant_hardening.sql` to Supabase Remote.
+2. Rerun live RPC grant verification and confirm:
+   - `rpc_public_match_signup_context(uuid)`: `anon`, `authenticated`, and `service_role` can execute.
+   - `rpc_public_match_signup_link_get_or_create(uuid)`: `anon` cannot execute; `authenticated` and `service_role` can execute.
+   - `rpc_public_match_signup_participant_metadata(uuid)`: `anon` cannot execute; `authenticated` and `service_role` can execute.
+   - `rpc_public_match_signup_start(uuid, text, text, text, boolean)`: only `service_role` can execute.
+   - `rpc_public_match_signup_verify(uuid, uuid, text)`: only `service_role` can execute.
+   - `rpc_public_match_signup_record_delivery_result(uuid, text, text)`: only `service_role` can execute.
+3. Run the production config preflight query confirming config exists, the configured actor id is present, and the actor exists in `auth.users`.
+4. Merge PR #77 only after the corrective migration, grant verification, and config preflight pass.
+5. Confirm Vercel Production is serving the merge commit and has email provider configuration available for verification delivery.
+6. Run production smoke:
+   - Host can create/copy a public signup link.
+   - Anonymous user can open the public signup link.
+   - Name plus email signup starts verification.
+   - Verification email is actually delivered by the configured production email provider.
+   - Verification link opens.
+   - POST confirmation creates a pending request.
+   - Host sees the pending public signup without raw email/phone.
+   - Host uses Add to Lineup through the existing lifecycle.
+   - Phone-only path remains blocked with SMS-coming-next copy.
+7. Do not mark production smoke passed unless the actual public signup verification email is delivered through the production provider. Queue creation alone is not enough. Do not manually drain unrelated production notification/email queues.
+
+### Production Preflight
+
+Run after the corrective grant-hardening migration is applied and before PR #77 merge:
+
+```sql
+select
+  cfg.system_actor_user_id as configured_actor_id,
+  exists (
+    select 1
+    from auth.users u
+    where u.id = cfg.system_actor_user_id
+  ) as system_actor_exists
+from public.public_match_signup_config cfg
+where cfg.singleton_key = true;
+```
+
+Expected result: exactly one row and `system_actor_exists = true`.
+
+### Rollback
+
+- Before PR #77 merge: do not deploy app code; if the corrective grant-hardening migration apply fails, leave the app unmerged and use a follow-up forward migration to repair the grant state.
+- After PR #77 merge but before successful production smoke: disable public signup link usage and revert or patch app code as needed, then redeploy the previous production commit if required.
+- After Supabase Remote migration apply: use a forward-only migration/feature disable path to stop public signup usage or repair grants; do not edit already-applied migrations.
+- Do not delete legacy schema objects as rollback.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- App code calls new public signup RPCs, so production code and Supabase Remote schema must be released in a coordinated gate.
+- Verification fails closed until the restricted `public_match_signup_config` row points to a real Supabase Auth system actor. This is intentional and must be preflighted before merge.
+- The grant-hardening migration is required even though the base public signup migration and config are already remote; skipping it leaves host/authenticated-only RPCs executable by `anon`.
+- Verification email delivery uses a direct provider-send path from the server action when production-gated. Production smoke must prove delivery through that provider path and must not run broad production notification/email drains.
+- Local SQL verification may remain blocked when Docker Desktop / Supabase local is unavailable; rely on GitHub SQL regression before review approval.
+
 ## 2026-06-02 - PATCH-20260602-issue72-host-exit-visibility
 
 **Type:** Patch

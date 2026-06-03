@@ -98,6 +98,9 @@ export function MatchToolsSection({
   const [isLoadingInviteTargets, setIsLoadingInviteTargets] = useState(false)
   const [targetLoadError, setTargetLoadError] = useState<string | null>(null)
   const [applySuccessMessage, setApplySuccessMessage] = useState<string | null>(null)
+  const [publicSignupUrl, setPublicSignupUrl] = useState<string | null>(null)
+  const [isPublicSignupLinkBusy, setIsPublicSignupLinkBusy] = useState(false)
+  const [publicSignupLinkError, setPublicSignupLinkError] = useState<string | null>(null)
 
   useEffect(() => {
     setLoadedInviteMatchId(null)
@@ -105,6 +108,8 @@ export function MatchToolsSection({
     setLazyContactTargets(contactTargets)
     setTargetLoadError(null)
     setApplySuccessMessage(null)
+    setPublicSignupUrl(null)
+    setPublicSignupLinkError(null)
   }, [matchId, candidateUsers, contactTargets])
 
   useEffect(() => {
@@ -205,6 +210,40 @@ export function MatchToolsSection({
     })
   }
 
+  const copyPublicSignupLink = async () => {
+    if (!isOrganizer || matchStatus !== 'active') return
+
+    setIsPublicSignupLinkBusy(true)
+    setPublicSignupLinkError(null)
+    setApplySuccessMessage(null)
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const { data, error } = await supabase.rpc('rpc_public_match_signup_link_get_or_create', {
+        p_match_id: matchId,
+      })
+      if (error) throw error
+
+      const link = Array.isArray(data) ? data[0] : null
+      if (!link?.public_token) {
+        throw new Error('Could not create the public signup link.')
+      }
+
+      const url = `${window.location.origin}/join/${link.public_token}`
+      setPublicSignupUrl(url)
+      try {
+        await navigator.clipboard.writeText(url)
+        setApplySuccessMessage('Open to Join link copied.')
+      } catch {
+        setApplySuccessMessage('Open to Join link ready.')
+      }
+    } catch (error) {
+      console.error('[MatchToolsSection] public signup link:', error)
+      setPublicSignupLinkError((error as { message?: string })?.message ?? 'Could not create the public signup link.')
+    } finally {
+      setIsPublicSignupLinkBusy(false)
+    }
+  }
+
   return (
     <section
       ref={sectionRef}
@@ -284,6 +323,18 @@ export function MatchToolsSection({
             </button>
           ) : null}
 
+          {!formedActionsCollapsed && isOrganizer && matchStatus === 'active' ? (
+            <button
+              type="button"
+              onClick={copyPublicSignupLink}
+              disabled={isPublicSignupLinkBusy}
+              title="Copy a public match signup link."
+              className="inline-flex items-center justify-center rounded-[14px] border border-[#CBD5E1] bg-white px-4 py-2.5 text-sm font-black text-[#475569] transition hover:bg-[#F8FAFC] active:scale-95 disabled:cursor-wait disabled:opacity-60"
+            >
+              {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Open to Join Link'}
+            </button>
+          ) : null}
+
           {!formedActionsCollapsed && showRoundRobinTools && !isLineupFull ? (
             <button
               type="button"
@@ -316,6 +367,26 @@ export function MatchToolsSection({
         {applySuccessMessage ? (
           <p className="basis-full rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
             {applySuccessMessage}
+          </p>
+        ) : null}
+
+        {publicSignupUrl ? (
+          <div className="basis-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="m-0 text-[0.72rem] font-black uppercase tracking-[0.14em] text-slate-400">
+              Open to Join link
+            </p>
+            <input
+              readOnly
+              value={publicSignupUrl}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[0.82rem] font-semibold text-slate-700"
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </div>
+        ) : null}
+
+        {publicSignupLinkError ? (
+          <p className="basis-full rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-body-main font-semibold text-red-600">
+            {publicSignupLinkError}
           </p>
         ) : null}
       </div>
