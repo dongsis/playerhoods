@@ -17,7 +17,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-03 - HOTFIX-20260603-issue92-public-signup-start-failure
 
 **Type:** Hotfix
-**Code Commit:** PR #93 branch head `fb11f3f2dbaffb997b572a43cdd1526ab07f07f7`; final merge commit pending
+**Code Commits:** PR #93 implementation commits `b544d551d95c62e26dcd7d589b2fef5c48080b23` and `fb11f3f2dbaffb997b572a43cdd1526ab07f07f7`; final PR head and merge commit pending
 **Migration:** None
 **Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
 
