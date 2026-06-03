@@ -94,7 +94,15 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
         },
       })
       if (!deliveryResult.ok) {
-        console.error('[public-signup] verification email send failed:', deliveryResult.error)
+        console.error('[public-signup] verification email send failed')
+      }
+      const { error: deliveryAuditError } = await supabase.rpc('rpc_public_match_signup_record_delivery_result', {
+        p_signup_id: signup.signup_id,
+        p_delivery_status: deliveryResult.ok ? 'sent' : 'failed',
+        p_error: deliveryResult.ok ? null : 'send_failed',
+      })
+      if (deliveryAuditError) {
+        console.error('[public-signup] verification email delivery audit failed:', deliveryAuditError.message)
       }
     }
   } catch (error) {

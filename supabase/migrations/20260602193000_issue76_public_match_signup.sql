@@ -49,6 +49,11 @@ create table if not exists public.public_match_signups (
   match_notification_consent_at timestamptz not null default now(),
   verification_token_hash text not null,
   verification_sent_at timestamptz,
+  verification_delivery_status text not null default 'not_requested',
+  verification_delivery_attempt_count integer not null default 0,
+  verification_delivery_last_attempt_at timestamptz,
+  verification_delivery_sent_at timestamptz,
+  verification_delivery_error text,
   verification_expires_at timestamptz not null,
   verified_at timestamptz,
   status text not null default 'pending_verification',
@@ -58,6 +63,15 @@ create table if not exists public.public_match_signups (
   constraint public_match_signups_email_not_blank check (btrim(email_normalized) <> ''),
   constraint public_match_signups_status_check check (
     status in ('pending_verification', 'participant_created', 'expired', 'cancelled')
+  ),
+  constraint public_match_signups_delivery_status_check check (
+    verification_delivery_status in ('not_requested', 'queued', 'sent', 'failed', 'throttled')
+  ),
+  constraint public_match_signups_delivery_attempt_count_check check (
+    verification_delivery_attempt_count >= 0
+  ),
+  constraint public_match_signups_delivery_error_length_check check (
+    verification_delivery_error is null or length(verification_delivery_error) <= 500
   ),
   constraint public_match_signups_marketing_opt_in_at_check check (
     (marketing_email_opt_in = true and marketing_email_opt_in_at is not null)
@@ -258,6 +272,10 @@ declare
   v_token uuid := gen_random_uuid();
   v_token_hash text;
   v_verification_cooldown constant interval := interval '5 minutes';
+  v_link_cooldown constant interval := interval '10 minutes';
+  v_link_cooldown_limit constant integer := 5;
+  v_link_recent_verification_count integer := 0;
+  v_existing_signup_found boolean := false;
 begin
   select * into v_link
   from public.public_match_signup_links
@@ -311,8 +329,9 @@ begin
   order by public_match_signups.created_at desc
   limit 1
   for update;
+  v_existing_signup_found := found;
 
-  if found and v_signup.status = 'participant_created' then
+  if v_existing_signup_found and v_signup.status = 'participant_created' then
     return query
     select
       v_signup.id,
@@ -330,7 +349,7 @@ begin
     return;
   end if;
 
-  if found
+  if v_existing_signup_found
     and v_signup.status = 'pending_verification'
     and v_signup.verification_sent_at is not null
     and v_signup.verification_sent_at > now() - v_verification_cooldown
@@ -352,7 +371,37 @@ begin
     return;
   end if;
 
-  if found then
+  select count(*)::integer into v_link_recent_verification_count
+  from public.public_match_signups s
+  where s.link_id = v_link.id
+    and s.verification_sent_at is not null
+    and s.verification_sent_at > now() - v_link_cooldown;
+
+  if v_link_recent_verification_count >= v_link_cooldown_limit then
+    if v_existing_signup_found then
+      update public.public_match_signups
+      set verification_delivery_status = 'throttled'
+      where id = v_signup.id;
+    end if;
+
+    return query
+    select
+      v_signup.id,
+      'verification_sent'::text,
+      false,
+      null::text,
+      null::text,
+      null::text,
+      v_match.id,
+      v_match.game_type,
+      (select s.display_name from public.sports s where s.id = v_match.sport_id),
+      v_match.match_date,
+      v_match.start_time,
+      (select v.name from public.venues v where v.id = v_match.venue_id);
+    return;
+  end if;
+
+  if v_existing_signup_found then
     update public.public_match_signups
     set
       display_name = v_display_name,
@@ -362,6 +411,8 @@ begin
       marketing_email_opt_in_at = case when coalesce(p_marketing_email_opt_in, false) then now() else null end,
       verification_token_hash = v_token_hash,
       verification_sent_at = now(),
+      verification_delivery_status = 'queued',
+      verification_delivery_error = null,
       verification_expires_at = now() + interval '24 hours',
       status = 'pending_verification'
     where id = v_signup.id
@@ -378,6 +429,7 @@ begin
       marketing_email_opt_in_at,
       verification_token_hash,
       verification_sent_at,
+      verification_delivery_status,
       verification_expires_at,
       status
     ) values (
@@ -391,6 +443,7 @@ begin
       case when coalesce(p_marketing_email_opt_in, false) then now() else null end,
       v_token_hash,
       now(),
+      'queued',
       now() + interval '24 hours',
       'pending_verification'
     )
@@ -411,6 +464,74 @@ begin
     v_match.match_date,
     v_match.start_time,
     (select v.name from public.venues v where v.id = v_match.venue_id);
+end;
+$$;
+
+create or replace function public.rpc_public_match_signup_record_delivery_result(
+  p_signup_id uuid,
+  p_delivery_status text,
+  p_error text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  if p_delivery_status not in ('sent', 'failed') then
+    raise exception 'invalid_delivery_status';
+  end if;
+
+  update public.public_match_signups
+  set
+    verification_delivery_status = p_delivery_status,
+    verification_delivery_attempt_count = verification_delivery_attempt_count + 1,
+    verification_delivery_last_attempt_at = now(),
+    verification_delivery_sent_at = case
+      when p_delivery_status = 'sent' then now()
+      else verification_delivery_sent_at
+    end,
+    verification_delivery_error = case
+      when p_delivery_status = 'failed' then left(coalesce(nullif(btrim(p_error), ''), 'send_failed'), 500)
+      else null
+    end
+  where id = p_signup_id
+    and status = 'pending_verification';
+
+  if not found then
+    raise exception 'signup_delivery_target_not_found';
+  end if;
+
+  insert into public.notification_deliveries (
+    channel,
+    provider,
+    destination,
+    delivery_status,
+    attempt_count,
+    last_attempt_at,
+    sent_at,
+    error_code,
+    error_message,
+    payload
+  )
+  select
+    'email',
+    'resend',
+    s.email_normalized,
+    p_delivery_status,
+    1,
+    now(),
+    case when p_delivery_status = 'sent' then now() else null end,
+    case when p_delivery_status = 'failed' then 'public_signup_verification_send_failed' else null end,
+    case when p_delivery_status = 'failed' then left(coalesce(nullif(btrim(p_error), ''), 'send_failed'), 500) else null end,
+    jsonb_build_object(
+      'template_type', 'public_match_signup_verification',
+      'delivery_audit_only', true,
+      'signup_id', s.id,
+      'match_id', s.match_id
+    )
+  from public.public_match_signups s
+  where s.id = p_signup_id;
 end;
 $$;
 
@@ -440,6 +561,7 @@ declare
   v_guest_id uuid;
   v_mp public.match_participants%rowtype;
   v_token_hash text;
+  v_removed_mp_id uuid;
 begin
   if nullif(btrim(coalesce(p_verification_token, '')), '') is null then
     raise exception 'verification_token_required';
@@ -541,20 +663,18 @@ begin
     returning * into v_identity;
   end if;
 
-  -- Keep the canonical removed_at truth aligned with legacy status-based unique indexes.
-  update public.match_participants
-  set status = 'removed'
-  where match_participants.match_id = v_match.id
-    and match_participants.guest_id = v_guest_id
-    and match_participants.removed_at is not null
-    and match_participants.status is distinct from 'removed';
-
-  update public.match_participants
-  set status = 'pending'
-  where match_participants.match_id = v_match.id
-    and match_participants.guest_id = v_guest_id
-    and match_participants.removed_at is null
-    and match_participants.status = 'removed';
+  -- Reconcile removed rows through the canonical lifecycle helper so legacy
+  -- status-based unique indexes cannot block a fresh pending request.
+  for v_removed_mp_id in
+    select match_participants.id
+    from public.match_participants
+    where match_participants.match_id = v_match.id
+      and match_participants.guest_id = v_guest_id
+      and match_participants.removed_at is not null
+    for update
+  loop
+    perform public.match_participant_reconcile_status(v_removed_mp_id);
+  end loop;
 
   select * into v_mp
   from public.match_participants
@@ -670,111 +790,15 @@ begin
 end;
 $$;
 
-create or replace function public.rpc_process_domain_event(p_event_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path to 'public'
-as $$
-declare
-  v_evt public.domain_events%rowtype;
-  v_inv public.email_invitations%rowtype;
-  v_payload jsonb;
-  v_match_id uuid;
-begin
-  select * into v_evt from public.domain_events where id = p_event_id;
-  if not found then
-    raise exception 'event_not_found';
-  end if;
-
-  if v_evt.event_type = 'invitation.email_invitation_created' then
-    v_payload := v_evt.payload;
-    select * into v_inv
-    from public.email_invitations
-    where id = (v_payload->>'invitation_id')::uuid;
-
-    if not found then
-      return;
-    end if;
-
-    insert into public.email_invitation_events (invitation_id, event_type, actor_user_id, metadata)
-    values (
-      v_inv.id,
-      'email_delivery_requested',
-      v_evt.actor_user_id,
-      jsonb_build_object('domain_event_id', p_event_id, 'delegated_to', 'notification_enqueue_invite_if_needed')
-    )
-    on conflict do nothing;
-
-    if v_inv.match_participant_id is not null then
-      perform public.notification_enqueue_invite_if_needed(v_inv.match_participant_id);
-      return;
-    end if;
-
-    -- Compatibility fallback for non-match-participant invitation records.
-    -- Match participant invitations must never bypass NotificationPolicy.
-    if v_inv.target_email is not null and trim(v_inv.target_email) <> '' then
-      insert into public.notification_deliveries (
-        email_invitation_id,
-        channel,
-        provider,
-        destination,
-        delivery_status,
-        payload
-      ) values (
-        v_inv.id,
-        'email',
-        'resend',
-        v_inv.target_email,
-        'queued',
-        jsonb_build_object(
-          'template_type', 'invitation',
-          'invitation_id', v_inv.id,
-          'inviter_display_name', v_payload->>'inviter_display_name',
-          'target_email', v_inv.target_email,
-          'target_phone', v_inv.target_phone,
-          'related_type', v_inv.related_type,
-          'related_id', v_inv.related_id
-        )
-      );
-    end if;
-    return;
-  end if;
-
-  if v_evt.event_type in ('match.guest_nominated', 'match.guest_org_approved') then
-    v_payload := v_evt.payload;
-    if (v_payload->>'match_participant_id') is not null then
-      perform public.notification_enqueue_invite_if_needed((v_payload->>'match_participant_id')::uuid);
-    end if;
-    return;
-  end if;
-
-  if v_evt.event_type = 'match.guest_delegate_confirmed' then
-    v_payload := v_evt.payload;
-    if (v_payload->>'match_participant_id') is not null then
-      perform public.notification_enqueue_confirmed_lineup_if_needed((v_payload->>'match_participant_id')::uuid);
-    end if;
-    return;
-  end if;
-
-  if v_evt.event_type = 'match.formed' then
-    v_payload := v_evt.payload;
-    v_match_id := (v_payload->>'match_id')::uuid;
-    perform public.notification_enqueue_confirmed_lineup_notifications_for_match(v_match_id);
-    return;
-  end if;
-
-  return;
-end;
-$$;
-
-comment on function public.rpc_process_domain_event(uuid) is
-  'Domain event bridge. Participant invitation/formation events are queued through notification_deliveries.';
-
 grant execute on function public.rpc_public_match_signup_link_get_or_create(uuid) to authenticated, service_role;
 grant execute on function public.rpc_public_match_signup_context(uuid) to anon, authenticated, service_role;
-revoke execute on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) from public;
+revoke all on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) from public;
+revoke all on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) from anon;
+revoke all on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) from authenticated;
 grant execute on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) to service_role;
+revoke all on function public.rpc_public_match_signup_record_delivery_result(uuid, text, text) from public;
+revoke all on function public.rpc_public_match_signup_record_delivery_result(uuid, text, text) from anon;
+revoke all on function public.rpc_public_match_signup_record_delivery_result(uuid, text, text) from authenticated;
+grant execute on function public.rpc_public_match_signup_record_delivery_result(uuid, text, text) to service_role;
 grant execute on function public.rpc_public_match_signup_verify(uuid, uuid, text) to anon, authenticated, service_role;
 grant execute on function public.rpc_public_match_signup_participant_metadata(uuid) to authenticated, service_role;
-grant execute on function public.rpc_process_domain_event(uuid) to authenticated, service_role;

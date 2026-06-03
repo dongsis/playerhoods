@@ -761,6 +761,11 @@ export type PublicMatchSignup = {
   match_notification_consent_at: string
   verification_token_hash: string
   verification_sent_at: string | null
+  verification_delivery_status: 'not_requested' | 'queued' | 'sent' | 'failed' | 'throttled'
+  verification_delivery_attempt_count: number
+  verification_delivery_last_attempt_at: string | null
+  verification_delivery_sent_at: string | null
+  verification_delivery_error: string | null
   verification_expires_at: string
   verified_at: string | null
   status: 'pending_verification' | 'participant_created' | 'expired' | 'cancelled'
@@ -1763,6 +1768,14 @@ export interface Database {
           start_time: string | null
           venue_name: string | null
         }[]
+      }
+      rpc_public_match_signup_record_delivery_result: {
+        Args: {
+          p_signup_id: string
+          p_delivery_status: 'sent' | 'failed'
+          p_error?: string | null
+        }
+        Returns: void
       }
       rpc_public_match_signup_verify: {
         Args: {

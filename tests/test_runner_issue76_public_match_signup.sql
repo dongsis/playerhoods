@@ -39,10 +39,16 @@ DECLARE
   v_proxy_count integer;
   v_group_contact_count integer;
   v_delivery_count integer;
+  v_delivery_status text;
+  v_delivery_attempt_count integer;
+  v_delivery_payload jsonb;
   v_metadata_json jsonb;
   v_constraint_def text;
   v_public_signup_enum_count integer;
   v_anon_start_allowed boolean;
+  v_anon_delivery_result_allowed boolean;
+  v_link_throttle record;
+  v_i integer;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _issue76_results(
     test_name text,
@@ -146,10 +152,19 @@ BEGIN
   )
   INTO v_anon_start_allowed;
 
+  SELECT has_function_privilege(
+    'anon',
+    'public.rpc_public_match_signup_record_delivery_result(uuid,text,text)',
+    'execute'
+  )
+  INTO v_anon_delivery_result_allowed;
+
   INSERT INTO _issue76_results VALUES (
-    'public signup start mutation is service-only and not anon-callable',
-    v_anon_start_allowed = false,
-    'anon_execute=' || coalesce(v_anon_start_allowed::text, 'null')
+    'public signup start and delivery audit mutations are service-only and not anon-callable',
+    v_anon_start_allowed = false
+      AND v_anon_delivery_result_allowed = false,
+    'start_anon_execute=' || coalesce(v_anon_start_allowed::text, 'null')
+      || ', delivery_audit_anon_execute=' || coalesce(v_anon_delivery_result_allowed::text, 'null')
   );
 
   PERFORM set_config(
@@ -218,14 +233,63 @@ BEGIN
     AND payload->>'template_type' = 'public_match_signup_verification'
     AND payload->>'match_id' = v_match::text;
 
+  SELECT verification_delivery_status, verification_delivery_attempt_count
+  INTO v_delivery_status, v_delivery_attempt_count
+  FROM public.public_match_signups
+  WHERE id = v_signup.signup_id;
+
   INSERT INTO _issue76_results VALUES (
-    'signup creates server-only verification token but no participant before verification',
+    'signup creates server-only verification token and audited delivery request but no participant before verification',
     v_signup.verification_required = true
       AND v_participant_count = 0
       AND nullif(v_signup.verification_token, '') IS NOT NULL
-      AND v_signup.email_normalized = v_email,
+      AND v_signup.email_normalized = v_email
+      AND v_delivery_status = 'queued'
+      AND v_delivery_attempt_count = 0
+      AND v_delivery_count = 0,
     'participants=' || v_participant_count::text
       || ', token_present=' || (nullif(v_signup.verification_token, '') IS NOT NULL)::text
+      || ', delivery_status=' || coalesce(v_delivery_status, 'null')
+      || ', queued_public_signup_deliveries=' || v_delivery_count::text
+  );
+
+  PERFORM public.rpc_public_match_signup_record_delivery_result(v_signup.signup_id, 'sent', null);
+
+  SELECT verification_delivery_status, verification_delivery_attempt_count
+  INTO v_delivery_status, v_delivery_attempt_count
+  FROM public.public_match_signups
+  WHERE id = v_signup.signup_id;
+
+  SELECT count(*)::integer INTO v_delivery_count
+  FROM public.notification_deliveries
+  WHERE destination = v_email
+    AND payload->>'template_type' = 'public_match_signup_verification'
+    AND payload->>'match_id' = v_match::text
+    AND delivery_status = 'sent';
+
+  SELECT payload INTO v_delivery_payload
+  FROM public.notification_deliveries
+  WHERE destination = v_email
+    AND payload->>'template_type' = 'public_match_signup_verification'
+    AND payload->>'match_id' = v_match::text
+    AND delivery_status = 'sent'
+  LIMIT 1;
+
+  INSERT INTO _issue76_results VALUES (
+    'verification email delivery result is audited in delivery ledger without exposing token payloads',
+    v_delivery_status = 'sent'
+      AND v_delivery_attempt_count = 1
+      AND v_delivery_count = 1
+      AND v_delivery_payload->>'delivery_audit_only' = 'true'
+      AND NOT (v_delivery_payload ? 'verification_token')
+      AND NOT (v_delivery_payload ? 'verification_token_hash')
+      AND NOT (v_delivery_payload ? 'email_normalized')
+      AND NOT (v_delivery_payload ? 'phone_normalized')
+      AND NOT (v_delivery_payload ? 'email_sha256')
+      AND NOT (v_delivery_payload ? 'marketing_email_opt_in'),
+    'delivery_status=' || coalesce(v_delivery_status, 'null')
+      || ', attempts=' || coalesce(v_delivery_attempt_count::text, 'null')
+      || ', delivery_rows=' || v_delivery_count::text
   );
 
   SELECT * INTO v_retry
@@ -241,7 +305,8 @@ BEGIN
   FROM public.notification_deliveries
   WHERE destination = v_email
     AND payload->>'template_type' = 'public_match_signup_verification'
-    AND payload->>'match_id' = v_match::text;
+    AND payload->>'match_id' = v_match::text
+    AND delivery_status = 'queued';
 
   INSERT INTO _issue76_results VALUES (
     'signup verification requests are cooldown-throttled without queuing token payloads',
@@ -251,6 +316,37 @@ BEGIN
     'retry_required=' || coalesce(v_retry.verification_required::text, 'null')
       || ', retry_token=' || case when v_retry.verification_token is null then 'null' else 'present' end
       || ', queued_public_signup_deliveries=' || v_delivery_count::text
+  );
+
+  FOR v_i IN 1..4 LOOP
+    PERFORM *
+    FROM public.rpc_public_match_signup_start(
+      v_link.public_token,
+      'Issue 76 Throttle ' || v_i::text,
+      'issue76-throttle-' || v_i::text || '@example.test',
+      null,
+      false
+    );
+  END LOOP;
+
+  SELECT * INTO v_link_throttle
+  FROM public.rpc_public_match_signup_start(
+    v_link.public_token,
+    'Issue 76 Link Throttle',
+    'issue76-throttle-blocked@example.test',
+    null,
+    false
+  )
+  LIMIT 1;
+
+  INSERT INTO _issue76_results VALUES (
+    'public signup link throttles burst verification requests without leaking email existence',
+    v_link_throttle.verification_required = false
+      AND v_link_throttle.verification_token IS NULL
+      AND v_link_throttle.email_normalized IS NULL,
+    'verification_required=' || coalesce(v_link_throttle.verification_required::text, 'null')
+      || ', token=' || case when v_link_throttle.verification_token is null then 'null' else 'present' end
+      || ', email=' || coalesce(v_link_throttle.email_normalized, 'null')
   );
 
   v_token := v_signup.verification_token;
@@ -467,7 +563,12 @@ BEGIN
   INSERT INTO _issue76_results VALUES (
     'participant reuse ignores dirty removed rows using removed_at canonical truth',
     v_mp_two.id <> v_dirty_removed_mp_id
-      AND v_mp_two.removed_at IS NULL,
+      AND v_mp_two.removed_at IS NULL
+      AND (
+        SELECT status = 'removed'
+        FROM public.match_participants
+        WHERE id = v_dirty_removed_mp_id
+      ),
     'verified_participant=' || coalesce(v_mp_two.id::text, 'missing')
       || ', dirty_removed=' || coalesce(v_dirty_removed_mp_id::text, 'missing')
       || ', verified_removed_at=' || coalesce(v_mp_two.removed_at::text, 'null')
