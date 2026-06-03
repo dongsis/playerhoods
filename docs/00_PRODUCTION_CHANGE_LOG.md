@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-03 - UX-20260603-smart-import-post-save-completion
 
 **Type:** Patch
-**Code Commit:** Unknown
+**Code Commit:** PR #90 branch head; final merge commit pending
 **Migration:** None
-**Status:** Draft / local worktree only; not committed; not pushed to GitHub; no Vercel Preview; no Vercel Production deploy; no Supabase Remote change; production not verified
+**Status:** GitHub PR branch only; not merged; Vercel Preview pending; no Vercel Production deploy; no Supabase Remote change; production not verified
 
 ### Summary
 
@@ -38,8 +38,8 @@ This patch fixes Smart Import post-save completion behavior:
 | Surface | Impact |
 |---|---|
 | Local code | Yes; scoped Smart Import/dashboard/match invite UI and server-action return shape changes |
-| GitHub | No change yet; draft local worktree only |
-| Vercel Preview | No change yet |
+| GitHub | PR #90 branch only; not merged |
+| Vercel Preview | Pending PR preview |
 | Vercel Production | No change |
 | Supabase Local | No DB migration |
 | Supabase Remote | No change |
@@ -49,7 +49,7 @@ This patch fixes Smart Import post-save completion behavior:
 
 ### Rollback
 
-Revert the eventual commit. No database rollback, Supabase Remote action, notification drain, or production deploy rollback is required while this remains local-only.
+Revert PR #90 before merge or revert the eventual merge commit after merge. No database rollback, Supabase Remote action, notification drain, or production deploy rollback is required before production deployment.
 
 ## 2026-06-03 - SECURITY-20260603-issue87-verified-email-view-access
 
