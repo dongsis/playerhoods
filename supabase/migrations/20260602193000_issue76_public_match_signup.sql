@@ -664,13 +664,16 @@ begin
   end if;
 
   -- Reconcile removed rows through the canonical lifecycle helper so legacy
-  -- status-based unique indexes cannot block a fresh pending request.
+  -- removed-status drift cannot be reused as a fresh pending request.
   for v_removed_mp_id in
     select match_participants.id
     from public.match_participants
     where match_participants.match_id = v_match.id
       and match_participants.guest_id = v_guest_id
-      and match_participants.removed_at is not null
+      and (
+        match_participants.removed_at is not null
+        or match_participants.status = 'removed'
+      )
     for update
   loop
     perform public.match_participant_reconcile_status(v_removed_mp_id);

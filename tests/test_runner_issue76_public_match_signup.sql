@@ -575,10 +575,15 @@ BEGIN
   );
 
   INSERT INTO _issue76_results VALUES (
-    'participant reuse repairs removed status when removed_at is null',
-    v_mp_two.id = v_dirty_status_removed_mp_id
+    'participant reuse does not attach signup to dirty removed status when removed_at is null',
+    v_mp_two.id <> v_dirty_status_removed_mp_id
       AND v_mp_two.status = 'pending'
-      AND v_mp_two.removed_at IS NULL,
+      AND v_mp_two.removed_at IS NULL
+      AND (
+        SELECT status = 'removed' AND removed_at IS NOT NULL
+        FROM public.match_participants
+        WHERE id = v_dirty_status_removed_mp_id
+      ),
     'verified_participant=' || coalesce(v_mp_two.id::text, 'missing')
       || ', dirty_status_removed=' || coalesce(v_dirty_status_removed_mp_id::text, 'missing')
       || ', status=' || coalesce(v_mp_two.status::text, 'null')
