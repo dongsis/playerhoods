@@ -21,22 +21,27 @@ DECLARE
   v_disabled_token uuid;
   v_signup record;
   v_signup_two record;
+  v_rerequest record;
   v_missing_config_signup record;
   v_invalid_config_signup record;
   v_verify record;
   v_verify_two record;
+  v_rerequest_verify record;
   v_token text;
   v_token_two text;
   v_email text := 'issue76-public@example.test';
   v_hash text := encode(extensions.digest('issue76-public@example.test', 'sha256'), 'hex');
   v_mp public.match_participants%rowtype;
+  v_removed_original_mp public.match_participants%rowtype;
   v_dirty_removed_mp_id uuid;
   v_dirty_status_removed_mp_id uuid;
   v_mp_two public.match_participants%rowtype;
+  v_rerequest_mp public.match_participants%rowtype;
   v_retry record;
   v_guest public.guests%rowtype;
   v_identity_count integer;
   v_participant_count integer;
+  v_active_signup_count integer;
   v_host_owned_count integer;
   v_contact_record_count integer;
   v_relationship_count integer;
@@ -58,6 +63,7 @@ DECLARE
   v_disabled_context_count integer;
   v_link_throttle record;
   v_i integer;
+  v_old_signup_status text;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _issue76_results(
     test_name text,
@@ -586,6 +592,99 @@ BEGIN
     'duplicate signup on same match does not create another active participant',
     v_participant_count = 1,
     'active_participants=' || v_participant_count::text
+  );
+
+  UPDATE public.public_match_signups
+  SET verification_sent_at = now() - interval '20 minutes'
+  WHERE link_id = v_link.id;
+
+  UPDATE public.match_participants
+  SET
+    status = 'removed',
+    removed_at = now(),
+    removed_by = v_host
+  WHERE id = v_mp.id
+  RETURNING * INTO v_removed_original_mp;
+
+  SELECT * INTO v_rerequest
+  FROM public.rpc_public_match_signup_start(
+    v_link.public_token,
+    'Public Signup Player Return',
+    v_email,
+    null,
+    false
+  )
+  LIMIT 1;
+
+  SELECT status INTO v_old_signup_status
+  FROM public.public_match_signups
+  WHERE id = v_signup.signup_id;
+
+  SELECT count(*)::integer INTO v_active_signup_count
+  FROM public.public_match_signups s
+  WHERE s.match_id = v_match
+    AND s.email_sha256 = v_hash
+    AND (
+      s.status = 'pending_verification'
+      OR (
+        s.status = 'participant_created'
+        AND EXISTS (
+          SELECT 1
+          FROM public.match_participants mp
+          WHERE mp.id = s.match_participant_id
+            AND mp.removed_at IS NULL
+        )
+      )
+    );
+
+  SELECT count(*)::integer INTO v_participant_count
+  FROM public.match_participants
+  WHERE match_id = v_match
+    AND guest_id = v_mp.guest_id
+    AND removed_at IS NULL;
+
+  INSERT INTO _issue76_results VALUES (
+    'same email can re-request after prior public signup participant is removed',
+    v_old_signup_status = 'participant_removed'
+      AND v_rerequest.signup_id <> v_signup.signup_id
+      AND v_rerequest.verification_required = true
+      AND nullif(v_rerequest.verification_token, '') IS NOT NULL
+      AND v_active_signup_count = 1
+      AND v_participant_count = 0,
+    'old_signup_status=' || coalesce(v_old_signup_status, 'null')
+      || ', new_signup=' || coalesce(v_rerequest.signup_id::text, 'missing')
+      || ', active_signups=' || coalesce(v_active_signup_count::text, 'null')
+      || ', active_participants_before_verify=' || coalesce(v_participant_count::text, 'null')
+  );
+
+  SELECT * INTO v_rerequest_verify
+  FROM public.rpc_public_match_signup_verify(
+    v_link.public_token,
+    v_rerequest.signup_id,
+    v_rerequest.verification_token
+  )
+  LIMIT 1;
+
+  SELECT * INTO v_rerequest_mp
+  FROM public.match_participants
+  WHERE id = v_rerequest_verify.match_participant_id;
+
+  SELECT * INTO v_removed_original_mp
+  FROM public.match_participants
+  WHERE id = v_mp.id;
+
+  INSERT INTO _issue76_results VALUES (
+    're-request verification creates a fresh pending participant without reviving the removed row',
+    v_rerequest_mp.id <> v_mp.id
+      AND v_rerequest_mp.status = 'pending'
+      AND v_rerequest_mp.removed_at IS NULL
+      AND v_rerequest_mp.org_approved_at IS NULL
+      AND v_rerequest_mp.participant_accepted_at IS NOT NULL
+      AND v_removed_original_mp.removed_at IS NOT NULL,
+    'new_participant=' || coalesce(v_rerequest_mp.id::text, 'missing')
+      || ', old_participant=' || coalesce(v_mp.id::text, 'missing')
+      || ', old_removed_at=' || coalesce(v_removed_original_mp.removed_at::text, 'null')
+      || ', new_org_approved_at=' || coalesce(v_rerequest_mp.org_approved_at::text, 'null')
   );
 
   SELECT * INTO v_signup_two

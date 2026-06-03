@@ -62,7 +62,7 @@ create table if not exists public.public_match_signups (
   constraint public_match_signups_display_name_not_blank check (btrim(display_name) <> ''),
   constraint public_match_signups_email_not_blank check (btrim(email_normalized) <> ''),
   constraint public_match_signups_status_check check (
-    status in ('pending_verification', 'participant_created', 'expired', 'cancelled')
+    status in ('pending_verification', 'participant_created', 'participant_removed', 'expired', 'cancelled')
   ),
   constraint public_match_signups_delivery_status_check check (
     verification_delivery_status in ('not_requested', 'queued', 'sent', 'failed', 'skipped', 'throttled')
@@ -352,11 +352,38 @@ begin
     and public_match_signups.status = 'pending_verification'
     and public_match_signups.verification_expires_at < now();
 
+  update public.public_match_signups s
+  set status = 'participant_removed'
+  where s.match_id = v_match.id
+    and s.email_sha256 = v_email_hash
+    and s.status = 'participant_created'
+    and (
+      s.match_participant_id is null
+      or not exists (
+        select 1
+        from public.match_participants mp
+        where mp.id = s.match_participant_id
+          and mp.removed_at is null
+      )
+    );
+
   select * into v_signup
   from public.public_match_signups
   where public_match_signups.match_id = v_match.id
     and public_match_signups.email_sha256 = v_email_hash
-    and public_match_signups.status in ('pending_verification', 'participant_created')
+    and (
+      public_match_signups.status = 'pending_verification'
+      or (
+        public_match_signups.status = 'participant_created'
+        and public_match_signups.match_participant_id is not null
+        and exists (
+          select 1
+          from public.match_participants mp
+          where mp.id = public_match_signups.match_participant_id
+            and mp.removed_at is null
+        )
+      )
+    )
   order by public_match_signups.created_at desc
   limit 1
   for update;
@@ -620,11 +647,24 @@ begin
     raise exception 'verification_token_invalid';
   end if;
 
-  if v_signup.status = 'participant_created' and v_signup.match_participant_id is not null then
-    select * into v_mp from public.match_participants where id = v_signup.match_participant_id;
-    return query
-    select v_signup.status, v_signup.match_id, v_signup.match_participant_id, coalesce(v_mp.status::text, null), v_signup.display_name;
-    return;
+  if v_signup.status = 'participant_created' then
+    if v_signup.match_participant_id is not null then
+      select * into v_mp
+      from public.match_participants
+      where id = v_signup.match_participant_id
+      for update;
+
+      if found and v_mp.removed_at is null then
+        return query
+        select v_signup.status, v_signup.match_id, v_signup.match_participant_id, coalesce(v_mp.status::text, null), v_signup.display_name;
+        return;
+      end if;
+    end if;
+
+    update public.public_match_signups
+    set status = 'participant_removed'
+    where id = v_signup.id
+    returning * into v_signup;
   end if;
 
   if v_signup.status <> 'pending_verification' then
@@ -833,9 +873,12 @@ begin
     (s.verified_at is not null),
     s.status
   from public.public_match_signups s
+  join public.match_participants mp
+    on mp.id = s.match_participant_id
   where s.match_id = p_match_id
     and s.match_participant_id is not null
-    and s.status = 'participant_created';
+    and s.status = 'participant_created'
+    and mp.removed_at is null;
 end;
 $$;
 
