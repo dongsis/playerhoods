@@ -1793,29 +1793,16 @@ export function MatchesPanel({
               )}
             </section>
 
-            <section className="space-y-4">
-              <SectionHeading label="Looking for Players" count={lookingFor.length} />
-              {lookingFor.length === 0 ? (
-                <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-6 py-10 text-center shadow-[0_12px_30px_rgba(15,23,42,0.03)]">
-                  <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#F8FAFC] text-[#94A3B8]">
-                    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <circle cx="9" cy="9" r="2.5" />
-                      <circle cx="16.5" cy="10" r="2" />
-                      <path d="M4.5 17c.8-2.4 2.7-3.5 4.5-3.5s3.7 1.1 4.5 3.5" />
-                      <path d="M14 16.5c.5-1.7 1.8-2.5 3.3-2.5 1.2 0 2.3.5 3.2 1.6" />
-                    </svg>
-                  </div>
-                  <p className="text-title-main text-[#1E293B]">No open matches right now.</p>
-                  <p className="mt-2 text-body-main text-[#94A3B8]">Start a match or open one to join when you need players.</p>
-                </div>
-              ) : (
+            {lookingFor.length > 0 ? (
+              <section className="space-y-4">
+                <SectionHeading label="Looking for Players" count={lookingFor.length} />
                 <div className="space-y-4">
                   {lookingFor.map((item) => (
                     <MobileMatchCard key={`mobile-looking-${item.match.id}`} item={item} userId={userId} showOverlapWarning={hasTimeConflictWithItems(item, incoming)} />
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            ) : null}
           </>
         ) : subTab === 'calendar' ? (
           <section className="rounded-[28px] border border-[#E2E8F0] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
@@ -1846,16 +1833,6 @@ export function MatchesPanel({
           </section>
         )}
 
-        <div className="sticky bottom-[5.3rem] z-20 px-1">
-          <button
-            type="button"
-            onClick={openCreateMatch}
-            className="flex w-full items-center justify-center gap-4 rounded-full bg-[#0d6efd] px-6 py-4 text-[17px] font-black uppercase tracking-[0.12em] text-white shadow-[0_24px_40px_rgba(13, 110, 253, 0.28)]"
-          >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-[28px] font-medium leading-none text-[#0d6efd]">+</span>
-            Create Match
-          </button>
-        </div>
       </div>
 
       <div className="hidden space-y-8 md:block">
@@ -2011,14 +1988,9 @@ export function MatchesPanel({
                     )}
                   </section>
 
-                  <section>
-                    <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                    {lookingFor.length === 0 ? (
-                      <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
-                        <p className="font-semibold text-[#64748B]">No open matches right now.</p>
-                        <p className="mt-1 text-[#94A3B8]">Start a match or open one to join when you need players.</p>
-                      </div>
-                    ) : (
+                  {lookingFor.length > 0 ? (
+                    <section>
+                      <SectionHeading label="Looking for Players" count={lookingFor.length} />
                       <div className="space-y-2">
                         {lookingFor.map((item) => (
                           <MatchRow
@@ -2034,8 +2006,8 @@ export function MatchesPanel({
                           />
                         ))}
                       </div>
-                    )}
-                  </section>
+                    </section>
+                  ) : null}
                 </>
               ) : subTab === 'calendar' ? (
                 <WeeklyCalendar items={items} userId={userId} />
