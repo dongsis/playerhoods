@@ -14,6 +14,66 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-03 - HOTFIX-20260603-issue92-public-signup-start-failure
+
+**Type:** Hotfix
+**Code Commit:** PR #93 branch head `fb11f3f2dbaffb997b572a43cdd1526ab07f07f7`; final merge commit pending
+**Migration:** None
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+
+### Summary
+
+This hotfix improves the production-facing public match signup start path after Issue #92 smoke found the anonymous name plus email submit showing the generic signup failure before any verification email was delivered:
+
+- Splits public signup start failures into stage-specific service client, RPC start, email delivery disabled, email send/template/runtime, delivery-result audit, and unexpected payload paths.
+- Keeps the service-role public signup RPC path server-only.
+- Shows explicit verification-email failure copy when verification email delivery is unavailable or fails.
+- Prevents non-critical delivery-result/audit recording failures after a successful verification email send from becoming a generic signup failure.
+- Records email/template/runtime delivery failures as `failed` with safe internal error codes instead of `skipped` / `delivery_disabled`.
+- Keeps public signup action logs allowlisted and PII-safe: no raw email, phone, verification token/link, email hash, marketing consent details, provider payloads, arbitrary serialized errors, or raw error messages are logged by the action.
+- Confirms the marketing opt-in checkbox remains unchecked by default and only records opt-in when explicitly checked.
+- Does not change DB schema, grants, RLS, match lifecycle semantics, SMS, notification drains, or provider configuration.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx.cmd tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Not applicable | No DB migration, grant, RLS, or SQL test surface changed |
+| Vercel Preview | Passed | Preview only; no production deployment performed by Codex |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
+| Production verification | Not verified | Requires owner-approved merge, Vercel Production auto-deploy, and controlled #77/#92 public signup smoke |
+
+### Release Order
+
+1. Merge PR #93 only after owner approval and green review/check gates.
+2. Let Vercel Production auto-deploy the merge commit.
+3. Rerun controlled public signup production smoke:
+   - Host can create/copy a public signup link.
+   - Anonymous user can open the link.
+   - Name plus email signup starts verification.
+   - The actual verification email is delivered through the configured production email provider.
+   - Verification link opens and POST confirmation creates a pending public signup request.
+   - Host sees the pending public signup without raw email/phone.
+   - Phone-only path remains blocked with SMS-coming-next copy.
+4. Do not mark smoke passed unless the verification email is actually received through the production provider. Queue/audit row creation alone is not enough.
+5. Do not manually drain unrelated production notification/email/SMS queues during smoke.
+
+### Rollback
+
+- Code rollback: revert the PR #93 merge commit or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this hotfix has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- This hotfix improves diagnostics and failure handling for plausible public signup start failure paths; it does not by itself prove the confirmed production root cause.
+- If Vercel is missing or misconfigures `SUPABASE_SERVICE_ROLE_KEY`, the fix remains a Vercel environment correction, not a code workaround.
+- Production smoke must still verify actual public signup verification email delivery through the configured production email provider after merge/deploy.
+
 ## 2026-06-03 - SECURITY-20260603-issue87-verified-email-view-access
 
 **Type:** Security Hotfix
