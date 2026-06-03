@@ -663,8 +663,8 @@ begin
     returning * into v_identity;
   end if;
 
-  -- Reconcile removed rows through the canonical lifecycle helper so legacy
-  -- removed-status drift cannot be reused as a fresh pending request.
+  -- Normalize removed_at/status drift through the canonical lifecycle helper
+  -- before selecting the active participant by removed_at.
   for v_removed_mp_id in
     select match_participants.id
     from public.match_participants
