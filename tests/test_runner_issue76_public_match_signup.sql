@@ -596,7 +596,7 @@ BEGIN
 
   UPDATE public.public_match_signups
   SET verification_sent_at = now() - interval '20 minutes'
-  WHERE link_id = v_link.id;
+  WHERE link_id = v_link.link_id;
 
   UPDATE public.match_participants
   SET
