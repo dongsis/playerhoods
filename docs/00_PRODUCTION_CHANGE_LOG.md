@@ -14,6 +14,50 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-03 - DB-20260603-venue-cleanup-approved-candidates
+
+**Type:** Patch
+**Code Commit:** PR #84 latest branch commit `62d96f77c583df8d004e5dd350b871992bd2a344`
+**Migration:** `20260603010000_issue84_approved_venue_cleanup.sql`
+**Status:** Draft PR / GitHub only; Vercel Production not deployed; Supabase Remote not applied; Production verification not verified
+
+### Summary
+
+Applies approved venue cleanup candidates from the PR #84 audit:
+
+- 10 exact `google_place_id` rows update `venue_kind` to `club`.
+- 2 exact `google_place_id` rows rename generic tennis court names:
+  - `Tennis Court` to `Century City Park Tennis Court`
+  - `Tennis courts` to `Stonebrook Park Tennis Courts`
+- Uses exact whitelisted source IDs only; no broad fuzzy `club` matching.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| GitHub PR | Draft | PR #84 remains Draft/unmerged |
+| Build/typecheck | Passed in GitHub | PR #84 Build and typecheck check passed |
+| SQL regression | Passed in GitHub | PR #84 SQL Regression Check passed, including `test_runner_issue84_venue_cleanup` |
+| Local static validation | Passed locally | `node scripts/check-issue84-venue-cleanup.mjs` |
+| Local SQL regression | Blocked locally | Docker Desktop / Supabase local DB unavailable; relied on GitHub SQL Regression Check |
+| Vercel Production | Not deployed | No production deployment performed |
+| Supabase Remote | Not applied | Remote migration apply requires separate owner approval |
+| Production verification | Not verified | No production validation performed |
+| Provider traffic | Not sent | No SMS/email/provider path called |
+
+### Current Status
+
+- GitHub: Draft PR #84 only; not merged into `main`.
+- Vercel Production: not deployed.
+- Supabase Remote: migration not applied.
+- Production verification: not verified.
+
+### Rollback
+
+- Before merge or remote migration: close PR #84 or revert the PR branch commit.
+- After merge but before Supabase Remote migration: revert PR #84 and redeploy the previous production commit if it was deployed.
+- After Supabase Remote migration apply: apply a follow-up forward migration restoring the previous names and venue kinds for the 12 whitelisted `google_place_id` rows.
+
 ## 2026-06-02 - PATCH-20260602-issue72-host-exit-visibility
 
 **Type:** Patch
