@@ -60,10 +60,24 @@ DECLARE
   v_metadata_json jsonb;
   v_constraint_def text;
   v_public_signup_enum_count integer;
+  v_anon_context_allowed boolean;
+  v_auth_context_allowed boolean;
+  v_service_context_allowed boolean;
+  v_anon_link_allowed boolean;
+  v_auth_link_allowed boolean;
+  v_service_link_allowed boolean;
   v_anon_start_allowed boolean;
+  v_auth_start_allowed boolean;
+  v_service_start_allowed boolean;
   v_anon_delivery_result_allowed boolean;
+  v_auth_delivery_result_allowed boolean;
+  v_service_delivery_result_allowed boolean;
   v_anon_verify_allowed boolean;
   v_auth_verify_allowed boolean;
+  v_service_verify_allowed boolean;
+  v_anon_metadata_allowed boolean;
+  v_auth_metadata_allowed boolean;
+  v_service_metadata_allowed boolean;
   v_anon_config_select_allowed boolean;
   v_auth_config_select_allowed boolean;
   v_disabled_context_count integer;
@@ -188,33 +202,59 @@ BEGIN
     coalesce(v_signup_status_check, 'missing_signup_status_check')
   );
 
-  SELECT has_function_privilege(
-    'anon',
-    'public.rpc_public_match_signup_start(uuid,text,text,text,boolean)',
-    'execute'
-  )
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_context(uuid)', 'execute')
+  INTO v_anon_context_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_context(uuid)', 'execute')
+  INTO v_auth_context_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_context(uuid)', 'execute')
+  INTO v_service_context_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_link_get_or_create(uuid)', 'execute')
+  INTO v_anon_link_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_link_get_or_create(uuid)', 'execute')
+  INTO v_auth_link_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_link_get_or_create(uuid)', 'execute')
+  INTO v_service_link_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_start(uuid,text,text,text,boolean)', 'execute')
   INTO v_anon_start_allowed;
 
-  SELECT has_function_privilege(
-    'anon',
-    'public.rpc_public_match_signup_record_delivery_result(uuid,text,text)',
-    'execute'
-  )
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_start(uuid,text,text,text,boolean)', 'execute')
+  INTO v_auth_start_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_start(uuid,text,text,text,boolean)', 'execute')
+  INTO v_service_start_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_record_delivery_result(uuid,text,text)', 'execute')
   INTO v_anon_delivery_result_allowed;
 
-  SELECT has_function_privilege(
-    'anon',
-    'public.rpc_public_match_signup_verify(uuid,uuid,text)',
-    'execute'
-  )
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_record_delivery_result(uuid,text,text)', 'execute')
+  INTO v_auth_delivery_result_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_record_delivery_result(uuid,text,text)', 'execute')
+  INTO v_service_delivery_result_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_verify(uuid,uuid,text)', 'execute')
   INTO v_anon_verify_allowed;
 
-  SELECT has_function_privilege(
-    'authenticated',
-    'public.rpc_public_match_signup_verify(uuid,uuid,text)',
-    'execute'
-  )
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_verify(uuid,uuid,text)', 'execute')
   INTO v_auth_verify_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_verify(uuid,uuid,text)', 'execute')
+  INTO v_service_verify_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_participant_metadata(uuid)', 'execute')
+  INTO v_anon_metadata_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_participant_metadata(uuid)', 'execute')
+  INTO v_auth_metadata_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_participant_metadata(uuid)', 'execute')
+  INTO v_service_metadata_allowed;
 
   SELECT has_table_privilege('anon', 'public.public_match_signup_config', 'select')
   INTO v_anon_config_select_allowed;
@@ -223,17 +263,45 @@ BEGIN
   INTO v_auth_config_select_allowed;
 
   INSERT INTO _issue76_results VALUES (
-    'public signup mutation RPCs and system actor config are service-only',
-    v_anon_start_allowed = false
+    'public signup RPC grants match public, host-only, and service-only boundaries',
+    v_anon_context_allowed = true
+      AND v_auth_context_allowed = true
+      AND v_service_context_allowed = true
+      AND v_anon_link_allowed = false
+      AND v_auth_link_allowed = true
+      AND v_service_link_allowed = true
+      AND v_anon_start_allowed = false
+      AND v_auth_start_allowed = false
+      AND v_service_start_allowed = true
       AND v_anon_delivery_result_allowed = false
+      AND v_auth_delivery_result_allowed = false
+      AND v_service_delivery_result_allowed = true
       AND v_anon_verify_allowed = false
       AND v_auth_verify_allowed = false
+      AND v_service_verify_allowed = true
+      AND v_anon_metadata_allowed = false
+      AND v_auth_metadata_allowed = true
+      AND v_service_metadata_allowed = true
       AND v_anon_config_select_allowed = false
       AND v_auth_config_select_allowed = false,
-    'start_anon_execute=' || coalesce(v_anon_start_allowed::text, 'null')
+    'context_anon_execute=' || coalesce(v_anon_context_allowed::text, 'null')
+      || ', context_auth_execute=' || coalesce(v_auth_context_allowed::text, 'null')
+      || ', context_service_execute=' || coalesce(v_service_context_allowed::text, 'null')
+      || ', link_anon_execute=' || coalesce(v_anon_link_allowed::text, 'null')
+      || ', link_auth_execute=' || coalesce(v_auth_link_allowed::text, 'null')
+      || ', link_service_execute=' || coalesce(v_service_link_allowed::text, 'null')
+      || ', start_anon_execute=' || coalesce(v_anon_start_allowed::text, 'null')
+      || ', start_auth_execute=' || coalesce(v_auth_start_allowed::text, 'null')
+      || ', start_service_execute=' || coalesce(v_service_start_allowed::text, 'null')
       || ', delivery_audit_anon_execute=' || coalesce(v_anon_delivery_result_allowed::text, 'null')
+      || ', delivery_audit_auth_execute=' || coalesce(v_auth_delivery_result_allowed::text, 'null')
+      || ', delivery_audit_service_execute=' || coalesce(v_service_delivery_result_allowed::text, 'null')
       || ', verify_anon_execute=' || coalesce(v_anon_verify_allowed::text, 'null')
       || ', verify_auth_execute=' || coalesce(v_auth_verify_allowed::text, 'null')
+      || ', verify_service_execute=' || coalesce(v_service_verify_allowed::text, 'null')
+      || ', metadata_anon_execute=' || coalesce(v_anon_metadata_allowed::text, 'null')
+      || ', metadata_auth_execute=' || coalesce(v_auth_metadata_allowed::text, 'null')
+      || ', metadata_service_execute=' || coalesce(v_service_metadata_allowed::text, 'null')
       || ', config_anon_select=' || coalesce(v_anon_config_select_allowed::text, 'null')
       || ', config_auth_select=' || coalesce(v_auth_config_select_allowed::text, 'null')
   );
