@@ -40,21 +40,22 @@ This structural release adds the Issue #76 public match signup link flow:
 
 | Check | Status | Evidence |
 |---|---|---|
-| Build/typecheck | Pending final PR validation | `npx tsc --noEmit`; `npm run build` required before merge approval |
-| Diff whitespace | Pending final PR validation | `git diff --check` required before merge approval |
-| SQL regression | Pending GitHub PR check | Local `npm run verify:sql` depends on Docker/Supabase local availability; GitHub SQL regression required before merge approval |
+| Build/typecheck | Passed locally and in GitHub PR check | `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check` |
+| SQL regression | Passed in GitHub PR check | Local `npm run verify:sql` remains blocked when Docker/Supabase local is unavailable; GitHub SQL regression is the completed SQL evidence |
 | Vercel Preview | PR-stage only | Preview only; no production deployment performed by this entry |
-| Supabase Remote | Not applied | Migration requires separate owner approval at production gate |
+| Supabase Remote | Not applied | Migration requires separate owner approval at production gate; remote system actor preflight is required before enabling verification |
 | Real SMS/email/provider traffic | Not sent by Codex | No production drain or provider delivery may run without owner approval |
 | Production verification | Not verified | Requires owner-approved merge, remote migration apply, production deployment, and smoke verification |
 
 ### Release Order
 
 1. Merge PR #77 only after owner merge approval.
-2. Apply the Supabase Remote migration at the approved production gate before or immediately after the Vercel Production deployment reaches the merge commit.
-3. Confirm the remote migration applied successfully.
-4. Confirm Vercel Production is serving the merge commit and has email provider configuration available for verification delivery.
-5. Smoke test public link creation, email verification, pending request visibility, Add to Lineup, and PII-safe host display.
+2. Before enabling verification in production, confirm Supabase Remote has the system actor auth user `00000000-0000-0000-0000-000000000001`; do not infer this from local seed files.
+3. Apply the Supabase Remote migration at the approved production gate before or immediately after the Vercel Production deployment reaches the merge commit.
+4. Confirm the remote migration applied successfully.
+5. Confirm Vercel Production is serving the merge commit and has email provider configuration available for verification delivery.
+6. Smoke test public link creation, email verification, pending request visibility, Add to Lineup, and PII-safe host display.
 
 ### Rollback
 
@@ -66,6 +67,7 @@ This structural release adds the Issue #76 public match signup link flow:
 ### Known Risks
 
 - App code calls new public signup RPCs, so production code and Supabase Remote schema must be released in a coordinated gate.
+- Verification requires the Supabase Remote system actor `00000000-0000-0000-0000-000000000001`; verify this in the remote auth schema during the production gate.
 - Local SQL verification may remain blocked when Docker Desktop / Supabase local is unavailable; rely on GitHub SQL regression before review approval.
 
 ## 2026-06-02 - PATCH-20260602-issue72-host-exit-visibility
