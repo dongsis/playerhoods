@@ -1,8 +1,24 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { createSupabasePublicServerClient } from '@/lib/supabase/server'
-import { drainQueuedNotificationDeliveries } from '@/lib/notifications/workers/process-queued-notification-deliveries'
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from '@/lib/types/database'
+import { sendPublicMatchSignupVerificationEmail } from '@/lib/notifications/workers/process-queued-notification-deliveries'
+
+function createPublicSignupMutationClient() {
+  const serverUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!serverUrl || !serviceKey) {
+    throw new Error('public_signup_service_client_not_configured')
+  }
+  return createClient<Database>(serverUrl, serviceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  })
+}
 
 function getSignupErrorCode(error: unknown): string {
   const message =
@@ -31,7 +47,6 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
   const email = String(formData.get('email') ?? '').trim()
   const phone = String(formData.get('phone') ?? '').trim()
   const marketingOptIn = formData.get('marketing_email_opt_in') === 'on'
-  const supabase = createSupabasePublicServerClient()
   let notice = 'check-email'
 
   if (!email && !phone) {
@@ -43,6 +58,7 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
   }
 
   try {
+    const supabase = createPublicSignupMutationClient()
     const { data, error } = await supabase.rpc('rpc_public_match_signup_start', {
       p_public_token: token,
       p_display_name: displayName,
@@ -53,18 +69,33 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
     if (error) throw error
     const status = Array.isArray(data) ? data[0]?.status : null
     const verificationRequired = Array.isArray(data) ? data[0]?.verification_required === true : false
+    const signup = Array.isArray(data) ? data[0] : null
     if (status === 'already_verified') {
       notice = 'already-submitted'
     }
-    if (verificationRequired) {
-      await drainQueuedNotificationDeliveries(supabase, {
-        batchSize: 5,
-        maxBatches: 2,
-        templateType: 'public_match_signup_verification',
-        channel: 'email',
-      }).catch((deliveryError) => {
-        console.error('[public-signup] verification delivery drain failed:', deliveryError)
+    if (
+      verificationRequired &&
+      signup?.email_normalized &&
+      signup?.verification_token
+    ) {
+      const deliveryResult = await sendPublicMatchSignupVerificationEmail({
+        destination: signup.email_normalized,
+        recipientName: signup.recipient_name ?? displayName,
+        publicToken: token,
+        signupId: signup.signup_id,
+        verificationToken: signup.verification_token,
+        matchInfo: {
+          matchId: signup.match_id,
+          gameType: signup.game_type ?? signup.sport_name ?? 'Match',
+          matchDate: signup.match_date ?? null,
+          startTime: signup.start_time ?? null,
+          venueName: signup.venue_name ?? null,
+          siteUrl: '',
+        },
       })
+      if (!deliveryResult.ok) {
+        console.error('[public-signup] verification email send failed:', deliveryResult.error)
+      }
     }
   } catch (error) {
     redirectToSignup(token, { error: getSignupErrorCode(error) })

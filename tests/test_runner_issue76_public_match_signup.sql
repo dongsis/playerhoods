@@ -27,7 +27,9 @@ DECLARE
   v_hash text := encode(extensions.digest('issue76-public@example.test', 'sha256'), 'hex');
   v_mp public.match_participants%rowtype;
   v_dirty_removed_mp_id uuid;
+  v_dirty_status_removed_mp_id uuid;
   v_mp_two public.match_participants%rowtype;
+  v_retry record;
   v_guest public.guests%rowtype;
   v_identity_count integer;
   v_participant_count integer;
@@ -37,12 +39,10 @@ DECLARE
   v_proxy_count integer;
   v_group_contact_count integer;
   v_delivery_count integer;
-  v_worker_delivery_count integer;
-  v_sms_delivery_id uuid;
-  v_sms_queued_count integer;
   v_metadata_json jsonb;
   v_constraint_def text;
   v_public_signup_enum_count integer;
+  v_anon_start_allowed boolean;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _issue76_results(
     test_name text,
@@ -139,6 +139,19 @@ BEGIN
     coalesce(v_constraint_def, 'missing_constraint')
   );
 
+  SELECT has_function_privilege(
+    'anon',
+    'public.rpc_public_match_signup_start(uuid,text,text,text,boolean)',
+    'execute'
+  )
+  INTO v_anon_start_allowed;
+
+  INSERT INTO _issue76_results VALUES (
+    'public signup start mutation is service-only and not anon-callable',
+    v_anon_start_allowed = false,
+    'anon_execute=' || coalesce(v_anon_start_allowed::text, 'null')
+  );
+
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object('sub', v_host::text, 'role', 'authenticated')::text,
@@ -206,47 +219,16 @@ BEGIN
     AND payload->>'match_id' = v_match::text;
 
   INSERT INTO _issue76_results VALUES (
-    'signup queues verification email but creates no participant before verification',
+    'signup creates server-only verification token but no participant before verification',
     v_signup.verification_required = true
       AND v_participant_count = 0
-      AND v_delivery_count = 1,
-    'participants=' || v_participant_count::text || ', deliveries=' || v_delivery_count::text
+      AND nullif(v_signup.verification_token, '') IS NOT NULL
+      AND v_signup.email_normalized = v_email,
+    'participants=' || v_participant_count::text
+      || ', token_present=' || (nullif(v_signup.verification_token, '') IS NOT NULL)::text
   );
 
-  INSERT INTO public.notification_deliveries(channel, provider, destination, delivery_status, payload)
-  VALUES (
-    'sms',
-    'twilio',
-    '+15557600000',
-    'queued',
-    jsonb_build_object(
-      'template_type', 'public_match_signup_verification',
-      'match_id', v_match::text,
-      'signup_id', v_signup.signup_id::text
-    )
-  )
-  RETURNING id INTO v_sms_delivery_id;
-
-  SELECT count(*)::integer INTO v_worker_delivery_count
-  FROM public.rpc_get_queued_deliveries_for_template('public_match_signup_verification', 'email', 10) d
-  WHERE d.destination = v_email
-    AND d.channel = 'email'
-    AND d.payload->>'match_id' = v_match::text;
-
-  SELECT count(*)::integer INTO v_sms_queued_count
-  FROM public.notification_deliveries
-  WHERE id = v_sms_delivery_id
-    AND delivery_status = 'queued';
-
-  INSERT INTO _issue76_results VALUES (
-    'verification delivery worker path is scoped to public signup email only',
-    v_worker_delivery_count = 1
-      AND v_sms_queued_count = 1,
-    'worker_email_deliveries=' || v_worker_delivery_count::text
-      || ', sms_still_queued=' || v_sms_queued_count::text
-  );
-
-  PERFORM *
+  SELECT * INTO v_retry
   FROM public.rpc_public_match_signup_start(
     v_link.public_token,
     'Public Signup Player Retry',
@@ -262,19 +244,16 @@ BEGIN
     AND payload->>'match_id' = v_match::text;
 
   INSERT INTO _issue76_results VALUES (
-    'signup verification requests are cooldown-throttled for same match and email',
-    v_delivery_count = 1,
-    'deliveries=' || v_delivery_count::text
+    'signup verification requests are cooldown-throttled without queuing token payloads',
+    v_retry.verification_required = false
+      AND v_retry.verification_token IS NULL
+      AND v_delivery_count = 0,
+    'retry_required=' || coalesce(v_retry.verification_required::text, 'null')
+      || ', retry_token=' || case when v_retry.verification_token is null then 'null' else 'present' end
+      || ', queued_public_signup_deliveries=' || v_delivery_count::text
   );
 
-  SELECT payload->>'verification_token'
-  INTO v_token
-  FROM public.notification_deliveries
-  WHERE destination = v_email
-    AND payload->>'template_type' = 'public_match_signup_verification'
-    AND payload->>'match_id' = v_match::text
-  ORDER BY created_at DESC
-  LIMIT 1;
+  v_token := v_signup.verification_token;
 
   SELECT * INTO v_verify
   FROM public.rpc_public_match_signup_verify(v_link.public_token, v_signup.signup_id, v_token)
@@ -435,14 +414,34 @@ BEGIN
   )
   RETURNING id INTO v_dirty_removed_mp_id;
 
-  SELECT payload->>'verification_token'
-  INTO v_token_two
-  FROM public.notification_deliveries
-  WHERE destination = v_email
-    AND payload->>'template_type' = 'public_match_signup_verification'
-    AND payload->>'match_id' = v_match_two::text
-  ORDER BY created_at DESC
-  LIMIT 1;
+  INSERT INTO public.match_participants (
+    match_id,
+    status,
+    join_method,
+    guest_id,
+    created_by,
+    participant_accepted_at,
+    participant_accepted_via,
+    confirmation_source,
+    source_person_id,
+    removed_at,
+    removed_by
+  ) VALUES (
+    v_match_two,
+    'removed',
+    'requested',
+    v_mp.guest_id,
+    v_system,
+    now() - interval '2 days',
+    'email_invitation',
+    'player_response',
+    v_guest.person_id,
+    null,
+    null
+  )
+  RETURNING id INTO v_dirty_status_removed_mp_id;
+
+  v_token_two := v_signup_two.verification_token;
 
   SELECT * INTO v_verify_two
   FROM public.rpc_public_match_signup_verify(v_link_two.public_token, v_signup_two.signup_id, v_token_two)
@@ -472,6 +471,16 @@ BEGIN
     'verified_participant=' || coalesce(v_mp_two.id::text, 'missing')
       || ', dirty_removed=' || coalesce(v_dirty_removed_mp_id::text, 'missing')
       || ', verified_removed_at=' || coalesce(v_mp_two.removed_at::text, 'null')
+  );
+
+  INSERT INTO _issue76_results VALUES (
+    'participant reuse repairs removed status when removed_at is null',
+    v_mp_two.id = v_dirty_status_removed_mp_id
+      AND v_mp_two.status = 'pending'
+      AND v_mp_two.removed_at IS NULL,
+    'verified_participant=' || coalesce(v_mp_two.id::text, 'missing')
+      || ', dirty_status_removed=' || coalesce(v_dirty_status_removed_mp_id::text, 'missing')
+      || ', status=' || coalesce(v_mp_two.status::text, 'null')
   );
 
   RETURN QUERY SELECT * FROM _issue76_results;

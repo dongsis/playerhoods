@@ -63,13 +63,6 @@ export type DeliveryRow = {
   attempt_count: number
 }
 
-type DeliveryDrainOptions = {
-  batchSize?: number
-  maxBatches?: number
-  templateType?: string
-  channel?: 'email' | 'sms'
-}
-
 export type ReminderDrainPreview = {
   dueReminderCandidates: {
     total: number
@@ -86,6 +79,22 @@ export type ReminderDrainPreview = {
   skippedNonReminderQueuedDeliveries: {
     total: number
     byNotificationType: Array<{ notificationType: string; channel: string | null; count: number }>
+  }
+}
+
+export type PublicMatchSignupVerificationEmailInput = {
+  destination: string
+  recipientName: string | null
+  publicToken: string
+  signupId: string
+  verificationToken: string
+  matchInfo: {
+    matchId: string
+    gameType: string
+    matchDate: string | null
+    startTime: string | null
+    venueName: string | null
+    siteUrl?: string | null
   }
 }
 
@@ -119,6 +128,29 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     sportName: (payload.sport_name as string) ?? null,
     venueTimezone: (payload.venue_timezone as string) ?? null,
   }
+}
+
+export async function sendPublicMatchSignupVerificationEmail(
+  input: PublicMatchSignupVerificationEmailInput,
+) {
+  const verificationUrl =
+    `${SITE_URL}/join/${encodeURIComponent(input.publicToken)}/verify?signup=${encodeURIComponent(input.signupId)}&token=${encodeURIComponent(input.verificationToken)}`
+  return sendEmail(
+    input.destination,
+    'Verify your email for this PlayerHoods match',
+    publicMatchSignupVerificationEmail(
+      {
+        matchId: input.matchInfo.matchId,
+        gameType: input.matchInfo.gameType,
+        matchDate: input.matchInfo.matchDate,
+        startTime: input.matchInfo.startTime,
+        venueName: input.matchInfo.venueName,
+        siteUrl: input.matchInfo.siteUrl || SITE_URL,
+      },
+      input.recipientName,
+      verificationUrl,
+    ),
+  )
 }
 
 function extractEmailAddress(from: string): string {
@@ -339,23 +371,6 @@ async function processNotificationDeliveryRows(
         unsubscribeUrl: `${SMS_SITE_URL}/stop/${formatInvitationToken(invitationId)}`,
         replyCode,
       })
-    } else if (templateType === 'public_match_signup_verification') {
-      const m = buildMatchInfo(payload)
-      const publicToken = String(payload.public_token ?? '')
-      const signupId = String(payload.signup_id ?? '')
-      const verificationToken = String(payload.verification_token ?? '')
-      if (!publicToken || !signupId || !verificationToken) {
-        continue
-      }
-      const verificationUrl =
-        `${SITE_URL}/join/${encodeURIComponent(publicToken)}/verify?signup=${encodeURIComponent(signupId)}&token=${encodeURIComponent(verificationToken)}`
-      subject = 'Verify your email for this PlayerHoods match'
-      html = publicMatchSignupVerificationEmail(
-        m,
-        ((payload.recipient_name as string) ?? null)?.trim() || null,
-        verificationUrl,
-      )
-      smsBody = ''
     } else if (templateType === 'guest_nominated') {
       const m = buildMatchInfo(payload)
       subject = "You're invited to a match"
@@ -461,18 +476,11 @@ async function processNotificationDeliveryRows(
 /** Process queued notification deliveries. Call after invitation create or via the generic drain route. */
 export async function processQueuedNotificationDeliveries(
   supabase: SupabaseClient,
-  limit = 10,
-  filters?: Pick<DeliveryDrainOptions, 'templateType' | 'channel'>,
+  limit = 10
 ): Promise<{ processed: number; sent: number; failed: number }> {
-  const { data: rows, error } = filters?.templateType
-    ? await supabase.rpc('rpc_get_queued_deliveries_for_template', {
-        p_template_type: filters.templateType,
-        p_channel: filters.channel ?? null,
-        p_limit: limit,
-      })
-    : await supabase.rpc('rpc_get_queued_deliveries', {
-        p_limit: limit,
-      })
+  const { data: rows, error } = await supabase.rpc('rpc_get_queued_deliveries', {
+    p_limit: limit,
+  })
   if (error) throw error
 
   return processNotificationDeliveryRows(supabase, (rows ?? []) as DeliveryRow[])
@@ -480,7 +488,7 @@ export async function processQueuedNotificationDeliveries(
 
 export async function drainQueuedNotificationDeliveries(
   supabase: SupabaseClient,
-  options?: DeliveryDrainOptions,
+  options?: { batchSize?: number; maxBatches?: number },
 ): Promise<{ processed: number; sent: number; failed: number }> {
   const batchSize = Math.max(1, options?.batchSize ?? 10)
   const maxBatches = Math.max(1, options?.maxBatches ?? 5)
@@ -489,10 +497,7 @@ export async function drainQueuedNotificationDeliveries(
   let failed = 0
 
   for (let index = 0; index < maxBatches; index += 1) {
-    const result = await processQueuedNotificationDeliveries(supabase, batchSize, {
-      templateType: options?.templateType,
-      channel: options?.channel,
-    })
+    const result = await processQueuedNotificationDeliveries(supabase, batchSize)
     processed += result.processed
     sent += result.sent
     failed += result.failed

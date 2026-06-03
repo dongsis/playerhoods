@@ -232,7 +232,16 @@ create or replace function public.rpc_public_match_signup_start(
 returns table (
   signup_id uuid,
   status text,
-  verification_required boolean
+  verification_required boolean,
+  verification_token text,
+  email_normalized text,
+  recipient_name text,
+  match_id uuid,
+  game_type text,
+  sport_name text,
+  match_date date,
+  start_time time,
+  venue_name text
 )
 language plpgsql
 security definer
@@ -248,7 +257,6 @@ declare
   v_email_hash text;
   v_token uuid := gen_random_uuid();
   v_token_hash text;
-  v_event_id uuid;
   v_verification_cooldown constant interval := interval '5 minutes';
 begin
   select * into v_link
@@ -305,7 +313,20 @@ begin
   for update;
 
   if found and v_signup.status = 'participant_created' then
-    return query select v_signup.id, 'already_verified'::text, false;
+    return query
+    select
+      v_signup.id,
+      'already_verified'::text,
+      false,
+      null::text,
+      null::text,
+      null::text,
+      v_match.id,
+      v_match.game_type,
+      (select s.display_name from public.sports s where s.id = v_match.sport_id),
+      v_match.match_date,
+      v_match.start_time,
+      (select v.name from public.venues v where v.id = v_match.venue_id);
     return;
   end if;
 
@@ -314,7 +335,20 @@ begin
     and v_signup.verification_sent_at is not null
     and v_signup.verification_sent_at > now() - v_verification_cooldown
   then
-    return query select v_signup.id, 'verification_sent'::text, true;
+    return query
+    select
+      v_signup.id,
+      'verification_sent'::text,
+      false,
+      null::text,
+      null::text,
+      null::text,
+      v_match.id,
+      v_match.game_type,
+      (select s.display_name from public.sports s where s.id = v_match.sport_id),
+      v_match.match_date,
+      v_match.start_time,
+      (select v.name from public.venues v where v.id = v_match.venue_id);
     return;
   end if;
 
@@ -363,31 +397,20 @@ begin
     returning * into v_signup;
   end if;
 
-  insert into public.domain_events(event_type, aggregate_type, aggregate_id, actor_user_id, payload)
-  values (
-    'public_match_signup.verification_requested',
-    'public_match_signup',
+  return query
+  select
     v_signup.id,
-    null,
-    jsonb_build_object(
-      'signup_id', v_signup.id,
-      'public_token', p_public_token,
-      'verification_token', v_token,
-      'email_normalized', v_email,
-      'display_name', v_display_name,
-      'match_id', v_match.id,
-      'game_type', v_match.game_type,
-      'match_date', v_match.match_date,
-      'start_time', v_match.start_time,
-      'venue_name', (select v.name from public.venues v where v.id = v_match.venue_id),
-      'sport_name', (select s.display_name from public.sports s where s.id = v_match.sport_id)
-    )
-  )
-  returning id into v_event_id;
-
-  perform public.rpc_process_domain_event(v_event_id);
-
-  return query select v_signup.id, 'verification_sent'::text, true;
+    'verification_sent'::text,
+    true,
+    v_token::text,
+    v_email,
+    v_display_name,
+    v_match.id,
+    v_match.game_type,
+    (select s.display_name from public.sports s where s.id = v_match.sport_id),
+    v_match.match_date,
+    v_match.start_time,
+    (select v.name from public.venues v where v.id = v_match.venue_id);
 end;
 $$;
 
@@ -526,6 +549,13 @@ begin
     and match_participants.removed_at is not null
     and match_participants.status is distinct from 'removed';
 
+  update public.match_participants
+  set status = 'pending'
+  where match_participants.match_id = v_match.id
+    and match_participants.guest_id = v_guest_id
+    and match_participants.removed_at is null
+    and match_participants.status = 'removed';
+
   select * into v_mp
   from public.match_participants
   where match_participants.match_id = v_match.id
@@ -640,46 +670,6 @@ begin
 end;
 $$;
 
-create or replace function public.rpc_get_queued_deliveries_for_template(
-  p_template_type text,
-  p_channel text default null,
-  p_limit integer default 10
-)
-returns table(
-  id uuid,
-  channel text,
-  provider text,
-  destination text,
-  payload jsonb,
-  attempt_count integer
-)
-language plpgsql
-security definer
-set search_path to 'public'
-as $$
-begin
-  return query
-  update public.notification_deliveries d
-  set delivery_status = 'sending',
-      attempt_count = d.attempt_count + 1,
-      last_attempt_at = now()
-  where d.id in (
-    select nd.id
-    from public.notification_deliveries nd
-    where nd.delivery_status = 'queued'
-      and nd.payload->>'template_type' = p_template_type
-      and (p_channel is null or nd.channel = p_channel)
-    order by nd.created_at asc
-    limit p_limit
-    for update skip locked
-  )
-  returning d.id, d.channel, d.provider, d.destination, d.payload, d.attempt_count;
-end;
-$$;
-
-comment on function public.rpc_get_queued_deliveries_for_template(text, text, integer) is
-  'Worker helper for scoped drains. Used by public signup to process only email verification deliveries without draining unrelated notification/SMS queues.';
-
 create or replace function public.rpc_process_domain_event(p_event_id uuid)
 returns void
 language plpgsql
@@ -695,42 +685,6 @@ begin
   select * into v_evt from public.domain_events where id = p_event_id;
   if not found then
     raise exception 'event_not_found';
-  end if;
-
-  if v_evt.event_type = 'public_match_signup.verification_requested' then
-    v_payload := v_evt.payload;
-
-    if nullif(btrim(v_payload->>'email_normalized'), '') is null then
-      return;
-    end if;
-
-    insert into public.notification_deliveries (
-      channel,
-      provider,
-      destination,
-      delivery_status,
-      payload
-    ) values (
-      'email',
-      'resend',
-      v_payload->>'email_normalized',
-      'queued',
-      jsonb_build_object(
-        'template_type', 'public_match_signup_verification',
-        'signup_id', v_evt.aggregate_id,
-        'public_token', v_payload->>'public_token',
-        'verification_token', v_payload->>'verification_token',
-        'recipient_name', v_payload->>'display_name',
-        'match_id', v_payload->>'match_id',
-        'game_type', v_payload->>'game_type',
-        'sport_name', v_payload->>'sport_name',
-        'match_date', v_payload->>'match_date',
-        'start_time', v_payload->>'start_time',
-        'club_name', v_payload->>'venue_name',
-        'venue_name', v_payload->>'venue_name'
-      )
-    );
-    return;
   end if;
 
   if v_evt.event_type = 'invitation.email_invitation_created' then
@@ -815,12 +769,12 @@ end;
 $$;
 
 comment on function public.rpc_process_domain_event(uuid) is
-  'Domain event bridge. Public signup verification emails and participant invitation/formation events are queued through notification_deliveries.';
+  'Domain event bridge. Participant invitation/formation events are queued through notification_deliveries.';
 
 grant execute on function public.rpc_public_match_signup_link_get_or_create(uuid) to authenticated, service_role;
 grant execute on function public.rpc_public_match_signup_context(uuid) to anon, authenticated, service_role;
-grant execute on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) to anon, authenticated, service_role;
+revoke execute on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) from public;
+grant execute on function public.rpc_public_match_signup_start(uuid, text, text, text, boolean) to service_role;
 grant execute on function public.rpc_public_match_signup_verify(uuid, uuid, text) to anon, authenticated, service_role;
 grant execute on function public.rpc_public_match_signup_participant_metadata(uuid) to authenticated, service_role;
-grant execute on function public.rpc_get_queued_deliveries_for_template(text, text, integer) to anon, authenticated, service_role;
 grant execute on function public.rpc_process_domain_event(uuid) to authenticated, service_role;

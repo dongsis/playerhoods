@@ -1753,6 +1753,15 @@ export interface Database {
           signup_id: string
           status: string
           verification_required: boolean
+          verification_token: string | null
+          email_normalized: string | null
+          recipient_name: string | null
+          match_id: string
+          game_type: string | null
+          sport_name: string | null
+          match_date: string | null
+          start_time: string | null
+          venue_name: string | null
         }[]
       }
       rpc_public_match_signup_verify: {
@@ -1777,17 +1786,6 @@ export interface Database {
           source: 'public_match_signup'
           email_verified: boolean
           signup_status: string
-        }[]
-      }
-      rpc_get_queued_deliveries_for_template: {
-        Args: { p_template_type: string; p_channel?: string | null; p_limit?: number | null }
-        Returns: {
-          id: string
-          channel: string
-          provider: string | null
-          destination: string
-          payload: Json
-          attempt_count: number
         }[]
       }
       // v1.7: Guest / Contact Player flows
