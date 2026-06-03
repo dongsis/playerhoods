@@ -14,6 +14,43 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-03 - UX-20260603-smart-import-post-save-completion
+
+**Type:** Patch
+**Code Commit:** Unknown
+**Migration:** None
+**Status:** Draft / local worktree only; not committed; not pushed to GitHub; no Vercel Preview; no Vercel Production deploy; no Supabase Remote change; production not verified
+
+### Summary
+
+This patch fixes Smart Import post-save completion behavior:
+
+- Single-contact success closes the Smart Import modal and updates the parent flow.
+- Hoods/Contacts refreshes the current contact list and pins the newly added contact at the top.
+- Match Invite People refreshes candidates, pins the newly added Contact Player, and auto-selects it for the current invite task.
+- Batch import stays in the modal and shows an explicit success state with Done and Add another screenshot actions.
+- Save is guarded against duplicate submissions.
+- Failed save keeps the review modal open and shows inline error.
+- No automatic invite, send, proxy, participation, email, SMS, delivery, or drain behavior is added.
+
+### Environment Impact Report
+
+| Surface | Impact |
+|---|---|
+| Local code | Yes; scoped Smart Import/dashboard/match invite UI and server-action return shape changes |
+| GitHub | No change yet; draft local worktree only |
+| Vercel Preview | No change yet |
+| Vercel Production | No change |
+| Supabase Local | No DB migration |
+| Supabase Remote | No change |
+| Notification/email/SMS | No code path changed; no provider traffic sent |
+| Delivery workers/drains | No code path changed; none run |
+| Production verification | Not verified |
+
+### Rollback
+
+Revert the eventual commit. No database rollback, Supabase Remote action, notification drain, or production deploy rollback is required while this remains local-only.
+
 ## 2026-06-03 - SECURITY-20260603-issue87-verified-email-view-access
 
 **Type:** Security Hotfix

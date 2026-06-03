@@ -42,6 +42,8 @@ import type { DiscoveryVolume } from '@/lib/types/database'
 import {
   parseContactScreenshotUploads,
   type ContactImportDraft,
+  type ContactScreenshotImportCreatedContact,
+  type ContactScreenshotImportResult,
   type ContactScreenshotUpload,
 } from '@/lib/contact-screenshot-import'
 
@@ -408,13 +410,14 @@ export async function importDashboardScreenshotContactsAction(
     email?: string | null
     source_file_name?: string | null
   }>,
-): Promise<{ created: number; skipped: number }> {
+): Promise<ContactScreenshotImportResult> {
   const supabase = await createSupabaseServerClient()
   const user = await getUser()
   if (!user) throw new Error('not_authenticated')
 
   let created = 0
   let skipped = 0
+  const createdContacts: ContactScreenshotImportCreatedContact[] = []
 
   for (const draft of drafts) {
     const displayName = draft.display_name.trim()
@@ -426,7 +429,7 @@ export async function importDashboardScreenshotContactsAction(
       continue
     }
 
-    await createRosterGuest(supabase, {
+    const newGuest = await createRosterGuest(supabase, {
       display_name: displayName,
       phone,
       email,
@@ -435,8 +438,14 @@ export async function importDashboardScreenshotContactsAction(
         : 'Imported from screenshot',
     })
     created++
+    createdContacts.push({
+      guest_id: newGuest.id,
+      display_name: displayName,
+      phone,
+      email,
+    })
   }
 
   revalidateContactSurfaces()
-  return { created, skipped }
+  return { created, skipped, createdContacts }
 }

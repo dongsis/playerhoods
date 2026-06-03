@@ -4,7 +4,7 @@ import type { DashboardPageViewModel } from './dashboard.view-model'
 import type { GearImageInput, GearItemInput, GearShowcaseEntryInput, GearStringJobInput } from '@/lib/api/gear'
 import type { DiscoveryVolume, GearImage, GearItem, GearShowcaseEntry, GearStringJob } from '@/lib/types/database'
 import type { GearLinkImportDraft } from '@/lib/gear-link-import'
-import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import type { ContactImportDraft, ContactScreenshotImportResult, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
 
 type DashboardPageViewProps = {
@@ -67,7 +67,7 @@ type DashboardPageViewProps = {
     phone?: string | null
     email?: string | null
     source_file_name?: string | null
-  }>) => Promise<{ created: number; skipped: number }>
+  }>) => Promise<ContactScreenshotImportResult>
   onCancelMatch: (matchId: string) => Promise<void>
 }
 

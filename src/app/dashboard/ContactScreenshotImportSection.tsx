@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import type { ContactImportDraft, ContactScreenshotImportResult, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { ContactPlayerResolved } from '@/lib/api/roster'
 
 type EditableDraft = ContactImportDraft & {
@@ -23,8 +23,9 @@ type Props = {
     phone?: string | null
     email?: string | null
     source_file_name?: string | null
-  }>) => Promise<{ created: number; skipped: number }>
-  onImported: () => Promise<void> | void
+  }>) => Promise<ContactScreenshotImportResult>
+  onImported: (result: ContactScreenshotImportResult) => Promise<void> | void
+  onDone?: () => void
 }
 
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -132,6 +133,10 @@ function getFileExtensionForMimeType(mimeType: string): string {
   if (mimeType === 'image/png') return 'png'
   if (mimeType === 'image/webp') return 'webp'
   return 'jpg'
+}
+
+function formatContactsAdded(count: number): string {
+  return `${count} contact${count === 1 ? '' : 's'} added`
 }
 
 function UploadIcon() {
@@ -278,13 +283,16 @@ export function ContactScreenshotImportSection({
   onParseScreenshots,
   onImportScreenshotContacts,
   onImported,
+  onDone,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const importingRef = useRef(false)
   const [files, setFiles] = useState<File[]>([])
   const [previewFiles, setPreviewFiles] = useState<PreviewFile[]>([])
   const [drafts, setDrafts] = useState<EditableDraft[]>([])
   const [retryMessage, setRetryMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [importResult, setImportResult] = useState<ContactScreenshotImportResult | null>(null)
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -300,7 +308,7 @@ export function ContactScreenshotImportSection({
     [drafts],
   )
 
-  const step = parsing ? 'extracting' : drafts.length > 0 ? 'review' : retryMessage ? 'retry' : 'import'
+  const step = importResult ? 'success' : parsing ? 'extracting' : drafts.length > 0 ? 'review' : retryMessage ? 'retry' : 'import'
   const allSelectableSelected = selectableDraftIds.length > 0 && drafts.every((draft) => draft.missing_fields.length > 0 || draft.selected)
 
   useEffect(() => {
@@ -358,7 +366,23 @@ export function ContactScreenshotImportSection({
     setDrafts([])
     setEditingDraftId(null)
     setRetryMessage(null)
+    setImportResult(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleDone = () => {
+    if (onDone) {
+      onDone()
+      return
+    }
+    resetFlow()
+    setNotice(null)
+  }
+
+  const handleAddAnotherScreenshot = () => {
+    resetFlow()
+    setNotice(null)
+    window.setTimeout(() => fileInputRef.current?.click(), 0)
   }
 
   const handleFileSelection = (nextFiles: File[], source: 'uploaded' | 'dropped' | 'pasted' = 'uploaded') => {
@@ -368,6 +392,7 @@ export function ContactScreenshotImportSection({
     setFiles(supportedFiles)
     setDrafts([])
     setEditingDraftId(null)
+    setImportResult(null)
     setRetryMessage(rejectedCount > 0 ? 'That file type is not supported yet. Try a JPG, PNG, or WEBP screenshot, or add the contact manually.' : null)
     setNotice(
       supportedFiles.length > 0
@@ -464,15 +489,17 @@ export function ContactScreenshotImportSection({
   }
 
   const handleImport = async () => {
+    if (importingRef.current) return
+    importingRef.current = true
     setImporting(true)
     setRetryMessage(null)
     setNotice(null)
+    setImportResult(null)
 
     try {
       const selectedDrafts = drafts.filter((draft) => draft.selected && draft.missing_fields.length === 0)
       if (selectedDrafts.length === 0) {
         setRetryMessage('Select at least one complete contact to save, or edit a row to add the missing name, phone, or email.')
-        setImporting(false)
         return
       }
 
@@ -485,16 +512,13 @@ export function ContactScreenshotImportSection({
         })),
       )
 
-      setNotice(
-        result.skipped > 0
-          ? `Saved ${result.created} Contact Player${result.created === 1 ? '' : 's'} and skipped ${result.skipped}.`
-          : `Saved ${result.created} Contact Player${result.created === 1 ? '' : 's'}.`,
-      )
-      resetFlow()
-      await onImported()
+      setImportResult(result)
+      setEditingDraftId(null)
+      await onImported(result)
     } catch (err: unknown) {
       setRetryMessage(getFriendlyImportError(err, 'We could not save those contacts yet. Review the selected rows and try again.'))
     } finally {
+      importingRef.current = false
       setImporting(false)
     }
   }
@@ -526,6 +550,43 @@ export function ContactScreenshotImportSection({
           isDragging ? 'border-[#2D6CDF] shadow-[0_20px_60px_-36px_rgba(45,108,223,0.8)]' : 'border-[#DCE6F2]',
         ].join(' ')}
       >
+        {step === 'success' && importResult ? (
+          <div className="space-y-5 p-5">
+            <div className="rounded-[24px] border border-emerald-100 bg-emerald-50 px-5 py-6 text-center">
+              <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
+                <CheckIcon className="h-6 w-6" />
+              </span>
+              <h4 className="mt-4 text-xl font-black text-[#0B1F44]">
+                {formatContactsAdded(importResult.created)}
+              </h4>
+              {importResult.skipped > 0 ? (
+                <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-emerald-800">
+                  {importResult.skipped} incomplete contact{importResult.skipped === 1 ? '' : 's'} skipped.
+                </p>
+              ) : null}
+              <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-emerald-700">
+                Saved Contact Players are ready in the parent list. Nothing was sent or invited automatically.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:flex sm:justify-end">
+              <button
+                type="button"
+                onClick={handleAddAnotherScreenshot}
+                className="min-h-11 rounded-lg border border-[#bfdbfe] bg-white px-5 py-2 text-sm font-semibold text-[#0d6efd] transition hover:bg-[#eff6ff]"
+              >
+                Add another screenshot
+              </button>
+              <button
+                type="button"
+                onClick={handleDone}
+                className="min-h-11 rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {step === 'review' ? (
           <div className="space-y-6 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -750,7 +811,7 @@ export function ContactScreenshotImportSection({
           </div>
         ) : null}
 
-        {step !== 'review' ? (
+        {step !== 'review' && step !== 'success' ? (
           <div className="space-y-5 p-5">
             <div className="grid gap-5 md:grid-cols-[1.05fr_0.95fr] md:items-center">
               <div className="space-y-4">

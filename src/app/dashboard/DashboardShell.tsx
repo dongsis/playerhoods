@@ -19,7 +19,7 @@ import { VenuesPanel } from './VenuesPanel'
 import { GearPanel } from './GearPanel'
 import type { GearImageInput, GearItemInput, GearShowcaseEntryInput, GearStringJobInput } from '@/lib/api/gear'
 import type { GearLinkImportDraft } from '@/lib/gear-link-import'
-import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import type { ContactImportDraft, ContactScreenshotImportResult, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { DashboardPreferenceSaveResult, IdentityLinkActionResult } from './dashboard.actions'
 import type { LocationCityOption } from '@/lib/api/location-municipalities'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
@@ -131,7 +131,7 @@ interface Props {
     phone?: string | null
     email?: string | null
     source_file_name?: string | null
-  }>) => Promise<{ created: number; skipped: number }>
+  }>) => Promise<ContactScreenshotImportResult>
   onCancelMatch: (matchId: string) => Promise<void>
   inboxUnreadCount?: number
 }

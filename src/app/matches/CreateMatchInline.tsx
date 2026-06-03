@@ -10,7 +10,7 @@ import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreensho
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
 import type { CreateRecurringMatchSeriesInput, RecurringDirectInviteInput } from '@/lib/api/recurring-matches'
-import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import type { ContactImportDraft, ContactScreenshotImportResult, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   admissionTargetsToScopeUsers,
@@ -1057,7 +1057,7 @@ export function CreateMatchInline({
     phone?: string | null
     email?: string | null
     source_file_name?: string | null
-  }>) => Promise<{ created: number; skipped: number }>
+  }>) => Promise<ContactScreenshotImportResult>
 }) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
@@ -1118,6 +1118,7 @@ export function CreateMatchInline({
   const [contactPhone, setContactPhone] = useState('')
   const [contactNotes, setContactNotes] = useState('')
   const [creatingContact, setCreatingContact] = useState(false)
+  const [recentImportedContactGuestIds, setRecentImportedContactGuestIds] = useState<string[]>([])
   const [tooltip, setTooltip] = useState<TooltipState>(null)
   const [prefillConsumed, setPrefillConsumed] = useState(false)
   const courtPlanMenuRef = useRef<HTMLDivElement | null>(null)
@@ -1129,6 +1130,11 @@ export function CreateMatchInline({
   const prefillInviteGuestId = searchParams.get('inviteGuestId')
   const prefillCreateFormat = searchParams.get('createFormat')
   const starterHint = searchParams.get('starterHint') === '1'
+
+  const recentImportedContactGuestIdRank = useMemo(
+    () => new Map(recentImportedContactGuestIds.map((guestId, index) => [guestId, index])),
+    [recentImportedContactGuestIds],
+  )
 
   const availableInviteOptions = useMemo(() => {
     const combined = new Map<string, InviteCandidate>()
@@ -1174,7 +1180,7 @@ export function CreateMatchInline({
     userCandidates.forEach(upsert)
     contactPlayers.forEach(upsert)
 
-    return Array.from(combined.values()).sort((left, right) => {
+    const sortedCandidates = Array.from(combined.values()).sort((left, right) => {
       const leftAvailabilityPriority = getAvailabilityPriority(left.availabilityStatus)
       const rightAvailabilityPriority = getAvailabilityPriority(right.availabilityStatus)
       if (leftAvailabilityPriority !== rightAvailabilityPriority) {
@@ -1186,7 +1192,18 @@ export function CreateMatchInline({
       if (leftPriority !== rightPriority) return leftPriority - rightPriority
       return left.name.localeCompare(right.name)
     })
-  }, [contactPlayers, currentUserId, linkedContactUsers, savedPlayers])
+
+    if (recentImportedContactGuestIdRank.size === 0) return sortedCandidates
+
+    return [...sortedCandidates].sort((left, right) => {
+      const leftRank = left.guestId ? recentImportedContactGuestIdRank.get(left.guestId) : undefined
+      const rightRank = right.guestId ? recentImportedContactGuestIdRank.get(right.guestId) : undefined
+      if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank
+      if (leftRank !== undefined) return -1
+      if (rightRank !== undefined) return 1
+      return 0
+    })
+  }, [contactPlayers, currentUserId, linkedContactUsers, recentImportedContactGuestIdRank, savedPlayers])
 
   const requestScopeUserCandidates = useMemo(
     () =>
@@ -2854,12 +2871,31 @@ export function CreateMatchInline({
             existingContacts={existingImportContacts}
             onParseScreenshots={onParseScreenshots}
             onImportScreenshotContacts={onImportScreenshotContacts}
-            onImported={async () => {
+            onImported={async (result) => {
+              const createdGuestIds = result.createdContacts.map((contact) => contact.guest_id)
+              setRecentImportedContactGuestIds(createdGuestIds)
+              setSelectedDirectInviteKeys((current) => {
+                const next = new Set(current)
+                for (const guestId of createdGuestIds) {
+                  next.add(`contact:${guestId}`)
+                }
+                return next
+              })
               await loadContactInviteCandidates()
               setSelectionMode('invite')
+              if (result.created === 1 && result.skipped === 0) {
+                setContactComposerMode(null)
+                setContactAddPanelOpen(false)
+              }
+              setInviteNotice(
+                result.created === 1
+                  ? '1 contact added and selected for this match invite.'
+                  : `${result.created} contacts added and selected for this match invite.`,
+              )
+            }}
+            onDone={() => {
               setContactComposerMode(null)
               setContactAddPanelOpen(false)
-              setInviteNotice('Imported contacts were saved. You can invite them from your saved contact players.')
             }}
           />
         </div>

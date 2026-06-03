@@ -59,7 +59,7 @@ import { ParticipantDetailPanel, type DetailConnection, type DetailValue } from 
 import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
-import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import type { ContactImportDraft, ContactScreenshotImportResult, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import { setGuestSports } from '@/lib/api/sports'
 import { getLevelLabel } from '@/lib/profile-options'
 import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
@@ -213,7 +213,7 @@ type Props = {
     phone?: string | null
     email?: string | null
     source_file_name?: string | null
-  }>) => Promise<{ created: number; skipped: number }>
+  }>) => Promise<ContactScreenshotImportResult>
   onOpenProfile: () => void
   openContactComposerSignal?: number
   onStarterStatusChange?: (status: {
@@ -1855,6 +1855,7 @@ export function HoodsPanel({
   const [contactNotes, setContactNotes] = useState('')
   const [creatingContact, setCreatingContact] = useState(false)
   const [savedStateOverrides, setSavedStateOverrides] = useState<Record<string, boolean>>({})
+  const [recentImportedContactGuestIds, setRecentImportedContactGuestIds] = useState<string[]>([])
   const [starterPreferredFormat, setStarterPreferredFormat] = useState<StarterMatchFormat>('unknown')
   const [starterDismissedAt, setStarterDismissedAt] = useState<number | null>(null)
   const hasLoadedSupportDataRef = useRef(false)
@@ -1972,6 +1973,23 @@ export function HoodsPanel({
       isSaved: override,
     }
   }, [savedStateOverrides])
+
+  const recentImportedContactGuestIdRank = useMemo(
+    () => new Map(recentImportedContactGuestIds.map((guestId, index) => [guestId, index])),
+    [recentImportedContactGuestIds],
+  )
+
+  const pinRecentImportedContacts = useCallback((people: HoodPerson[]) => {
+    if (recentImportedContactGuestIdRank.size === 0) return people
+    return [...people].sort((left, right) => {
+      const leftRank = left.guestId ? recentImportedContactGuestIdRank.get(left.guestId) : undefined
+      const rightRank = right.guestId ? recentImportedContactGuestIdRank.get(right.guestId) : undefined
+      if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank
+      if (leftRank !== undefined) return -1
+      if (rightRank !== undefined) return 1
+      return 0
+    })
+  }, [recentImportedContactGuestIdRank])
 
   const loadSupportData = useCallback(async (options?: { foreground?: boolean }) => {
     const foreground = options?.foreground ?? !hasLoadedSupportDataRef.current
@@ -2691,11 +2709,12 @@ export function HoodsPanel({
 
   const filteredHoodPeople = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return hoodPeople
+    const sortedPeople = hoodPeople
       .filter((person) => matchesFilter(person, hoodFilter))
       .filter((person) => matchesHoodSearch(person, query))
       .sort((left, right) => sortHoodPeople(left, right, openMatchCount))
-  }, [hoodFilter, hoodPeople, openMatchCount, search])
+    return pinRecentImportedContacts(sortedPeople)
+  }, [hoodFilter, hoodPeople, openMatchCount, pinRecentImportedContacts, search])
 
   const filteredDiscoverPeople = useMemo(() => {
     if (discoverSource === 'search_people') {
@@ -2960,24 +2979,26 @@ export function HoodsPanel({
     }
   }, [loadSupportData])
 
-  const handleScreenshotImported = useCallback(async () => {
+  const handleScreenshotImported = useCallback(async (result: ContactScreenshotImportResult) => {
     if (!selectedSport) return
     const existingGuestIds = new Set(supportData.contacts.map((contact) => contact.guest_id))
     const supabase = createSupabaseBrowserClient()
 
     try {
       const refreshedContacts = await getContactPlayerResolution(supabase)
-      const newGuestIds = refreshedContacts
-        .map((contact) => contact.guest_id)
-        .filter((guestId) => !existingGuestIds.has(guestId))
+      const createdGuestIds = result.createdContacts.map((contact) => contact.guest_id)
+      const newGuestIds = createdGuestIds.length > 0
+        ? createdGuestIds
+        : refreshedContacts
+            .map((contact) => contact.guest_id)
+            .filter((guestId) => !existingGuestIds.has(guestId))
 
       await Promise.all(
         newGuestIds.map((guestId) => setGuestSports(supabase, guestId, [selectedSport.code])),
       )
 
-      setMessage(`Imported contacts were added to your ${selectedSport.display_name} hood.`)
-      setContactComposerMode(null)
-      setContactToolsOpen(false)
+      setRecentImportedContactGuestIds(newGuestIds)
+      setMessage(`${result.created} contact${result.created === 1 ? '' : 's'} added to your ${selectedSport.display_name} hood.`)
       setHoodFilter('saved')
       await loadSupportData()
     } catch (importError) {
@@ -3027,7 +3048,7 @@ export function HoodsPanel({
     if (section !== 'hood' || hoodFilter !== 'saved') return [] as HoodPerson[]
     const query = search.trim().toLowerCase()
     const primaryKeys = new Set(savedPrimaryPeople.map((person) => person.key))
-    return hoodPeople
+    const sortedPeople = hoodPeople
       .map(applySavedOverride)
       .filter((person) =>
         person.isMyContact
@@ -3035,7 +3056,8 @@ export function HoodsPanel({
         && matchesHoodSearch(person, query),
       )
       .sort((left, right) => sortHoodPeople(left, right, openMatchCount))
-  }, [applySavedOverride, hoodFilter, hoodPeople, openMatchCount, savedPrimaryPeople, search, section])
+    return pinRecentImportedContacts(sortedPeople)
+  }, [applySavedOverride, hoodFilter, hoodPeople, openMatchCount, pinRecentImportedContacts, savedPrimaryPeople, search, section])
   const starterContactCount = useMemo(() => {
     const contactKeys = new Set<string>()
     hoodPeople
@@ -3564,9 +3586,16 @@ export function HoodsPanel({
               existingContacts={supportData.contacts}
               onParseScreenshots={onParseScreenshots}
               onImportScreenshotContacts={onImportScreenshotContacts}
-              onImported={async () => {
-                await handleScreenshotImported()
+              onImported={async (result) => {
+                await handleScreenshotImported(result)
+                if (result.created === 1 && result.skipped === 0) {
+                  setContactComposerMode(null)
+                  setContactToolsOpen(false)
+                }
+              }}
+              onDone={() => {
                 setContactComposerMode(null)
+                setContactToolsOpen(false)
               }}
             />
           </div>

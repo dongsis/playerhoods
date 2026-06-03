@@ -12,7 +12,7 @@ import { formatTimeWindow } from '@/lib/format-time'
 import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-removal'
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
 import type { UserPlayCity, VenueSport } from '@/lib/types/database'
-import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import type { ContactImportDraft, ContactScreenshotImportResult, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 
 const FALLBACK_COURT_STATE = {
   status: 'open',
@@ -1587,7 +1587,7 @@ interface Props {
     phone?: string | null
     email?: string | null
     source_file_name?: string | null
-  }>) => Promise<{ created: number; skipped: number }>
+  }>) => Promise<ContactScreenshotImportResult>
 }
 
 export function MatchesPanel({

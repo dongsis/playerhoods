@@ -32,6 +32,19 @@ export type ContactImportDraft = {
   selected_by_default: boolean
 }
 
+export type ContactScreenshotImportCreatedContact = {
+  guest_id: string
+  display_name: string
+  phone: string | null
+  email: string | null
+}
+
+export type ContactScreenshotImportResult = {
+  created: number
+  skipped: number
+  createdContacts: ContactScreenshotImportCreatedContact[]
+}
+
 type ModelCandidate = {
   display_name?: string
   phone?: string
