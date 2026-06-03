@@ -29,6 +29,24 @@ type PublicSignupLogStage =
   | 'delivery_result_record_failed'
   | 'unexpected_runtime_error'
 
+type PublicSignupSafeErrorCode =
+  | 'service_client_not_configured'
+  | 'rpc_start_failed'
+  | 'display_name_required'
+  | 'email_required'
+  | 'email_invalid'
+  | 'signup_link_not_found'
+  | 'match_not_active'
+  | 'verification_email_unavailable'
+  | 'email_send_failed'
+  | 'email_template_render_failed'
+  | 'delivery_result_record_failed'
+  | 'unexpected_public_signup_start_error'
+
+type PublicSignupActionError = Error & {
+  safeCode?: PublicSignupSafeErrorCode
+}
+
 function createPublicSignupMutationClient() {
   const serverUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -63,27 +81,54 @@ function getSignupErrorCode(error: unknown): string {
   return 'failed'
 }
 
-function getSafeErrorMessage(error: unknown): string {
+function createPublicSignupActionError(message: string, safeCode: PublicSignupSafeErrorCode): PublicSignupActionError {
+  const error = new Error(message) as PublicSignupActionError
+  error.safeCode = safeCode
+  return error
+}
+
+function getPublicSignupSafeErrorCode(error: unknown): PublicSignupSafeErrorCode | null {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'safeCode' in error &&
+    typeof (error as { safeCode?: unknown }).safeCode === 'string'
+  ) {
+    const safeCode = (error as { safeCode: string }).safeCode
+    switch (safeCode) {
+      case 'service_client_not_configured':
+      case 'rpc_start_failed':
+      case 'display_name_required':
+      case 'email_required':
+      case 'email_invalid':
+      case 'signup_link_not_found':
+      case 'match_not_active':
+      case 'verification_email_unavailable':
+      case 'email_send_failed':
+      case 'email_template_render_failed':
+      case 'delivery_result_record_failed':
+      case 'unexpected_public_signup_start_error':
+        return safeCode
+      default:
+        return null
+    }
+  }
+
   if (
     error &&
     typeof error === 'object' &&
     'message' in error &&
     typeof (error as { message?: unknown }).message === 'string'
   ) {
-    return (error as { message: string }).message
-  }
-
-  return String(error)
-}
-
-function getSafeErrorCode(error: unknown): string | null {
-  if (
-    error &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof (error as { code?: unknown }).code === 'string'
-  ) {
-    return (error as { code: string }).code
+    const message = (error as { message: string }).message
+    if (message.includes('public_signup_service_client_not_configured')) return 'service_client_not_configured'
+    if (message.includes('public_signup_email_delivery_unavailable')) return 'verification_email_unavailable'
+    if (message.includes('public_signup_email_delivery_failed')) return 'email_send_failed'
+    if (message.includes('display_name_required')) return 'display_name_required'
+    if (message.includes('email_required')) return 'email_required'
+    if (message.includes('email_invalid')) return 'email_invalid'
+    if (message.includes('signup_link_not_found')) return 'signup_link_not_found'
+    if (message.includes('match_not_active')) return 'match_not_active'
   }
 
   return null
@@ -91,15 +136,25 @@ function getSafeErrorCode(error: unknown): string | null {
 
 function logPublicSignupActionFailure(
   stage: PublicSignupLogStage,
-  error?: unknown,
-  context?: { matchId?: string | null; signupId?: string | null; status?: string | null },
+  context?: {
+    safeErrorCode?: PublicSignupSafeErrorCode | null
+    matchId?: string | null
+    signupId?: string | null
+    status?: string | null
+    hasError?: boolean
+    isProviderError?: boolean
+  },
 ) {
   console.error('[public-signup] action failed', {
     stage,
+    operation: 'public_match_signup_start',
+    action: 'startPublicMatchSignupAction',
+    ...(context?.safeErrorCode ? { safe_error_code: context.safeErrorCode } : {}),
+    ...(context?.hasError ? { has_error: true } : {}),
+    ...(context?.isProviderError ? { is_provider_error: true } : {}),
     ...(context?.matchId ? { match_id: context.matchId } : {}),
     ...(context?.signupId ? { signup_id: context.signupId } : {}),
     ...(context?.status ? { status: context.status } : {}),
-    ...(error ? { error_code: getSafeErrorCode(error), error_message: getSafeErrorMessage(error) } : {}),
   })
 }
 
@@ -163,7 +218,10 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
   try {
     supabase = createPublicSignupMutationClient()
   } catch (error) {
-    logPublicSignupActionFailure('service_client_not_configured', error)
+    logPublicSignupActionFailure('service_client_not_configured', {
+      safeErrorCode: getPublicSignupSafeErrorCode(error) ?? 'service_client_not_configured',
+      hasError: true,
+    })
     redirectToSignup(token, { error: getSignupErrorCode(error) })
   }
 
@@ -182,7 +240,10 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
     }
     data = result.data
   } catch (error) {
-    logPublicSignupActionFailure('rpc_start_failed', error)
+    logPublicSignupActionFailure('rpc_start_failed', {
+      safeErrorCode: getPublicSignupSafeErrorCode(error) ?? 'rpc_start_failed',
+      hasError: true,
+    })
     redirectToSignup(token, { error: getSignupErrorCode(error) })
   }
 
@@ -203,7 +264,8 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
     let deliveryError: string | null = 'delivery_disabled'
 
     if (!publicSignupVerificationEmailDeliveryEnabled()) {
-      logPublicSignupActionFailure('email_delivery_disabled', undefined, {
+      logPublicSignupActionFailure('email_delivery_disabled', {
+        safeErrorCode: 'verification_email_unavailable',
         matchId: signup.match_id,
         signupId: signup.signup_id,
         status,
@@ -218,7 +280,9 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
           throw deliveryAuditError
         }
       } catch (auditError) {
-        logPublicSignupActionFailure('delivery_result_record_failed', auditError, {
+        logPublicSignupActionFailure('delivery_result_record_failed', {
+          safeErrorCode: getPublicSignupSafeErrorCode(auditError) ?? 'delivery_result_record_failed',
+          hasError: true,
           matchId: signup.match_id,
           signupId: signup.signup_id,
           status,
@@ -244,18 +308,27 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
         },
       })
       deliveryStatus = deliveryResult.ok ? 'sent' : 'failed'
-      deliveryError = deliveryResult.ok ? null : 'send_failed'
+      deliveryError = deliveryResult.ok ? null : 'email_send_failed'
       if (!deliveryResult.ok) {
-        logPublicSignupActionFailure('email_send_failed', new Error('public_signup_email_delivery_failed'), {
+        logPublicSignupActionFailure('email_send_failed', {
+          safeErrorCode: 'email_send_failed',
+          hasError: true,
+          isProviderError: true,
           matchId: signup.match_id,
           signupId: signup.signup_id,
           status,
         })
-        throw new Error('public_signup_email_delivery_failed')
+        throw createPublicSignupActionError('public_signup_email_delivery_failed', 'email_send_failed')
       }
     } catch (error) {
-      if (!getSafeErrorMessage(error).includes('public_signup_email_delivery_failed')) {
-        logPublicSignupActionFailure('email_template_failed', error, {
+      const safeErrorCode = getPublicSignupSafeErrorCode(error) ?? 'email_template_render_failed'
+      deliveryStatus = 'failed'
+      deliveryError = safeErrorCode === 'email_send_failed' ? 'email_send_failed' : 'email_template_render_failed'
+
+      if (safeErrorCode !== 'email_send_failed') {
+        logPublicSignupActionFailure('email_template_failed', {
+          safeErrorCode,
+          hasError: true,
           matchId: signup.match_id,
           signupId: signup.signup_id,
           status,
@@ -272,14 +345,16 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
           throw deliveryAuditError
         }
       } catch (auditError) {
-        logPublicSignupActionFailure('delivery_result_record_failed', auditError, {
+        logPublicSignupActionFailure('delivery_result_record_failed', {
+          safeErrorCode: getPublicSignupSafeErrorCode(auditError) ?? 'delivery_result_record_failed',
+          hasError: true,
           matchId: signup.match_id,
           signupId: signup.signup_id,
           status,
         })
       }
 
-      redirectToSignup(token, { error: getSignupErrorCode(error) })
+      redirectToSignup(token, { error: 'email-delivery-unavailable' })
     }
 
     try {
@@ -292,15 +367,22 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
         throw deliveryAuditError
       }
     } catch (auditError) {
-      logPublicSignupActionFailure('delivery_result_record_failed', auditError, {
+      logPublicSignupActionFailure('delivery_result_record_failed', {
+        safeErrorCode: getPublicSignupSafeErrorCode(auditError) ?? 'delivery_result_record_failed',
+        hasError: true,
         matchId: signup.match_id,
         signupId: signup.signup_id,
         status,
       })
     }
   } else if (verificationRequired) {
-    const payloadError = new Error('public_signup_email_delivery_failed')
-    logPublicSignupActionFailure('unexpected_runtime_error', payloadError, {
+    const payloadError = createPublicSignupActionError(
+      'public_signup_email_delivery_failed',
+      'unexpected_public_signup_start_error',
+    )
+    logPublicSignupActionFailure('unexpected_runtime_error', {
+      safeErrorCode: getPublicSignupSafeErrorCode(payloadError) ?? 'unexpected_public_signup_start_error',
+      hasError: true,
       matchId: signup?.match_id,
       signupId: signup?.signup_id,
       status,
