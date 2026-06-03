@@ -2,7 +2,7 @@
 
 Date: 2026-06-02
 
-Status: audit-only candidate report. Do not use this document as approval to mutate venue data.
+Status: candidate audit report. The 12 listed rows were later approved for the exact whitelist migration in PR #84; do not use this document as approval for any broader venue data mutation.
 
 ## Source
 
@@ -12,7 +12,7 @@ Status: audit-only candidate report. Do not use this document as approval to mut
 - Audit rows parsed: 329.
 - Stable source id used in this report: `google_place_id` when present, otherwise synthetic seed row number.
 
-No production credentials, Supabase Remote connection, database mutation, migration, or provider traffic was used.
+No production credentials, Supabase Remote connection, database mutation, or provider traffic was used to generate this report.
 
 ## Summary Counts
 

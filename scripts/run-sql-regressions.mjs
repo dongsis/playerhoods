@@ -115,6 +115,10 @@ const suites = [
     file: 'tests/test_runner_issue73_sms_out_disambiguation.sql',
     functionName: 'test_runner_issue73_sms_out_disambiguation',
   },
+  {
+    file: 'tests/test_runner_issue84_venue_cleanup.sql',
+    functionName: 'test_runner_issue84_venue_cleanup',
+  },
 ]
 
 for (const suite of suites) {
