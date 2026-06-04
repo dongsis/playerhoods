@@ -139,7 +139,7 @@ export async function sendPublicMatchSignupVerificationEmail(
 
   return sendEmail(
     input.destination,
-    'Verify your email for this PlayerHoods match',
+    'Verify your email to request a spot',
     publicMatchSignupVerificationEmail(
       {
         matchId: input.matchInfo.matchId,
