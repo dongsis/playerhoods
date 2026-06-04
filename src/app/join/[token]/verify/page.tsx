@@ -111,35 +111,6 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           margin: 14px 0 0;
         }
 
-        .public-signup-verify-status {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          margin-top: 22px;
-        }
-
-        .public-signup-verify-pill {
-          border-radius: 999px;
-          border: 1px solid #bfdbfe;
-          background: #eff6ff;
-          color: #1d4ed8;
-          font-size: 0.78rem;
-          font-weight: 850;
-          padding: 7px 11px;
-        }
-
-        .public-signup-verify-pill.green {
-          border-color: #a7f3d0;
-          background: #ecfdf5;
-          color: #047857;
-        }
-
-        .public-signup-verify-pill.orange {
-          border-color: #fed7aa;
-          background: #fff7ed;
-          color: #b45309;
-        }
-
         .public-signup-verify-link {
           display: inline-flex;
           margin-top: 24px;
@@ -174,21 +145,13 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
         <section className="public-signup-verify-card">
           <p className="public-signup-verify-kicker">Open to Join</p>
           <h1 className="public-signup-verify-title">
-            {isVerified ? 'Email verified' : errorMessage ? 'Verification failed' : 'Verify your email'}
+            {isVerified ? 'Request sent' : errorMessage ? 'Verification failed' : 'Verify your email'}
           </h1>
           <p className="public-signup-verify-body">
             {isVerified
-              ? 'Thanks. Your request is pending host approval. You are not in the confirmed lineup yet.'
+              ? "Thanks. Your request has been sent to the host. The host will add you to the lineup if there's a spot."
               : errorMessage ?? 'Confirm this signup request. The host will still need to add you to the lineup.'}
           </p>
-
-          {isVerified ? (
-            <div className="public-signup-verify-status" aria-label="Signup status">
-              <span className="public-signup-verify-pill">Signed up by public link</span>
-              <span className="public-signup-verify-pill green">Email verified</span>
-              <span className="public-signup-verify-pill orange">Pending approval</span>
-            </div>
-          ) : null}
 
           {isPendingConfirmation ? (
             <form action={verifyAction} className="public-signup-verify-form">
@@ -201,7 +164,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           ) : null}
 
           <Link href={`/join/${publicToken}`} className="public-signup-verify-link">
-            Back to match signup
+            Back to match
           </Link>
         </section>
       </main>
