@@ -17,7 +17,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-04 - STRUCTURAL-20260604-join-link-request-a-spot-v2
 
 **Type:** Structural Release
-**Code Commits:** PR #101 implementation commit `d0a5f3a43c3368d33c8ac6070fae4304ff686044`; PR head after initial changelog update `e3bc2cb07e3ca65c66e9e1ce8ad267c758edb32f`; final PR head and merge commit pending
+**Code Commits:** PR #101 branch history is authoritative until merge. Known functional commits: implementation `d0a5f3a43c3368d33c8ac6070fae4304ff686044`; non-mutating GET review fix `edf9c17e2a120190bd946e0853702ed6061fee82`. Known documentation commit: initial changelog update `e3bc2cb07e3ca65c66e9e1ce8ad267c758edb32f`. Final PR head and merge commit pending.
 **Migration:** None
 **Status:** GitHub PR / Vercel Preview only; Ready for Review; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
 
