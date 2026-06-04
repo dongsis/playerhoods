@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-04 - STRUCTURAL-20260604-join-link-request-a-spot-v2
 
 **Type:** Structural Release
-**Code Commits:** PR #101 branch history is authoritative until merge. Known functional commits: implementation `d0a5f3a43c3368d33c8ac6070fae4304ff686044`; non-mutating GET review fix `edf9c17e2a120190bd946e0853702ed6061fee82`. Known documentation commit: initial changelog update `e3bc2cb07e3ca65c66e9e1ce8ad267c758edb32f`. Final PR head and merge commit pending.
+**Code Commits:** PR #101 merged at `7c551aadd568f0d19f61e6edd796d61fc7f683e8`. Final PR head before merge: `7df41ecb88736753219d33fd99803c0aaef04fae`.
 **Migration:** None
-**Status:** GitHub PR / Vercel Preview only; Ready for Review; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+**Status:** Production deployed / code aligned; full production shared-link browser/email smoke pending; no Supabase Remote change
 
 ### Summary
 
@@ -43,29 +43,23 @@ PR #101 updates the player-facing Join by Shared Link flow to the revised v2 `Re
 | Build/typecheck | Passed locally and in GitHub PR check | `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
 | Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
 | SQL regression | Passed in GitHub; not run locally | GitHub SQL regression check passed for PR #101 and covers repeated verification idempotency. Local SQL runner was not executed because Docker Desktop Linux engine was unavailable. |
-| Vercel Preview | Passed deploy; smoke pending | Preview only; no production deployment performed by Codex |
+| Vercel Preview | Passed deploy; smoke not run | Preview deploy passed before merge; no real email/browser smoke was run |
+| Vercel Production | Deployed | Vercel auto-deploy for merge commit `7c551aadd568f0d19f61e6edd796d61fc7f683e8` completed successfully: `https://vercel.com/nancys-projects-128e326c/playerhoods-codex/2yK8VKuvsYSESvPeQT5PTPGkhKD8` |
 | Supabase Remote | Not changed | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
-| Production verification | Not verified | Requires owner-approved merge/deploy and controlled public join-link smoke |
+| Production smoke | Not run | Full shared-link browser/email smoke still needs a safe join link and disposable inbox |
 
-### Release Order
+### Post-Merge Status
 
-1. Keep PR #101 unmerged until owner approval and green review/check gates.
-2. Before merge, confirm:
-   - Public join link opens and shows `Request a spot`.
-   - Name plus email submit shows `Check your email` with match details and email-finding guidance.
-   - Verification link GET is non-mutating and automatically submits the POST finishing step for normal users.
-   - The POST redirects directly to `Request sent` after successful/idempotent verification, and the success GET confirms the finalized signup before rendering.
-   - No second Verify Email page/button or second user decision appears in the normal path.
-   - Repeated verification does not duplicate requests, add the player to lineup, or set organizer approval.
-   - Browser smoke remains accepted as a caveat unless a safe enabled join link and disposable inbox/verification URL are available.
-3. Merge only after owner approval.
-4. Let Vercel Production auto-deploy the merge commit.
-5. Run controlled production smoke with a fresh join link and fresh verification email; do not reuse exposed tokenized links.
+1. PR #101 merged to `main` at merge commit `7c551aadd568f0d19f61e6edd796d61fc7f683e8`.
+2. Vercel auto-deploy for the merge commit completed successfully.
+3. No Supabase migration was added or applied.
+4. No production smoke was run and no real email delivery was triggered by Codex.
+5. Remaining before full verification: run controlled production smoke with a fresh join link and disposable inbox; do not reuse exposed tokenized links.
 
 ### Rollback
 
-- Code rollback: revert the PR #101 merge commit or redeploy the previous Vercel Production commit.
+- Code rollback: revert merge commit `7c551aadd568f0d19f61e6edd796d61fc7f683e8` or redeploy the previous Vercel Production commit.
 - Database rollback: none required because this patch has no migration or remote Supabase change.
 - Provider rollback: none performed by Codex; no provider configuration was changed.
 - Do not run production notification/email/SMS drains during rollback unless separately approved.
@@ -73,7 +67,7 @@ PR #101 updates the player-facing Join by Shared Link flow to the revised v2 `Re
 ### Known Risks
 
 - Local SQL regression was not run because Docker Desktop Linux engine was unavailable; GitHub SQL regression passed.
-- Preview/browser smoke still needs a safe public join link and disposable test email to verify the end-to-end email click path without exposing tokens or PII.
+- Full real end-to-end shared-link browser/email smoke still needs a safe public join link and disposable test email to verify the production email click path without exposing tokens or PII.
 
 ## 2026-06-04 - UI-20260604-issue96-public-signup-pending-polish
 
