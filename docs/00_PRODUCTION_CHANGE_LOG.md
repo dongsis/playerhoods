@@ -14,6 +14,67 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-04 - STRUCTURAL-20260604-join-link-request-a-spot-v2
+
+**Type:** Structural Release
+**Code Commits:** PR #101 branch history is authoritative until merge. Known functional commits: implementation `d0a5f3a43c3368d33c8ac6070fae4304ff686044`; non-mutating GET review fix `edf9c17e2a120190bd946e0853702ed6061fee82`. Known documentation commit: initial changelog update `e3bc2cb07e3ca65c66e9e1ce8ad267c758edb32f`. Final PR head and merge commit pending.
+**Migration:** None
+**Status:** GitHub PR / Vercel Preview only; Ready for Review; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+
+### Summary
+
+PR #101 updates the player-facing Join by Shared Link flow to the revised v2 `Request a spot` copy and one-click email verification behavior:
+
+- Public join-link page uses `Request a spot` language and collects Name plus Email only.
+- After submit, the player sees `Check your email` with match context and inbox/spam/junk/safe-sender guidance.
+- Verification email subject/body now use `Verify your email to request a spot` language.
+- Verification link GET is non-mutating and renders a lightweight finishing page with match context.
+- The finishing page automatically POSTs to finalize the pending request, then redirects to `Request sent`; no second user decision is required.
+- The `Request sent` state performs a read-only backend confirmation that the signup was finalized and has an active participant before rendering success.
+- If JavaScript is unavailable, a fallback `Finish request` button can submit the same idempotent POST.
+- Success copy includes `We'll email you when the host responds.`
+- Focused repeated-verification SQL regression coverage was added.
+- No Host-management copy, MatchToolsSection, MatchManagePanel, Post Player Call, Hood player-call behavior, DB schema, Supabase migration, SMS, marketing campaign, or provider configuration changed.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Passed in GitHub; not run locally | GitHub SQL regression check passed for PR #101 and covers repeated verification idempotency. Local SQL runner was not executed because Docker Desktop Linux engine was unavailable. |
+| Vercel Preview | Passed deploy; smoke pending | Preview only; no production deployment performed by Codex |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
+| Production verification | Not verified | Requires owner-approved merge/deploy and controlled public join-link smoke |
+
+### Release Order
+
+1. Keep PR #101 unmerged until owner approval and green review/check gates.
+2. Before merge, confirm:
+   - Public join link opens and shows `Request a spot`.
+   - Name plus email submit shows `Check your email` with match details and email-finding guidance.
+   - Verification link GET is non-mutating and automatically submits the POST finishing step for normal users.
+   - The POST redirects directly to `Request sent` after successful/idempotent verification, and the success GET confirms the finalized signup before rendering.
+   - No second Verify Email page/button or second user decision appears in the normal path.
+   - Repeated verification does not duplicate requests, add the player to lineup, or set organizer approval.
+   - Browser smoke remains accepted as a caveat unless a safe enabled join link and disposable inbox/verification URL are available.
+3. Merge only after owner approval.
+4. Let Vercel Production auto-deploy the merge commit.
+5. Run controlled production smoke with a fresh join link and fresh verification email; do not reuse exposed tokenized links.
+
+### Rollback
+
+- Code rollback: revert the PR #101 merge commit or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this patch has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- Local SQL regression was not run because Docker Desktop Linux engine was unavailable; GitHub SQL regression passed.
+- Preview/browser smoke still needs a safe public join link and disposable test email to verify the end-to-end email click path without exposing tokens or PII.
+
 ## 2026-06-04 - UI-20260604-issue96-public-signup-pending-polish
 
 **Type:** UI Polish

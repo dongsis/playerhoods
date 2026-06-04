@@ -60,6 +60,12 @@ function buildMatchDetails(m: MatchInfo): EmailDetail[] {
   ]
 }
 
+function formatEmailMatchKind(value: string | null | undefined): string {
+  const normalized = value?.replace(/_/g, ' ').trim().toLowerCase()
+  if (!normalized) return 'match'
+  return /\bmatch\b/i.test(normalized) ? normalized : `${normalized} match`
+}
+
 export function gameFormedEmail(m: MatchInfo): string {
   return renderEmailLayout({
     eyebrow: 'Match update',
@@ -205,19 +211,20 @@ export function publicMatchSignupVerificationEmail(
 ): string {
   const name = recipientName?.trim() || 'there'
   const venueName = m.venueName || 'the venue'
+  const matchKind = formatEmailMatchKind(m.gameType)
 
   return renderEmailLayout({
-    eyebrow: 'Email verification',
+    eyebrow: 'JOIN LINK',
     title: 'Verify your email',
-    introHtml: `Hi ${escapeHtml(name)},<br><br>Verify your email to finish asking for a spot in the <strong>${escapeHtml(m.gameType || 'match')}</strong> at <strong>${escapeHtml(venueName)}</strong>.`,
+    introHtml: `Hi ${escapeHtml(name)},<br><br>Click once to verify your email and send your spot request for this <strong>${escapeHtml(matchKind)}</strong> at <strong>${escapeHtml(venueName)}</strong>.`,
     details: buildMatchDetails(m),
     ctaLabel: 'Verify email',
     ctaUrl: verificationUrl,
-    ctaHint: 'This creates a pending request. The host still needs to add you to the lineup.',
-    secondaryTitle: 'What happens next',
+    ctaHint: 'This sends a request only. The host still needs to add you to the lineup.',
+    secondaryTitle: 'Privacy note',
     secondaryBody:
-      'After verification, the host can review your request. You are not confirmed for the match until the host adds you to the lineup.',
-    footerNote: 'You received this because this email was used for a public PlayerHoods match signup.',
+      'Your contact details will not be shared with the host.',
+    footerNote: 'You received this because this email was used to request a spot in a PlayerHoods match.',
     siteUrl: m.siteUrl,
   })
 }

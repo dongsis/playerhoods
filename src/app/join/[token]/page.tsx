@@ -71,19 +71,19 @@ function getErrorMessage(code: string | undefined): string | null {
       return 'Name is required.'
     case 'contact-required':
     case 'email-required':
-      return 'Enter an email or phone to sign up.'
+      return 'Enter an email to request a spot.'
     case 'sms-coming-next':
-      return 'SMS verification is coming next. Please use email for this signup.'
+      return 'SMS verification is coming next. Please use email for this request.'
     case 'email-invalid':
       return 'Enter a valid email address.'
     case 'match-not-active':
-      return 'This match is no longer open for signup.'
+      return 'This match is no longer taking spot requests.'
     case 'link-not-found':
-      return 'This signup link is no longer available.'
+      return 'This join link is no longer available.'
     case 'email-delivery-unavailable':
       return 'Could not send the verification email. Please try again.'
     case 'failed':
-      return 'Could not submit your signup. Please try again.'
+      return 'Could not request a spot. Please try again.'
     default:
       return null
   }
@@ -110,12 +110,9 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' - ') || 'Time to be confirmed'
   const venueName = context.venue_name ?? 'Venue to be confirmed'
   const pageError = getErrorMessage(pageParams.error)
-  const pageNotice =
-    pageParams.notice === 'check-email'
-      ? "If this signup can be verified, we'll send a verification email shortly. Please wait a few minutes before requesting another one."
-      : pageParams.notice === 'already-submitted'
-        ? 'If this email has already been verified, the request is already waiting for the host.'
-        : null
+  const isCheckEmail = pageParams.notice === 'check-email'
+  const isAlreadySubmitted = pageParams.notice === 'already-submitted'
+  const showRequestForm = context.signup_open && !isCheckEmail && !isAlreadySubmitted
 
   return (
     <div className="public-signup-page">
@@ -182,6 +179,14 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           background: #f8fbff;
         }
 
+        .public-signup-summary-heading {
+          color: #7c8eaa;
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
         .public-signup-summary-type {
           font-size: 1.15rem;
           font-weight: 850;
@@ -194,6 +199,12 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
         }
 
         .public-signup-summary-time {
+          color: #526784;
+          font-size: 0.95rem;
+          font-weight: 700;
+        }
+
+        .public-signup-summary-host {
           color: #526784;
           font-size: 0.95rem;
           font-weight: 700;
@@ -232,12 +243,6 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           margin: -2px 0 0;
         }
 
-        .public-signup-input-label {
-          color: #526784;
-          font-size: 0.74rem;
-          font-weight: 820;
-        }
-
         .public-signup-input {
           width: 100%;
           border: 1px solid #cbd8ea;
@@ -260,6 +265,17 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
 
         .public-signup-check input {
           margin-top: 3px;
+        }
+
+        .public-signup-check-copy {
+          display: grid;
+          gap: 2px;
+        }
+
+        .public-signup-check-note {
+          color: #526784;
+          font-size: 0.8rem;
+          font-weight: 650;
         }
 
         .public-signup-button {
@@ -298,6 +314,37 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           color: #b42318;
         }
 
+        .public-signup-note,
+        .public-signup-help {
+          color: #526784;
+          font-size: 0.92rem;
+          font-weight: 700;
+          line-height: 1.5;
+          margin: 12px 0 0;
+          max-width: 620px;
+        }
+
+        .public-signup-help {
+          background: #f8fbff;
+          border: 1px solid #d9e6f4;
+          border-radius: 16px;
+          padding: 12px 14px;
+        }
+
+        .public-signup-help a {
+          color: #2554d9;
+          font-weight: 850;
+        }
+
+        .public-signup-link {
+          display: inline-flex;
+          margin-top: 22px;
+          color: #2554d9;
+          font-size: 0.9rem;
+          font-weight: 850;
+          text-decoration: none;
+        }
+
         .public-signup-footer {
           color: #6b7f9f;
           font-size: 0.82rem;
@@ -312,59 +359,85 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
         </div>
 
         <section className="public-signup-card">
-          <p className="public-signup-kicker">Open to Join</p>
-          <h1 className="public-signup-title">{context.host_display_name} opened this match</h1>
-          <p className="public-signup-subtext">
-            Add your name and a verified contact method to ask for a spot. The host still needs to add you to the lineup.
-          </p>
+          <p className="public-signup-kicker">Join Link</p>
+          <h1 className="public-signup-title">
+            {isAlreadySubmitted ? 'Request already sent' : isCheckEmail ? 'Check your email' : 'Request a spot in this match'}
+          </h1>
+          {isAlreadySubmitted ? (
+            <p className="public-signup-subtext">
+              Your request is already waiting for the host. We&apos;ll email you when the host responds.
+            </p>
+          ) : isCheckEmail ? (
+            <>
+              <p className="public-signup-subtext">
+                Verify your email to send your request for this match to the host. Your contact information will not be shared with the host.
+              </p>
+              <p className="public-signup-note">
+                We sent you a verification link. Click it once to send your request.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="public-signup-subtext">
+                Add your name and email. Once verified, your request will be sent to the host.
+              </p>
+              <p className="public-signup-note">
+                The host still needs to add you to the lineup.
+              </p>
+            </>
+          )}
 
           <div className="public-signup-summary" aria-label="Match summary">
+            <div className="public-signup-summary-heading">Match details</div>
             <div className="public-signup-summary-type">{matchType}</div>
             <div className="public-signup-summary-venue">{venueName}</div>
             <div className="public-signup-summary-time">{matchDateTime}</div>
+            <div className="public-signup-summary-host">Host: {context.host_display_name || 'the host'}</div>
           </div>
 
-          {pageNotice ? <p className="public-signup-message success">{pageNotice}</p> : null}
           {pageError ? <p className="public-signup-message error">{pageError}</p> : null}
 
-          {context.signup_open ? (
+          {isCheckEmail ? (
+            <>
+              <p className="public-signup-help">
+                Can&apos;t find the email? Check your inbox first, then your spam or junk folder. To help future PlayerHoods emails arrive, add{' '}
+                <a href="mailto:noreply@playerhoods.com">noreply@playerhoods.com</a> to your safe sender list.
+              </p>
+              <Link href={`/join/${token}`} className="public-signup-link">
+                Back to match details
+              </Link>
+            </>
+          ) : isAlreadySubmitted ? (
+            <Link href={`/join/${token}`} className="public-signup-link">
+              Back to match details
+            </Link>
+          ) : showRequestForm ? (
             <form action={signupAction} className="public-signup-form">
               <label className="public-signup-field">
                 <span className="public-signup-label">Name</span>
                 <input className="public-signup-input" name="display_name" autoComplete="name" required maxLength={120} />
               </label>
 
-              <fieldset className="public-signup-contact-group">
-                <legend className="public-signup-label">Email or phone</legend>
-                <p className="public-signup-helper">
-                  Email verification is available now. SMS verification is coming next; please use email for this signup.
-                </p>
-
-                <label className="public-signup-field">
-                  <span className="public-signup-input-label">Email</span>
-                  <input className="public-signup-input" name="email" type="email" autoComplete="email" />
-                </label>
-
-                <label className="public-signup-field">
-                  <span className="public-signup-input-label">Phone</span>
-                  <input className="public-signup-input" name="phone" type="tel" autoComplete="tel" />
-                </label>
-              </fieldset>
+              <label className="public-signup-field">
+                <span className="public-signup-label">Email</span>
+                <input className="public-signup-input" name="email" type="email" autoComplete="email" required />
+              </label>
 
               <label className="public-signup-check">
                 <input name="marketing_email_opt_in" type="checkbox" />
-                <span>
-                  Send me occasional PlayerHoods updates by email. Match-related verification and status emails are separate.
+                <span className="public-signup-check-copy">
+                  <span>Send me occasional PlayerHoods updates.</span>
+                  <span className="public-signup-check-note">Match verification and status emails are separate.</span>
                 </span>
               </label>
 
               <button type="submit" className="public-signup-button">
-                I'd like to play
+                Request a spot
               </button>
             </form>
           ) : (
             <p className="public-signup-message error">
-              This match is not open for public signup right now.
+              This match is not taking spot requests right now.
             </p>
           )}
         </section>

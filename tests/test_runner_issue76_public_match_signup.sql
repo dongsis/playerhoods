@@ -31,6 +31,7 @@ DECLARE
   v_missing_config_signup record;
   v_invalid_config_signup record;
   v_verify record;
+  v_verify_repeat record;
   v_verify_two record;
   v_rerequest_verify record;
   v_token text;
@@ -725,6 +726,34 @@ BEGIN
     'status=' || v_mp.status::text
       || ', join_method=' || v_mp.join_method::text
       || ', via=' || coalesce(v_mp.participant_accepted_via, 'null')
+  );
+
+  SELECT * INTO v_verify_repeat
+  FROM public.rpc_public_match_signup_verify(v_link.public_token, v_signup.signup_id, v_token)
+  LIMIT 1;
+
+  SELECT count(*)::integer INTO v_participant_count
+  FROM public.match_participants
+  WHERE match_id = v_match
+    AND guest_id = v_mp.guest_id
+    AND removed_at IS NULL;
+
+  SELECT * INTO v_mp
+  FROM public.match_participants
+  WHERE id = v_verify.match_participant_id;
+
+  INSERT INTO _issue76_results VALUES (
+    'repeated verification click is idempotent and keeps request pending host action',
+    v_verify_repeat.match_participant_id = v_verify.match_participant_id
+      AND v_participant_count = 1
+      AND v_mp.status = 'pending'
+      AND v_mp.org_approved_at IS NULL
+      AND v_mp.confirmed_at IS NULL,
+    'repeat_participant=' || coalesce(v_verify_repeat.match_participant_id::text, 'missing')
+      || ', original_participant=' || coalesce(v_verify.match_participant_id::text, 'missing')
+      || ', active_participants=' || coalesce(v_participant_count::text, 'null')
+      || ', status=' || coalesce(v_mp.status::text, 'null')
+      || ', org_approved_at=' || coalesce(v_mp.org_approved_at::text, 'null')
   );
 
   SELECT count(*)::integer INTO v_host_owned_count
