@@ -14,6 +14,62 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-04 - PATCH-20260604-join-link-request-a-spot-v2
+
+**Type:** Patch
+**Code Commit:** PR #101 implementation commit `d0a5f3a43c3368d33c8ac6070fae4304ff686044`; changelog follow-up commit pending
+**Migration:** None
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+
+### Summary
+
+PR #101 updates the player-facing Join by Shared Link flow to the revised v2 `Request a spot` copy and one-click email verification behavior:
+
+- Public join-link page uses `Request a spot` language and collects Name plus Email only.
+- After submit, the player sees `Check your email` with match context and inbox/spam/junk/safe-sender guidance.
+- Verification email subject/body now use `Verify your email to request a spot` language.
+- Verification links finalize the pending request directly and redirect to `Request sent`; no second Verify Email page/button is shown.
+- Success copy includes `We'll email you when the host responds.`
+- Focused repeated-verification SQL regression coverage was added.
+- No Host-management copy, MatchToolsSection, MatchManagePanel, Post Player Call, Hood player-call behavior, DB schema, Supabase migration, SMS, marketing campaign, or provider configuration changed.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Passed in GitHub; not run locally | GitHub SQL regression check passed. Local SQL runner was not executed because Docker Desktop Linux engine was unavailable. |
+| Vercel Preview | Passed deploy; smoke pending | Preview only; no production deployment performed by Codex |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
+| Production verification | Not verified | Requires owner-approved merge/deploy and controlled public join-link smoke |
+
+### Release Order
+
+1. Keep PR #101 Draft until CI/reviewer or preview smoke verifies repeated verification idempotency.
+2. Before Ready for Review, confirm:
+   - Public join link opens and shows `Request a spot`.
+   - Name plus email submit shows `Check your email` with match details and email-finding guidance.
+   - Verification link redirects directly to `Request sent`.
+   - No second Verify Email page/button appears.
+   - Repeated verification does not duplicate requests, add the player to lineup, or set organizer approval.
+3. Merge only after owner approval and green review/check gates.
+4. Let Vercel Production auto-deploy the merge commit.
+5. Run controlled production smoke with a fresh join link and fresh verification email; do not reuse exposed tokenized links.
+
+### Rollback
+
+- Code rollback: revert the PR #101 merge commit or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this patch has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- Local SQL regression was not run because Docker Desktop Linux engine was unavailable; GitHub SQL regression passed.
+- Preview/browser smoke still needs a safe public join link and disposable test email to verify the end-to-end email click path without exposing tokens or PII.
+
 ## 2026-06-04 - UI-20260604-issue96-public-signup-pending-polish
 
 **Type:** UI Polish
