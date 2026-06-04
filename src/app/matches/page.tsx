@@ -6,8 +6,7 @@ import { getMatchListData } from '@/lib/api/matches'
 import { isSuperAdmin, getMyAdminVenues } from '@/lib/api/venues'
 import type { Profile } from '@/lib/types/database'
 import { BrandLogo } from '@/app/components/BrandLogo'
-import { MatchesShell } from './MatchesShell'
-import { CreateMatchInline } from './CreateMatchInline'
+import { MatchesPageClient } from './MatchesPageClient'
 
 export default async function MatchesPage() {
   const user = await getUser()
@@ -30,50 +29,25 @@ export default async function MatchesPage() {
   return (
     <div className="min-h-screen bg-[#F0F7FF]">
       <div className="mx-auto max-w-[1040px] px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <BrandLogo variant="horizontal" />
-      </div>
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-label text-[#94A3B8]">
-            PlayerHoods
-          </p>
-          <h1 className="text-h1 mt-2 text-[#1E293B]">Matches</h1>
-          <p className="text-body-main mt-2 text-[#64748B]">
-            Stay on top of upcoming sessions, invitations, and recent match history.
-          </p>
+        <div className="mb-5">
+          <BrandLogo variant="horizontal" />
         </div>
+        <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-h1 text-[#1E293B]">Matches</h1>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/dashboard"
-            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#0d6efd]/30 hover:bg-[#eff6ff]"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/profile"
-            className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#0d6efd]/30 hover:bg-[#eff6ff]"
-          >
-            Profile
-          </Link>
           {isAdmin ? (
-            <Link
-              href="/admin/venues"
-              className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#0d6efd]/30 hover:bg-[#eff6ff]"
-            >
-              Venue Admin
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/admin/venues"
+                className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#1E293B] transition hover:border-[#0d6efd]/30 hover:bg-[#eff6ff]"
+              >
+                Venue Admin
+              </Link>
+            </div>
           ) : null}
-        </div>
-      </header>
+        </header>
 
-      <div className="space-y-8">
-        <MatchesShell items={items} userId={user.id} />
-        <div id="create-match">
-          <CreateMatchInline defaultVenueId={defaultVenueId} />
-        </div>
-      </div>
+        <MatchesPageClient items={items} userId={user.id} defaultVenueId={defaultVenueId} />
       </div>
     </div>
   )

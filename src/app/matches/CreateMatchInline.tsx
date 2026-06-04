@@ -31,7 +31,6 @@ import { getInviteCircleList, getInviteCircleSourceLabel, saveContactPlayer } fr
 import { createRosterGuest, getContactPlayerResolution, type ContactPlayerResolved } from '@/lib/api/roster'
 import { getContactInvitationDeliveryStatus } from '@/lib/contact-communication'
 import { getAvailabilityStatusLabel } from '@/lib/profile-options'
-import { getVenueDisplayName } from '@/lib/venues/display'
 import type { AvailabilityStatus, Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat, UserPlayCity, VenueSport } from '@/lib/types/database'
 
 type TooltipState = { kind: 'group-members'; groupId: string } | null
@@ -90,6 +89,14 @@ type CourtOption = {
   label: string
 }
 
+type CreateFlowStep = 'details' | 'players' | 'review'
+
+const CREATE_FLOW_STEPS: { key: CreateFlowStep; label: string }[] = [
+  { key: 'details', label: 'Details' },
+  { key: 'players', label: 'Players' },
+  { key: 'review', label: 'Review' },
+]
+
 const DEFAULT_COURT_OPTIONS: CourtOption[] = Array.from({ length: 20 }, (_, index) => ({
   id: `fallback-crt-${index + 1}`,
   label: `crt ${index + 1}`,
@@ -132,21 +139,20 @@ const DS_LABEL = 'text-label mb-1 block'
 const ADD_PLAYERS_SECTION_LABEL = 'text-[9px] font-extrabold leading-[1.2] tracking-normal normal-case'
 const DS_FIELD =
   'text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10'
+const DS_COMPACT_FIELD =
+  'h-9 w-full rounded-xl border border-[#D7E2F0] bg-white px-3 text-[13px] font-bold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10'
+const DS_COMPACT_CHIP =
+  'inline-flex h-8 min-w-8 items-center justify-center rounded-xl border px-2.5 text-[13px] font-black transition'
 const DS_OPTION_BUTTON =
-  'text-body-main rounded-xl border px-4 py-2.5 font-semibold transition focus:outline-none focus:ring-4 focus:ring-[#0d6efd]/10'
+  'text-body-main inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-center font-semibold transition focus:outline-none focus:ring-4 focus:ring-[#0d6efd]/10'
 const DS_OPTION_SELECTED = 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] shadow-[0_10px_22px_-20px_rgba(13,110,253,0.8)]'
 const DS_OPTION_UNSELECTED = 'border-[#E2E8F0] bg-white text-[#52647E] hover:border-[#BFD4EA] hover:bg-[#F8FBFF]'
 
 const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
-  { value: 'secured', label: 'Court already secured' },
-  { value: 'walk_in', label: 'Walk-in / no advance booking' },
-  { value: 'self_book_later', label: 'Host will book it later' },
-  { value: 'needs_help_booking', label: 'Players can help secure a court' },
-]
-
-const PLAYER_REMINDER_OPTIONS: { value: number | null; label: string }[] = [
-  { value: 1440, label: 'Send a reminder the day before at 5:00 PM.' },
-  { value: null, label: 'No reminder' },
+  { value: 'secured', label: 'Court secured' },
+  { value: 'self_book_later', label: 'Host books later' },
+  { value: 'needs_help_booking', label: 'Players help book' },
+  { value: 'walk_in', label: 'Walk-in / no booking' },
 ]
 
 function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | null | undefined): MatchCourtPlanMode | null {
@@ -157,6 +163,11 @@ function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | nu
   }
   return null
 }
+
+const PLAYER_REMINDER_OPTIONS: { value: number | null; label: string }[] = [
+  { value: 1440, label: 'Day before, 5 PM' },
+  { value: null, label: 'None' },
+]
 
 function ContactAddIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' | 'shield' | 'spark' | 'close' | 'people' }) {
   if (kind === 'card') {
@@ -236,6 +247,15 @@ function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
           Add My Contact
         </button>
       </div>
+    </div>
+  )
+}
+
+function ReviewLine({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-[#E2E8F0] py-2.5 last:border-b-0">
+      <span className="text-body-sub font-semibold text-[#64748B]">{label}</span>
+      <span className="max-w-[62%] text-right text-body-main font-bold text-[#1E293B]">{value}</span>
     </div>
   )
 }
@@ -388,6 +408,41 @@ function formatReviewTimeRange(timeValue: string, durationMinutes: number) {
   })
 
   return `${formatter.format(start)} - ${formatter.format(end)}`
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseDateInputValue(dateStr: string) {
+  const [yearPart, monthPart, dayPart] = dateStr.split('-')
+  const year = Number.parseInt(yearPart ?? '', 10)
+  const month = Number.parseInt(monthPart ?? '', 10)
+  const day = Number.parseInt(dayPart ?? '', 10)
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return null
+  const value = new Date(year, month - 1, day)
+  return Number.isNaN(value.getTime()) ? null : value
+}
+
+function formatDateChipDay(dateStr: string) {
+  const value = parseDateInputValue(dateStr)
+  if (!value) return ''
+  return new Intl.DateTimeFormat('en-CA', { weekday: 'short' }).format(value)
+}
+
+function formatDateChipDate(dateStr: string) {
+  const value = parseDateInputValue(dateStr)
+  if (!value) return dateStr
+  return new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' }).format(value)
+}
+
+function formatCompactDateChip(dateStr: string) {
+  const value = parseDateInputValue(dateStr)
+  if (!value) return dateStr
+  return `${new Intl.DateTimeFormat('en-CA', { weekday: 'short' }).format(value)} ${value.getDate()}`
 }
 
 function capitalizeLabel(value: string) {
@@ -1061,9 +1116,13 @@ export function CreateMatchInline({
 }) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
+  const [createStep, setCreateStep] = useState<CreateFlowStep>('details')
+  const createFormRef = useRef<HTMLFormElement | null>(null)
+  const createFlowContentRef = useRef<HTMLDivElement | null>(null)
   const [matchMode] = useState<'one-time' | 'recurring'>('one-time')
   const [requiredCount, setRequiredCount] = useState(4)
   const [matchDate, setMatchDate] = useState('')
+  const [customDateOpen, setCustomDateOpen] = useState(false)
   const [startTime, setStartTime] = useState('')
   const [durationMinutes, setDurationMinutes] = useState(60)
   const [playerReminderMinutes, setPlayerReminderMinutes] = useState<number | null>(1440)
@@ -1077,12 +1136,10 @@ export function CreateMatchInline({
   const [courtPlanNote, setCourtPlanNote] = useState('')
   const [courtCount, setCourtCount] = useState(1)
   const [customPlayersOpen, setCustomPlayersOpen] = useState(false)
-  const [customCourtsOpen, setCustomCourtsOpen] = useState(false)
   const [courtPlanMenuOpen, setCourtPlanMenuOpen] = useState(false)
   const [courtLabelEditorOpen, setCourtLabelEditorOpen] = useState(false)
   const [organizerNote, setOrganizerNote] = useState('')
   const [organizerNoteExpanded, setOrganizerNoteExpanded] = useState(false)
-  const [venueOptionsExpanded, setVenueOptionsExpanded] = useState(false)
   const [courtSlots, setCourtSlots] = useState<CourtSlotSelection[]>([
     { enabled: true, courtId: '', manualLabel: '' },
   ])
@@ -1106,8 +1163,6 @@ export function CreateMatchInline({
   const [inviteNotice, setInviteNotice] = useState<string | null>(null)
   const [inviteLoading, setInviteLoading] = useState(false)
   const [openMatchLoading, setOpenMatchLoading] = useState(false)
-  const [submitMode, setSubmitMode] = useState<'create' | 'invite' | null>(null)
-  const [reviewOpen, setReviewOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectionMode, setSelectionMode] = useState<'invite' | 'request' | null>(null)
@@ -1484,7 +1539,6 @@ export function CreateMatchInline({
   )
 
   useEffect(() => {
-    setVenueOptionsExpanded(false)
     setVenueId((currentVenueId) => {
       if (currentVenueId && venuesForSelectedSport.some((venue) => venue.id === currentVenueId)) {
         return currentVenueId
@@ -1503,16 +1557,6 @@ export function CreateMatchInline({
     const rest = venuesForSelectedSport.filter((venue) => venue.id !== selectedVenue?.id)
     return [...selected, ...rest]
   }, [selectedVenue, venuesForSelectedSport])
-
-  const primaryVenueOptions = useMemo(
-    () => visibleVenueOptions.slice(0, 3),
-    [visibleVenueOptions],
-  )
-
-  const additionalVenueOptions = useMemo(
-    () => visibleVenueOptions.slice(3),
-    [visibleVenueOptions],
-  )
 
   const handleCreateContactPlayer = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1595,6 +1639,11 @@ export function CreateMatchInline({
     onExpandedChange?.(createExpanded)
   }, [createExpanded, onExpandedChange])
 
+  useEffect(() => {
+    if (!createExpanded) return
+    createFormRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
+  }, [createExpanded, createStep])
+
   const selectedFormatLabel = useMemo(() => {
     const source = gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS
     return source.find((option) => option.value === doublesFormat)?.label ?? 'Not selected'
@@ -1630,6 +1679,27 @@ export function CreateMatchInline({
     [groupMembersById, selectedScopeGroups, selectedScopeUsers],
   )
 
+  const todayDateValue = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return toDateInputValue(today)
+  }, [])
+
+  const dateChoices = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return Array.from({ length: 14 }, (_, index) => {
+      const value = new Date(today)
+      value.setDate(today.getDate() + index)
+      return toDateInputValue(value)
+    })
+  }, [])
+
+  const activeStepIndex = CREATE_FLOW_STEPS.findIndex((step) => step.key === createStep)
+  const selectedVenueLabel = selectedVenue?.name?.trim() || 'Not selected'
+  const selectedCourtPlanLabel = COURT_PLAN_OPTIONS.find((option) => option.value === courtPlanMode)?.label ?? 'Not selected'
+  const selectedDateIsOutsideStrip = Boolean(matchDate && !dateChoices.includes(matchDate))
+
   const summaryIsEmpty = selectedInvitePlayers.length === 0
     && selectedInvitedGroups.length === 0
     && selectedScopeUsers.length === 0
@@ -1658,6 +1728,12 @@ export function CreateMatchInline({
   const openJoinSummaryCopy = openSpotCount > 0
     ? `${openSpotCount} open ${openSpotCount === 1 ? 'spot' : 'spots'} for eligible players to request`
     : 'No open spots will remain after these invitations.'
+  const reviewPlayersCopy = summaryIsEmpty
+    ? 'No players selected yet'
+    : [
+        reviewDirectInviteLabels.length > 0 ? `${reviewDirectInviteLabels.length} invited` : null,
+        reviewRequestItems.length > 0 ? `${reviewRequestItems.length} Open to Join` : null,
+      ].filter(Boolean).join(' / ')
   const hasSavedOrContactInvitePlayers = availableInviteOptions.length > 0
 
   const organizerNoteSentences = useMemo(
@@ -1947,12 +2023,11 @@ export function CreateMatchInline({
     doublesFormat,
   ])
 
-  const createMatchFlow = async (mode: 'create' | 'invite') => {
+  const createMatchFlow = async (mode: 'create' | 'invite' = 'create') => {
     setError(null)
     setCourtPlanMenuOpen(false)
     setCourtLabelEditorOpen(false)
     setLoading(true)
-    setSubmitMode(mode)
 
     const supabase = createSupabaseBrowserClient()
     const selectedCourtLabels = visibleCourtSlots
@@ -2089,47 +2164,69 @@ export function CreateMatchInline({
       setError(normalizeCreateError(err))
     } finally {
       setLoading(false)
-      setSubmitMode(null)
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const validateDetailsStep = () => {
     setCourtPlanMenuOpen(false)
     setCourtLabelEditorOpen(false)
     setError(null)
 
     if (!venueId) {
       setError('Please choose a venue.')
-      return
+      return false
     }
 
     if (!matchDate) {
       setError(matchMode === 'recurring'
         ? 'Please choose the first match date for the recurring series.'
         : 'Please choose a match date.')
-      return
+      return false
+    }
+
+    if (matchDate < todayDateValue) {
+      setError('Please choose today or a future date.')
+      return false
     }
 
     if (!startTime) {
       setError('Please choose a start time.')
-      return
+      return false
     }
 
     if (courtPlanMode === 'secured' && selectedCourtLabels.length === 0) {
       setError('Please choose at least one court.')
-      return
+      return false
     }
 
     if (new Set(selectedCourtLabels).size !== selectedCourtLabels.length) {
       setError('Please choose different courts for each selected slot.')
+      return false
+    }
+
+    return true
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (createStep === 'details') {
+      if (!validateDetailsStep()) return
+      setCreateStep('players')
       return
     }
 
-    setReviewOpen(true)
-  }
+    if (createStep === 'players') {
+      setError(null)
+      setCreateStep('review')
+      return
+    }
 
-  const handleConfirmCreate = async () => {
+    if (!validateDetailsStep()) {
+      setCreateStep('details')
+      return
+    }
+
     await createMatchFlow('create')
   }
 
@@ -2624,6 +2721,14 @@ export function CreateMatchInline({
     )
   }
 
+  const stepCtaLabel = createStep === 'details'
+    ? 'Next: Players'
+    : createStep === 'players'
+      ? 'Next: Review'
+      : loading
+        ? 'Creating...'
+        : 'Create Match'
+
   return (
     <>
     {contactAddPanelOpen ? (
@@ -2866,81 +2971,84 @@ export function CreateMatchInline({
       </div>
     ) : null}
     <form
+      ref={createFormRef}
       id="create-match-inline"
       onSubmit={handleSubmit}
-      className={[
-        'space-y-6 transition duration-200',
-        reviewOpen ? 'pointer-events-none select-none opacity-60 grayscale-[0.55] saturate-[0.45]' : '',
-      ].join(' ')}
+      className="transition duration-200"
     >
-      <section className={`overflow-hidden ${DS_CARD}`}>
+      <section className={`${createExpanded ? 'overflow-visible' : 'overflow-hidden'} ${DS_CARD}`}>
         <button
           type="button"
-          onClick={() => setCreateExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[#eff6ff] md:px-7 md:py-6"
+          onClick={() => {
+            setCreateExpanded((expanded) => !expanded)
+            setError(null)
+          }}
+          className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left transition hover:bg-[#F8FBFF] sm:px-5"
         >
-          <div className="flex min-w-0 items-center gap-4">
-            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0d6efd] text-[30px] font-medium leading-none text-white shadow-[0_14px_28px_rgba(13,110,253,0.24)] md:h-14 md:w-14 md:text-[34px]">
-              +
-            </span>
-            <div className="min-w-0">
-              <p className="text-[18px] font-black uppercase tracking-[0.04em] text-[#0B1F47] md:text-[22px]">
-                {createExpanded ? 'Hide Create Match' : 'Create a Match'}
-              </p>
-              <p className="mt-1 text-[13px] font-semibold text-[#536783] md:text-[15px]">
-                More Games for Players. Less Work for Hosts.
-              </p>
-            </div>
+          <div className="min-w-0">
+            <p className="text-[15px] font-black leading-5 text-[#0B1F47] sm:text-[16px]">Create Match</p>
+            <p className="truncate text-[12px] font-semibold leading-4 text-[#64748B]">
+              {createExpanded ? `${CREATE_FLOW_STEPS[activeStepIndex]?.label} - Step ${activeStepIndex + 1} of 3` : 'Choose venue and time'}
+            </p>
           </div>
           <span
-            className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F8FAFC] text-[20px] font-bold text-[#94A3B8] transition-transform ${createExpanded ? 'rotate-180' : ''}`}
+            className={[
+              'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[18px] font-bold text-[#0d6efd] transition-transform',
+              createExpanded ? 'rotate-45' : '',
+            ].join(' ')}
             aria-hidden="true"
           >
-            ›
+            +
           </span>
         </button>
 
         {createExpanded ? (
-          <div className="space-y-6 border-t border-[#F1F5F9] px-5 pb-6 pt-6 md:px-6">
+          <div ref={createFlowContentRef} className="border-t border-[#F1F5F9] px-4 pb-0 pt-3 sm:px-5">
       {starterHint ? (
-        <div className="rounded-2xl border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3 text-body-main font-semibold text-[#0b5ed7]">
-          You can start now and add more players later.
+        <div className="mb-3 rounded-xl border border-[#bfdbfe] bg-[#eff6ff] px-3 py-2 text-body-sub font-semibold text-[#0b5ed7]">
+          Start now and add more players later.
         </div>
       ) : null}
-      <div className="md:hidden">
-        <div className="mb-5">
-          <h2 className="text-h1 text-[#1E293B]">Create a Match</h2>
-          <div className="mt-4 grid grid-cols-4 gap-2">
-            {[
-              { step: 1, label: 'General' },
-              { step: 2, label: 'Schedule' },
-              { step: 3, label: 'Players' },
-              { step: 4, label: 'Host Note' },
-            ].map((item, index) => (
-              <div key={item.label} className="flex flex-col items-center gap-2 text-center">
-                <div className="flex w-full items-center">
-                  <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-[15px] font-black ${index === 0 ? 'border-[#0d6efd] bg-[#0d6efd] text-white' : 'border-[#D7E1EE] bg-white text-[#94A3B8]'}`}>
-                    {item.step}
-                  </span>
-                  {index < 3 ? <span className={`ml-2 h-px flex-1 ${index === 0 ? 'bg-[#0d6efd]' : 'bg-[#D7E1EE]'}`} /> : null}
-                </div>
-                <span className={`text-[12px] font-semibold ${index === 0 ? 'text-[#0d6efd]' : 'text-[#64748B]'}`}>{item.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {createStep !== 'details' ? (
+      <div className="mb-2.5 grid grid-cols-3 gap-1 rounded-full bg-[#F8FAFC] p-0.5">
+        {CREATE_FLOW_STEPS.map((step, index) => {
+          const isActive = createStep === step.key
+          const isComplete = index < activeStepIndex
+          const canOpen = index <= activeStepIndex
+          return (
+            <button
+              key={step.key}
+              type="button"
+              onClick={() => {
+                if (!canOpen) return
+                setCreateStep(step.key)
+                setError(null)
+              }}
+              disabled={!canOpen}
+              className={[
+                'h-7 rounded-full px-2 text-center text-[11px] font-black transition',
+                isActive
+                  ? 'bg-white text-[#0d6efd] shadow-sm ring-1 ring-[#0d6efd]/25'
+                  : isComplete
+                    ? 'text-[#1E293B]'
+                    : 'text-[#94A3B8]',
+                !canOpen ? 'cursor-not-allowed opacity-70' : 'hover:bg-white hover:text-[#0d6efd]',
+              ].join(' ')}
+            >
+              {index + 1} {step.label}
+            </button>
+          )
+        })}
       </div>
-      <section className="rounded-2xl bg-white">
-        <div className="mb-5 flex items-center">
-          <SportSectionIcon sport={selectedSport} className="mr-3" />
-          <h3 className={DS_SECTION_TITLE}>General Information</h3>
-        </div>
-
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.72fr)]">
-            <div>
+      ) : null}
+      {createStep === 'details' ? (
+      <>
+      <section className="bg-white">
+        <div className="space-y-2.5">
+          <div className="grid grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] gap-2">
+            <div className="min-w-0">
               <label className={DS_LABEL}>Sport</label>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 gap-1">
                 {sports.map((sport) => {
                   const selected = sport.id === sportId
                   return (
@@ -2948,18 +3056,21 @@ export function CreateMatchInline({
                       key={sport.id}
                       type="button"
                       onClick={() => setSportId(sport.id)}
-                      className={[DS_OPTION_BUTTON, selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED].join(' ')}
+                      className={[
+                        'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[11px] font-black transition',
+                        selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                      ].join(' ')}
                     >
-                      {sport.display_name}
+                      <span className="truncate">{sport.display_name}</span>
                     </button>
                   )
                 })}
               </div>
             </div>
 
-            <div>
-              <label className={DS_LABEL}>Players</label>
-              <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0">
+              <label className={DS_LABEL}>Players needed</label>
+              <div className="grid grid-cols-4 gap-1">
                 {[2, 4, 8].map((count) => (
                   <button
                     key={count}
@@ -2969,7 +3080,7 @@ export function CreateMatchInline({
                       setRequiredCount(count)
                     }}
                     className={[
-                      'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
+                      'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[13px] font-black transition',
                       !customPlayersOpen && requiredCount === count ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
                     ].join(' ')}
                   >
@@ -2980,7 +3091,7 @@ export function CreateMatchInline({
                   type="button"
                   onClick={() => setCustomPlayersOpen((open) => !open)}
                   className={[
-                    'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
+                    'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[13px] font-black transition',
                     customPlayersOpen || ![2, 4, 8].includes(requiredCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
                   ].join(' ')}
                   aria-label="Set custom player count"
@@ -2998,7 +3109,7 @@ export function CreateMatchInline({
                       const nextValue = Number.parseInt(e.target.value, 10)
                       setRequiredCount(Number.isNaN(nextValue) ? fallbackValue : Math.max(1, nextValue))
                     }}
-                    className="h-10 w-20 rounded-xl border border-[#E2E8F0] bg-white px-3 text-center text-sm font-bold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+                    className="h-9 w-20 rounded-xl border border-[#E2E8F0] bg-white px-3 text-center text-sm font-bold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
                   />
                 ) : null}
               </div>
@@ -3007,108 +3118,51 @@ export function CreateMatchInline({
 
           <div>
             <label className={DS_LABEL}>Game Type</label>
-            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {(['singles', 'doubles'] as const).map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => {
-                      setGameType(type)
-                      if (type === 'singles' && doublesFormat === 'mixed_doubles') setDoublesFormat('open')
-                    }}
-                    className={[DS_OPTION_BUTTON, gameType === type ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED].join(' ')}
-                  >
-                    {type === 'singles' ? 'Single' : 'Double'}
-                  </button>
-                ))}
-                <span className="mx-1 hidden h-8 w-px bg-[#E2E8F0] sm:inline-block" />
+            <div className="grid grid-cols-[0.86fr_1.14fr] gap-2">
+              <select
+                value={gameType}
+                onChange={(event) => {
+                  const nextType = event.target.value
+                  setGameType(nextType)
+                  if (nextType === 'singles' && doublesFormat === 'mixed_doubles') setDoublesFormat('open')
+                }}
+                className={DS_COMPACT_FIELD}
+              >
+                <option value="singles">Singles</option>
+                <option value="doubles">Doubles</option>
+              </select>
+              <select
+                value={doublesFormat}
+                onChange={(event) => setDoublesFormat(event.target.value as MatchDoublesFormat)}
+                className={DS_COMPACT_FIELD}
+              >
                 {(gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setDoublesFormat(option.value)}
-                    className={[
-                      DS_OPTION_BUTTON,
-                      doublesFormat === option.value ? DS_OPTION_SELECTED : 'border-transparent bg-white text-[#7A8AA6] hover:bg-[#F8FBFF]',
-                    ].join(' ')}
-                  >
-                    {option.value === 'open'
-                      ? 'Open'
-                      : option.value === 'mens_doubles'
-                        ? 'Man'
-                        : option.value === 'womens_doubles'
-                          ? 'Woman'
-                          : 'Mixed'}
-                  </button>
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
           </div>
 
           <div>
             <label className={DS_LABEL}>Venue</label>
             {visibleVenueOptions.length > 0 ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {primaryVenueOptions.map((venue) => {
-                    const selected = venue.id === venueId
-                    return (
-                      <button
-                        key={venue.id}
-                        type="button"
-                        onClick={() => setVenueId(venue.id)}
-                        className={[
-                          DS_OPTION_BUTTON,
-                          'min-h-12 justify-center text-center',
-                          selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                        ].join(' ')}
-                      >
-                        {getVenueDisplayName(venue)}
-                      </button>
-                    )
-                  })}
-                  {additionalVenueOptions.length > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => setVenueOptionsExpanded((open) => !open)}
-                      className={[
-                        DS_OPTION_BUTTON,
-                        'min-h-12 justify-center text-center',
-                        venueOptionsExpanded ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                      ].join(' ')}
-                      aria-label="Show more venues"
-                    >
-                      +
-                    </button>
-                  ) : null}
-                </div>
-                {venueOptionsExpanded && additionalVenueOptions.length > 0 ? (
-                  <div className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                    {additionalVenueOptions.map((venue) => {
-                      const selected = venue.id === venueId
-                      return (
-                        <button
-                          key={venue.id}
-                          type="button"
-                          onClick={() => setVenueId(venue.id)}
-                          className={[
-                            DS_OPTION_BUTTON,
-                            'min-h-12 justify-center text-center',
-                            selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                          ].join(' ')}
-                        >
-                          {getVenueDisplayName(venue)}
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : null}
-              </div>
+              <select
+                value={venueId}
+                onChange={(event) => setVenueId(event.target.value)}
+                className={DS_COMPACT_FIELD}
+              >
+                {visibleVenueOptions.map((venue) => (
+                  <option key={venue.id} value={venue.id}>
+                    {venue.name?.trim() || venue.abbreviation || 'Unnamed venue'}
+                  </option>
+                ))}
+              </select>
             ) : (
-              <p className="text-body-sub rounded-xl border border-dashed border-[#D7E2F0] bg-[#F8FBFF] px-4 py-3 text-[#64748B]">
+              <p className="text-body-sub rounded-xl border border-dashed border-[#D7E2F0] bg-[#F8FBFF] px-3 py-2 text-[#64748B]">
                 {venues.length > 0
-                  ? `No ${selectedSport?.display_name ?? 'selected sport'} venues match your profile city range. Add one to your profile before creating this match.`
+                  ? `No ${selectedSport?.display_name ?? 'selected sport'} venues match your profile city range.`
                   : 'Add a venue to your profile before creating a match.'}
               </p>
             )}
@@ -3116,74 +3170,18 @@ export function CreateMatchInline({
 
           <div>
             <label className={DS_LABEL}>Court Plan</label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {COURT_PLAN_OPTIONS.map((option) => {
-                const selected = courtPlanMode === option.value
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setCourtPlanMode(option.value)}
-                    className={[
-                      DS_OPTION_BUTTON,
-                      'min-h-12 text-center',
-                      selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                    ].join(' ')}
-                  >
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
+            <select
+              value={courtPlanMode}
+              onChange={(event) => setCourtPlanMode(event.target.value as MatchCourtPlanMode)}
+              className={DS_COMPACT_FIELD}
+            >
+              {COURT_PLAN_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(180px,0.6fr)_minmax(0,1fr)]">
-            <div>
-              <label className={DS_LABEL}>Courts Needed</label>
-              <div className="flex flex-wrap items-center gap-3">
-                {[1, 2].map((count) => (
-                  <button
-                    key={count}
-                    type="button"
-                    onClick={() => {
-                      setCustomCourtsOpen(false)
-                      setCourtCount(count)
-                    }}
-                    className={[
-                      'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
-                      !customCourtsOpen && courtCount === count ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                    ].join(' ')}
-                  >
-                    {count}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setCustomCourtsOpen((open) => !open)}
-                  className={[
-                    'text-title-main inline-flex h-10 min-w-10 items-center justify-center rounded-xl border px-3 font-black transition',
-                    customCourtsOpen && [1, 2].includes(courtCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                  ].join(' ')}
-                  aria-label="Set custom court count"
-                >
-                  +
-                </button>
-                {customCourtsOpen || ![1, 2].includes(courtCount) ? (
-                  <input
-                    type="number"
-                    min={1}
-                    max={6}
-                    step={1}
-                    value={courtCount}
-                    onChange={(e) => {
-                      const nextValue = Number.parseInt(e.target.value, 10)
-                      setCourtCount(Number.isNaN(nextValue) ? 1 : Math.min(6, Math.max(1, nextValue)))
-                    }}
-                    className="h-10 w-20 rounded-xl border border-[#0d6efd] bg-[#eff6ff] px-3 text-center text-sm font-black text-[#0d6efd] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                  />
-                ) : null}
-              </div>
-            </div>
 
           {courtPlanMode === 'secured' ? (
             <div>
@@ -3266,94 +3264,148 @@ export function CreateMatchInline({
               </div>
             </div>
           ) : null}
-        </div>
+
+          <details className="rounded-xl border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-2">
+            <summary className="cursor-pointer text-[12px] font-black text-[#52647E]">
+              More options
+            </summary>
+            <label className="mt-2 grid grid-cols-[1fr_9.5rem] items-center gap-2">
+              <span className={DS_LABEL}>Courts needed</span>
+              <select
+                value={courtCount}
+                onChange={(event) => setCourtCount(Number.parseInt(event.target.value, 10))}
+                className={DS_COMPACT_FIELD}
+              >
+                {[1, 2, 3, 4, 5, 6].map((count) => (
+                  <option key={count} value={count}>
+                    {count} court{count === 1 ? '' : 's'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </details>
 
         </div>
 
       </section>
 
-      <section className="px-1 py-1">
-        <div className="mb-3 flex items-center">
-          <SportSectionIcon sport={selectedSport} className="mr-3" />
-          <h3 className={DS_SECTION_TITLE}>Schedule</h3>
+      <section className="space-y-2">
+        <div>
+          <span className={DS_LABEL}>Date</span>
+          <div className="grid grid-cols-4 gap-1">
+            {dateChoices.slice(1, 4).map((dateStr) => {
+              const selected = matchDate === dateStr && !customDateOpen
+              return (
+                <button
+                  key={dateStr}
+                  type="button"
+                  onClick={() => {
+                    setCustomDateOpen(false)
+                    setMatchDate(dateStr)
+                  }}
+                  className={[
+                    'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[12px] font-black transition',
+                    selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                  ].join(' ')}
+                >
+                  {formatCompactDateChip(dateStr)}
+                </button>
+              )
+            })}
+            <button
+              type="button"
+              onClick={() => setCustomDateOpen((open) => !open)}
+              className={[
+                'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[12px] font-black transition',
+                customDateOpen || selectedDateIsOutsideStrip ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+              ].join(' ')}
+            >
+              More
+            </button>
+          </div>
+          {customDateOpen || selectedDateIsOutsideStrip ? (
+            <input
+              type="date"
+              value={matchDate}
+              min={todayDateValue}
+              onChange={(event) => {
+                const nextDate = event.target.value
+                setMatchDate(nextDate)
+                if (nextDate && nextDate < todayDateValue) {
+                  setError('Please choose today or a future date.')
+                  return
+                }
+                setError((currentError) => currentError === 'Please choose today or a future date.' ? null : currentError)
+              }}
+              className={`${DS_COMPACT_FIELD} mt-1.5`}
+            />
+          ) : null}
         </div>
 
-        <div className="grid grid-cols-12 items-start gap-4">
-          <div className="col-span-12 md:col-span-5">
-            <MiniCalendar selected={matchDate} onSelect={setMatchDate} dateIndicators={calendarIndicators} />
-          </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <label>
+            <span className={DS_LABEL}>Time</span>
+            <select
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+              className={DS_COMPACT_FIELD}
+            >
+              <option value="">Select time</option>
+              {TIME_SLOTS.map((slot) => (
+                <option key={slot.value} value={slot.value}>
+                  {slot.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className={DS_LABEL}>Duration</span>
+            <select
+              value={durationMinutes}
+              onChange={(event) => setDurationMinutes(parseInt(event.target.value, 10))}
+              className={DS_COMPACT_FIELD}
+            >
+              {[30, 45, 60, 90, 120].map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} min
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-          <div className="col-span-12 flex flex-col gap-3 md:col-span-7">
-            <div>
-              <label className="text-label mb-1 block">Start Time</label>
-              <select
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="text-body-main w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-[#475569] outline-none transition focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]"
-              >
-                <option value="">Select start time</option>
-                {TIME_SLOTS.map((slot) => (
-                  <option key={slot.value} value={slot.value}>
-                    {slot.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-label mb-1 block">Duration</label>
-              <select
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10))}
-                className="text-body-main w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-[#475569] outline-none transition focus:border-[#0d6efd] focus:ring-1 focus:ring-[#0d6efd]"
-              >
-                {[30, 45, 60, 90, 120].map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    {minutes} min
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-label mb-1 block">Player reminders</label>
-              <div className="flex flex-wrap gap-2">
-                {PLAYER_REMINDER_OPTIONS.map((option) => {
-                  const active = playerReminderMinutes === option.value
-                  return (
-                    <button
-                      key={option.label}
-                      type="button"
-                      onClick={() => setPlayerReminderMinutes(option.value)}
-                      className={[
-                        'rounded-full border px-3 py-1.5 text-xs font-bold transition',
-                        active
-                          ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
-                          : 'border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#BFD4EA]',
-                      ].join(' ')}
-                    >
-                      {option.label}
-                    </button>
-                  )
-                })}
-              </div>
-              <p className="mt-1 text-[11px] font-medium leading-snug text-[#64748B]">
-                Same-day matches skipped; only confirmed players receive the day-before reminder.
-              </p>
-            </div>
+        <div>
+          <span className={DS_LABEL}>Reminder</span>
+          <div className="grid grid-cols-[1.35fr_0.65fr] gap-1.5">
+            {PLAYER_REMINDER_OPTIONS.map((option) => {
+              const selected = playerReminderMinutes === option.value
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => setPlayerReminderMinutes(option.value)}
+                  className={[
+                    'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-2 text-[12px] font-black transition',
+                    selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                  ].join(' ')}
+                >
+                  <span className="truncate">{option.label}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
       </section>
+      </>
+      ) : null}
 
+      {createStep === 'players' ? (
       <section className="px-1 py-2">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center">
             <SportSectionIcon sport={selectedSport} className="mr-3" />
             <div>
               <h3 className={DS_SECTION_TITLE}>Players</h3>
-              <p className="text-body-sub mt-1 text-[#64748B]">
-                Choose players to invite, or open spots for others to join.
-              </p>
             </div>
           </div>
           <div className="rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-right">
@@ -3403,23 +3455,16 @@ export function CreateMatchInline({
               <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
               Choose players
             </div>
-            <div className="flex min-h-[200px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+            <div className="flex flex-col rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
               {!selectionMode ? (
-                <div className="flex flex-1 items-center justify-center px-6 text-center">
-                  <p className="text-body-main italic leading-relaxed text-[#CBD5E1]">
-                    Choose an action on the left to add people or groups.
-                  </p>
+                <div className="rounded-lg border border-dashed border-[#D7E2F0] bg-white px-3 py-4 text-center">
+                  <p className="text-body-main font-semibold text-[#94A3B8]">Choose Invite or Open to Join.</p>
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col">
-                  <div className="mb-3 rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5">
+                  <div className="mb-3 rounded-xl border border-[#E2E8F0] bg-white px-3 py-2">
                     <p className="text-body-main font-bold text-[#1E293B]">
                       {selectionMode === 'invite' ? 'Invite specific players' : 'Open spots to join'}
-                    </p>
-                    <p className="text-body-sub mt-0.5 font-semibold text-[#64748B]">
-                      {selectionMode === 'invite'
-                        ? 'Choose saved players or contacts to invite directly.'
-                        : 'Let eligible players request or join open spots.'}
                     </p>
                   </div>
                   <div className="mb-4 grid gap-2">
@@ -3474,13 +3519,13 @@ export function CreateMatchInline({
                     )}
 
                     {selectionMode === 'invite' && hasSavedOrContactInvitePlayers && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 && (
-                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
+                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-3 py-3 text-center text-[#94A3B8]">
                         Everyone available here is already selected.
                       </div>
                     )}
                     {selectionMode === 'request' && filteredRequestUsers.length === 0 && filteredRequestGroups.length === 0 && (
-                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
-                        Save registered players to your Hood first, or add a group to Visible to Groups.
+                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-3 py-3 text-center text-[#94A3B8]">
+                        Save players or groups first.
                       </div>
                     )}
                   </div>
@@ -3497,7 +3542,7 @@ export function CreateMatchInline({
             </div>
           </div>
 
-          <div className="w-full md:w-1/3">
+          <div className="hidden">
             <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-4 flex items-center text-[#94A3B8]`}>
               <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
               Summary
@@ -3644,16 +3689,57 @@ export function CreateMatchInline({
           </div>
         </div>
       </section>
+      ) : null}
 
-      <section className={`${DS_CARD} p-5`}>
+      {createStep === 'review' ? (
+      <>
+      <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FBFF] p-3">
+        <h3 className="text-[16px] font-black text-[#1E293B]">Summary</h3>
+        <div className="mt-2 rounded-xl border border-[#E2E8F0] bg-white px-3">
+          <ReviewLine label="Sport" value={selectedSport?.display_name ?? 'Not selected'} />
+          <ReviewLine label="Players needed" value={`${requiredCount} players`} />
+          <ReviewLine label="Game type" value={`${capitalizeLabel(gameType)} / ${selectedFormatLabel}`} />
+          <ReviewLine label="Venue" value={selectedVenueLabel} />
+          <ReviewLine label="Schedule" value={`${formatReviewDate(matchDate)} / ${formatReviewTimeRange(startTime, durationMinutes)}`} />
+          <ReviewLine
+            label="Court plan"
+            value={courtPlanMode === 'secured' ? `${selectedCourtPlanLabel}: ${reviewCourtSummary}` : selectedCourtPlanLabel}
+          />
+          <ReviewLine label="Players" value={reviewPlayersCopy} />
+        </div>
+        {!summaryIsEmpty ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {reviewDirectInviteLabels.length > 0 ? (
+              <div className="rounded-xl border border-[#D7E3F4] bg-white p-3">
+                <p className="text-label text-[#0d6efd]">Invited</p>
+                <p className="mt-1 text-body-main font-semibold text-[#1E293B]">
+                  {reviewDirectInviteLabels.map((item) => item.label).join(', ')}
+                </p>
+              </div>
+            ) : null}
+            {reviewRequestItems.length > 0 ? (
+              <div className="rounded-xl border border-green-100 bg-white p-3">
+                <p className="text-label text-green-700">Open to Join</p>
+                <p className="mt-1 text-body-main font-semibold text-[#1E293B]">
+                  {reviewRequestItems.map((item) => item.label).join(', ')}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-xl border border-[#E2E8F0] bg-white p-3">
         <button
           type="button"
           onClick={() => setOrganizerNoteExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between rounded-xl p-1 text-left transition hover:bg-[#F8FAFC]"
+          className="flex w-full items-center justify-between rounded-xl text-left transition hover:bg-[#F8FAFC]"
         >
           <div className="flex items-center gap-3">
-            <SportSectionIcon sport={selectedSport} />
-            <h3 className={DS_SECTION_TITLE}>Host Note</h3>
+            <div>
+              <h3 className="text-[15px] font-black text-[#1E293B]">Host Note</h3>
+              <p className="text-body-sub font-semibold text-[#94A3B8]">{organizerNote.trim() ? 'Added' : 'Optional'}</p>
+            </div>
             {organizerNote.trim() && !organizerNoteExpanded ? (
               <span className="text-body-sub rounded-full border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-0.5 font-bold text-[#0d6efd]">
                 Saved
@@ -3674,7 +3760,7 @@ export function CreateMatchInline({
         </button>
 
         {organizerNoteExpanded ? (
-          <div className="mt-4 space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+          <div className="mt-3 space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {ORGANIZER_NOTE_PRESETS.map((group) => (
                 <div key={group.label} className="flex items-center gap-2 border-r border-[#E2E8F0] pr-4 last:border-r-0 last:pr-0">
@@ -3729,23 +3815,24 @@ export function CreateMatchInline({
           </div>
         ) : null}
       </section>
+      </>
+      ) : null}
 
-            {!reviewOpen && error && (
+            {error && (
               <p className="text-body-main rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
                 {error}
               </p>
             )}
 
-            <div className="sticky bottom-[5.3rem] z-20 -mx-5 border-t border-[#E2E8F0] bg-white/95 px-5 pb-1 pt-4 backdrop-blur md:static md:mx-0 md:border-t-0 md:bg-transparent md:px-0 md:pb-0">
-            <div className="mb-20 flex flex-col gap-4 md:mb-0 md:flex-row">
+            <div className="h-32 md:hidden" aria-hidden="true" />
+            <div className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-40 rounded-xl border border-[#E2E8F0] bg-white/95 p-1.5 shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] backdrop-blur md:static md:inset-auto md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+            <div className="flex flex-col gap-4 md:flex-row">
               <button
                 type="submit"
                 disabled={loading}
-                className="text-h2 w-full rounded-2xl bg-[#0d6efd] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(13, 110, 253, 0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl bg-[#0d6efd] px-5 py-3 text-[15px] font-black text-white shadow-[0_18px_40px_-24px_rgba(13,110,253,0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading && submitMode === 'create'
-                  ? (matchMode === 'recurring' ? 'Creating...' : 'Posting...')
-                  : (matchMode === 'recurring' ? 'Review & Create Recurring Match' : 'Review & Post Match')}
+                {stepCtaLabel}
               </button>
             </div>
             </div>
@@ -3753,31 +3840,6 @@ export function CreateMatchInline({
         ) : null}
       </section>
     </form>
-    <ReviewMatchModal
-      open={reviewOpen}
-      recurring={matchMode === 'recurring'}
-      recurringCount={recurringWeeksAheadCount}
-      sportLabel={selectedSport?.display_name ?? 'Not selected'}
-      venueLabel={selectedVenue?.name ?? 'Not selected'}
-      gameTypeLabel={gameType}
-      formatLabel={selectedFormatLabel}
-      dateLabel={formatReviewDate(matchDate)}
-      timeRangeLabel={formatReviewTimeRange(startTime, durationMinutes)}
-      durationLabel={`${durationMinutes} Min`}
-      courtLabel={reviewCourtSummary}
-      courtSecured={courtPlanMode === 'secured'}
-      neededLabel={`${requiredCount} Players`}
-      directInviteItems={reviewDirectInviteLabels}
-      requestItems={reviewRequestItems}
-      organizerNote={organizerNote}
-      error={reviewOpen ? error : null}
-      posting={loading && submitMode === 'create'}
-      onClose={() => {
-        setReviewOpen(false)
-        setError(null)
-      }}
-      onConfirm={handleConfirmCreate}
-    />
     </>
   )
 }

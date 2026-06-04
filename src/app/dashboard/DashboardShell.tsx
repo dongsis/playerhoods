@@ -453,10 +453,6 @@ export function DashboardShell({
     () => liveItems.some((item) => item.match.organizer_id === userId),
     [liveItems, userId],
   )
-  const starterVenueName = useMemo(() => {
-    const primaryVenue = myVenueMemberships.find((membership) => membership.venue_id === profile.primary_venue_id)
-    return (primaryVenue ?? myVenueMemberships[0])?.venue?.name?.trim() || null
-  }, [myVenueMemberships, profile.primary_venue_id])
   const starterTarget = getStarterTarget(starterFormat)
   const starterDismissedRecently = starterDismissedAt !== null && Date.now() - starterDismissedAt < STARTER_DISMISS_MS
   const shouldShowStarterCard = !starterDismissedRecently
@@ -625,7 +621,10 @@ export function DashboardShell({
           defaultVenueId={profile.primary_venue_id ?? ''}
           myPlayCities={myPlayCities}
           venueSports={venueSports}
-          starterVenueName={starterVenueName}
+          profileAvatarUrl={profile.avatar_url}
+          profileDisplayName={profile.display_name}
+          profileFirstName={profile.first_name}
+          profileLastName={profile.last_name}
           selectedMatchId={selectedMatchId ?? null}
           selectedMatchDetail={selectedMatchDetail}
           onCancelMatch={onCancelMatch}
