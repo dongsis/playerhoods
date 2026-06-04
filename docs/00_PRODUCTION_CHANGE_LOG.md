@@ -17,7 +17,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-04 - HOTFIX-20260604-issue94-public-signup-verify-link-404
 
 **Type:** Hotfix
-**Code Commits:** PR #94 implementation commit `8f5872b3b46cb55af25e6bc006a3a4e29fa95591`; final PR head and merge commit pending
+**Code Commits:** PR #95 implementation commit `8f5872b3b46cb55af25e6bc006a3a4e29fa95591`; final PR head and merge commit pending
 **Migration:** None
 **Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
 
