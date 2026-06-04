@@ -14,6 +14,64 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-04 - UI-20260604-issue96-public-signup-pending-polish
+
+**Type:** UI Polish
+**Code Commits:** PR #97 implementation commit `5a5a4f944ec6757576c851ea06b87f86aff0af58`; final PR head and merge commit pending
+**Migration:** None
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+
+### Summary
+
+PR #97 fixes Issue #96 by polishing the production-facing public signup pending UI after email verification:
+
+- Public signup verification success page now uses friendlier `Request sent` copy.
+- Removed user-facing status badges from the verification success page.
+- Removed `Email verified` and `Pending approval` badges from the host pending request row.
+- Host can still see the request and use Add to Lineup through the existing lifecycle.
+- This is UI display/copy only.
+- No DB schema, Supabase migration, RPC, RLS, email/SMS, notification delivery, marketing opt-in, or lifecycle behavior changed.
+- No raw email, phone, marketing consent, token, or hash exposure was added.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx.cmd tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Not applicable | No DB migration, grant, RLS, or SQL test surface changed |
+| Vercel Preview | Passed | Preview only; no production deployment performed by Codex |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
+| Production verification | Not verified | Requires owner-approved merge, Vercel Production auto-deploy, and continued controlled public signup smoke |
+
+### Release Order
+
+1. Merge PR #97 only after owner approval and green review/check gates.
+2. Let Vercel Production auto-deploy the merge commit.
+3. Continue controlled public signup production smoke with a fresh signup and newly generated verification email.
+4. Confirm:
+   - Public signup verification email is delivered through the production provider.
+   - Verification link opens.
+   - POST confirmation creates a pending public signup request.
+   - Verification success page shows the friendly `Request sent` copy.
+   - Host pending request row does not show `Email verified` or `Pending approval` badges.
+   - Host can add the player through the existing Add to Lineup lifecycle.
+   - Phone-only path remains blocked with SMS-coming-next copy.
+   - No SMS, marketing email, unrelated provider traffic, or queue drain occurs.
+
+### Rollback
+
+- Code rollback: revert the PR #97 merge commit or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this UI polish has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- This PR does not mark the public signup flow fully validated in production.
+- Production smoke remains required after merge/deploy and must not reuse previously exposed verification links or tokens.
+
 ## 2026-06-04 - HOTFIX-20260604-issue94-public-signup-verify-link-404
 
 **Type:** Hotfix

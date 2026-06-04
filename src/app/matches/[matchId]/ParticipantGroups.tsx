@@ -425,18 +425,14 @@ function ParticipantRow({
   } else if (p.join_method === 'requested') {
     timelineEvents.push({
       key: 'requested',
-      label: isPublicSignup ? 'Signed up by public link' : `Asked to join`,
+      label: isPublicSignup ? 'Requested from public link' : `Asked to join`,
       at: p.created_at,
     })
   }
 
   if (p.participant_accepted_at) {
     if (isPublicSignup && p.public_signup_email_verified) {
-      timelineEvents.push({
-        key: 'public-signup-email-verified',
-        label: 'Email verified',
-        at: p.participant_accepted_at,
-      })
+      // Keep public signup internals out of the host-facing status timeline.
     } else if (isOrganizer && isHostManagedConfirmation) {
       timelineEvents.push({
         key: 'host-offline-confirmed',
@@ -696,71 +692,21 @@ function ParticipantRow({
               </span>
             ) : null}
             {isOrganizer && isPublicSignup ? (
-              <>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    padding: '0.14rem 0.48rem',
-                    borderRadius: '999px',
-                    background: '#EFF6FF',
-                    color: '#1D4ED8',
-                    border: '1px solid #BFDBFE',
-                    fontSize: '0.54rem',
-                    fontWeight: 800,
-                    letterSpacing: 0,
-                    textTransform: 'none',
-                  }}
-                  title="This player signed up from the public match link."
-                >
-                  Signed up by public link
-                </span>
-                {p.public_signup_email_verified ? (
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      padding: '0.14rem 0.48rem',
-                      borderRadius: '999px',
-                      background: '#ECFDF5',
-                      color: '#047857',
-                      border: '1px solid #A7F3D0',
-                      fontSize: '0.54rem',
-                      fontWeight: 800,
-                      letterSpacing: 0,
-                      textTransform: 'none',
-                    }}
-                    title="This player verified their email before the request was created."
-                  >
-                    Email verified
-                  </span>
-                ) : null}
-                {p.status === 'pending' && p.org_approved_at === null ? (
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      padding: '0.14rem 0.48rem',
-                      borderRadius: '999px',
-                      background: '#FFF7ED',
-                      color: '#B45309',
-                      border: '1px solid #FED7AA',
-                      fontSize: '0.54rem',
-                      fontWeight: 800,
-                      letterSpacing: 0,
-                      textTransform: 'none',
-                    }}
-                    title="Use Add to Lineup to host-confirm this player."
-                  >
-                    Pending approval
-                  </span>
-                ) : null}
-              </>
+              <span
+                style={{
+                  color: '#64748b',
+                  fontSize: '0.62rem',
+                  fontWeight: 650,
+                  lineHeight: 1.35,
+                }}
+              >
+                Requested from public link
+              </span>
             ) : null}
           </div>
         </div>
 
-        {!isHostRow && pendingState && p.status !== 'confirmed' && (
+        {!isHostRow && pendingState && p.status !== 'confirmed' && !isPublicSignup && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginTop: '0.18rem' }}>
             <ConfirmationBadge
               label="Host"
