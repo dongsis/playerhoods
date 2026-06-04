@@ -428,5 +428,5 @@ export async function verifyPublicMatchSignupAction(publicToken: string, formDat
     redirectToVerify(publicToken, { error: result.error })
   }
 
-  redirectToVerify(publicToken, { status: 'verified' })
+  redirectToVerify(publicToken, { status: 'verified', signup: signupId })
 }

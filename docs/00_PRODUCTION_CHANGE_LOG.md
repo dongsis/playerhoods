@@ -30,6 +30,7 @@ PR #101 updates the player-facing Join by Shared Link flow to the revised v2 `Re
 - Verification email subject/body now use `Verify your email to request a spot` language.
 - Verification link GET is non-mutating and renders a lightweight finishing page with match context.
 - The finishing page automatically POSTs to finalize the pending request, then redirects to `Request sent`; no second user decision is required.
+- The `Request sent` state performs a read-only backend confirmation that the signup was finalized and has an active participant before rendering success.
 - If JavaScript is unavailable, a fallback `Finish request` button can submit the same idempotent POST.
 - Success copy includes `We'll email you when the host responds.`
 - Focused repeated-verification SQL regression coverage was added.
@@ -54,7 +55,7 @@ PR #101 updates the player-facing Join by Shared Link flow to the revised v2 `Re
    - Public join link opens and shows `Request a spot`.
    - Name plus email submit shows `Check your email` with match details and email-finding guidance.
    - Verification link GET is non-mutating and automatically submits the POST finishing step for normal users.
-   - The POST redirects directly to `Request sent`.
+   - The POST redirects directly to `Request sent` after successful/idempotent verification, and the success GET confirms the finalized signup before rendering.
    - No second Verify Email page/button or second user decision appears in the normal path.
    - Repeated verification does not duplicate requests, add the player to lineup, or set organizer approval.
    - Browser smoke remains accepted as a caveat unless a safe enabled join link and disposable inbox/verification URL are available.

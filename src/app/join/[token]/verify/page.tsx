@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { createSupabasePublicServerClient } from '@/lib/supabase/server'
+import type { Database } from '@/lib/types/database'
 import { verifyPublicMatchSignupAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -30,8 +32,91 @@ type PublicSignupContext = {
   venue_timezone: string | null
 }
 
+type VerifiedSignupRow = {
+  id: string
+  link_id: string
+  match_id: string
+  match_participant_id: string | null
+  verified_at: string | null
+  status: string
+}
+
+type PublicSignupLinkRow = {
+  match_id: string
+  public_token: string
+  disabled_at: string | null
+}
+
+type MatchParticipantRow = {
+  id: string
+  match_id: string
+  removed_at: string | null
+}
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+function createPublicSignupReadClient() {
+  const serverUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!serverUrl || !serviceKey) {
+    throw new Error('public_signup_service_client_not_configured')
+  }
+  return createClient<Database>(serverUrl, serviceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  })
+}
+
+async function verifySignupFinalized(publicToken: string, signupId: string): Promise<boolean> {
+  try {
+    const supabase = createPublicSignupReadClient()
+    const { data: signup, error: signupError } = await supabase
+      .from('public_match_signups')
+      .select('id, link_id, match_id, match_participant_id, verified_at, status')
+      .eq('id', signupId)
+      .maybeSingle()
+
+    if (signupError || !signup) return false
+
+    const signupRow = signup as VerifiedSignupRow
+    if (
+      signupRow.status !== 'participant_created' ||
+      !signupRow.verified_at ||
+      !signupRow.match_participant_id
+    ) {
+      return false
+    }
+
+    const { data: link, error: linkError } = await supabase
+      .from('public_match_signup_links')
+      .select('match_id, public_token, disabled_at')
+      .eq('id', signupRow.link_id)
+      .eq('public_token', publicToken)
+      .maybeSingle()
+
+    if (linkError || !link) return false
+
+    const linkRow = link as PublicSignupLinkRow
+    if (linkRow.disabled_at || linkRow.match_id !== signupRow.match_id) return false
+
+    const { data: participant, error: participantError } = await supabase
+      .from('match_participants')
+      .select('id, match_id, removed_at')
+      .eq('id', signupRow.match_participant_id)
+      .maybeSingle()
+
+    if (participantError || !participant) return false
+
+    const participantRow = participant as MatchParticipantRow
+    return participantRow.match_id === signupRow.match_id && participantRow.removed_at === null
+  } catch {
+    return false
+  }
 }
 
 function formatGameType(value: string | null | undefined): string {
@@ -91,18 +176,25 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
   const signupId = pageParams.signup ?? ''
   const verificationToken = pageParams.verification_token ?? pageParams.token ?? ''
   const routeErrorMessage = getVerifyErrorMessage(pageParams.error)
-  const isVerified = pageParams.status === 'verified'
+  const wantsVerifiedState = pageParams.status === 'verified'
+  const hasSignupId = isUuid(signupId)
   const hasVerificationInput = isUuid(signupId) && isUuid(verificationToken)
 
   if (!isUuid(publicToken)) {
     notFound()
   }
 
-  const inputErrorMessage = !isVerified && !routeErrorMessage && !hasVerificationInput
+  const isVerified = wantsVerifiedState && hasSignupId
+    ? await verifySignupFinalized(publicToken, signupId)
+    : false
+  const statusErrorMessage = wantsVerifiedState && !isVerified
     ? getVerifyErrorMessage('invalid')
     : null
-  const errorMessage = routeErrorMessage ?? inputErrorMessage
-  const isFinishing = !isVerified && !errorMessage && hasVerificationInput
+  const inputErrorMessage = !wantsVerifiedState && !routeErrorMessage && !hasVerificationInput
+    ? getVerifyErrorMessage('invalid')
+    : null
+  const errorMessage = routeErrorMessage ?? statusErrorMessage ?? inputErrorMessage
+  const isFinishing = !wantsVerifiedState && !errorMessage && hasVerificationInput
 
   const supabase = createSupabasePublicServerClient()
   const { data } = await supabase.rpc('rpc_public_match_signup_context', {
