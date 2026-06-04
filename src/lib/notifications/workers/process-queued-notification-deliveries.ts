@@ -133,8 +133,10 @@ function buildMatchInfo(payload: Record<string, unknown>): {
 export async function sendPublicMatchSignupVerificationEmail(
   input: PublicMatchSignupVerificationEmailInput,
 ) {
-  const verificationUrl =
-    `${SITE_URL}/join/${encodeURIComponent(input.publicToken)}/verify?signup=${encodeURIComponent(input.signupId)}&token=${encodeURIComponent(input.verificationToken)}`
+  const verificationUrl = new URL(`/join/${encodeURIComponent(input.publicToken)}/verify`, SITE_URL)
+  verificationUrl.searchParams.set('signup', input.signupId)
+  verificationUrl.searchParams.set('verification_token', input.verificationToken)
+
   return sendEmail(
     input.destination,
     'Verify your email for this PlayerHoods match',
@@ -148,7 +150,7 @@ export async function sendPublicMatchSignupVerificationEmail(
         siteUrl: input.matchInfo.siteUrl || SITE_URL,
       },
       input.recipientName,
-      verificationUrl,
+      verificationUrl.toString(),
     ),
   )
 }

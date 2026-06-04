@@ -393,18 +393,18 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
   redirectToSignup(token, { notice })
 }
 
-export async function verifyPublicMatchSignupAction(token: string, formData: FormData): Promise<void> {
+export async function verifyPublicMatchSignupAction(publicToken: string, formData: FormData): Promise<void> {
   const signupId = String(formData.get('signup') ?? '').trim()
-  const verificationToken = String(formData.get('token') ?? '').trim()
+  const verificationToken = String(formData.get('verification_token') ?? formData.get('token') ?? '').trim()
 
-  if (!isUuid(token) || !isUuid(signupId) || !isUuid(verificationToken)) {
-    redirectToVerify(token, { error: 'invalid' })
+  if (!isUuid(publicToken) || !isUuid(signupId) || !isUuid(verificationToken)) {
+    redirectToVerify(publicToken, { error: 'invalid' })
   }
 
   try {
     const supabase = createPublicSignupMutationClient()
     const { data, error } = await supabase.rpc('rpc_public_match_signup_verify', {
-      p_public_token: token,
+      p_public_token: publicToken,
       p_signup_id: signupId,
       p_verification_token: verificationToken,
     })
@@ -412,8 +412,8 @@ export async function verifyPublicMatchSignupAction(token: string, formData: For
     const result = Array.isArray(data) ? data[0] : null
     if (!result) throw new Error('verification_failed')
   } catch (error) {
-    redirectToVerify(token, { error: getVerifyErrorCode(error) })
+    redirectToVerify(publicToken, { error: getVerifyErrorCode(error) })
   }
 
-  redirectToVerify(token, { status: 'verified' })
+  redirectToVerify(publicToken, { status: 'verified' })
 }

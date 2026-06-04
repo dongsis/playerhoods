@@ -9,6 +9,7 @@ type Props = {
   params: Promise<{ token: string }>
   searchParams: Promise<{
     signup?: string
+    verification_token?: string
     token?: string
     status?: string
     error?: string
@@ -40,16 +41,16 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
   const { token: publicToken } = await params
   const pageParams = await searchParams
   const signupId = pageParams.signup ?? ''
-  const verificationToken = pageParams.token ?? ''
-  const errorMessage = getVerifyErrorMessage(pageParams.error)
+  const verificationToken = pageParams.verification_token ?? pageParams.token ?? ''
+  const routeErrorMessage = getVerifyErrorMessage(pageParams.error)
   const isVerified = pageParams.status === 'verified'
   const hasVerificationInput = isUuid(signupId) && isUuid(verificationToken)
+  const inputErrorMessage = !isVerified && !routeErrorMessage && !hasVerificationInput
+    ? getVerifyErrorMessage('invalid')
+    : null
+  const errorMessage = routeErrorMessage ?? inputErrorMessage
 
   if (!isUuid(publicToken)) {
-    notFound()
-  }
-
-  if (!isVerified && !errorMessage && !hasVerificationInput) {
     notFound()
   }
 
@@ -192,7 +193,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           {isPendingConfirmation ? (
             <form action={verifyAction} className="public-signup-verify-form">
               <input type="hidden" name="signup" value={signupId} />
-              <input type="hidden" name="token" value={verificationToken} />
+              <input type="hidden" name="verification_token" value={verificationToken} />
               <button type="submit" className="public-signup-verify-button">
                 Verify email
               </button>
