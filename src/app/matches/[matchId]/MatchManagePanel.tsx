@@ -31,6 +31,7 @@ type PanelMode = 'invite' | 'remove'
 type InviteSelectionMode = 'invite' | 'request'
 type AdditionMode = InviteSelectionMode
 type RemoveSelectionMode = 'confirmed' | 'invites' | 'requests'
+type PickerFilter = 'all' | 'people' | 'groups' | 'contacts'
 
 const ADD_PLAYERS_SECTION_LABEL = 'text-[9px] font-extrabold leading-[1.2] tracking-normal normal-case'
 
@@ -97,19 +98,6 @@ type PendingRemoval =
       subtitle: string
     }
 
-type SummaryEntry = {
-  key: string
-  label: string
-  kind: 'user' | 'group' | 'contact'
-  detailLabel?: string | null
-  availabilityStatus?: AvailabilityStatus | null
-  userId?: string | null
-  guestId?: string | null
-  personId?: string | null
-  avatarUrl?: string | null
-  isHost?: boolean
-}
-
 type RemoveRowItem = {
   key: string
   name: string
@@ -121,6 +109,19 @@ type RemoveRowItem = {
   badges: string[]
   selected: boolean
   onToggle: () => void
+}
+
+type SummaryEntry = {
+  key: string
+  label: string
+  kind: 'user' | 'group' | 'contact'
+  detailLabel?: string | null
+  availabilityStatus?: AvailabilityStatus | null
+  userId?: string | null
+  guestId?: string | null
+  personId?: string | null
+  avatarUrl?: string | null
+  isHost?: boolean
 }
 
 type PendingGroup = {
@@ -168,10 +169,6 @@ function getInitials(name: string) {
     .join('') || '?'
 }
 
-function looksLikeInternalUserLabel(label: string) {
-  return /^user\s+[a-f0-9]{4,}$/i.test(label.trim())
-}
-
 function normalizeCandidateName(name: string) {
   return name
     .trim()
@@ -202,6 +199,19 @@ function dedupeCandidateItems(candidates: CandidateItem[]) {
   }
 
   return deduped
+}
+
+function filterCandidateItems(candidates: CandidateItem[], query: string, filter: PickerFilter) {
+  const trimmedQuery = query.trim().toLowerCase()
+
+  return candidates.filter((candidate) => {
+    if (filter === 'people' && candidate.kind !== 'user') return false
+    if (filter === 'groups' && candidate.kind !== 'group') return false
+    if (filter === 'contacts' && candidate.kind !== 'contact') return false
+
+    if (!trimmedQuery) return true
+    return candidate.name.toLowerCase().includes(trimmedQuery)
+  })
 }
 
 function getAvailabilityLookupKey(kind: 'user' | 'contact', id: string) {
@@ -519,6 +529,9 @@ function SelectableInviteChip({
         selected ? selectedClass : hoverClass,
       ].join(' ')}
     >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-black text-slate-500">
+        {getInitials(item.name)}
+      </span>
       {availabilityDotClass ? (
         <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${availabilityDotClass}`} aria-hidden="true" />
       ) : null}
@@ -536,21 +549,6 @@ function SelectableInviteChip({
           <span className="min-w-0 flex-1 truncate font-semibold">{item.name}</span>
         </ParticipantQuickPreviewTrigger>
       )}
-      {item.kind === 'group' ? (
-        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-800">
-          Group
-        </span>
-      ) : null}
-      {item.kind === 'contact' ? (
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-          Contact
-        </span>
-      ) : null}
-      {item.isLinkedContact ? (
-        <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
-          Linked
-        </span>
-      ) : null}
       <span
         className={[
           'ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
@@ -693,6 +691,8 @@ export function MatchManagePanel({
   const [isApplying, setIsApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [pickerFilter, setPickerFilter] = useState<PickerFilter>('all')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [availabilityLookup, setAvailabilityLookup] = useState<Record<string, AvailabilityStatus | null>>({})
   const [localContactCandidates, setLocalContactCandidates] = useState<CandidateItem[]>([])
@@ -833,95 +833,112 @@ export function MatchManagePanel({
   const pendingRemovalKeys = new Set(pendingRemovals.map((item) => item.key))
 
   const inviteCandidates = useMemo(() => {
-    const pool: CandidateItem[] =
-      inviteMode === 'invite'
-        ? [
-            ...candidateUsers.map((user) => ({
-              key: `user:${user.id}`,
-              id: user.id,
-              name: user.display_name,
-              kind: 'user' as const,
-              availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
-                kind: 'user',
-                userId: user.id,
-              }),
-              sourceLabel: user.sourceLabel,
-              userId: user.id,
-            })),
-            ...contactTargets.filter((target) => target.can_invite).map((target) => ({
-              key: `contact-person:${target.person_id}`,
-              id: target.person_id,
-              name: target.display_name ?? 'Contact Player',
-              kind: 'contact' as const,
-              availabilityStatus: null,
-              sourceLabel: target.sourceLabel,
-              avatarUrl: target.avatar_url ?? null,
-              personId: target.person_id,
-              isLinkedContact: target.eligible_via === 'registered_user_path',
-            })),
-            ...localContactCandidates,
-            ...(isOrganizer
-              ? candidateGroups.map((group) => ({
-                  key: `group:${group.id}`,
-                  id: group.id,
-                  name: group.name,
-                  kind: 'group' as const,
-                  sourceLabel: 'Shared group',
-                }))
-              : []),
-          ]
-        : [
-            ...candidateUsers.map((user) => ({
-              key: `user:${user.id}`,
-              id: user.id,
-              name: user.display_name,
-              kind: 'user' as const,
-              availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
-                kind: 'user',
-                userId: user.id,
-              }),
-              sourceLabel: user.sourceLabel,
-              userId: user.id,
-            })),
-            ...(isOrganizer
-              ? candidateGroups.map((group) => ({
-                  key: `group:${group.id}`,
-                  id: group.id,
-                  name: group.name,
-                  kind: 'group' as const,
-                  sourceLabel: 'Shared group',
-                }))
-              : []),
-          ]
+    const pool: CandidateItem[] = [
+      ...candidateUsers.map((user) => ({
+        key: `user:${user.id}`,
+        id: user.id,
+        name: user.display_name,
+        kind: 'user' as const,
+        availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
+          kind: 'user',
+          userId: user.id,
+        }),
+        sourceLabel: user.sourceLabel,
+        userId: user.id,
+      })),
+      ...contactTargets.filter((target) => target.can_invite).map((target) => ({
+        key: `contact-person:${target.person_id}`,
+        id: target.person_id,
+        name: target.display_name ?? 'Contact Player',
+        kind: 'contact' as const,
+        availabilityStatus: null,
+        sourceLabel: target.sourceLabel,
+        avatarUrl: target.avatar_url ?? null,
+        personId: target.person_id,
+        isLinkedContact: target.eligible_via === 'registered_user_path',
+      })),
+      ...localContactCandidates,
+      ...(isOrganizer
+        ? candidateGroups.map((group) => ({
+            key: `group:${group.id}`,
+            id: group.id,
+            name: group.name,
+            kind: 'group' as const,
+            sourceLabel: 'Shared group',
+          }))
+        : []),
+    ]
 
-    const filteredCandidates = pool.filter((candidate) => {
-      if (inviteMode === 'invite') {
+    return dedupeCandidateItems(
+      pool.filter((candidate) => {
         if (candidate.kind === 'user' && currentInviteUserIds.has(candidate.id)) return false
         if (candidate.kind === 'group' && currentGroupInviteIds.has(candidate.id)) return false
-      } else {
-        if (candidate.kind === 'user' && currentRequestUserIds.has(candidate.id) && !revokedRequestUserIds.has(candidate.id)) return false
-        if (candidate.kind === 'group' && currentRequestGroupIds.has(candidate.id) && !revokedRequestGroupIds.has(candidate.id)) return false
-      }
-
-      return true
-    })
-
-    return dedupeCandidateItems(filteredCandidates)
+        return true
+      }),
+    )
   }, [
+    availabilityLookup,
     candidateGroups,
     candidateUsers,
     contactTargets,
-    localContactCandidates,
     currentGroupInviteIds,
     currentInviteUserIds,
-    currentRequestGroupIds,
-    currentRequestUserIds,
-    inviteMode,
     isOrganizer,
+    localContactCandidates,
+  ])
+
+  const playerCallCandidates = useMemo(() => {
+    const activeUserFallbacks = activeRequestUsers.map((user) => ({
+      key: `user:${user.id}`,
+      id: user.id,
+      name: user.name,
+      kind: 'user' as const,
+      availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
+        kind: 'user',
+        userId: user.id,
+      }),
+      userId: user.id,
+    }))
+    const activeGroupFallbacks = activeRequestGroups.map((group) => ({
+      key: `group:${group.id}`,
+      id: group.id,
+      name: group.name,
+      kind: 'group' as const,
+      sourceLabel: 'Shared group',
+    }))
+
+    return dedupeCandidateItems([
+      ...activeUserFallbacks,
+      ...candidateUsers.map((user) => ({
+        key: `user:${user.id}`,
+        id: user.id,
+        name: user.display_name,
+        kind: 'user' as const,
+        availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
+          kind: 'user',
+          userId: user.id,
+        }),
+        sourceLabel: user.sourceLabel,
+        userId: user.id,
+      })),
+      ...activeGroupFallbacks,
+      ...(isOrganizer
+        ? candidateGroups.map((group) => ({
+            key: `group:${group.id}`,
+            id: group.id,
+            name: group.name,
+            kind: 'group' as const,
+            sourceLabel: 'Shared group',
+          }))
+        : []),
+    ])
+  }, [
+    activeRequestGroups,
+    activeRequestUsers,
     availabilityLookup,
-    pendingAddKeys,
-    revokedRequestGroupIds,
-    revokedRequestUserIds,
+    candidateGroups,
+    candidateUsers,
+    isOrganizer,
   ])
 
   const handleCreateContactForMatch = async () => {
@@ -1205,7 +1222,105 @@ export function MatchManagePanel({
     setPendingRemovals((prev) => prev.filter((item) => item.key !== key))
   }
 
-  const handleApply = async () => {
+  const togglePlayerCallTarget = (candidate: CandidateItem) => {
+    if (candidate.kind === 'contact') return
+
+    const targetKind: 'user' | 'group' = candidate.kind === 'group' ? 'group' : 'user'
+    const requestKey = candidate.kind === 'group'
+      ? `request:group:${candidate.id}`
+      : `request:user:${candidate.id}`
+    const isCurrentTarget = candidate.kind === 'group'
+      ? currentRequestGroupIds.has(candidate.id)
+      : currentRequestUserIds.has(candidate.id)
+
+    setSuccess(null)
+    setError(null)
+
+    if (isCurrentTarget) {
+      setPendingRemovals((prev) =>
+        prev.some((item) => item.key === requestKey)
+          ? prev.filter((item) => item.key !== requestKey)
+          : [
+              ...prev,
+              {
+                key: requestKey,
+                category: 'requests',
+                kind: targetKind,
+                id: candidate.id,
+                name: candidate.name,
+                userId: targetKind === 'user' ? candidate.id : undefined,
+                subtitle: targetKind === 'group'
+                  ? "Group can choose I'd like to play"
+                  : "Can choose I'd like to play",
+              },
+            ],
+      )
+      return
+    }
+
+    if (pendingAddKeys.has(`request:${candidate.key}`)) {
+      cancelAdd(candidate.key, 'request')
+      return
+    }
+
+    stageAdd(candidate, 'request')
+  }
+
+  const isPlayerCallCandidateSelected = (candidate: CandidateItem) => {
+    if (candidate.kind === 'contact') return false
+
+    const requestKey = candidate.kind === 'group'
+      ? `request:group:${candidate.id}`
+      : `request:user:${candidate.id}`
+    const isCurrentTarget = candidate.kind === 'group'
+      ? currentRequestGroupIds.has(candidate.id)
+      : currentRequestUserIds.has(candidate.id)
+
+    return (isCurrentTarget && !pendingRemovalKeys.has(requestKey))
+      || pendingAddKeys.has(`request:${candidate.key}`)
+  }
+
+  const resetPickerMode = (mode: InviteSelectionMode) => {
+    setInviteMode(mode)
+    setPickerSearch('')
+    setPickerFilter('all')
+    setContactComposerOpen(false)
+    setContactCreateError(null)
+    setError(null)
+    setSuccess(null)
+  }
+
+  const pickerCandidates = inviteMode === 'invite' ? inviteCandidates : playerCallCandidates
+  const filteredPickerCandidates = filterCandidateItems(pickerCandidates, pickerSearch, pickerFilter)
+  const filterOptions: Array<{ value: PickerFilter; label: string }> = inviteMode === 'invite'
+    ? [
+        { value: 'all', label: 'All' },
+        { value: 'people', label: 'People' },
+        { value: 'groups', label: 'Groups' },
+        { value: 'contacts', label: 'Contacts' },
+      ]
+    : [
+        { value: 'all', label: 'All' },
+        { value: 'people', label: 'People' },
+        { value: 'groups', label: 'Groups' },
+      ]
+  const postedPlayerCallItems = [
+    ...activeRequestUsers.map((user) => ({ key: `posted-user-${user.id}`, name: user.name })),
+    ...activeRequestGroups.map((group) => ({ key: `posted-group-${group.id}`, name: group.name })),
+  ]
+  const hasExistingPlayerCall = postedPlayerCallItems.length > 0
+  const hasPlayerCallChanges = pendingRequestAdds.length > 0 || pendingRequestRemovals.length > 0
+  const playerCallPrimaryLabel = hasExistingPlayerCall ? 'Update Player Call' : 'Post Player Call'
+  const currentPrimaryDisabled =
+    isApplying ||
+    (inviteMode === 'invite'
+      ? pendingInviteAdds.length === 0
+      : !hasPlayerCallChanges)
+  const inviteMetaParts: string[] = []
+  const requestMetaParts: string[] = []
+  const openSpotLabel = ''
+
+  const handleApply = async (action: 'invite' | 'request' | 'remove') => {
     if (isApplying) return
 
     let closesAfterApply = false
@@ -1214,27 +1329,45 @@ export function MatchManagePanel({
     setSuccess(null)
 
     try {
+      const inviteAddsToApply = action === 'invite' ? pendingInviteAdds : []
+      const requestAddsToApply = action === 'request' ? pendingRequestAdds : []
+      const removalsToApply = action === 'remove'
+        ? pendingRemovals
+        : action === 'request'
+          ? pendingRequestRemovals
+          : []
+      const requestUserIdsToRemove = new Set(
+        removalsToApply
+          .filter((item) => item.category === 'requests' && item.kind === 'user')
+          .map((item) => item.id),
+      )
+      const requestGroupIdsToRemove = new Set(
+        removalsToApply
+          .filter((item) => item.category === 'requests' && item.kind === 'group')
+          .map((item) => item.id),
+      )
+
       const nextRequestUserIds = sortStrings([
         ...activeRequestUsers
           .map((user) => user.id)
-          .filter((id) => !revokedRequestUserIds.has(id)),
-        ...pendingRequestAdds.filter((item) => item.kind === 'user').map((item) => item.id),
+          .filter((id) => !requestUserIdsToRemove.has(id)),
+        ...requestAddsToApply.filter((item) => item.kind === 'user').map((item) => item.id),
       ])
 
       const nextRequestGroupIds = sortStrings([
         ...activeRequestGroups
           .map((group) => group.id)
-          .filter((id) => !revokedRequestGroupIds.has(id)),
-        ...pendingRequestAdds.filter((item) => item.kind === 'group').map((item) => item.id),
+          .filter((id) => !requestGroupIdsToRemove.has(id)),
+        ...requestAddsToApply.filter((item) => item.kind === 'group').map((item) => item.id),
       ])
 
       const currentRequestUserIdsSorted = sortStrings(activeRequestUsers.map((user) => user.id))
       const currentRequestGroupIdsSorted = sortStrings(activeRequestGroups.map((group) => group.id))
 
-      if (
+      if (action !== 'invite' && (
         !arraysEqual(nextRequestUserIds, currentRequestUserIdsSorted)
         || !arraysEqual(nextRequestGroupIds, currentRequestGroupIdsSorted)
-      ) {
+      )) {
         await onUpdateMatchDetails({
           invitation_scope_user_ids: nextRequestUserIds,
           invitation_scope_group_ids: nextRequestGroupIds,
@@ -1243,7 +1376,7 @@ export function MatchManagePanel({
 
       const supabase = createSupabaseBrowserClient()
 
-      for (const item of pendingRemovals) {
+      for (const item of removalsToApply) {
         if (item.category === 'confirmed') {
           await onRemoveParticipant(item.participantId)
           continue
@@ -1259,7 +1392,7 @@ export function MatchManagePanel({
         }
       }
 
-      for (const item of pendingInviteAdds) {
+      for (const item of inviteAddsToApply) {
         if (item.kind === 'user') {
           if (isOrganizer) {
             await inviteUserToMatch(supabase, matchId, item.id)
@@ -1273,7 +1406,7 @@ export function MatchManagePanel({
         }
       }
 
-      if (pendingInviteAdds.length > 0) {
+      if (inviteAddsToApply.length > 0) {
         processDeliveriesAction().catch(() => {})
       }
 
@@ -1281,7 +1414,13 @@ export function MatchManagePanel({
       setPendingRemovals([])
       setLocalContactCandidates([])
       setConfirmOpen(false)
-      setSuccess('Changes applied.')
+      setSuccess(
+        action === 'invite'
+          ? 'Invites sent.'
+          : action === 'request'
+            ? hasExistingPlayerCall ? 'Player Call updated.' : 'Player Call posted.'
+            : 'Changes applied.',
+      )
       window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
       router.refresh()
       if (onApplied) {
@@ -1302,85 +1441,7 @@ export function MatchManagePanel({
     }
   }
 
-  const confirmedSummaryItems: SummaryEntry[] = visibleConfirmedParticipants.map((participant) => {
-    const effectiveUserId = getParticipantEffectiveUserId(participant)
-    const rosterKind = getParticipantRosterKind(participant)
-    return {
-      key: `confirmed-${participant.id}`,
-      label: participant.display_name,
-      kind: rosterKind,
-      availabilityStatus: effectiveUserId
-        ? getLookupAvailabilityStatus(availabilityLookup, {
-            kind: 'user',
-            userId: effectiveUserId,
-          })
-        : null,
-      userId: effectiveUserId,
-      guestId: participant.guest_id ?? null,
-      avatarUrl: participant.avatar_url ?? null,
-      isHost: Boolean(organizerUserId && effectiveUserId === organizerUserId),
-    }
-  })
-  const inviteSummaryItems: SummaryEntry[] = [
-    ...visibleInviteUsers.map((participant) => {
-      const effectiveUserId = getParticipantEffectiveUserId(participant)
-      const rosterKind = getParticipantRosterKind(participant)
-      return {
-        key: `invite-user-${participant.id}`,
-        label: participant.display_name,
-        kind: rosterKind,
-        availabilityStatus: effectiveUserId
-          ? getLookupAvailabilityStatus(availabilityLookup, {
-              kind: 'user',
-              userId: effectiveUserId,
-            })
-          : null,
-        userId: effectiveUserId,
-        guestId: participant.guest_id ?? null,
-        avatarUrl: participant.avatar_url ?? null,
-        isHost: Boolean(organizerUserId && effectiveUserId === organizerUserId),
-        detailLabel: participant.invited_by_name ? `Invited by ${participant.invited_by_name}` : null,
-      }
-    }),
-    ...visibleInviteGroups.map((group) => ({
-      key: `invite-group-${group.group_id}`,
-      label: group.group_name,
-      kind: 'group' as const,
-    })),
-  ]
-  const requestSummaryItems: SummaryEntry[] = [
-    ...visibleRequestUsers.map((user) => ({
-      key: `request-user-${user.id}`,
-      label: looksLikeInternalUserLabel(user.name) ? 'Open spot' : user.name,
-      kind: 'user' as const,
-      availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
-        kind: 'user',
-        userId: user.id,
-      }),
-      userId: user.id,
-    })),
-    ...visibleRequestGroups.map((group) => ({
-      key: `request-group-${group.id}`,
-      label: group.name,
-      kind: 'group' as const,
-    })),
-  ]
-
-  const openSpotCount = Math.max(requiredCount - visibleConfirmedParticipants.length, 0)
-  const openSpotLabel = openSpotCount === 0
-    ? 'No open spots'
-    : `${openSpotCount} open ${openSpotCount === 1 ? 'spot' : 'spots'}`
-  const confirmedMetaLabel =
-    visibleConfirmedParticipants.length >= requiredCount
-      ? 'Full'
-      : openSpotLabel
-  const inviteMetaParts: string[] = []
-  if (visibleInviteUsers.length > 0) inviteMetaParts.push(`${visibleInviteUsers.length} player${visibleInviteUsers.length === 1 ? '' : 's'}`)
-  if (visibleInviteGroups.length > 0) inviteMetaParts.push(`${visibleInviteGroups.length} group${visibleInviteGroups.length === 1 ? '' : 's'}`)
   const inviteMetaLabel = inviteMetaParts.join(' · ')
-  const requestMetaParts: string[] = []
-  if (visibleRequestUsers.length > 0) requestMetaParts.push(`${visibleRequestUsers.length} player${visibleRequestUsers.length === 1 ? '' : 's'}`)
-  if (visibleRequestGroups.length > 0) requestMetaParts.push(`${visibleRequestGroups.length} group${visibleRequestGroups.length === 1 ? '' : 's'}`)
   const requestMetaLabel = [openSpotLabel, requestMetaParts.join(' · ')].filter(Boolean).join(' · ')
 
   const spotsLabel = `${visibleConfirmedParticipants.length} / ${requiredCount}`
@@ -1408,30 +1469,6 @@ export function MatchManagePanel({
       items: pendingRequestRemovals,
     })
   }
-
-  const inviteChanges = [
-    ...pendingInviteAdds.map((item) => ({
-      key: `add:invite:${item.key}`,
-      title: item.kind === 'group' ? 'Invite group' : 'Invite player',
-      name: item.name,
-      mode: item.mode,
-    })),
-    ...pendingRequestAdds.map((item) => ({
-      key: `add:request:${item.key}`,
-      title: item.kind === 'group' ? 'Open group request' : 'Open player request',
-      name: item.name,
-      mode: item.mode,
-    })),
-  ]
-
-  const invitePrimaryLabel =
-    inviteMode === 'request'
-      ? pendingRequestAdds.length > 0
-        ? 'Apply Request Changes'
-        : 'Apply Changes'
-      : pendingInviteAdds.length > 0
-          ? 'Apply Invitations'
-        : 'Apply Changes'
 
   const removePrimaryLabel =
     pendingGroups.length === 1
@@ -1570,54 +1607,274 @@ export function MatchManagePanel({
             </div>
           ) : null}
 
+          {panelMode === 'invite' ? (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <InviteModeButton
+                  title="Invite"
+                  selected={inviteMode === 'invite'}
+                  onClick={() => resetPickerMode('invite')}
+                  tone="orange"
+                />
+                <InviteModeButton
+                  title="Post Player Call"
+                  selected={inviteMode === 'request'}
+                  onClick={() => resetPickerMode('request')}
+                  tone="green"
+                />
+              </div>
+
+              {inviteMode === 'request' ? (
+                <div className="rounded-2xl border border-green-100 bg-green-50/70 px-4 py-3">
+                  <div className="text-body-main font-black text-slate-900">Currently posted to</div>
+                  {postedPlayerCallItems.length === 0 ? (
+                    <p className="mt-1 text-body-sub font-semibold text-slate-500">No one yet</p>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {postedPlayerCallItems.map((item) => (
+                        <span
+                          key={item.key}
+                          className="max-w-full truncate rounded-full border border-green-100 bg-white px-3 py-1 text-body-sub font-bold text-slate-700"
+                        >
+                          {item.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="search"
+                    value={pickerSearch}
+                    onChange={(event) => setPickerSearch(event.target.value)}
+                    placeholder="Search player or group..."
+                    className="text-body-main min-w-0 flex-1 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                  />
+                  <select
+                    value={pickerFilter}
+                    onChange={(event) => setPickerFilter(event.target.value as PickerFilter)}
+                    className="text-body-main rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 font-bold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                    aria-label="Filter players"
+                  >
+                    {filterOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {inviteMode === 'invite' ? (
+                  <div className="mt-3 rounded-xl border border-dashed border-[#D7E3F4] bg-white px-3 py-2.5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="m-0 text-body-sub font-semibold text-slate-500">
+                        Need someone not listed?
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setContactCreateError(null)
+                          setContactComposerOpen((open) => !open)
+                        }}
+                        className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#D7E3F4] bg-[#F8FBFF] px-3 py-1.5 font-bold text-slate-900 transition hover:border-blue-200 hover:bg-white"
+                      >
+                        <span className="mr-1.5 text-base leading-none">+</span>
+                        Add My Contact
+                      </button>
+                    </div>
+
+                    {contactComposerOpen ? (
+                      <form
+                        className="mt-4 space-y-3 border-t border-blue-50 pt-4"
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          void handleCreateContactForMatch()
+                        }}
+                      >
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <label className="text-label text-slate-500">
+                            Name
+                            <input
+                              type="text"
+                              value={contactDisplayName}
+                              onChange={(event) => setContactDisplayName(event.target.value)}
+                              placeholder="Player's full name"
+                              className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                            />
+                          </label>
+                          <label className="text-label text-slate-500">
+                            Email
+                            <input
+                              type="email"
+                              value={contactEmail}
+                              onChange={(event) => setContactEmail(event.target.value)}
+                              placeholder="email@example.com"
+                              className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                            />
+                          </label>
+                          <label className="text-label text-slate-500">
+                            Phone
+                            <input
+                              type="tel"
+                              value={contactPhone}
+                              onChange={(event) => setContactPhone(event.target.value)}
+                              placeholder="+1 234 567 890"
+                              className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                            />
+                          </label>
+                          <label className="text-label text-slate-500">
+                            Notes
+                            <input
+                              type="text"
+                              value={contactNotes}
+                              onChange={(event) => setContactNotes(event.target.value)}
+                              placeholder="Optional"
+                              className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                            />
+                          </label>
+                        </div>
+                        {contactCreateError ? (
+                          <p className="text-body-sub rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-red-600">
+                            {contactCreateError}
+                          </p>
+                        ) : null}
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setContactComposerOpen(false)
+                              setContactCreateError(null)
+                            }}
+                            disabled={isCreatingContact}
+                            className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={isCreatingContact}
+                            className="text-body-main rounded-xl bg-blue-600 px-4 py-2 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isCreatingContact ? 'Saving...' : 'Save & Add'}
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="mt-4 grid max-h-[390px] gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                  {filteredPickerCandidates.length === 0 ? (
+                    <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#94A3B8]">
+                      {inviteMode === 'request' ? (
+                        <>
+                          <div>No matching players or groups.</div>
+                          <div className="mt-1 text-body-sub font-semibold text-slate-400">
+                            Use Invite to add a new contact directly.
+                          </div>
+                        </>
+                      ) : (
+                        'No matching players, contacts, or groups.'
+                      )}
+                    </div>
+                  ) : (
+                    filteredPickerCandidates.map((candidate) => (
+                      <SelectableInviteChip
+                        key={`${inviteMode}:${candidate.key}`}
+                        item={candidate}
+                        mode={inviteMode}
+                        selected={
+                          inviteMode === 'invite'
+                            ? pendingAddKeys.has(`invite:${candidate.key}`)
+                            : isPlayerCallCandidateSelected(candidate)
+                        }
+                        onToggle={() => {
+                          if (inviteMode === 'invite') {
+                            togglePendingAdd(candidate)
+                          } else {
+                            togglePlayerCallTarget(candidate)
+                          }
+                        }}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {(error || success) ? (
+                <div className="text-body-main rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
+                  {error ? <p className="text-red-600">{error}</p> : null}
+                  {success ? <p className="text-green-700">{success}</p> : null}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null)
+                    setSuccess(null)
+                    if (inviteMode === 'invite') {
+                      setPendingAdds((prev) => prev.filter((item) => item.mode !== 'invite'))
+                    } else {
+                      setPendingAdds((prev) => prev.filter((item) => item.mode !== 'request'))
+                      setPendingRemovals((prev) => prev.filter((item) => item.category !== 'requests'))
+                    }
+                  }}
+                  disabled={currentPrimaryDisabled}
+                  className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleApply(inviteMode)}
+                  disabled={currentPrimaryDisabled}
+                  className={`text-label rounded-2xl px-5 py-4 text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    inviteMode === 'request'
+                      ? 'bg-green-600 hover:bg-green-700'
+                      : 'bg-[#0d6efd] hover:bg-[#0b5ed7]'
+                  }`}
+                >
+                  {isApplying
+                    ? inviteMode === 'invite' ? 'Sending...' : 'Updating...'
+                    : inviteMode === 'invite'
+                      ? 'Send Invites'
+                      : playerCallPrimaryLabel}
+                </button>
+              </div>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
             <div className="space-y-3 lg:col-span-3">
               <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-1 flex items-center text-[#94A3B8]`}>
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-                {panelMode === 'invite' ? 'Add by' : 'Action'}
+                Action
               </div>
-              {panelMode === 'invite' ? (
-                <>
-                  <InviteModeButton
-                    title="Invite"
-                    selected={inviteMode === 'invite'}
-                    onClick={() => setInviteMode('invite')}
-                    tone="orange"
-                  />
-                  {isOrganizer ? (
-                    <InviteModeButton
-                      title="Open to Join"
-                      selected={inviteMode === 'request'}
-                      onClick={() => setInviteMode('request')}
-                      tone="green"
-                    />
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <ActionCard
-                    title="Remove Confirmed"
-                    subtitle="Remove players already confirmed in this match"
-                    selected={removeMode === 'confirmed'}
-                    onClick={() => setRemoveMode('confirmed')}
-                    accent="orange"
-                  />
-                  <ActionCard
-                    title="Cancel Invites"
-                    subtitle="Cancel players, contacts, or groups that were invited but not confirmed"
-                    selected={removeMode === 'invites'}
-                    onClick={() => setRemoveMode('invites')}
-                    accent="orange"
-                  />
-                  <ActionCard
-                    title="Remove Request Access"
-                    subtitle="Stop selected players or groups from using I'd like to play"
-                    selected={removeMode === 'requests'}
-                    onClick={() => setRemoveMode('requests')}
-                    accent="orange"
-                  />
-                </>
-              )}
+              <ActionCard
+                title="Remove Confirmed"
+                subtitle="Remove players already confirmed in this match"
+                selected={removeMode === 'confirmed'}
+                onClick={() => setRemoveMode('confirmed')}
+                accent="orange"
+              />
+              <ActionCard
+                title="Cancel Invites"
+                subtitle="Cancel players, contacts, or groups that were invited but not confirmed"
+                selected={removeMode === 'invites'}
+                onClick={() => setRemoveMode('invites')}
+                accent="orange"
+              />
+              <ActionCard
+                title="Remove Request Access"
+                subtitle="Stop selected players or groups from using I'd like to play"
+                selected={removeMode === 'requests'}
+                onClick={() => setRemoveMode('requests')}
+                accent="orange"
+              />
             </div>
 
             <div className="lg:col-span-5">
@@ -1626,255 +1883,41 @@ export function MatchManagePanel({
                 Choose players
               </div>
               <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-                {panelMode === 'invite' ? (
-                  <div className="relative mb-6">
-                    <div className="mb-4 rounded-xl border border-dashed border-[#D7E3F4] bg-white px-3 py-2.5">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="text-body-main font-bold text-slate-900">
-                            {visibleConfirmedParticipants.length >= requiredCount
-                              ? 'Lineup is full.'
-                              : inviteMode === 'request'
-                                ? 'Open spots to join'
-                                : 'Invite specific players'}
-                          </div>
-                          {visibleConfirmedParticipants.length >= requiredCount ? (
-                            <p className="mt-1 text-body-sub font-semibold text-slate-500">
-                              Use Adjust Lineup if you need to add or replace players.
-                            </p>
-                          ) : (
-                            <>
-                              <p className="mt-0.5 text-body-sub font-semibold text-slate-500">
-                                {inviteMode === 'request'
-                                  ? 'Let eligible players request or join open spots.'
-                                  : 'Choose saved players or contacts to invite directly.'}
-                              </p>
-                              <p className="mt-1 text-body-sub font-semibold text-slate-400">Need someone not listed?</p>
-                            </>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setContactCreateError(null)
-                            setContactComposerOpen((open) => !open)
-                          }}
-                          className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#D7E3F4] bg-[#F8FBFF] px-3 py-1.5 font-bold text-slate-900 transition hover:border-blue-200 hover:bg-white"
-                        >
-                          <span className="mr-1.5 text-base leading-none">+</span>
-                          Add My Contact
-                        </button>
-                      </div>
-
-                      {contactComposerOpen ? (
-                        <form
-                          className="mt-4 space-y-3 border-t border-blue-50 pt-4"
-                          onSubmit={(event) => {
-                            event.preventDefault()
-                            void handleCreateContactForMatch()
-                          }}
-                        >
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <label className="text-label text-slate-500">
-                              Name
-                              <input
-                                type="text"
-                                value={contactDisplayName}
-                                onChange={(event) => setContactDisplayName(event.target.value)}
-                                placeholder="Player's full name"
-                                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-                              />
-                            </label>
-                            <label className="text-label text-slate-500">
-                              Email
-                              <input
-                                type="email"
-                                value={contactEmail}
-                                onChange={(event) => setContactEmail(event.target.value)}
-                                placeholder="email@example.com"
-                                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-                              />
-                            </label>
-                            <label className="text-label text-slate-500">
-                              Phone
-                              <input
-                                type="tel"
-                                value={contactPhone}
-                                onChange={(event) => setContactPhone(event.target.value)}
-                                placeholder="+1 234 567 890"
-                                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-                              />
-                            </label>
-                            <label className="text-label text-slate-500">
-                              Notes
-                              <input
-                                type="text"
-                                value={contactNotes}
-                                onChange={(event) => setContactNotes(event.target.value)}
-                                placeholder="Optional"
-                                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-                              />
-                            </label>
-                          </div>
-                          {contactCreateError ? (
-                            <p className="text-body-sub rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-red-600">
-                              {contactCreateError}
-                            </p>
-                          ) : null}
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setContactComposerOpen(false)
-                                setContactCreateError(null)
-                              }}
-                              disabled={isCreatingContact}
-                              className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="submit"
-                              disabled={isCreatingContact}
-                              className="text-body-main rounded-xl bg-blue-600 px-4 py-2 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {isCreatingContact ? 'Saving...' : 'Save & Add'}
-                            </button>
-                          </div>
-                        </form>
-                      ) : null}
+                <div className="space-y-3">
+                  {removeCandidates.length === 0 ? (
+                    <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
+                      No targets available for this action.
                     </div>
-                  </div>
-                ) : null}
-
-                {panelMode === 'invite' ? (
-                  <div className="grid max-h-[360px] gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-                    {inviteCandidates.length === 0 ? (
-                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
-                        {inviteMode === 'request'
-                          ? 'No saved registered players or groups are available for Visible to Groups.'
-                          : 'No saved registered players, contacts, or groups are available for direct invites.'}
-                      </div>
-                    ) : (
-                      inviteCandidates.map((candidate) => (
-                        <SelectableInviteChip
-                          key={`${inviteMode}:${candidate.key}`}
-                          item={candidate}
-                          mode={inviteMode}
-                          selected={pendingAddKeys.has(`${inviteMode}:${candidate.key}`)}
-                          onToggle={() => togglePendingAdd(candidate)}
-                        />
-                      ))
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {removeCandidates.length === 0 ? (
-                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
-                        No targets available for this action.
-                      </div>
-                    ) : (
-                      removeCandidates.map((candidate) => (
-                        <SelectableTargetRow key={candidate.key} item={candidate} />
-                      ))
-                    )}
-                  </div>
-                )}
+                  ) : (
+                    removeCandidates.map((candidate) => (
+                      <SelectableTargetRow key={candidate.key} item={candidate} />
+                    ))
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="flex flex-col lg:col-span-4">
               <div className={`${ADD_PLAYERS_SECTION_LABEL} mb-4 flex items-center text-[#94A3B8]`}>
                 <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-                {panelMode === 'remove' ? 'Pending Actions' : 'Summary'}
+                Pending Actions
               </div>
               <div className="flex min-h-[420px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-                {panelMode === 'invite' ? (
-                  <>
-                    <div className="mb-8 space-y-3">
-                      <SummaryRosterRow
-                        title="Confirmed"
-                        items={confirmedSummaryItems}
-                        emptyLabel="No lineup players yet"
-                        metaLabel={confirmedMetaLabel}
-                        tone="slate"
-                        availabilityLookup={availabilityLookup}
+                <div className="mb-4 space-y-3">
+                  {pendingGroups.length === 0 ? (
+                    <div className="text-body-main rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-4 text-[#CBD5E1]">
+                      Choose confirmed players, invites, or request access to remove.
+                    </div>
+                  ) : (
+                    pendingGroups.map((group) => (
+                      <PendingGroupCard
+                        key={group.title}
+                        group={group}
+                        onUndo={cancelRemoval}
                       />
-                      {isOrganizer ? (
-                        <SummaryRosterRow
-                          title="Invites"
-                          items={inviteSummaryItems}
-                          emptyLabel="None"
-                          metaLabel={inviteMetaLabel}
-                          tone="orange"
-                          availabilityLookup={availabilityLookup}
-                        />
-                      ) : null}
-                      {isOrganizer ? (
-                        <SummaryRosterRow
-                          title="Open to Join"
-                          items={requestSummaryItems}
-                          emptyLabel="None"
-                          metaLabel={requestMetaLabel}
-                          tone="green"
-                          availabilityLookup={availabilityLookup}
-                        />
-                      ) : null}
-                    </div>
-
-                    <div className="mt-auto border-t border-[#E2E8F0] pt-6">
-                      <div className="text-label mb-3 flex items-center gap-2 text-[#0d6efd]">
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-                        <span>Pending changes</span>
-                      </div>
-
-                      {inviteChanges.length === 0 ? (
-                        <div className="text-body-main rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-4 text-[#CBD5E1]">
-                          No changes selected yet.
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {inviteChanges.map((change) => (
-                            <div
-                              key={change.key}
-                              className="flex items-center justify-between gap-3 rounded-xl border border-[#0d6efd]/15 bg-white px-4 py-3 shadow-sm"
-                            >
-                              <div className="min-w-0">
-                                <div className="text-title-main break-words text-slate-700">{change.name}</div>
-                                <div className="text-body-sub mt-1 text-slate-400">{change.title}</div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => cancelAdd(change.key.replace(/^add:(invite|request):/, ''), change.mode)}
-                                className="text-body-sub shrink-0 font-semibold text-slate-400 transition hover:text-slate-700"
-                              >
-                                Undo
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="mb-4 space-y-3">
-                      {pendingGroups.length === 0 ? (
-                        <div className="text-body-main rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-4 text-[#CBD5E1]">
-                          Choose confirmed players, invites, or request access to remove.
-                        </div>
-                      ) : (
-                        pendingGroups.map((group) => (
-                          <PendingGroupCard
-                            key={group.title}
-                            group={group}
-                            onUndo={cancelRemoval}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </>
-                )}
+                    ))
+                  )}
+                </div>
               </div>
 
               {(error || success) ? (
@@ -1890,43 +1933,26 @@ export function MatchManagePanel({
                   onClick={() => {
                     setError(null)
                     setSuccess(null)
-                    if (panelMode === 'invite') {
-                      setPendingAdds([])
-                    } else {
-                      setPendingRemovals([])
-                      setConfirmOpen(false)
-                    }
+                    setPendingRemovals([])
+                    setConfirmOpen(false)
                   }}
-                  disabled={isApplying || (panelMode === 'invite' ? pendingAdds.length === 0 : pendingRemovals.length === 0)}
+                  disabled={isApplying || pendingRemovals.length === 0}
                   className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (panelMode === 'remove') {
-                      setConfirmOpen(true)
-                      return
-                    }
-                    void handleApply()
-                  }}
-                  disabled={isApplying || (panelMode === 'invite' ? pendingAdds.length === 0 : pendingRemovals.length === 0)}
-                  className={`text-label rounded-2xl px-5 py-4 text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    panelMode === 'remove'
-                      ? 'bg-orange-600 hover:bg-orange-700'
-                      : 'bg-[#0d6efd] hover:bg-[#0b5ed7]'
-                  }`}
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={isApplying || pendingRemovals.length === 0}
+                  className="text-label rounded-2xl bg-orange-600 px-5 py-4 text-white shadow-xl transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {isApplying
-                    ? 'Applying...'
-                    : panelMode === 'remove'
-                      ? removePrimaryLabel
-                      : invitePrimaryLabel}
+                  {isApplying ? 'Applying...' : removePrimaryLabel}
                 </button>
               </div>
             </div>
           </div>
+          )}
         </div>
       ) : null}
 
@@ -1937,7 +1963,7 @@ export function MatchManagePanel({
           confirmLabel={confirmationCopy.confirmLabel}
           isApplying={isApplying}
           onCancel={() => setConfirmOpen(false)}
-          onConfirm={() => void handleApply()}
+          onConfirm={() => void handleApply('remove')}
         />
       ) : null}
     </section>

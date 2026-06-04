@@ -98,7 +98,6 @@ export function MatchToolsSection({
   const [isLoadingInviteTargets, setIsLoadingInviteTargets] = useState(false)
   const [targetLoadError, setTargetLoadError] = useState<string | null>(null)
   const [applySuccessMessage, setApplySuccessMessage] = useState<string | null>(null)
-  const [publicSignupUrl, setPublicSignupUrl] = useState<string | null>(null)
   const [isPublicSignupLinkBusy, setIsPublicSignupLinkBusy] = useState(false)
   const [publicSignupLinkError, setPublicSignupLinkError] = useState<string | null>(null)
 
@@ -108,7 +107,6 @@ export function MatchToolsSection({
     setLazyContactTargets(contactTargets)
     setTargetLoadError(null)
     setApplySuccessMessage(null)
-    setPublicSignupUrl(null)
     setPublicSignupLinkError(null)
   }, [matchId, candidateUsers, contactTargets])
 
@@ -177,21 +175,8 @@ export function MatchToolsSection({
     return null
   }
 
-  const remainingSpots = Math.max(requiredCount - confirmedParticipants.length, 0)
   const isLineupFull = confirmedParticipants.length >= requiredCount
-  const playersLabel = `${confirmedParticipants.length} confirmed ${confirmedParticipants.length === 1 ? 'player' : 'players'}`
-  const openSpotsLabel = `${remainingSpots} ${remainingSpots === 1 ? 'spot is' : 'spots are'} open`
   const enoughPlayersForTeams = confirmedParticipants.length >= Math.max(requiredCount, 4)
-  const toolsTitle = isFormed
-    ? 'Match formed'
-    : isLineupFull
-      ? 'Lineup is full.'
-      : 'Need more players?'
-  const toolsCopy = isFormed
-    ? 'Players have been notified. You can set teams now.'
-    : isLineupFull
-      ? `${playersLabel}. ${enoughPlayersForTeams ? 'Set Teams is ready.' : 'Need 4 confirmed players to set doubles teams.'}`
-      : `${openSpotsLabel}. Add saved players, contacts, or open spots for others to join.`
   const setTeamsHelper = enoughPlayersForTeams
     ? `Ready to set teams from ${confirmedParticipants.length} confirmed ${confirmedParticipants.length === 1 ? 'player' : 'players'}.`
     : 'Need 4 confirmed players to set doubles teams.'
@@ -229,12 +214,11 @@ export function MatchToolsSection({
       }
 
       const url = `${window.location.origin}/join/${link.public_token}`
-      setPublicSignupUrl(url)
       try {
         await navigator.clipboard.writeText(url)
-        setApplySuccessMessage('Open to Join link copied.')
+        setApplySuccessMessage('Join link copied.')
       } catch {
-        setApplySuccessMessage('Open to Join link ready.')
+        setPublicSignupLinkError('Could not copy the join link.')
       }
     } catch (error) {
       console.error('[MatchToolsSection] public signup link:', error)
@@ -249,18 +233,7 @@ export function MatchToolsSection({
       ref={sectionRef}
       className="mt-5 overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
     >
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-5">
-        <div>
-          <p className="m-0 text-[1rem] font-black text-slate-900">
-            {formedActionsCollapsed ? 'Match formed · Players notified' : toolsTitle}
-          </p>
-          <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
-            {formedActionsCollapsed
-              ? `${confirmedParticipants.length}/${requiredCount} confirmed`
-              : toolsCopy}
-          </p>
-        </div>
-
+      <div className="flex flex-wrap items-center justify-end gap-3 border-b border-slate-100 px-6 py-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           {isFormed ? (
             <button
@@ -331,7 +304,7 @@ export function MatchToolsSection({
               title="Copy a public match signup link."
               className="inline-flex items-center justify-center rounded-[14px] border border-[#CBD5E1] bg-white px-4 py-2.5 text-sm font-black text-[#475569] transition hover:bg-[#F8FAFC] active:scale-95 disabled:cursor-wait disabled:opacity-60"
             >
-              {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Open to Join Link'}
+              {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Join Link'}
             </button>
           ) : null}
 
@@ -354,34 +327,10 @@ export function MatchToolsSection({
           ) : null}
         </div>
 
-        {isFormed && !formedActionsCollapsed && activeTab !== 'invite' ? (
-          <p className="basis-full text-body-sub font-semibold text-slate-400">
-            Lineup is full. Use Adjust Lineup if you need to add or replace players.
-          </p>
-        ) : showRoundRobinTools ? (
-          <p className="basis-full text-body-sub font-semibold text-slate-400">
-            {setTeamsHelper}
-          </p>
-        ) : null}
-
         {applySuccessMessage ? (
           <p className="basis-full rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
             {applySuccessMessage}
           </p>
-        ) : null}
-
-        {publicSignupUrl ? (
-          <div className="basis-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="m-0 text-[0.72rem] font-black uppercase tracking-[0.14em] text-slate-400">
-              Open to Join link
-            </p>
-            <input
-              readOnly
-              value={publicSignupUrl}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[0.82rem] font-semibold text-slate-700"
-              onFocus={(event) => event.currentTarget.select()}
-            />
-          </div>
         ) : null}
 
         {publicSignupLinkError ? (
