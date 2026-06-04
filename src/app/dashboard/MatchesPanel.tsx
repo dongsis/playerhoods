@@ -41,193 +41,114 @@ const FALLBACK_ROSTER_INSIGHT = {
 type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
 
 type FirstMatchStarterCardProps = {
-  contactCount: number
-  firstMatchCreated: boolean
-  preferredFormat: StarterMatchFormat
-  onPreferredFormatChange: (format: StarterMatchFormat) => void
-  venueName?: string | null
   onAddContact?: () => void
-  onStartMatch: () => void
   onDismiss: () => void
 }
 
-function StarterPlayingCircleIllustration({ count }: { count: number }) {
-  const activeCount = Math.min(Math.max(count, 0), 4)
-  return (
-    <div className="relative h-28 w-28 shrink-0 rounded-[30px] border border-[#D7E6F7] bg-gradient-to-br from-[#F8FBFF] via-white to-[#EEF6FF] shadow-[0_18px_42px_rgba(37,99,235,0.10)]">
-      <div className="absolute inset-x-5 bottom-5 h-10 rounded-[14px] border border-[#D8E6F6] bg-white/90 shadow-sm" />
-      <div className="absolute inset-x-7 bottom-8 h-10 rounded-[14px] border border-[#D8E6F6] bg-white/95 shadow-sm" />
-      <div className="absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-[#9BC2F4]" />
-      {[
-        'left-5 top-5',
-        'right-5 top-5',
-        'left-6 bottom-6',
-        'right-6 bottom-6',
-      ].map((position, index) => (
-        <span
-          key={position}
-          className={[
-            'absolute flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-black shadow-sm',
-            position,
-            index < activeCount ? 'bg-[#0d6efd] text-white' : 'bg-[#EAF2FC] text-[#8AA0BC]',
-          ].join(' ')}
-        >
-          {index + 1}
-        </span>
-      ))}
-      <span className="absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D7F223] text-[#0B1F44] shadow-[0_10px_20px_rgba(215,242,35,0.28)]">
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="7" />
-          <path d="M7 8c3 1.8 7 1.8 10 0" />
-          <path d="M7 16c3-1.8 7-1.8 10 0" />
-        </svg>
-      </span>
-    </div>
-  )
-}
-
 function FirstMatchStarterCard({
-  contactCount,
-  firstMatchCreated,
-  onPreferredFormatChange,
-  venueName,
   onAddContact,
-  onStartMatch,
   onDismiss,
 }: FirstMatchStarterCardProps) {
-  const hasVenue = Boolean(venueName?.trim())
-  const savedCount = Math.max(contactCount, 0)
-  const progressTarget = savedCount >= 3 ? 3 : savedCount >= 1 ? 3 : 1
-  const progress = Math.min(100, Math.round((Math.min(savedCount, progressTarget) / progressTarget) * 100))
-  const state = savedCount >= 3 ? 'ready' : savedCount === 2 ? 'two' : savedCount === 1 ? 'one' : 'zero'
-
-  const copy = (() => {
-    if (firstMatchCreated) {
-      return {
-        kicker: 'Your local playing circle starts here.',
-        title: 'Your first match is live',
-        body: 'Keep inviting your saved players as your playing circle grows.',
-        primary: 'Create Match',
-        secondary: 'Add More Contacts',
-        helper: 'Less chasing. More playing.',
-      }
-    }
-
-    if (state === 'zero') {
-      return {
-        kicker: hasVenue ? `You're joining the ${venueName} playing community.` : "Glad you're here. Let's build your playing circle.",
-        title: hasVenue ? `Welcome to your ${venueName} PlayerHood` : 'Welcome to PlayerHoods',
-        body: hasVenue
-          ? 'Start with someone you already play with here. Add them as a player card, then create your first match.'
-          : 'Your PlayerHood starts with someone you already play with. Add one regular player as a player card to create your first match.',
-        primary: '+ Add My Contact',
-        secondary: 'Create Match',
-        helper: hasVenue ? 'Private by default. You choose who to invite.' : 'Add 1 player for singles. Add 3 players for doubles.',
-      }
-    }
-
-    if (state === 'one') {
-      return {
-        kicker: 'Your playing circle is taking shape.',
-        title: 'Nice - your first player is saved',
-        body: 'You can create a singles match now, or add two more players for doubles.',
-        primary: 'Create Singles Match',
-        secondary: 'Add 2 More for Doubles',
-        helper: "You're always in control of who gets invited.",
-      }
-    }
-
-    if (state === 'two') {
-      return {
-        kicker: 'Almost there.',
-        title: 'Almost ready for doubles',
-        body: 'Create a singles match now, or add one more player to start a doubles match.',
-        primary: 'Create Singles Match',
-        secondary: 'Add 1 More for Doubles',
-        helper: "You're always in control of who gets invited.",
-      }
-    }
-
-    return {
-      kicker: 'Your playing circle is ready.',
-      title: "You're ready to start playing",
-      body: "Create a singles or doubles match from your saved players. We'll help handle invites and confirmations.",
-      primary: 'Create Match',
-      secondary: 'Add More Contacts',
-      helper: 'Less chasing. More playing.',
-    }
-  })()
-
-  const handlePrimary = () => {
-    if (firstMatchCreated) {
-      onStartMatch()
-      return
-    }
-    if (state === 'zero') {
-      onAddContact?.()
-      return
-    }
-    if (state === 'one' || state === 'two') {
-      onPreferredFormatChange('singles')
-    }
-    onStartMatch()
-  }
-
-  const handleSecondary = () => {
-    onAddContact?.()
-  }
-
   return (
-    <section className="relative overflow-hidden rounded-[28px] border border-[#D8E6F6] bg-white px-5 py-5 shadow-[0_20px_48px_rgba(15,23,42,0.06)] sm:px-7">
+    <section className="relative rounded-[16px] border border-[#D8E6F6] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
       <button
         type="button"
         onClick={onDismiss}
-        className="absolute right-5 top-5 inline-flex h-8 w-8 items-center justify-center rounded-full text-[22px] font-light leading-none text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#1E293B]"
+        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-[18px] font-light leading-none text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#1E293B]"
         aria-label="Dismiss starter card"
       >
         x
       </button>
-      <div className="flex flex-col gap-5 pr-9 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#7A8AA6]">{copy.kicker}</p>
-          <h2 className="mt-2 text-h2 font-black tracking-[-0.03em] text-[#0F172A]">{copy.title}</h2>
-          <p className="mt-2 max-w-2xl text-body-main leading-6 text-[#536783]">{copy.body}</p>
+      <div className="min-w-0 pr-8">
+        <h2 className="text-[16px] font-black tracking-[-0.01em] text-[#0F172A]">Welcome to PlayerHoods</h2>
+        <p className="mt-1 text-[13px] font-semibold leading-5 text-[#536783]">
+          Add players you know, then create your first match.
+        </p>
 
-          <div className="mt-4">
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#7186A4]">
-              <span>{Math.min(savedCount, progressTarget)} / {progressTarget} Player Card{progressTarget === 1 ? '' : 's'} Saved</span>
-              {savedCount >= progressTarget ? <span className="text-[#16A34A]">Done</span> : null}
-            </div>
-            <div className="h-2 w-full max-w-[520px] overflow-hidden rounded-full bg-[#E7EEF7]">
-              <div className="h-full rounded-full bg-[#22C55E]" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={handlePrimary}
-              className="rounded-[12px] bg-[#0B2A5B] px-5 py-3 text-body-main font-black text-white shadow-[0_12px_24px_rgba(11,42,91,0.18)] transition hover:bg-[#12386F]"
-            >
-              {copy.primary}
-            </button>
-            <button
-              type="button"
-              onClick={handleSecondary}
-              disabled={state === 'zero' && !firstMatchCreated}
-              className="rounded-[12px] border border-[#D8E6F6] bg-white px-5 py-3 text-body-main font-black text-[#536783] transition hover:border-[#B8CCE5] hover:text-[#0F172A] disabled:cursor-not-allowed disabled:bg-[#F8FBFF] disabled:text-[#AAB8CC]"
-            >
-              {copy.secondary}
-            </button>
-          </div>
-
-          <p className="mt-3 text-body-sub font-semibold text-[#7A8AA6]">{copy.helper}</p>
-        </div>
-        <div className="hidden shrink-0 items-center gap-4 sm:flex">
-          <StarterPlayingCircleIllustration count={savedCount} />
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onAddContact}
+            className="h-10 rounded-[10px] border border-[#D8E6F6] bg-white px-3 text-[13px] font-black text-[#0B2A5B] transition hover:border-[#B8CCE5] hover:bg-[#F8FBFF]"
+          >
+            + Add My Contact
+          </button>
         </div>
       </div>
     </section>
+  )
+}
+
+function getProfileInitials(displayName?: string | null, firstName?: string | null, lastName?: string | null): string | null {
+  const nameParts = [firstName, lastName]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+
+  if (nameParts.length > 0) {
+    return nameParts
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || null
+  }
+
+  const displayParts = (displayName ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (displayParts.length === 0) return null
+
+  return displayParts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || null
+}
+
+function MobileProfileAvatar({
+  avatarUrl,
+  displayName,
+  firstName,
+  lastName,
+}: {
+  avatarUrl?: string | null
+  displayName?: string | null
+  firstName?: string | null
+  lastName?: string | null
+}) {
+  const initials = getProfileInitials(displayName, firstName, lastName)
+  const profileLabel = displayName?.trim() || [firstName, lastName].map((part) => part?.trim()).filter(Boolean).join(' ') || 'Profile'
+
+  if (avatarUrl?.trim()) {
+    return (
+      <img
+        src={avatarUrl.trim()}
+        alt={profileLabel}
+        className="h-10 w-10 rounded-full border border-[#E2E8F0] bg-white object-cover shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+      />
+    )
+  }
+
+  if (initials) {
+    return (
+      <span
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D8E6F6] bg-white text-[14px] font-black text-[#0B2A5B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+        aria-label={profileLabel}
+      >
+        {initials}
+      </span>
+    )
+  }
+
+  return (
+    <span
+      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D8E6F6] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+      aria-label="Profile"
+    >
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21c1.8-4 5-6 8-6s6.2 2 8 6" />
+      </svg>
+    </span>
   )
 }
 
@@ -1572,7 +1493,10 @@ interface Props {
   onViewedMatch?: (matchId: string) => void
   dismissedAlertMatchIds?: Set<string>
   onDismissAlert?: (matchId: string) => void
-  starterVenueName?: string | null
+  profileAvatarUrl?: string | null
+  profileDisplayName?: string | null
+  profileFirstName?: string | null
+  profileLastName?: string | null
   starterCard?: {
     contactCount: number
     preferredFormat: StarterMatchFormat
@@ -1602,15 +1526,17 @@ export function MatchesPanel({
   onViewedMatch,
   dismissedAlertMatchIds,
   onDismissAlert,
-  starterVenueName,
+  profileAvatarUrl,
+  profileDisplayName,
+  profileFirstName,
+  profileLastName,
   starterCard,
   onParseScreenshots,
   onImportScreenshotContacts,
 }: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'calendar' | 'history'>('upcoming')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
-  const [mobileCreateExpandSignal, setMobileCreateExpandSignal] = useState(0)
-  const [desktopCreateExpanded, setDesktopCreateExpanded] = useState(false)
+  const [createMatchExpanded, setCreateMatchExpanded] = useState(false)
   const [pendingMatchId, setPendingMatchId] = useState<string | null>(null)
   const effectiveSelectedMatchId = pendingMatchId ?? selectedMatchId ?? null
   const isMatchDetailLoading = Boolean(pendingMatchId)
@@ -1690,13 +1616,13 @@ export function MatchesPanel({
   const visibleCancelled = cancelled
   const visibleRemoved = removed
   const visibleActionNeeded = actionNeeded
-  const mobileInitials = userId.slice(0, 2).toUpperCase()
 
   const subTabBtn = (key: 'upcoming' | 'calendar' | 'history', label: string, count?: number) => (
     <button
+      type="button"
       onClick={() => setSubTab(key)}
       className={[
-        'text-body-main rounded-full px-4 py-2 font-semibold transition',
+        'h-8 min-w-0 rounded-full px-2 text-[12px] font-bold transition sm:h-9 sm:px-3 sm:text-[13px]',
         subTab === key
           ? 'bg-[#0d6efd] text-white shadow-[0_8px_18px_rgba(13, 110, 253, 0.24)]'
           : 'text-[#64748B] hover:text-[#1E293B]',
@@ -1711,25 +1637,20 @@ export function MatchesPanel({
     </button>
   )
 
-  const openCreateMatch = () => {
-    setMobileCreateExpandSignal((value) => value + 1)
-    window.setTimeout(() => {
-      document.getElementById('create-match-inline')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 60)
-  }
   const handleCreateExpandedChange = useCallback((expanded: boolean) => {
-    setDesktopCreateExpanded(expanded)
+    setCreateMatchExpanded(expanded)
   }, [])
 
-  const renderStarterCard = () => starterCard && !hasActiveMatchSelection ? (
+  const shouldRenderStarterCard = Boolean(
+    starterCard
+    && !hasActiveMatchSelection
+    && starterCard.contactCount === 0
+    && !starterCard.firstMatchCreated
+    && items.length === 0,
+  )
+  const renderStarterCard = () => shouldRenderStarterCard && starterCard ? (
     <FirstMatchStarterCard
-      contactCount={starterCard.contactCount}
-      firstMatchCreated={starterCard.firstMatchCreated}
-      preferredFormat={starterCard.preferredFormat}
-      onPreferredFormatChange={starterCard.onPreferredFormatChange}
-      venueName={starterVenueName}
       onAddContact={starterCard.onAddContact}
-      onStartMatch={openCreateMatch}
       onDismiss={starterCard.onDismiss}
     />
   ) : null
@@ -1737,18 +1658,18 @@ export function MatchesPanel({
   return (
     <div className="space-y-8">
       <div className="space-y-6 md:hidden">
-        <section className="rounded-[32px] border border-[#E2E8F0] bg-white px-5 pb-5 pt-4 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
-          <div className="mb-5 flex items-center justify-between gap-3">
+        <section className="rounded-[24px] border border-[#E2E8F0] bg-white px-4 pb-4 pt-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <img
                 src="/playerhoods-brand-stacked-cropped.png"
                 alt="PlayerHoods"
-                className="h-10 w-36 object-contain"
+                className="h-8 w-32 object-contain"
               />
             </div>
             <div className="flex items-center gap-3">
-              <span className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M15 17H9" />
                   <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
                 </svg>
@@ -1756,19 +1677,24 @@ export function MatchesPanel({
                   <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#F97316]" />
                 ) : null}
               </span>
-              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#1E3A6D] text-[18px] font-black text-white">
-                {mobileInitials}
-              </span>
+              <MobileProfileAvatar
+                avatarUrl={profileAvatarUrl}
+                displayName={profileDisplayName}
+                firstName={profileFirstName}
+                lastName={profileLastName}
+              />
             </div>
           </div>
 
           <h1 className="text-h1 text-[#1E293B]">Matches</h1>
 
-          <div className="mt-5 inline-flex w-full rounded-full border border-[#E2E8F0] bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-            {subTabBtn('upcoming', 'Upcoming', incoming.length)}
-            {subTabBtn('calendar', 'Calendar')}
-            {subTabBtn('history', 'History', history.length)}
-          </div>
+          {!createMatchExpanded ? (
+            <div className="mt-4 grid w-full grid-cols-3 rounded-full border border-[#E2E8F0] bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+              {subTabBtn('upcoming', 'Upcoming', incoming.length)}
+              {subTabBtn('calendar', 'Calendar')}
+              {subTabBtn('history', 'History', history.length)}
+            </div>
+          ) : null}
         </section>
 
         {renderStarterCard()}
@@ -1842,7 +1768,7 @@ export function MatchesPanel({
             'grid items-start gap-6 transition-[grid-template-columns] duration-300',
             hasActiveMatchSelection
               ? 'lg:grid-cols-[minmax(720px,1.25fr)_minmax(500px,0.86fr)] xl:grid-cols-[minmax(820px,1.32fr)_minmax(520px,0.82fr)]'
-              : desktopCreateExpanded
+              : createMatchExpanded
               ? 'lg:grid-cols-[minmax(680px,1.2fr)_minmax(430px,0.86fr)] xl:grid-cols-[minmax(760px,1.25fr)_minmax(500px,0.86fr)]'
               : 'lg:grid-cols-[minmax(430px,640px)_minmax(520px,1fr)]',
           ].join(' ')}
@@ -1863,7 +1789,6 @@ export function MatchesPanel({
             ) : (
             <CreateMatchInline
               defaultVenueId={defaultVenueId}
-              expandSignal={mobileCreateExpandSignal}
               onExpandedChange={handleCreateExpandedChange}
               myPlayCities={myPlayCities}
               venueSports={venueSports}
@@ -1878,11 +1803,13 @@ export function MatchesPanel({
               <div>
                 <h2 className="text-h2 font-semibold tracking-tight text-[#0F172A]">Match Board</h2>
               </div>
-              <div className="inline-flex rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
-                {subTabBtn('upcoming', 'Upcoming', incoming.length)}
-                {subTabBtn('calendar', 'Calendar')}
-                {subTabBtn('history', 'History', history.length)}
-              </div>
+              {!createMatchExpanded ? (
+                <div className="grid grid-cols-3 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
+                  {subTabBtn('upcoming', 'Upcoming', incoming.length)}
+                  {subTabBtn('calendar', 'Calendar')}
+                  {subTabBtn('history', 'History', history.length)}
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-5 space-y-8">
@@ -2055,7 +1982,7 @@ export function MatchesPanel({
       <div className="md:hidden">
         <CreateMatchInline
           defaultVenueId={defaultVenueId}
-          expandSignal={mobileCreateExpandSignal}
+          onExpandedChange={handleCreateExpandedChange}
           myPlayCities={myPlayCities}
           venueSports={venueSports}
           onParseScreenshots={onParseScreenshots}
