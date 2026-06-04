@@ -44,7 +44,7 @@ PR #101 updates the player-facing Join by Shared Link flow to the revised v2 `Re
 | Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
 | SQL regression | Passed in GitHub; not run locally | GitHub SQL regression check passed for PR #101 and covers repeated verification idempotency. Local SQL runner was not executed because Docker Desktop Linux engine was unavailable. |
 | Vercel Preview | Passed deploy; smoke not run | Preview deploy passed before merge; no real email/browser smoke was run |
-| Vercel Production | Deployed | Vercel auto-deploy for merge commit `7c551aadd568f0d19f61e6edd796d61fc7f683e8` completed successfully |
+| Vercel Production | Deployed | Vercel auto-deploy for merge commit `7c551aadd568f0d19f61e6edd796d61fc7f683e8` completed successfully: `https://vercel.com/nancys-projects-128e326c/playerhoods-codex/2yK8VKuvsYSESvPeQT5PTPGkhKD8` |
 | Supabase Remote | Not changed | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
 | Production smoke | Not run | Full shared-link browser/email smoke still needs a safe join link and disposable inbox |
