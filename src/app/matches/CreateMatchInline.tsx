@@ -132,6 +132,9 @@ function buildTimeSlots(): { label: string; value: string }[] {
 }
 
 const TIME_SLOTS = buildTimeSlots()
+// Product decision: Match Create no longer exposes reminder choices.
+// New matches keep the existing day-before player reminder behavior.
+const DEFAULT_PLAYER_REMINDER_MINUTES = 1440
 
 const DS_CARD = 'rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]'
 const DS_SECTION_TITLE = 'text-h2 text-[#1E293B]'
@@ -1120,7 +1123,7 @@ export function CreateMatchInline({
   const [customDateOpen, setCustomDateOpen] = useState(false)
   const [startTime, setStartTime] = useState('')
   const [durationMinutes, setDurationMinutes] = useState(60)
-  const [playerReminderMinutes] = useState<number | null>(1440)
+  const playerReminderMinutes = DEFAULT_PLAYER_REMINDER_MINUTES
   const [gameType, setGameType] = useState('doubles')
   const [doublesFormat, setDoublesFormat] = useState<MatchDoublesFormat>('open')
   const [venueId, setVenueId] = useState(defaultVenueId || '')
