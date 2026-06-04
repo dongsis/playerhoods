@@ -155,6 +155,15 @@ const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'walk_in', label: 'Walk-in / no booking' },
 ]
 
+function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | null | undefined): MatchCourtPlanMode | null {
+  if (!venueKind) return null
+  if (venueKind === 'club') return 'secured'
+  if (venueKind === 'park' || venueKind === 'community_centre' || venueKind === 'school' || venueKind === 'condo') {
+    return 'walk_in'
+  }
+  return null
+}
+
 const PLAYER_REMINDER_OPTIONS: { value: number | null; label: string }[] = [
   { value: 1440, label: 'Day before, 5 PM' },
   { value: null, label: 'None' },
@@ -1123,11 +1132,10 @@ export function CreateMatchInline({
   const [scopeGroupIds, setScopeGroupIds] = useState<string[]>([])
   const [scopeUserIds, setScopeUserIds] = useState<string[]>([])
   const [invitedGroupIds, setInvitedGroupIds] = useState<string[]>([])
-  const [courtPlanMode, setCourtPlanMode] = useState<MatchCourtPlanMode>('self_book_later')
+  const [courtPlanMode, setCourtPlanMode] = useState<MatchCourtPlanMode>('secured')
   const [courtPlanNote, setCourtPlanNote] = useState('')
   const [courtCount, setCourtCount] = useState(1)
   const [customPlayersOpen, setCustomPlayersOpen] = useState(false)
-  const [customCourtsOpen, setCustomCourtsOpen] = useState(false)
   const [courtPlanMenuOpen, setCourtPlanMenuOpen] = useState(false)
   const [courtLabelEditorOpen, setCourtLabelEditorOpen] = useState(false)
   const [organizerNote, setOrganizerNote] = useState('')
@@ -1605,6 +1613,12 @@ export function CreateMatchInline({
     }
   }, [contactDisplayName, contactEmail, contactNotes, contactPhone, loadContactInviteCandidates, selectedSport])
 
+  useEffect(() => {
+    const nextDefaultCourtPlanMode = getDefaultCourtPlanModeForVenueKind(selectedVenue?.venue_kind)
+    if (!nextDefaultCourtPlanMode) return
+    setCourtPlanMode((currentMode) => (currentMode === nextDefaultCourtPlanMode ? currentMode : nextDefaultCourtPlanMode))
+  }, [selectedVenue?.id, selectedVenue?.venue_kind])
+
   const recurringWeeksAheadCount = 4
   const recurringSeriesName = useMemo(
     () =>
@@ -1629,23 +1643,6 @@ export function CreateMatchInline({
     if (!createExpanded) return
     createFormRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
   }, [createExpanded, createStep])
-
-  useEffect(() => {
-    if (!createExpanded) return
-
-    const bottomNav = document.querySelector('nav.fixed.inset-x-0.bottom-0') as HTMLElement | null
-    const main = document.querySelector('main') as HTMLElement | null
-    const previousNavDisplay = bottomNav?.style.display
-    const previousMainPaddingBottom = main?.style.paddingBottom
-
-    if (bottomNav) bottomNav.style.display = 'none'
-    if (main) main.style.paddingBottom = '1rem'
-
-    return () => {
-      if (bottomNav && previousNavDisplay !== undefined) bottomNav.style.display = previousNavDisplay
-      if (main && previousMainPaddingBottom !== undefined) main.style.paddingBottom = previousMainPaddingBottom
-    }
-  }, [createExpanded])
 
   const selectedFormatLabel = useMemo(() => {
     const source = gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS
@@ -1681,6 +1678,12 @@ export function CreateMatchInline({
     ],
     [groupMembersById, selectedScopeGroups, selectedScopeUsers],
   )
+
+  const todayDateValue = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return toDateInputValue(today)
+  }, [])
 
   const dateChoices = useMemo(() => {
     const today = new Date()
@@ -2178,6 +2181,11 @@ export function CreateMatchInline({
       setError(matchMode === 'recurring'
         ? 'Please choose the first match date for the recurring series.'
         : 'Please choose a match date.')
+      return false
+    }
+
+    if (matchDate < todayDateValue) {
+      setError('Please choose today or a future date.')
       return false
     }
 
@@ -3257,6 +3265,26 @@ export function CreateMatchInline({
             </div>
           ) : null}
 
+          <details className="rounded-xl border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-2">
+            <summary className="cursor-pointer text-[12px] font-black text-[#52647E]">
+              More options
+            </summary>
+            <label className="mt-2 grid grid-cols-[1fr_9.5rem] items-center gap-2">
+              <span className={DS_LABEL}>Courts needed</span>
+              <select
+                value={courtCount}
+                onChange={(event) => setCourtCount(Number.parseInt(event.target.value, 10))}
+                className={DS_COMPACT_FIELD}
+              >
+                {[1, 2, 3, 4, 5, 6].map((count) => (
+                  <option key={count} value={count}>
+                    {count} court{count === 1 ? '' : 's'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </details>
+
         </div>
 
       </section>
@@ -3299,7 +3327,16 @@ export function CreateMatchInline({
             <input
               type="date"
               value={matchDate}
-              onChange={(event) => setMatchDate(event.target.value)}
+              min={todayDateValue}
+              onChange={(event) => {
+                const nextDate = event.target.value
+                setMatchDate(nextDate)
+                if (nextDate && nextDate < todayDateValue) {
+                  setError('Please choose today or a future date.')
+                  return
+                }
+                setError((currentError) => currentError === 'Please choose today or a future date.' ? null : currentError)
+              }}
               className={`${DS_COMPACT_FIELD} mt-1.5`}
             />
           ) : null}
@@ -3787,8 +3824,8 @@ export function CreateMatchInline({
               </p>
             )}
 
-            <div className="h-16 md:hidden" aria-hidden="true" />
-            <div className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-40 rounded-xl border border-[#E2E8F0] bg-white/95 p-1.5 shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] backdrop-blur md:static md:inset-auto md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+            <div className="h-32 md:hidden" aria-hidden="true" />
+            <div className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-40 rounded-xl border border-[#E2E8F0] bg-white/95 p-1.5 shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] backdrop-blur md:static md:inset-auto md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
             <div className="flex flex-col gap-4 md:flex-row">
               <button
                 type="submit"
