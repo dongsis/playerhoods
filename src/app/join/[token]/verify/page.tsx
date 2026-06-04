@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { createSupabasePublicServerClient } from '@/lib/supabase/server'
-import { verifyPublicMatchSignupByLink } from '../actions'
+import { verifyPublicMatchSignupAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,11 +85,6 @@ function getVerifyErrorMessage(code: string | undefined): string | null {
   }
 }
 
-function redirectToVerifyResult(publicToken: string, params: Record<string, string>): never {
-  const query = new URLSearchParams(params)
-  redirect(`/join/${encodeURIComponent(publicToken)}/verify?${query.toString()}`)
-}
-
 export default async function PublicMatchSignupVerifyPage({ params, searchParams }: Props) {
   const { token: publicToken } = await params
   const pageParams = await searchParams
@@ -103,18 +98,11 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
     notFound()
   }
 
-  if (!isVerified && !routeErrorMessage && hasVerificationInput) {
-    const result = await verifyPublicMatchSignupByLink(publicToken, signupId, verificationToken)
-    if (result.ok) {
-      redirectToVerifyResult(publicToken, { status: 'verified' })
-    }
-    redirectToVerifyResult(publicToken, { error: result.error })
-  }
-
   const inputErrorMessage = !isVerified && !routeErrorMessage && !hasVerificationInput
     ? getVerifyErrorMessage('invalid')
     : null
   const errorMessage = routeErrorMessage ?? inputErrorMessage
+  const isFinishing = !isVerified && !errorMessage && hasVerificationInput
 
   const supabase = createSupabasePublicServerClient()
   const { data } = await supabase.rpc('rpc_public_match_signup_context', {
@@ -126,6 +114,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
   const matchTime = context ? formatTime(context.start_time) : null
   const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' - ') || 'Time to be confirmed'
   const venueName = context?.venue_name ?? 'Venue to be confirmed'
+  const verifyAction = verifyPublicMatchSignupAction.bind(null, publicToken)
 
   return (
     <div className="public-signup-verify-page">
@@ -227,6 +216,31 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           font-weight: 850;
           text-decoration: none;
         }
+
+        .public-signup-verify-form {
+          margin: 20px 0 0;
+        }
+
+        .public-signup-verify-fallback {
+          color: #405474;
+          font-size: 0.95rem;
+          font-weight: 650;
+          line-height: 1.5;
+          margin: 0 0 14px;
+        }
+
+        .public-signup-verify-button {
+          appearance: none;
+          background: #2554d9;
+          border: 0;
+          border-radius: 999px;
+          color: #fff;
+          cursor: pointer;
+          font-size: 0.95rem;
+          font-weight: 850;
+          min-height: 46px;
+          padding: 0 20px;
+        }
       `}</style>
 
       <main className="public-signup-verify-shell">
@@ -237,7 +251,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
         <section className="public-signup-verify-card">
           <p className="public-signup-verify-kicker">Join Link</p>
           <h1 className="public-signup-verify-title">
-            {isVerified ? 'Request sent' : 'Verification failed'}
+            {isVerified ? 'Request sent' : isFinishing ? 'Finishing your request...' : 'Verification failed'}
           </h1>
           {isVerified ? (
             <>
@@ -247,6 +261,40 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
               <p className="public-signup-verify-second-line">
                 We&apos;ll email you when the host responds.
               </p>
+            </>
+          ) : isFinishing ? (
+            <>
+              <p className="public-signup-verify-body">
+                Verifying your email and sending your request to the host. This should only take a moment.
+              </p>
+              <form id="public-signup-verify-form" className="public-signup-verify-form" action={verifyAction}>
+                <input type="hidden" name="signup" value={signupId} />
+                <input type="hidden" name="verification_token" value={verificationToken} />
+                <noscript>
+                  <p className="public-signup-verify-fallback">
+                    JavaScript is unavailable, so use this button to finish sending your request.
+                  </p>
+                  <button type="submit" className="public-signup-verify-button">
+                    Finish request
+                  </button>
+                </noscript>
+              </form>
+              <script
+                dangerouslySetInnerHTML={{
+                  __html: `
+(() => {
+  const form = document.getElementById('public-signup-verify-form');
+  if (!form || form.dataset.autosubmitted === 'true') return;
+  form.dataset.autosubmitted = 'true';
+  if (typeof form.requestSubmit === 'function') {
+    form.requestSubmit();
+  } else {
+    form.submit();
+  }
+})();
+                  `.trim(),
+                }}
+              />
             </>
           ) : (
             <p className="public-signup-verify-body">
