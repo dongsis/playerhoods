@@ -50,7 +50,7 @@ This hotfix addresses the Issue #94 public signup verification-link 404 found du
 
 ### Release Order
 
-1. Merge PR #94 only after owner approval and green review/check gates.
+1. Merge PR #95 for Issue #94 only after owner approval and green review/check gates.
 2. Let Vercel Production auto-deploy the merge commit.
 3. Rerun controlled public signup production smoke from a fresh signup and a newly generated verification email. Do not reuse any previously exposed verification link or token.
 4. Confirm:
@@ -65,7 +65,7 @@ This hotfix addresses the Issue #94 public signup verification-link 404 found du
 
 ### Rollback
 
-- Code rollback: revert the PR #94 merge commit or redeploy the previous Vercel Production commit.
+- Code rollback: revert the PR #95 merge commit or redeploy the previous Vercel Production commit.
 - Database rollback: none required because this hotfix has no migration or remote Supabase change.
 - Provider rollback: none performed by Codex; no provider configuration was changed.
 - Do not run production notification/email/SMS drains during rollback unless separately approved.
