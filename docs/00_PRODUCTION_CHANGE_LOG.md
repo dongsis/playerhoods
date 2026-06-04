@@ -14,6 +14,67 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-04 - HOTFIX-20260604-issue94-public-signup-verify-link-404
+
+**Type:** Hotfix
+**Code Commits:** PR #94 implementation commit `8f5872b3b46cb55af25e6bc006a3a4e29fa95591`; final PR head and merge commit pending
+**Migration:** None
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+
+### Summary
+
+This hotfix addresses the Issue #94 public signup verification-link 404 found during controlled production smoke after PR #77 and PR #93:
+
+- Public signup submit reached the verification-email step and the production provider delivered the email.
+- Opening the verification email link returned a Next.js 404 before POST confirmation.
+- Safe diagnosis showed the App Router route was deployed and middleware passed `/join/[token]/verify`.
+- The failing link shape used `?signup=...&token=...`, where the verification query parameter name collided with the dynamic public signup route token.
+- New verification emails now use `verification_token=...` for the email verification secret.
+- The verify page and POST action keep `publicToken`, `signupId`, and `verificationToken` separate.
+- The verify page keeps a best-effort legacy `token` query fallback for already-sent emails if the value is safely available from `searchParams`.
+- Missing or malformed verification input now renders a safe invalid-verification state instead of a raw 404.
+- GET render remains non-mutating; participant creation still requires explicit POST confirmation.
+- No DB schema, grants, RLS, email provider config, notification drain, SMS, or marketing behavior changes are included.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally at PR stage | `npx.cmd tsc --noEmit`; `npm run build` |
+| Diff whitespace | Passed locally at PR stage | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Not applicable | No DB migration, grant, RLS, or SQL test surface changed |
+| Vercel Preview | Pending PR validation | Preview only; no production deployment performed by Codex |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run by this hotfix |
+| Production verification | Not verified | Requires owner-approved merge, Vercel Production auto-deploy, and a fresh controlled public signup smoke using a new verification email |
+
+### Release Order
+
+1. Merge PR #94 only after owner approval and green review/check gates.
+2. Let Vercel Production auto-deploy the merge commit.
+3. Rerun controlled public signup production smoke from a fresh signup and a newly generated verification email. Do not reuse any previously exposed verification link or token.
+4. Confirm:
+   - Anonymous user opens public signup link.
+   - Name plus email signup starts verification.
+   - Actual verification email is delivered through the production provider.
+   - The new verification link opens a safe confirmation page.
+   - POST confirmation creates a pending public signup request.
+   - Host sees the pending public signup without raw email/phone.
+   - Host can add the player through the existing lifecycle.
+   - Phone-only path remains blocked with SMS-coming-next copy.
+
+### Rollback
+
+- Code rollback: revert the PR #94 merge commit or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this hotfix has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- Already-sent verification emails using `token=...` have a best-effort fallback, but any tokenized URL exposed in screenshots or chat should not be reused as final smoke evidence.
+- Production smoke must use a newly generated verification email and must not report raw signup ids, verification tokens, raw emails, phone numbers, or full verification links.
+
 ## 2026-06-03 - HOTFIX-20260603-issue92-public-signup-start-failure
 
 **Type:** Hotfix
