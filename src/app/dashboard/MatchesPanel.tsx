@@ -1769,7 +1769,7 @@ export function MatchesPanel({
             hasActiveMatchSelection
               ? 'lg:grid-cols-[minmax(720px,1.25fr)_minmax(500px,0.86fr)] xl:grid-cols-[minmax(820px,1.32fr)_minmax(520px,0.82fr)]'
               : createMatchExpanded
-              ? 'lg:grid-cols-[minmax(680px,1.2fr)_minmax(430px,0.86fr)] xl:grid-cols-[minmax(760px,1.25fr)_minmax(500px,0.86fr)]'
+              ? 'lg:grid-cols-1'
               : 'lg:grid-cols-[minmax(430px,640px)_minmax(520px,1fr)]',
           ].join(' ')}
         >
