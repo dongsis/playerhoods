@@ -19,7 +19,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 **Type:** Structural Release
 **Code Commits:** PR #112 merged at `22e4db39ad238a316742ab1f0331a0430dfed56e`. Final PR head before merge: `d571d81e6e22de91e7364247233cd85a1970358b`.
 **Migration:** `supabase/migrations/20260605184500_scoped_confirmed_lineup_delivery_drain.sql` applied to Supabase Remote before merge.
-**Status:** Production aligned / limited reachability verification complete; full scoped notification delivery smoke pending safe production match and recipients.
+**Status:** Production aligned / limited reachability verification complete; full scoped notification delivery smoke and unauthenticated public join verification email delivery verification pending.
 
 ### Summary
 
@@ -29,6 +29,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 - Does not enable the generic queued-delivery drain and does not claim unrelated notification backlog.
 - Does not add request-created, host-action, approval, public signup, or public `/join/[token]` notifications.
 - Does not change Contact Player, public signup verification email, PR #98, or PR #104 behavior.
+- Known issue: unauthenticated public join verification email delivery returned `email-delivery-unavailable` in manual testing; this release does not fix or verify that path.
 
 ### Verification Evidence
 
@@ -42,6 +43,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 | Vercel Production | Deployed | GitHub Deployment `4952404344` for merge commit `22e4db39ad238a316742ab1f0331a0430dfed56e` reached `success`; Vercel deployment URL `https://playerhoods-codex-nxq95aype-nancys-projects-128e326c.vercel.app` |
 | Real SMS/email/provider traffic | Not sent by Codex | No provider sends, production drains, real emails, SMS, or notifications |
 | Production verification | Limited reachability smoke passed; notification smoke pending | `https://www.playerhoods.com/`, `https://www.playerhoods.com/login`, and the Vercel deployment URL returned HTTP 200. Full Form Match / scoped notification smoke was not run because no safe production match and safe recipients were approved |
+| Public join email verification | Known issue / not verified | Unauthenticated `/join/[token]` verification email returned `email-delivery-unavailable` in manual testing. Registered-user public join path is separate and remains OK. Do not mark public Open to Join email delivery or full `/join` flow as verified until follow-up provider/env audit passes |
 
 ### Rollback
 
