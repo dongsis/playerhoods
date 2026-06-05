@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
-import { createSupabasePublicServerClient } from '@/lib/supabase/server'
-import { startPublicMatchSignupAction } from './actions'
+import { createSupabasePublicServerClient, createSupabaseServerClient, getUser } from '@/lib/supabase/server'
+import { requestRegisteredPublicMatchSpotAction, startPublicMatchSignupAction } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +25,24 @@ type PublicSignupContext = {
   start_time: string | null
   venue_name: string | null
   venue_timezone: string | null
+}
+
+type RegisteredParticipantState = {
+  id: string
+  status: string
+  join_method: string | null
+  org_approved_at: string | null
+  participant_accepted_at: string | null
+  confirmed_at: string | null
+  removed_at: string | null
+}
+
+type RegisteredRequestState = {
+  title: string
+  subtext: string
+  note: string | null
+  message: string
+  variant: 'success' | 'error'
 }
 
 function isUuid(value: string): boolean {
@@ -65,6 +83,43 @@ function formatTime(value: string | null | undefined): string | null {
   }).format(date)
 }
 
+function getRegisteredRequestState(
+  participant: RegisteredParticipantState | null,
+  requestSentNotice: boolean,
+): RegisteredRequestState | null {
+  if (participant?.status === 'confirmed') {
+    return {
+      title: "You're in for this match",
+      subtext: 'You are already in the Confirmed Lineup for this match.',
+      note: null,
+      message: 'Host-confirmed. You are in the lineup.',
+      variant: 'success',
+    }
+  }
+
+  if (participant?.status === 'waiting_list') {
+    return {
+      title: 'You are on the waitlist',
+      subtext: 'Your spot is on the waitlist for this match.',
+      note: 'The host still needs to add you to the lineup.',
+      message: 'Waiting for host.',
+      variant: 'success',
+    }
+  }
+
+  if (participant || requestSentNotice) {
+    return {
+      title: 'Request sent',
+      subtext: 'Waiting for host to add you to the lineup.',
+      note: 'You do not need to verify your email again for this match.',
+      message: 'Request sent. Waiting for host.',
+      variant: 'success',
+    }
+  }
+
+  return null
+}
+
 function getErrorMessage(code: string | undefined): string | null {
   switch (code) {
     case 'name-required':
@@ -80,6 +135,10 @@ function getErrorMessage(code: string | undefined): string | null {
       return 'This match is no longer taking spot requests.'
     case 'link-not-found':
       return 'This join link is no longer available.'
+    case 'sign-in-required':
+      return 'Sign in before requesting a spot.'
+    case 'organizer-cannot-request':
+      return "Hosts can't request a spot in their own match."
     case 'email-delivery-unavailable':
       return 'Could not send the verification email. Please try again.'
     case 'failed':
@@ -94,8 +153,8 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const pageParams = await searchParams
   if (!isUuid(token)) notFound()
 
-  const supabase = createSupabasePublicServerClient()
-  const { data, error } = await supabase.rpc('rpc_public_match_signup_context', {
+  const publicSupabase = createSupabasePublicServerClient()
+  const { data, error } = await publicSupabase.rpc('rpc_public_match_signup_context', {
     p_public_token: token,
   })
   if (error) notFound()
@@ -103,7 +162,26 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const context = ((data ?? []) as PublicSignupContext[])[0] ?? null
   if (!context) notFound()
 
+  const user = await getUser()
+  let registeredParticipant: RegisteredParticipantState | null = null
+
+  if (user) {
+    const supabase = await createSupabaseServerClient()
+    const { data: participant } = await supabase
+      .from('match_participants')
+      .select('id,status,join_method,org_approved_at,participant_accepted_at,confirmed_at,removed_at')
+      .eq('match_id', context.match_id)
+      .eq('user_id', user.id)
+      .is('removed_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    registeredParticipant = (participant as RegisteredParticipantState | null) ?? null
+  }
+
   const signupAction = startPublicMatchSignupAction.bind(null, token)
+  const registeredRequestAction = requestRegisteredPublicMatchSpotAction.bind(null, token)
   const matchType = formatGameType(context.game_type ?? context.sport_name)
   const matchDate = formatDate(context.match_date)
   const matchTime = formatTime(context.start_time)
@@ -112,7 +190,17 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const pageError = getErrorMessage(pageParams.error)
   const isCheckEmail = pageParams.notice === 'check-email'
   const isAlreadySubmitted = pageParams.notice === 'already-submitted'
-  const showRequestForm = context.signup_open && !isCheckEmail && !isAlreadySubmitted
+  const isRegisteredRequestSent = pageParams.notice === 'registered-requested'
+  const isRegisteredRequestBlocked = pageParams.error === 'organizer-cannot-request'
+  const registeredRequestState = user ? getRegisteredRequestState(registeredParticipant, isRegisteredRequestSent) : null
+  const showPublicCheckEmail = !user && isCheckEmail
+  const showPublicAlreadySubmitted = !user && isAlreadySubmitted
+  const showRegisteredRequestButton = Boolean(
+    user && context.signup_open && !registeredRequestState && !isRegisteredRequestBlocked,
+  )
+  const showRequestForm = !user && context.signup_open && !isCheckEmail && !isAlreadySubmitted
+  const pageTitle = registeredRequestState?.title
+    ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicCheckEmail ? 'Check your email' : 'Request a spot in this match')
 
   return (
     <div className="public-signup-page">
@@ -360,20 +448,34 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
 
         <section className="public-signup-card">
           <p className="public-signup-kicker">Join Link</p>
-          <h1 className="public-signup-title">
-            {isAlreadySubmitted ? 'Request already sent' : isCheckEmail ? 'Check your email' : 'Request a spot in this match'}
-          </h1>
-          {isAlreadySubmitted ? (
+          <h1 className="public-signup-title">{pageTitle}</h1>
+          {registeredRequestState ? (
+            <>
+              <p className="public-signup-subtext">{registeredRequestState.subtext}</p>
+              {registeredRequestState.note ? (
+                <p className="public-signup-note">{registeredRequestState.note}</p>
+              ) : null}
+            </>
+          ) : showPublicAlreadySubmitted ? (
             <p className="public-signup-subtext">
               Your request is already waiting for the host. We&apos;ll email you when the host responds.
             </p>
-          ) : isCheckEmail ? (
+          ) : showPublicCheckEmail ? (
             <>
               <p className="public-signup-subtext">
                 Verify your email to send your request for this match to the host. Your contact information will not be shared with the host.
               </p>
               <p className="public-signup-note">
                 We sent you a verification link. Click it once to send your request.
+              </p>
+            </>
+          ) : user ? (
+            <>
+              <p className="public-signup-subtext">
+                You&apos;re signed in. Request a Spot when you&apos;re ready.
+              </p>
+              <p className="public-signup-note">
+                The host still needs to add you to the lineup.
               </p>
             </>
           ) : (
@@ -396,8 +498,11 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           </div>
 
           {pageError ? <p className="public-signup-message error">{pageError}</p> : null}
+          {registeredRequestState ? (
+            <p className={`public-signup-message ${registeredRequestState.variant}`}>{registeredRequestState.message}</p>
+          ) : null}
 
-          {isCheckEmail ? (
+          {showPublicCheckEmail ? (
             <>
               <p className="public-signup-help">
                 Can&apos;t find the email? Check your inbox first, then your spam or junk folder. To help future PlayerHoods emails arrive, add{' '}
@@ -407,7 +512,21 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
                 Back to match details
               </Link>
             </>
-          ) : isAlreadySubmitted ? (
+          ) : showPublicAlreadySubmitted ? (
+            <Link href={`/join/${token}`} className="public-signup-link">
+              Back to match details
+            </Link>
+          ) : registeredRequestState ? (
+            <Link href={`/join/${token}`} className="public-signup-link">
+              Back to match details
+            </Link>
+          ) : showRegisteredRequestButton ? (
+            <form action={registeredRequestAction} className="public-signup-form">
+              <button type="submit" className="public-signup-button">
+                Request a Spot
+              </button>
+            </form>
+          ) : user && isRegisteredRequestBlocked ? (
             <Link href={`/join/${token}`} className="public-signup-link">
               Back to match details
             </Link>

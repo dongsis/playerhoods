@@ -14,6 +14,38 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-05 - DB-20260605-logged-in-public-join-request
+
+**Type:** Database/RPC + UI Flow
+**Code Commits:** Draft PR pending; implementation branch `codex/logged-in-public-join-request`
+**Migration:** `supabase/migrations/20260605153000_logged_in_public_join_request.sql` added locally; not applied to Supabase Remote by Codex
+**Status:** Draft PR / local verification only; no production deploy; no Supabase Remote change
+
+### Summary
+
+- Added authenticated-only public-token request RPC for logged-in registered users opening `/join/[token]`.
+- The new RPC resolves the existing Open to Join token, rejects anonymous callers and hosts, and writes through `apply_participant_admission(..., 'requested')`.
+- Logged-in users on `/join/[token]` no longer see name/email entry or email verification; they see match details and must explicitly click `Request a Spot`.
+- Existing unauthenticated public signup verification and Contact Player public flow are unchanged.
+- Added SQL regression coverage for token authorization outside normal scope, anonymous rejection, organizer rejection, idempotency, user-based participant rows, pending host action, and unchanged public signup coverage.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally | `npx tsc --noEmit`; `npm run build` |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Blocked locally | `npm run verify:sql` could not connect to Docker Desktop Linux engine / local Supabase container; no Supabase Remote run |
+| Supabase Remote | Not changed | Migration not applied by Codex |
+| Real SMS/email/provider traffic | Not sent by Codex | No provider sends, queue drains, real emails, or SMS |
+| Production deploy | Not run | Draft PR only |
+
+### Rollback
+
+- Code rollback: revert the implementation commit or close the draft PR before merge.
+- Database rollback if applied later: drop `public.rpc_public_match_registered_request_join(uuid)` and revoke its grants.
+- Provider rollback: none; no email/SMS/provider configuration changed.
+
 ## 2026-06-04 - STRUCTURAL-20260604-join-link-request-a-spot-v2
 
 **Type:** Structural Release

@@ -17,10 +17,13 @@ DECLARE
   v_match_two uuid := '76000000-0000-0000-0000-000000000004'::uuid;
   v_match_unavailable uuid := '76000000-0000-0000-0000-000000000005'::uuid;
   v_match_disabled_after_start uuid := '76000000-0000-0000-0000-000000000006'::uuid;
+  v_match_registered uuid := '76000000-0000-0000-0000-000000000007'::uuid;
+  v_registered_player uuid := '76000000-0000-0000-0000-000000000008'::uuid;
   v_link record;
   v_link_two record;
   v_unavailable_link record;
   v_disabled_after_start_link record;
+  v_registered_link record;
   v_context record;
   v_disabled_token uuid;
   v_signup record;
@@ -44,10 +47,15 @@ DECLARE
   v_dirty_status_removed_mp_id uuid;
   v_mp_two public.match_participants%rowtype;
   v_rerequest_mp public.match_participants%rowtype;
+  v_registered_mp public.match_participants%rowtype;
+  v_registered_repeat_mp public.match_participants%rowtype;
   v_retry record;
   v_guest public.guests%rowtype;
   v_identity_count integer;
   v_participant_count integer;
+  v_registered_participant_count integer;
+  v_registered_signup_count integer;
+  v_registered_guest_participant_count integer;
   v_active_signup_count integer;
   v_host_owned_count integer;
   v_contact_record_count integer;
@@ -79,6 +87,9 @@ DECLARE
   v_anon_metadata_allowed boolean;
   v_auth_metadata_allowed boolean;
   v_service_metadata_allowed boolean;
+  v_anon_registered_allowed boolean;
+  v_auth_registered_allowed boolean;
+  v_service_registered_allowed boolean;
   v_anon_config_select_allowed boolean;
   v_auth_config_select_allowed boolean;
   v_disabled_context_count integer;
@@ -96,25 +107,25 @@ BEGIN
   DELETE FROM _issue76_results;
 
   DELETE FROM public.notification_deliveries
-  WHERE payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text)
+  WHERE payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text, v_match_registered::text)
      OR destination = v_email;
   DELETE FROM public.domain_events
   WHERE aggregate_type = 'public_match_signup'
-     OR payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text);
+     OR payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text, v_match_registered::text);
   DELETE FROM public.public_match_signups
-  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start)
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered)
      OR email_sha256 = v_hash;
   DELETE FROM public.public_match_signup_links
-  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered);
   DELETE FROM public.public_match_signup_identities
   WHERE email_sha256 = v_hash;
   DELETE FROM public.public_match_signup_config;
   DELETE FROM public.match_participant_actions
-  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered);
   DELETE FROM public.match_participants
-  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered);
   DELETE FROM public.matches
-  WHERE id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start);
+  WHERE id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered);
   DELETE FROM public.guests
   WHERE email = v_email
      OR id IN (
@@ -123,6 +134,8 @@ BEGIN
        WHERE email_sha256 = v_hash
      );
   DELETE FROM public.venues WHERE id = v_venue;
+  DELETE FROM public.profiles WHERE id = v_registered_player;
+  DELETE FROM auth.users WHERE id = v_registered_player;
   DELETE FROM public.profiles WHERE id = v_host;
   DELETE FROM auth.users WHERE id = v_host;
   DELETE FROM public.profiles WHERE id = v_invalid_system;
@@ -142,6 +155,12 @@ BEGIN
   INSERT INTO public.profiles (id, display_name)
   VALUES (v_host, 'Issue 76 Host');
 
+  INSERT INTO auth.users (id, email, email_confirmed_at)
+  VALUES (v_registered_player, 'issue76-registered-player@example.test', now());
+
+  INSERT INTO public.profiles (id, display_name)
+  VALUES (v_registered_player, 'Issue 76 Registered Player');
+
   INSERT INTO public.venues (id, name, timezone)
   VALUES (v_venue, 'Issue 76 Courts', 'America/Toronto');
 
@@ -160,7 +179,8 @@ BEGIN
     (v_match, v_host, 'active', v_venue, 1, 'issue76_public_signup', 2, current_date + 7, '18:00'::time, 90),
     (v_match_two, v_host, 'active', v_venue, 1, 'issue76_public_signup_two', 2, current_date + 8, '19:00'::time, 90),
     (v_match_unavailable, v_host, 'active', v_venue, 1, 'issue76_public_signup_inactive', 2, current_date + 9, '20:00'::time, 90),
-    (v_match_disabled_after_start, v_host, 'active', v_venue, 1, 'issue76_public_signup_disabled_after_start', 2, current_date + 10, '21:00'::time, 90);
+    (v_match_disabled_after_start, v_host, 'active', v_venue, 1, 'issue76_public_signup_disabled_after_start', 2, current_date + 10, '21:00'::time, 90),
+    (v_match_registered, v_host, 'active', v_venue, 1, 'issue76_public_signup_registered', 2, current_date + 11, '22:00'::time, 90);
 
   SELECT pg_get_constraintdef(c.oid)
   INTO v_constraint_def
@@ -257,6 +277,15 @@ BEGIN
   SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_participant_metadata(uuid)', 'execute')
   INTO v_service_metadata_allowed;
 
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_registered_request_join(uuid)', 'execute')
+  INTO v_anon_registered_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_registered_request_join(uuid)', 'execute')
+  INTO v_auth_registered_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_registered_request_join(uuid)', 'execute')
+  INTO v_service_registered_allowed;
+
   SELECT has_table_privilege('anon', 'public.public_match_signup_config', 'select')
   INTO v_anon_config_select_allowed;
 
@@ -283,6 +312,9 @@ BEGIN
       AND v_anon_metadata_allowed = false
       AND v_auth_metadata_allowed = true
       AND v_service_metadata_allowed = true
+      AND v_anon_registered_allowed = false
+      AND v_auth_registered_allowed = true
+      AND v_service_registered_allowed = false
       AND v_anon_config_select_allowed = false
       AND v_auth_config_select_allowed = false,
     'context_anon_execute=' || coalesce(v_anon_context_allowed::text, 'null')
@@ -303,6 +335,9 @@ BEGIN
       || ', metadata_anon_execute=' || coalesce(v_anon_metadata_allowed::text, 'null')
       || ', metadata_auth_execute=' || coalesce(v_auth_metadata_allowed::text, 'null')
       || ', metadata_service_execute=' || coalesce(v_service_metadata_allowed::text, 'null')
+      || ', registered_anon_execute=' || coalesce(v_anon_registered_allowed::text, 'null')
+      || ', registered_auth_execute=' || coalesce(v_auth_registered_allowed::text, 'null')
+      || ', registered_service_execute=' || coalesce(v_service_registered_allowed::text, 'null')
       || ', config_anon_select=' || coalesce(v_anon_config_select_allowed::text, 'null')
       || ', config_auth_select=' || coalesce(v_auth_config_select_allowed::text, 'null')
   );
@@ -329,13 +364,119 @@ BEGIN
   FROM public.rpc_public_match_signup_link_get_or_create(v_match_disabled_after_start)
   LIMIT 1;
 
+  SELECT * INTO v_registered_link
+  FROM public.rpc_public_match_signup_link_get_or_create(v_match_registered)
+  LIMIT 1;
+
   INSERT INTO _issue76_results VALUES (
     'organizer can create public signup link',
     v_link.public_token IS NOT NULL
       AND v_link_two.public_token IS NOT NULL
       AND v_unavailable_link.public_token IS NOT NULL
-      AND v_disabled_after_start_link.public_token IS NOT NULL,
+      AND v_disabled_after_start_link.public_token IS NOT NULL
+      AND v_registered_link.public_token IS NOT NULL,
     coalesce(v_link.public_token::text, 'missing_link')
+  );
+
+  PERFORM set_config('request.jwt.claims', '{}'::text, true);
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_registered_request_join(v_registered_link.public_token);
+    INSERT INTO _issue76_results VALUES ('anonymous registered public join request is rejected', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'anonymous registered public join request is rejected',
+      SQLERRM LIKE '%not_authenticated%',
+      SQLERRM
+    );
+  END;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_host::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_registered_request_join(v_registered_link.public_token);
+    INSERT INTO _issue76_results VALUES ('organizer cannot request own match through public join token', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'organizer cannot request own match through public join token',
+      SQLERRM LIKE '%organizer_cannot_request_own_match%',
+      SQLERRM
+    );
+  END;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_registered_player::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_match_request_join(v_match_registered);
+    INSERT INTO _issue76_results VALUES ('normal request_join still rejects public-token-only scope', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'normal request_join still rejects public-token-only scope',
+      SQLERRM LIKE '%no scope configured%' OR SQLERRM LIKE '%not in request scope%',
+      SQLERRM
+    );
+  END;
+
+  SELECT * INTO v_registered_mp
+  FROM public.rpc_public_match_registered_request_join(v_registered_link.public_token);
+
+  SELECT count(*)::integer INTO v_registered_signup_count
+  FROM public.public_match_signups
+  WHERE match_id = v_match_registered;
+
+  SELECT count(*)::integer INTO v_registered_guest_participant_count
+  FROM public.match_participants
+  WHERE match_id = v_match_registered
+    AND guest_id IS NOT NULL;
+
+  INSERT INTO _issue76_results VALUES (
+    'registered user can request through valid public token outside normal scope without email verification',
+    v_registered_mp.match_id = v_match_registered
+      AND v_registered_mp.user_id = v_registered_player
+      AND v_registered_mp.guest_id IS NULL
+      AND v_registered_mp.join_method = 'requested'
+      AND v_registered_mp.status = 'pending'
+      AND v_registered_mp.participant_accepted_at IS NOT NULL
+      AND v_registered_mp.participant_accepted_via = 'in_app'
+      AND v_registered_mp.org_approved_at IS NULL
+      AND v_registered_mp.confirmed_at IS NULL
+      AND v_registered_signup_count = 0
+      AND v_registered_guest_participant_count = 0,
+    'participant=' || coalesce(v_registered_mp.id::text, 'missing')
+      || ', status=' || coalesce(v_registered_mp.status::text, 'null')
+      || ', signups=' || coalesce(v_registered_signup_count::text, 'null')
+      || ', guest_participants=' || coalesce(v_registered_guest_participant_count::text, 'null')
+  );
+
+  SELECT * INTO v_registered_repeat_mp
+  FROM public.rpc_public_match_registered_request_join(v_registered_link.public_token);
+
+  SELECT count(*)::integer INTO v_registered_participant_count
+  FROM public.match_participants
+  WHERE match_id = v_match_registered
+    AND user_id = v_registered_player
+    AND removed_at IS NULL;
+
+  INSERT INTO _issue76_results VALUES (
+    'registered public join request is idempotent and does not duplicate participants',
+    v_registered_repeat_mp.id = v_registered_mp.id
+      AND v_registered_participant_count = 1
+      AND v_registered_repeat_mp.status = 'pending'
+      AND v_registered_repeat_mp.org_approved_at IS NULL,
+    'repeat_participant=' || coalesce(v_registered_repeat_mp.id::text, 'missing')
+      || ', active_user_participants=' || coalesce(v_registered_participant_count::text, 'null')
+      || ', status=' || coalesce(v_registered_repeat_mp.status::text, 'null')
   );
 
   PERFORM set_config('request.jwt.claims', '{}'::text, true);

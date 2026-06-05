@@ -1744,6 +1744,10 @@ export interface Database {
           disabled_at: string | null
         }[]
       }
+      rpc_public_match_registered_request_join: {
+        Args: { p_public_token: string }
+        Returns: MatchParticipant
+      }
       rpc_public_match_signup_context: {
         Args: { p_public_token: string }
         Returns: {

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'
 import { sendPublicMatchSignupVerificationEmail } from '@/lib/notifications/workers/process-queued-notification-deliveries'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 type PublicSignupStartRow = {
   signup_id: string
@@ -76,6 +77,22 @@ function getSignupErrorCode(error: unknown): string {
   if (message.includes('display_name_required')) return 'name-required'
   if (message.includes('email_required')) return 'contact-required'
   if (message.includes('email_invalid')) return 'email-invalid'
+  if (message.includes('signup_link_not_found')) return 'link-not-found'
+  if (message.includes('match_not_active')) return 'match-not-active'
+  return 'failed'
+}
+
+function getRegisteredRequestErrorCode(error: unknown): string {
+  const message =
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : ''
+
+  if (message.includes('not_authenticated')) return 'sign-in-required'
+  if (message.includes('organizer_cannot_request_own_match')) return 'organizer-cannot-request'
   if (message.includes('signup_link_not_found')) return 'link-not-found'
   if (message.includes('match_not_active')) return 'match-not-active'
   return 'failed'
@@ -391,6 +408,30 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
   }
 
   redirectToSignup(token, { notice })
+}
+
+export async function requestRegisteredPublicMatchSpotAction(token: string): Promise<void> {
+  if (!isUuid(token)) {
+    redirectToSignup(token, { error: 'link-not-found' })
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient()
+    const { error } = await supabase.rpc('rpc_public_match_registered_request_join', {
+      p_public_token: token,
+    })
+
+    if (error) throw error
+  } catch (error) {
+    console.error('[public-signup] registered request failed', {
+      action: 'requestRegisteredPublicMatchSpotAction',
+      safe_error_code: getRegisteredRequestErrorCode(error),
+      has_error: true,
+    })
+    redirectToSignup(token, { error: getRegisteredRequestErrorCode(error) })
+  }
+
+  redirectToSignup(token, { notice: 'registered-requested' })
 }
 
 export async function verifyPublicMatchSignupByLink(
