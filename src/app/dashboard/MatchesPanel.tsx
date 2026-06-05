@@ -547,6 +547,9 @@ function MatchRow({
   const playerCountLabel = `${confirmedCount}/${match.required_count}`
   const boardCourtLabel = getBoardCourtLabel(courtState.badgeLabel)
   const courtTbdBoardLabel = boardCourtLabel === 'Court TBD'
+  const compactBoardCourtLabel = boardCourtLabel && !courtTbdBoardLabel
+    ? boardCourtLabel.replace(/^court\s+/i, 'crt ')
+    : null
   const boardStatusLabel = isCancelled
     ? 'Match cancelled'
     : courtTbdBoardLabel && !isFormed
@@ -564,10 +567,42 @@ function MatchRow({
           ? 'blue'
           : 'amber'
   const participantPreview = getParticipantPreview(participants, match.organizer_id)
+  const compactBoardStatusLabel = isCancelled
+    ? 'Match cancelled'
+    : courtTbdBoardLabel && !isFormed
+      ? 'Court TBD'
+    : isHistoryRow && isPastMatch
+      ? (isFormed ? 'Played' : 'Past')
+      : isFormed
+        ? 'Formed'
+        : confirmedCount >= match.required_count
+          ? 'Ready'
+          : 'Open to Join'
   const handleDetailsClick = () => {
     onViewed?.(match.id)
     onSelectMatch?.(match.id)
   }
+  const hasResponseAction = !isHistoryRow && !isCancelled && (
+    isInvited || (isParticipantInvite && !hasUserAccepted) || needsReconfirmRequested
+  )
+  const hasBoardAccessory = Boolean(
+    hasResponseAction
+    || (!isHistoryRow && !isCancelled && isParticipantInvite && hasUserAccepted)
+    || (!isHistoryRow && !isCancelled && isRequested && !needsReconfirmRequested)
+    || (!isHistoryRow && !isCancelled && isRemoved)
+    || (!isHistoryRow && !isCancelled && myParticipant?.status === 'waiting_list')
+    || (!isHistoryRow && !isCancelled && wasConfirmedByOther)
+    || hostRequestCount > 0
+    || (showAcknowledge && onDismissAlert)
+  )
+  const useCompactBoardRow = variant !== 'default' && !hasBoardAccessory
+  const compactBoardMeta = [
+    showOverlapWarning ? 'Overlaps' : null,
+    compactBoardStatusLabel,
+    playerCountLabel,
+    compactBoardCourtLabel,
+    participantPreview ?? 'No lineup players yet',
+  ].filter(Boolean)
 
   const statusBadge = isCancelled ? (
     <StatusBadge label="Match cancelled" tone="red" />
@@ -598,39 +633,74 @@ function MatchRow({
   return (
     <div
       className={[
-        'flex items-center gap-3 bg-white transition-colors',
+        useCompactBoardRow
+          ? 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 bg-white transition-colors'
+          : 'flex items-center gap-3 bg-white transition-colors',
         isSelected
           ? 'rounded-[24px] border border-[#0d6efd] bg-[#eff6ff] px-4 py-4 shadow-[0_12px_30px_rgba(13,110,253,0.10)]'
           : variant !== 'default'
-          ? 'rounded-[24px] border border-[#E2E8F0] px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]'
+          ? 'rounded-[24px] border border-[#E2E8F0] px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]'
           : 'rounded-[24px] border border-[#E2E8F0] px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]',
       ].join(' ')}
     >
-      <div className={[variant !== 'default' ? 'w-40 text-body-main' : 'w-36 text-body-sub', 'shrink-0 leading-snug text-[#64748B]'].join(' ')}>
-        {!showSportIcon && sportName ? (
-          <div className="text-label mb-1 text-[#94A3B8]">
-            {sportName}
-          </div>
-        ) : null}
-        <div className="whitespace-nowrap">{timeStr || <span className="italic">No time set</span>}</div>
-        {venueName ? <div className="truncate text-[#94A3B8]">{venueName}</div> : null}
+      <div className={[
+        useCompactBoardRow
+          ? 'col-span-2 min-w-0 text-body-sub font-semibold leading-snug text-[#64748B]'
+          : variant !== 'default'
+            ? 'w-40 shrink-0 text-body-main leading-snug text-[#64748B]'
+            : 'w-36 shrink-0 text-body-sub leading-snug text-[#64748B]',
+      ].join(' ')}>
+        {useCompactBoardRow ? (
+          <p className="truncate">
+            {timeStr || <span className="italic">No time set</span>}
+            {venueName ? (
+              <>
+                <span className="px-1 text-[#CBD5E1]">&middot;</span>
+                <span>{venueName}</span>
+              </>
+            ) : null}
+          </p>
+        ) : (
+          <>
+            {!showSportIcon && sportName ? (
+              <div className="text-label mb-1 text-[#94A3B8]">
+                {sportName}
+              </div>
+            ) : null}
+            <div className="whitespace-nowrap">{timeStr || <span className="italic">No time set</span>}</div>
+            {venueName ? <div className="truncate text-[#94A3B8]">{venueName}</div> : null}
+          </>
+        )}
       </div>
 
       {variant !== 'default' ? (
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            {showSportIcon ? <InlineSportBadge sportName={sportName} /> : null}
-            {showOverlapWarning ? <StatusBadge label="OVERLAPS" tone="red" /> : null}
-            <StatusBadge label={boardStatusLabel} tone={boardStatusTone} />
-            {!isCancelled && boardCourtLabel && !courtTbdBoardLabel ? (
-              <span className="text-body-sub font-semibold text-[#64748B]">
-                {boardCourtLabel}
-              </span>
-            ) : null}
-          </div>
-          <p className="text-body-sub truncate font-semibold text-[#64748B]">
-            {participantPreview ?? 'No lineup players yet'}
-          </p>
+        <div className={useCompactBoardRow ? 'min-w-0 self-center' : 'flex min-w-0 flex-1 flex-col gap-2'}>
+          {useCompactBoardRow ? (
+            <p className="truncate text-body-sub font-semibold text-[#64748B]">
+              {compactBoardMeta.map((label, index) => (
+                <span key={`${label}-${index}`}>
+                  {index > 0 ? <span className="px-1 text-[#CBD5E1]">&middot;</span> : null}
+                  <span>{label}</span>
+                </span>
+              ))}
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                {showSportIcon ? <InlineSportBadge sportName={sportName} /> : null}
+                {showOverlapWarning ? <StatusBadge label="OVERLAPS" tone="red" /> : null}
+                <StatusBadge label={boardStatusLabel} tone={boardStatusTone} />
+                {!isCancelled && boardCourtLabel && !courtTbdBoardLabel ? (
+                  <span className="text-body-sub font-semibold text-[#64748B]">
+                    {boardCourtLabel}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-body-sub truncate font-semibold text-[#64748B]">
+                {participantPreview ?? 'No lineup players yet'}
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -718,7 +788,7 @@ function MatchRow({
         </span>
       ) : null}
 
-      <div className="shrink-0 flex items-center gap-3">
+      <div className={useCompactBoardRow ? 'row-start-2 col-start-2 flex items-center justify-end gap-3 self-center' : 'shrink-0 flex items-center gap-3'}>
         {showAcknowledge && onDismissAlert ? (
           <button
             onClick={() => onDismissAlert(match.id)}
@@ -1766,12 +1836,12 @@ export function MatchesPanel({
         <div
           className={[
             'grid items-start gap-6 transition-[grid-template-columns] duration-300',
-            hasActiveMatchSelection
-              ? 'lg:grid-cols-[minmax(720px,1.25fr)_minmax(500px,0.86fr)] xl:grid-cols-[minmax(820px,1.32fr)_minmax(520px,0.82fr)]'
-              : createMatchExpanded
-              ? 'lg:grid-cols-[minmax(0,760px)_minmax(320px,420px)] xl:grid-cols-[minmax(0,760px)_minmax(340px,420px)]'
-              : 'lg:grid-cols-[minmax(430px,640px)_minmax(520px,1fr)]',
-          ].join(' ')}
+              hasActiveMatchSelection
+                ? 'lg:grid-cols-[minmax(720px,1.25fr)_minmax(500px,0.86fr)] xl:grid-cols-[minmax(820px,1.32fr)_minmax(520px,0.82fr)]'
+                : createMatchExpanded
+                ? 'lg:grid-cols-[minmax(520px,1fr)_minmax(400px,420px)] xl:grid-cols-[minmax(540px,1fr)_minmax(420px,440px)] 2xl:grid-cols-[minmax(640px,720px)_minmax(460px,520px)]'
+                : 'lg:grid-cols-[minmax(430px,640px)_minmax(520px,1fr)]',
+            ].join(' ')}
         >
           <section className="min-w-0">
             {isMatchDetailLoading ? (
