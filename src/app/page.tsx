@@ -763,7 +763,7 @@ function FeatureCarousel() {
         className={`absolute inset-0 overflow-hidden rounded-lg border border-white/80 bg-white/95 shadow-[0_30px_74px_-38px_rgba(7,26,68,0.48)] backdrop-blur-md transition-all duration-500 ease-in-out ${motionClass}`}
       >
         <div className="grid min-h-[413px] gap-0 lg:grid-cols-[0.76fr_1fr]">
-          <div className="order-2 flex flex-col justify-center px-6 py-5 sm:px-8 lg:order-1 lg:px-9">
+          <div className="order-2 hidden flex-col justify-center px-6 py-5 sm:px-8 md:flex lg:order-1 lg:px-9">
             <p className="text-xs font-black uppercase text-[#0d6efd]">{activeSlide.imageTitle}</p>
             <h2 className="mt-3 max-w-xl text-2xl font-black leading-tight text-[#071A44] md:text-3xl">
               {activeSlide.title}
