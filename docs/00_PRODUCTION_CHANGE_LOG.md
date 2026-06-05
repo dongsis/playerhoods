@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-05 - SR-20260605-scoped-form-match-delivery-drain
 
 **Type:** Structural Release
-**Code Commits:** Draft PR #112 pending; latest head `6719ebcec23863253f8e76551d49bf5c0dbe9690`
-**Migration:** `supabase/migrations/20260605184500_scoped_confirmed_lineup_delivery_drain.sql` pending; not applied to Supabase Remote
-**Status:** Draft PR / GitHub only; no Supabase Remote change; no Vercel Production deploy; production not verified
+**Code Commits:** PR #112 merged at `22e4db39ad238a316742ab1f0331a0430dfed56e`. Final PR head before merge: `d571d81e6e22de91e7364247233cd85a1970358b`.
+**Migration:** `supabase/migrations/20260605184500_scoped_confirmed_lineup_delivery_drain.sql` applied to Supabase Remote before merge.
+**Status:** Production aligned / limited reachability verification complete; full scoped notification delivery smoke and unauthenticated public join verification email delivery verification pending.
 
 ### Summary
 
@@ -29,6 +29,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 - Does not enable the generic queued-delivery drain and does not claim unrelated notification backlog.
 - Does not add request-created, host-action, approval, public signup, or public `/join/[token]` notifications.
 - Does not change Contact Player, public signup verification email, PR #98, or PR #104 behavior.
+- Known issue: unauthenticated public join verification email delivery returned `email-delivery-unavailable` in manual testing; this release does not fix or verify that path.
 
 ### Verification Evidence
 
@@ -38,10 +39,11 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 | Static guards | Partially blocked locally | `node scripts/check-issue58-reminder-drain.mjs` passed. `npm run verify:build` failed in existing `check-issue55-reminder-cron.mjs` copy guard: Create Match reminder copy must say `day before at 5:00 PM`; unrelated to scoped drain files |
 | Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
 | SQL regression | Passed in GitHub; blocked locally | GitHub SQL Regression Check passed for PR #112 latest head. New suite `test_runner_scoped_confirmed_lineup_drain` covers scoped claiming and non-claiming boundaries. Local `npm run verify:sql` could not connect to Docker Desktop Linux engine / local Supabase container |
-| Supabase Remote | Not applied | No remote migration applied by Codex |
-| Vercel Production | Not deployed | Draft PR only |
+| Supabase Remote | Applied | `npx supabase db push --linked --yes` applied only `20260605184500_scoped_confirmed_lineup_delivery_drain.sql`; `npx supabase migration list --linked` showed `20260605184500 | 20260605184500 | 2026-06-05 18:45:00` |
+| Vercel Production | Deployed | GitHub Deployment `4952404344` for merge commit `22e4db39ad238a316742ab1f0331a0430dfed56e` reached `success`; Vercel deployment URL `https://playerhoods-codex-nxq95aype-nancys-projects-128e326c.vercel.app` |
 | Real SMS/email/provider traffic | Not sent by Codex | No provider sends, production drains, real emails, SMS, or notifications |
-| Production verification | Not run | Requires explicit release approval and scoped smoke plan |
+| Production verification | Limited reachability smoke passed; notification smoke pending | `https://www.playerhoods.com/`, `https://www.playerhoods.com/login`, and the Vercel deployment URL returned HTTP 200. Full Form Match / scoped notification smoke was not run because no safe production match and safe recipients were approved |
+| Public join email verification | Known issue / not verified | Unauthenticated `/join/[token]` verification email returned `email-delivery-unavailable` in manual testing. Registered-user public join path is separate and remains OK. Do not mark public Open to Join email delivery or full `/join` flow as verified until follow-up provider/env audit passes |
 
 ### Rollback
 
