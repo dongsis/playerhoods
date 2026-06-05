@@ -52,6 +52,44 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 - Operational rollback: disable the Form Match scoped drain call by reverting the server action change; do not run any broad queue drain unless separately approved.
 - Provider rollback: none; no provider configuration changed.
 
+## 2026-06-05 - MR-20260605-shared-add-players-picker
+
+**Type:** Mini Release
+**Code Commits:** PR #113 implementation head after rebase: `da5c3b58592ba7c0fa491385808139b1a1dec5a0`; final PR head and merge commit pending.
+**Migration:** None
+**Status:** Ready for Review / GitHub only; Vercel Production not deployed yet; Supabase Remote no change.
+
+### Summary
+
+Introduces shared Add Players picker across Create Match Step 2 and Existing Match Add More Players with Invite / Post Player Call / Share a Link methods, chip-based candidate selection, and no backend behavior changes.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Vercel Preview | Passed; owner visual review accepted | Preview deployed from PR #113 head; owner accepted visual review on Vercel Preview before merge |
+| Vercel Production | Not deployed yet | PR #113 not merged at time of this entry |
+| Supabase Remote | No change | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic was sent by Codex validation |
+| Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending after merge/deploy |
+
+### Rollback
+
+- Code rollback: revert PR #113 and redeploy the previous production commit.
+- Database rollback: none required because this release has no migration or backend contract change.
+- Provider rollback: none; no invite/email/SMS/notification provider configuration or traffic changed.
+
+### Notes
+
+- No DB migration.
+- No backend contract change.
+- No Supabase Remote action.
+- No share-link / magic-link / Request-a-Spot backend behavior change.
+- No Contact Player in Player Call targets.
+- No invite/email/SMS/notification provider traffic.
+- Codex PR review failed due quota infrastructure limits, not a code failure.
+
 ## 2026-06-05 - DB-20260605-public-join-registered-request
 
 **Type:** Structural Release
