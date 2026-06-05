@@ -1422,6 +1422,13 @@ function getMobileDateParts(item: MatchListItem, venueTimezone?: string | null) 
   return { weekday, month, day }
 }
 
+function getMobileDateLabel(item: MatchListItem, venueTimezone?: string | null) {
+  const { weekday, month, day } = getMobileDateParts(item, venueTimezone)
+  if (weekday === 'TBD') return 'Date TBD'
+  const formatPart = (value: string) => value ? `${value.charAt(0)}${value.slice(1).toLowerCase()}` : ''
+  return [formatPart(weekday), formatPart(month), day].filter(Boolean).join(' ')
+}
+
 function getMobileTimeLabel(item: MatchListItem) {
   const raw = formatTimeWindow(
     item.match.start_at_utc,
@@ -1441,111 +1448,78 @@ function getOrganizerLabel(item: MatchListItem) {
   return organizer?.display_name ?? 'Host'
 }
 
-function MobileStatusBadge({
-  label,
-  tone = 'neutral',
-}: {
-  label: string
-  tone?: 'neutral' | 'orange' | 'green' | 'blue' | 'red'
-}) {
-  const toneClass =
-    tone === 'green'
-      ? 'border-[#BBF7D0] bg-[#F0FDF4] text-[#16A34A]'
-      : tone === 'orange'
-        ? 'border-[#F4C7B8] bg-[#eff6ff] text-[#0d6efd]'
-        : tone === 'blue'
-          ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#0d6efd]'
-          : tone === 'red'
-            ? 'border-[#FECACA] bg-[#FEF2F2] text-[#DC2626]'
-          : 'border-[#D7E1EE] bg-white text-[#64748B]'
+function getMobileGameTypeLabel(gameType: string | null | undefined) {
+  if (!gameType) return null
+  return gameType.charAt(0).toUpperCase() + gameType.slice(1)
+}
 
-  return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.12em] ${toneClass}`}>
-      {label}
-    </span>
-  )
+function getMobileCompactCourtLabel(label: string | null | undefined) {
+  const boardLabel = getBoardCourtLabel(label)
+  if (!boardLabel || boardLabel === 'Court TBD') return null
+  return boardLabel.replace(/^court\s+/i, 'CRT ')
+}
+
+function getMobileCompactStatusLabel(item: MatchListItem) {
+  if (item.match.status === 'cancelled') return 'Cancelled'
+  if (item.isFormed) return 'Formed'
+  if (item.confirmedCount >= item.match.required_count) return 'Ready'
+  return 'Open to Join'
 }
 
 function MobileMatchCard({
   item,
-  userId,
   showOverlapWarning = false,
+  onViewed,
+  onSelectMatch,
+  isLoadingDetail = false,
 }: {
   item: MatchListItem
-  userId: string
   showOverlapWarning?: boolean
+  onViewed?: (matchId: string) => void
+  onSelectMatch?: (matchId: string) => void
+  isLoadingDetail?: boolean
 }) {
-  const { weekday, month, day } = getMobileDateParts(item, item.venueTimezone)
   const hostLabel = getOrganizerLabel(item)
+  const dateLabel = getMobileDateLabel(item, item.venueTimezone)
   const timeLabel = getMobileTimeLabel(item)
-  const courtBadgeTone =
-    item.courtState.status === 'secured'
-      ? 'green'
-      : item.courtState.status === 'walk_in'
-        ? 'blue'
-        : 'orange'
+  const gameTypeLabel = getMobileGameTypeLabel(item.match.game_type)
   const summaryCount = Math.max(item.confirmedCount - 1, 0)
-  const hostIsYou = item.match.organizer_id === userId
+  const compactCourtLabel = getMobileCompactCourtLabel(item.courtState.badgeLabel)
+  const sportFormatLabel = [item.sportName ?? 'Match', gameTypeLabel].filter(Boolean).join(' \u00b7 ')
+  const whenWhereLabel = [dateLabel, timeLabel, item.venueName ?? 'Venue TBD'].filter(Boolean).join(' \u00b7 ')
+  const statusLine = [
+    showOverlapWarning ? 'Overlaps' : null,
+    getMobileCompactStatusLabel(item),
+    `${item.confirmedCount}/${item.match.required_count}`,
+    compactCourtLabel,
+    `Host ${hostLabel}`,
+    summaryCount > 0 ? `+${summaryCount}` : null,
+  ].filter(Boolean).join(' \u00b7 ')
+
+  const handleSelect = () => {
+    onViewed?.(item.match.id)
+    onSelectMatch?.(item.match.id)
+  }
 
   return (
     <Link
       href={`/dashboard?matchId=${item.match.id}`}
-      className="block rounded-[28px] border border-[#E2E8F0] bg-white p-5 shadow-[0_14px_34px_rgba(15,23,42,0.06)] transition hover:border-[#D6DEE9]"
+      onClick={handleSelect}
+      aria-busy={isLoadingDetail ? 'true' : undefined}
+      className={[
+        'block rounded-[18px] border bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#D6DEE9]',
+        isLoadingDetail ? 'border-[#0d6efd] ring-2 ring-[#BFDBFE]' : 'border-[#E2E8F0]',
+      ].join(' ')}
     >
-      <div className="flex gap-4">
-        <div className="flex h-[104px] w-[86px] shrink-0 flex-col items-center justify-center rounded-[24px] bg-[#F8FAFC] text-center">
-          <span className="text-[12px] font-black uppercase tracking-[0.16em] text-[#0d6efd]">{weekday}</span>
-          <span className="mt-1 text-[14px] font-bold uppercase tracking-[0.12em] text-[#64748B]">{month}</span>
-          <span className="mt-1 text-[34px] font-black leading-none text-[#1E293B]">{day}</span>
+      <div className="min-w-0 space-y-1.5">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <p className="truncate text-[15px] font-black leading-5 text-[#1E293B]">{sportFormatLabel}</p>
+          <span className="shrink-0 text-[13px] font-extrabold text-[#0d6efd]">
+            {isLoadingDetail ? 'Opening...' : 'Details ->'}
+          </span>
         </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[28px] font-black leading-none tracking-[-0.03em] text-[#1E293B]">
-                {item.sportName ?? 'Match'}
-                {item.match.game_type ? (
-                  <>
-                    {' '}
-                    <span className="font-black text-[#1E293B]">&middot;</span>{' '}
-                    {item.match.game_type.charAt(0).toUpperCase() + item.match.game_type.slice(1)}
-                  </>
-                ) : null}
-              </p>
-              <p className="mt-2 text-[15px] font-bold tracking-[-0.02em] text-[#1E293B]">{timeLabel}</p>
-              {item.venueName ? <p className="mt-1 text-body-main text-[#1E293B]">{item.venueName}</p> : null}
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              {showOverlapWarning ? <MobileStatusBadge label="OVERLAPS" tone="red" /> : null}
-              <MobileStatusBadge
-                label={item.isFormed ? 'Formed' : item.confirmedCount >= item.match.required_count ? 'Ready' : `${item.confirmedCount}/${item.match.required_count}`}
-                tone={item.isFormed ? 'green' : item.confirmedCount >= item.match.required_count ? 'blue' : 'orange'}
-              />
-              <MobileStatusBadge label={item.courtState.badgeLabel} tone={courtBadgeTone} />
-            </div>
-          </div>
-
-          <div className="mt-4 border-t border-[#E2E8F0] pt-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#D7E1EE] bg-[#F8FAFC] text-[22px] font-medium text-[#5B718F]">
-                    {hostLabel.slice(0, 1).toUpperCase()}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-title-main text-[#1E293B]">{hostLabel}</p>
-                    <p className="mt-1 text-body-sub text-[#64748B]">
-                      {hostIsYou ? 'Host' : 'Host'} ✓ {summaryCount > 0 ? ` | +${summaryCount} players` : ''}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <span className="shrink-0 text-[15px] font-extrabold tracking-[-0.02em] text-[#0d6efd]">
-                {'Details ->'}
-              </span>
-            </div>
-          </div>
-        </div>
+        <p className="truncate text-[13px] font-bold leading-5 text-[#334155]">{whenWhereLabel}</p>
+        <p className="truncate text-[12px] font-extrabold leading-5 text-[#64748B]">{statusLine}</p>
       </div>
     </Link>
   )
@@ -1725,6 +1699,20 @@ export function MatchesPanel({
     />
   ) : null
 
+  const selectedMatchContent = isMatchDetailLoading ? (
+    hasSelectedMatchDetail ? (
+      <SelectedMatchLoadingFrame>{selectedMatchDetail}</SelectedMatchLoadingFrame>
+    ) : pendingMatchItem ? (
+      <SelectedMatchLoadingFrame>
+        <ProvisionalMatchDetailSummary item={pendingMatchItem} />
+      </SelectedMatchLoadingFrame>
+    ) : (
+      <MatchDetailSkeleton />
+    )
+  ) : hasSelectedMatchDetail ? (
+    selectedMatchDetail
+  ) : null
+
   return (
     <div className="space-y-8">
       <div className="space-y-6 md:hidden">
@@ -1758,7 +1746,7 @@ export function MatchesPanel({
 
           <h1 className="text-h1 text-[#1E293B]">Matches</h1>
 
-          {!createMatchExpanded ? (
+          {!createMatchExpanded && !hasActiveMatchSelection ? (
             <div className="mt-4 grid w-full grid-cols-3 rounded-full border border-[#E2E8F0] bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
               {subTabBtn('upcoming', 'Upcoming', incoming.length)}
               {subTabBtn('calendar', 'Calendar')}
@@ -1769,7 +1757,11 @@ export function MatchesPanel({
 
         {renderStarterCard()}
 
-        {subTab === 'upcoming' ? (
+        {selectedMatchContent ? (
+          <section className="space-y-4">
+            {selectedMatchContent}
+          </section>
+        ) : subTab === 'upcoming' ? (
           <>
             <section className="space-y-4">
               <div className="flex items-center justify-between gap-3">
@@ -1783,7 +1775,13 @@ export function MatchesPanel({
               ) : (
                 <div className="space-y-4">
                   {incoming.map((item) => (
-                    <MobileMatchCard key={`mobile-incoming-${item.match.id}`} item={item} userId={userId} />
+                    <MobileMatchCard
+                      key={`mobile-incoming-${item.match.id}`}
+                      item={item}
+                      onViewed={onViewedMatch}
+                      onSelectMatch={handleSelectMatch}
+                      isLoadingDetail={pendingMatchId === item.match.id}
+                    />
                   ))}
                 </div>
               )}
@@ -1794,7 +1792,14 @@ export function MatchesPanel({
                 <SectionHeading label="Looking for Players" count={lookingFor.length} />
                 <div className="space-y-4">
                   {lookingFor.map((item) => (
-                    <MobileMatchCard key={`mobile-looking-${item.match.id}`} item={item} userId={userId} showOverlapWarning={hasTimeConflictWithItems(item, incoming)} />
+                    <MobileMatchCard
+                      key={`mobile-looking-${item.match.id}`}
+                      item={item}
+                      showOverlapWarning={hasTimeConflictWithItems(item, incoming)}
+                      onViewed={onViewedMatch}
+                      onSelectMatch={handleSelectMatch}
+                      isLoadingDetail={pendingMatchId === item.match.id}
+                    />
                   ))}
                 </div>
               </section>
@@ -1814,7 +1819,13 @@ export function MatchesPanel({
             ) : (
               <div className="space-y-4">
                 {history.slice(0, historyShown).map((item) => (
-                  <MobileMatchCard key={`mobile-history-${item.match.id}`} item={item} userId={userId} />
+                  <MobileMatchCard
+                    key={`mobile-history-${item.match.id}`}
+                    item={item}
+                    onViewed={onViewedMatch}
+                    onSelectMatch={handleSelectMatch}
+                    isLoadingDetail={pendingMatchId === item.match.id}
+                  />
                 ))}
                 {historyShown < history.length ? (
                   <button
