@@ -98,7 +98,6 @@ export function MatchToolsSection({
   const [isLoadingInviteTargets, setIsLoadingInviteTargets] = useState(false)
   const [targetLoadError, setTargetLoadError] = useState<string | null>(null)
   const [applySuccessMessage, setApplySuccessMessage] = useState<string | null>(null)
-  const [publicSignupUrl, setPublicSignupUrl] = useState<string | null>(null)
   const [isPublicSignupLinkBusy, setIsPublicSignupLinkBusy] = useState(false)
   const [publicSignupLinkError, setPublicSignupLinkError] = useState<string | null>(null)
 
@@ -108,7 +107,6 @@ export function MatchToolsSection({
     setLazyContactTargets(contactTargets)
     setTargetLoadError(null)
     setApplySuccessMessage(null)
-    setPublicSignupUrl(null)
     setPublicSignupLinkError(null)
   }, [matchId, candidateUsers, contactTargets])
 
@@ -229,12 +227,11 @@ export function MatchToolsSection({
       }
 
       const url = `${window.location.origin}/join/${link.public_token}`
-      setPublicSignupUrl(url)
       try {
         await navigator.clipboard.writeText(url)
-        setApplySuccessMessage('Open to Join link copied.')
+        setApplySuccessMessage('Share link copied.')
       } catch {
-        setApplySuccessMessage('Open to Join link ready.')
+        setApplySuccessMessage('Share link ready.')
       }
     } catch (error) {
       console.error('[MatchToolsSection] public signup link:', error)
@@ -323,18 +320,6 @@ export function MatchToolsSection({
             </button>
           ) : null}
 
-          {!formedActionsCollapsed && isOrganizer && matchStatus === 'active' ? (
-            <button
-              type="button"
-              onClick={copyPublicSignupLink}
-              disabled={isPublicSignupLinkBusy}
-              title="Copy a public match signup link."
-              className="inline-flex items-center justify-center rounded-[14px] border border-[#CBD5E1] bg-white px-4 py-2.5 text-sm font-black text-[#475569] transition hover:bg-[#F8FAFC] active:scale-95 disabled:cursor-wait disabled:opacity-60"
-            >
-              {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Open to Join Link'}
-            </button>
-          ) : null}
-
           {!formedActionsCollapsed && showRoundRobinTools && !isLineupFull ? (
             <button
               type="button"
@@ -368,20 +353,6 @@ export function MatchToolsSection({
           <p className="basis-full rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
             {applySuccessMessage}
           </p>
-        ) : null}
-
-        {publicSignupUrl ? (
-          <div className="basis-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="m-0 text-[0.72rem] font-black uppercase tracking-[0.14em] text-slate-400">
-              Open to Join link
-            </p>
-            <input
-              readOnly
-              value={publicSignupUrl}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[0.82rem] font-semibold text-slate-700"
-              onFocus={(event) => event.currentTarget.select()}
-            />
-          </div>
         ) : null}
 
         {publicSignupLinkError ? (
@@ -425,6 +396,22 @@ export function MatchToolsSection({
             setActiveTab(null)
             setApplySuccessMessage('Changes applied.')
           }}
+          shareLinkRow={isOrganizer && matchStatus === 'active' ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-body-main font-black text-slate-900">Share link</div>
+                <div className="text-body-sub font-semibold text-slate-500">Let someone request a spot from the match link.</div>
+              </div>
+              <button
+                type="button"
+                onClick={copyPublicSignupLink}
+                disabled={isPublicSignupLinkBusy}
+                className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 py-1.5 font-bold text-[#475569] transition hover:bg-[#F8FAFC] disabled:cursor-wait disabled:opacity-60"
+              >
+                {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Link'}
+              </button>
+            </div>
+          ) : null}
         />
       ) : null}
 
