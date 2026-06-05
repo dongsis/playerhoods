@@ -175,24 +175,16 @@ export function MatchToolsSection({
     return null
   }
 
-  const remainingSpots = Math.max(requiredCount - confirmedParticipants.length, 0)
   const isLineupFull = confirmedParticipants.length >= requiredCount
-  const playersLabel = `${confirmedParticipants.length} confirmed ${confirmedParticipants.length === 1 ? 'player' : 'players'}`
-  const openSpotsLabel = `${remainingSpots} ${remainingSpots === 1 ? 'spot is' : 'spots are'} open`
   const enoughPlayersForTeams = confirmedParticipants.length >= Math.max(requiredCount, 4)
   const toolsTitle = isFormed
     ? 'Match formed'
     : isLineupFull
       ? 'Lineup is full.'
       : 'Need more players?'
-  const toolsCopy = isFormed
-    ? 'Players have been notified. You can set teams now.'
-    : isLineupFull
-      ? `${playersLabel}. ${enoughPlayersForTeams ? 'Set Teams is ready.' : 'Need 4 confirmed players to set doubles teams.'}`
-      : `${openSpotsLabel}. Add saved players, contacts, or open spots for others to join.`
   const setTeamsHelper = enoughPlayersForTeams
     ? `Ready to set teams from ${confirmedParticipants.length} confirmed ${confirmedParticipants.length === 1 ? 'player' : 'players'}.`
-    : 'Need 4 confirmed players to set doubles teams.'
+    : 'Set Teams'
   const addMoreIsPrimary = !isFormed && !isLineupFull
 
   const togglePanel = (nextTab: 'invite' | 'round_robin') => {
@@ -251,11 +243,11 @@ export function MatchToolsSection({
           <p className="m-0 text-[1rem] font-black text-slate-900">
             {formedActionsCollapsed ? 'Match formed · Players notified' : toolsTitle}
           </p>
-          <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
-            {formedActionsCollapsed
-              ? `${confirmedParticipants.length}/${requiredCount} confirmed`
-              : toolsCopy}
-          </p>
+          {formedActionsCollapsed ? (
+            <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
+              {confirmedParticipants.length}/{requiredCount} confirmed
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -342,10 +334,6 @@ export function MatchToolsSection({
         {isFormed && !formedActionsCollapsed && activeTab !== 'invite' ? (
           <p className="basis-full text-body-sub font-semibold text-slate-400">
             Lineup is full. Use Adjust Lineup if you need to add or replace players.
-          </p>
-        ) : showRoundRobinTools ? (
-          <p className="basis-full text-body-sub font-semibold text-slate-400">
-            {setTeamsHelper}
           </p>
         ) : null}
 
