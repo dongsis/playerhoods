@@ -14,6 +14,41 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-05 - DB-20260605-public-join-registered-request
+
+**Type:** Structural Release
+**Code Commits:** Draft PR #106 head commit `b893de94dc0cca30879e9445bfa90f68c944883c`; implementation branch `codex/logged-in-public-join-request`
+**Migration:** `supabase/migrations/20260605153000_logged_in_public_join_request.sql` added locally; not applied to Supabase Remote by Codex
+**Status:** Draft PR / GitHub only; no production deploy; no Supabase Remote change; production not verified
+
+### Summary
+
+- Added authenticated-only public-token request RPC for logged-in registered users opening `/join/[token]`.
+- The new RPC resolves the existing Open to Join token, rejects anonymous callers and hosts, and writes through `apply_participant_admission(..., 'requested')`.
+- Logged-in users on `/join/[token]` no longer see name/email entry or email verification; they see match details and must explicitly click `Request a Spot`.
+- Existing unauthenticated public signup verification and Contact Player public flow are unchanged.
+- Added SQL regression coverage for token authorization outside normal scope, anonymous rejection, organizer rejection, idempotency, user-based participant rows, pending host action, and unchanged public signup coverage.
+- Types note: `src/lib/types/database.ts` was manually updated because this repository currently has no typegen command/script and appears to maintain this file as an app-level database interface. This is a policy tension with `docs/prelaunch_schema_policy.md`; follow-up should add a proper Supabase typegen workflow and regenerate types rather than relying on silent manual edits.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally | `npx tsc --noEmit`; `npm run build` |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Passed in GitHub; blocked locally | GitHub SQL Regression Check passed for PR #106. Local `npm run verify:sql` could not connect to Docker Desktop Linux engine / local Supabase container; no Supabase Remote run |
+| Supabase Remote | Not changed | Migration not applied by Codex |
+| Real SMS/email/provider traffic | Not sent by Codex | No provider sends, queue drains, real emails, or SMS |
+| Vercel Production | Not deployed | Draft PR only; Vercel Preview check passed, but no production deployment was performed by Codex |
+| Production verification | Not verified | No production smoke was run |
+
+### Rollback
+
+- Code rollback: revert the implementation commit or close the draft PR before merge.
+- Database rollback if applied later: follow-up migration dropping/revoking `public.rpc_public_match_registered_request_join(uuid)`.
+- App rollback if deployed later: restore previous `/join/[token]` behavior so all public join requests use the unauthenticated name/email verification flow.
+- Provider rollback: none; no email/SMS/provider configuration changed.
+
 ## 2026-06-04 - STRUCTURAL-20260604-join-link-request-a-spot-v2
 
 **Type:** Structural Release
