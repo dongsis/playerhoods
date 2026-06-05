@@ -3,7 +3,7 @@
 import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
-import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
+import { createSupabaseServerClient, createSupabaseServiceRoleClient, getUser } from '@/lib/supabase/server'
 import {
   cancelMatch,
   rebalanceMatchRosterAfterEdit,
@@ -19,6 +19,7 @@ import {
   notifyMatchCourtPlanUpdated,
 } from '@/lib/notifications/match-court'
 import { NotificationService } from '@/lib/notifications/notification-service'
+import { processQueuedConfirmedLineupDeliveriesForMatch } from '@/lib/notifications/workers/process-queued-notification-deliveries'
 import type { MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
 
 export type MatchUpdateInput = {
@@ -265,7 +266,16 @@ export async function confirmMatchAndNotifyAction(matchId: string) {
     throw new Error('not_authenticated')
   }
 
-  await NotificationService.confirmMatchAndNotify(supabase, matchId)
+  const queuedCount = await NotificationService.confirmMatchAndNotify(supabase, matchId)
+  try {
+    await processQueuedConfirmedLineupDeliveriesForMatch(
+      createSupabaseServiceRoleClient(),
+      matchId,
+      Math.max(queuedCount, 10),
+    )
+  } catch (error) {
+    console.error('scoped_confirmed_lineup_delivery_drain_failed', { matchId, error })
+  }
   revalidateMatchSurfaces(matchId)
 }
 

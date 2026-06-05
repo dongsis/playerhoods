@@ -488,6 +488,23 @@ export async function processQueuedNotificationDeliveries(
   return processNotificationDeliveryRows(supabase, (rows ?? []) as DeliveryRow[])
 }
 
+export async function processQueuedConfirmedLineupDeliveriesForMatch(
+  supabase: SupabaseClient,
+  matchId: string,
+  limit = 10,
+): Promise<{ processed: number; sent: number; failed: number }> {
+  const { data: rows, error } = await supabase.rpc(
+    'rpc_get_queued_confirmed_lineup_deliveries_for_match',
+    {
+      p_match_id: matchId,
+      p_limit: limit,
+    },
+  )
+  if (error) throw error
+
+  return processNotificationDeliveryRows(supabase, (rows ?? []) as DeliveryRow[])
+}
+
 export async function drainQueuedNotificationDeliveries(
   supabase: SupabaseClient,
   options?: { batchSize?: number; maxBatches?: number },

@@ -14,6 +14,42 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-05 - SR-20260605-scoped-form-match-delivery-drain
+
+**Type:** Structural Release
+**Code Commits:** Draft PR #112 pending; latest head `6719ebcec23863253f8e76551d49bf5c0dbe9690`
+**Migration:** `supabase/migrations/20260605184500_scoped_confirmed_lineup_delivery_drain.sql` pending; not applied to Supabase Remote
+**Status:** Draft PR / GitHub only; no Supabase Remote change; no Vercel Production deploy; production not verified
+
+### Summary
+
+- Adds scoped `confirmed_lineup` notification delivery drain after Form Match.
+- Adds a service-role-only scoped claimant RPC for queued `confirmed_lineup` notification deliveries belonging to one match.
+- Updates manual Form Match confirmation to process only the newly queued current-match `confirmed_lineup` deliveries through the existing notification worker path.
+- Does not enable the generic queued-delivery drain and does not claim unrelated notification backlog.
+- Does not add request-created, host-action, approval, public signup, or public `/join/[token]` notifications.
+- Does not change Contact Player, public signup verification email, PR #98, or PR #104 behavior.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally | `npx tsc --noEmit`; `npm run build` |
+| Static guards | Partially blocked locally | `node scripts/check-issue58-reminder-drain.mjs` passed. `npm run verify:build` failed in existing `check-issue55-reminder-cron.mjs` copy guard: Create Match reminder copy must say `day before at 5:00 PM`; unrelated to scoped drain files |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Passed in GitHub; blocked locally | GitHub SQL Regression Check passed for PR #112 latest head. New suite `test_runner_scoped_confirmed_lineup_drain` covers scoped claiming and non-claiming boundaries. Local `npm run verify:sql` could not connect to Docker Desktop Linux engine / local Supabase container |
+| Supabase Remote | Not applied | No remote migration applied by Codex |
+| Vercel Production | Not deployed | Draft PR only |
+| Real SMS/email/provider traffic | Not sent by Codex | No provider sends, production drains, real emails, SMS, or notifications |
+| Production verification | Not run | Requires explicit release approval and scoped smoke plan |
+
+### Rollback
+
+- Code rollback: revert the PR merge commit if merged.
+- Database rollback: follow-up migration revoking and dropping `public.rpc_get_queued_confirmed_lineup_deliveries_for_match(uuid, integer)`.
+- Operational rollback: disable the Form Match scoped drain call by reverting the server action change; do not run any broad queue drain unless separately approved.
+- Provider rollback: none; no provider configuration changed.
+
 ## 2026-06-05 - DB-20260605-public-join-registered-request
 
 **Type:** Structural Release
