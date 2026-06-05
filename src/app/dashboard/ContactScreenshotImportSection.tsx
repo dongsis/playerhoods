@@ -25,6 +25,9 @@ type Props = {
     source_file_name?: string | null
   }>) => Promise<{ created: number; skipped: number }>
   onImported: () => Promise<void> | void
+  variant?: 'default' | 'mobile-main'
+  secondaryActionLabel?: string
+  onSecondaryAction?: () => void
 }
 
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -278,6 +281,9 @@ export function ContactScreenshotImportSection({
   onParseScreenshots,
   onImportScreenshotContacts,
   onImported,
+  variant = 'default',
+  secondaryActionLabel,
+  onSecondaryAction,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [files, setFiles] = useState<File[]>([])
@@ -302,6 +308,7 @@ export function ContactScreenshotImportSection({
 
   const step = parsing ? 'extracting' : drafts.length > 0 ? 'review' : retryMessage ? 'retry' : 'import'
   const allSelectableSelected = selectableDraftIds.length > 0 && drafts.every((draft) => draft.missing_fields.length > 0 || draft.selected)
+  const isMobileMain = variant === 'mobile-main'
 
   useEffect(() => {
     const nextPreviewFiles = files.map((file) => ({
@@ -500,7 +507,7 @@ export function ContactScreenshotImportSection({
   }
 
   return (
-    <div className="bg-white px-1 pb-6">
+    <div className={isMobileMain ? 'bg-white' : 'bg-white px-1 pb-6'}>
       <input
         ref={fileInputRef}
         type="file"
@@ -522,8 +529,12 @@ export function ContactScreenshotImportSection({
           handleFileSelection(Array.from(event.dataTransfer.files ?? []), 'dropped')
         }}
         className={[
-          'overflow-hidden rounded-[28px] border bg-white transition',
-          isDragging ? 'border-[#2D6CDF] shadow-[0_20px_60px_-36px_rgba(45,108,223,0.8)]' : 'border-[#DCE6F2]',
+          isMobileMain ? 'bg-white transition' : 'overflow-hidden rounded-[28px] border bg-white transition',
+          isMobileMain
+            ? ''
+            : isDragging
+              ? 'border-[#2D6CDF] shadow-[0_20px_60px_-36px_rgba(45,108,223,0.8)]'
+              : 'border-[#DCE6F2]',
         ].join(' ')}
       >
         {step === 'review' ? (
@@ -715,53 +726,59 @@ export function ContactScreenshotImportSection({
                 )
               })}
             </div>
-            <div className="grid gap-3 rounded-[20px] border border-slate-100 bg-slate-50 px-4 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
-              <div className="text-sm font-semibold text-slate-500 sm:italic">
+            {isMobileMain ? (
+              <div className="rounded-[16px] border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-500">
                 {selectedCount} contacts selected to save
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:flex">
-                <button
-                  type="button"
-                  className="min-h-11 rounded-lg px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
-                  onClick={() => {
-                    resetFlow()
-                    setNotice(null)
-                  }}
-                  disabled={parsing || importing}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={importing || selectedCount === 0 || selectableDraftIds.length === 0}
-                  onClick={handleImport}
-                  className={[
-                    'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold shadow-sm transition-all',
-                    selectedCount > 0 && selectableDraftIds.length > 0 && !importing
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'cursor-not-allowed bg-slate-200 text-slate-400',
-                  ].join(' ')}
-                >
-                  <span>{importing ? 'Saving...' : `Save selected (${selectedCount})`}</span>
-                  <span aria-hidden="true">{'>'}</span>
-                </button>
+            ) : (
+              <div className="grid gap-3 rounded-[20px] border border-slate-100 bg-slate-50 px-4 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
+                <div className="text-sm font-semibold text-slate-500 sm:italic">
+                  {selectedCount} contacts selected to save
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:flex">
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-lg px-5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
+                    onClick={() => {
+                      resetFlow()
+                      setNotice(null)
+                    }}
+                    disabled={parsing || importing}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importing || selectedCount === 0 || selectableDraftIds.length === 0}
+                    onClick={handleImport}
+                    className={[
+                      'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold shadow-sm transition-all',
+                      selectedCount > 0 && selectableDraftIds.length > 0 && !importing
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'cursor-not-allowed bg-slate-200 text-slate-400',
+                    ].join(' ')}
+                  >
+                    <span>{importing ? 'Saving...' : `Save selected (${selectedCount})`}</span>
+                    <span aria-hidden="true">{'>'}</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : null}
 
         {step !== 'review' ? (
-          <div className="space-y-5 p-5">
-            <div className="grid gap-5 md:grid-cols-[1.05fr_0.95fr] md:items-center">
+          <div className={isMobileMain ? 'space-y-4' : 'space-y-5 p-5'}>
+            <div className={isMobileMain ? 'grid gap-4' : 'grid gap-5 md:grid-cols-[1.05fr_0.95fr] md:items-center'}>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-2 text-sm font-bold text-[#334155] md:grid-cols-3">
+                <div className={isMobileMain ? 'grid grid-cols-2 gap-3 text-sm font-bold text-[#334155]' : 'grid grid-cols-2 gap-2 text-sm font-bold text-[#334155] md:grid-cols-3'}>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={parsing}
                     className="min-h-12 rounded-2xl border border-[#bfdbfe] bg-white px-4 py-3 text-[#0d6efd] transition hover:bg-[#eff6ff] disabled:cursor-wait disabled:text-[#94A3B8]"
                   >
-                    Upload screenshot
+                    {isMobileMain ? 'Upload' : 'Upload screenshot'}
                   </button>
                   <button
                     type="button"
@@ -769,9 +786,9 @@ export function ContactScreenshotImportSection({
                     disabled={parsing}
                     className="min-h-12 rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-[#475569] transition hover:bg-[#F8FBFF] disabled:cursor-wait disabled:text-[#94A3B8]"
                   >
-                    Paste screenshot
+                    {isMobileMain ? 'Paste' : 'Paste screenshot'}
                   </button>
-                  <span className="hidden min-h-12 items-center justify-center rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-center text-[#475569] md:flex">
+                  <span className={isMobileMain ? 'hidden' : 'hidden min-h-12 items-center justify-center rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-center text-[#475569] md:flex'}>
                     Drag image here
                   </span>
                 </div>
@@ -793,14 +810,20 @@ export function ContactScreenshotImportSection({
                       ? 'Extracting contacts...'
                       : step === 'retry'
                         ? 'Try another screenshot'
-                        : 'Import contacts'}
+                        : isMobileMain
+                          ? 'Paste or upload'
+                          : 'Import contacts'}
                   </div>
                   <p className="mx-auto mt-2 max-w-md text-xs font-semibold leading-5 text-[#64748B]">
                     {step === 'extracting'
-                      ? 'Looking for names, emails, and phone numbers. Nothing is saved or invited automatically.'
+                      ? isMobileMain
+                        ? 'Reading contact details. Nothing is saved or invited automatically.'
+                        : 'Looking for names, emails, and phone numbers. Nothing is saved or invited automatically.'
                       : step === 'retry'
                         ? 'A tighter crop around the email header, chat list, or contact table usually works best.'
-                        : 'Upload, paste, or drop a screenshot. We will extract contacts automatically, then you choose what to save.'}
+                        : isMobileMain
+                          ? 'Screenshots, photos, email headers, or lists.'
+                          : 'Upload, paste, or drop a screenshot. We will extract contacts automatically, then you choose what to save.'}
                   </p>
                   {files.length > 0 ? (
                     <p className="mt-3 truncate text-xs font-semibold text-[#94A3B8]">
@@ -828,13 +851,15 @@ export function ContactScreenshotImportSection({
                   </div>
                 ) : null}
 
-                <details className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]">
-                  <summary className="cursor-pointer font-black text-[#334155]">Need help taking a screenshot?</summary>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <p><strong>Windows:</strong> Press Win + Shift + S, select the email header or contact list, then come back here and press Ctrl + V.</p>
-                    <p><strong>Mac:</strong> Press Command + Shift + 4, select the area, then upload or paste the screenshot.</p>
-                  </div>
-                </details>
+                {!isMobileMain ? (
+                  <details className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]">
+                    <summary className="cursor-pointer font-black text-[#334155]">Need help taking a screenshot?</summary>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <p><strong>Windows:</strong> Press Win + Shift + S, select the email header or contact list, then come back here and press Ctrl + V.</p>
+                      <p><strong>Mac:</strong> Press Command + Shift + 4, select the area, then upload or paste the screenshot.</p>
+                    </div>
+                  </details>
+                ) : null}
               </div>
 
               <div className="space-y-3">
@@ -848,6 +873,21 @@ export function ContactScreenshotImportSection({
                         </figcaption>
                       </figure>
                     ))}
+                  </div>
+                ) : isMobileMain ? (
+                  <div className="overflow-hidden rounded-2xl border border-[#D7E2F0] bg-white">
+                    <div className="flex items-center justify-between border-b border-[#E2E8F0] px-3 py-2">
+                      <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[#64748B]">Preview</span>
+                      <span className="text-sm font-semibold text-[#0d6efd]">Edit</span>
+                    </div>
+                    <div className="grid grid-cols-[1fr_1.2fr_1fr] bg-[#F8FAFC] px-3 py-2 text-[11px] font-black text-[#334155]">
+                      <span>Name</span>
+                      <span>Email</span>
+                      <span>Phone</span>
+                    </div>
+                    <div className="px-3 py-4 text-center text-xs font-semibold text-[#94A3B8]">
+                      Extracted contacts will appear here before saving.
+                    </div>
                   </div>
                 ) : (
                   <ImportExampleCards />
@@ -868,6 +908,32 @@ export function ContactScreenshotImportSection({
           </div>
         ) : null}
       </div>
+      {isMobileMain ? (
+        <div className="sticky bottom-0 z-10 mt-4 space-y-3 border-t border-[#E2E8F0] bg-white/95 px-1 py-4 backdrop-blur">
+          <button
+            type="button"
+            disabled={importing || selectedCount === 0 || selectableDraftIds.length === 0}
+            onClick={handleImport}
+            className={[
+              'inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-5 py-3 text-body-main font-bold shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition',
+              selectedCount > 0 && selectableDraftIds.length > 0 && !importing
+                ? 'bg-[#0d6efd] text-white hover:bg-[#0b5ed7]'
+                : 'cursor-not-allowed bg-[#CBD5E1] text-white',
+            ].join(' ')}
+          >
+            {importing ? 'Importing...' : 'Import Contacts'}
+          </button>
+          {secondaryActionLabel && onSecondaryAction ? (
+            <button
+              type="button"
+              onClick={onSecondaryAction}
+              className="min-h-11 w-full rounded-2xl border border-[#D7E2F0] bg-white px-5 py-3 text-body-main font-semibold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
+            >
+              {secondaryActionLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
