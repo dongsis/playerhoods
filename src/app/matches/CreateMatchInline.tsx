@@ -64,7 +64,7 @@ type InviteCandidate = {
 }
 
 type PlayerPickerFilter = 'all' | 'people' | 'groups' | 'contacts' | 'saved'
-type PlayerPickerMode = 'invite' | 'request'
+type PlayerPickerMode = 'invite' | 'request' | 'share'
 type PlayerPickerItem =
   | {
       key: string
@@ -1376,8 +1376,13 @@ export function CreateMatchInline({
     [selectionMode],
   )
 
-  const pickerItems = selectionMode === 'invite' ? invitePickerItems : requestPickerItems
-  const addPlayersMode: AddPlayersMode = selectionMode === 'request' ? 'playerCall' : 'invite'
+  const pickerItems = selectionMode === 'request' ? requestPickerItems : invitePickerItems
+  const addPlayersMode: AddPlayersMode =
+    selectionMode === 'request'
+      ? 'playerCall'
+      : selectionMode === 'share'
+        ? 'shareLink'
+        : 'invite'
   const sharedPickerCandidates = useMemo<AddPlayersCandidate[]>(() => (
     pickerItems.map((item) => {
       if (item.kind === 'group') {
@@ -1392,6 +1397,13 @@ export function CreateMatchInline({
           filterTags: ['groups'],
           selected,
           title: item.group.name,
+          previewTitle: item.group.name,
+          previewSubtitle: 'Group',
+          previewDetails: (
+            <p className="m-0">
+              Group target for this match.
+            </p>
+          ),
           payload: item,
         }
       }
@@ -1428,6 +1440,15 @@ export function CreateMatchInline({
           : availabilityWarning
             ? `${candidate.name}: ${candidate.sourceLabels.join(', ')}. ${availabilityWarning.label}. ${availabilityWarning.message}`
             : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`,
+        previewTitle: candidate.name,
+        previewSubtitle: isContact ? 'Contact player' : candidate.sourceLabels.join(', '),
+        previewDetails: (
+          <div className="space-y-1">
+            {availabilityLabel ? <p className="m-0">{availabilityLabel}</p> : null}
+            {contactStatusLabel ? <p className="m-0">{contactStatusLabel}</p> : null}
+            {availabilityWarning ? <p className="m-0">{availabilityWarning.message}</p> : null}
+          </div>
+        ),
         leadingNode: !isContact ? (
           <span
             className={`inline-block h-2 w-2 shrink-0 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
@@ -1436,16 +1457,7 @@ export function CreateMatchInline({
           />
         ) : null,
         labelNode: (
-          <ParticipantQuickPreviewTrigger
-            target={{
-              userId: candidate.userId ?? null,
-              guestId: candidate.guestId ?? null,
-              displayName: candidate.name,
-              gender: candidate.gender,
-            }}
-          >
-            <span>{candidate.name}</span>
-          </ParticipantQuickPreviewTrigger>
+          <span>{candidate.name}</span>
         ),
         trailingNode: contactStatusLabel ? (
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">
@@ -2497,7 +2509,7 @@ export function CreateMatchInline({
   }
 
   const switchSharedPlayerPickerMode = (mode: AddPlayersMode) => {
-    switchPlayerPickerMode(mode === 'playerCall' ? 'request' : 'invite')
+    switchPlayerPickerMode(mode === 'playerCall' ? 'request' : mode === 'shareLink' ? 'share' : 'invite')
   }
 
   const toggleDirectInviteCandidate = (candidate: InviteCandidate) => {
@@ -2542,18 +2554,18 @@ export function CreateMatchInline({
     if (!item) return
 
     if (item.kind === 'candidate') {
-      if (selectionMode === 'invite') {
-        toggleDirectInviteCandidate(item.candidate)
-      } else {
+      if (selectionMode === 'request') {
         toggleRequestScopeCandidate(item.candidate)
+      } else if (selectionMode === 'invite') {
+        toggleDirectInviteCandidate(item.candidate)
       }
       return
     }
 
-    if (selectionMode === 'invite') {
-      toggleInviteGroup(item.group)
-    } else {
+    if (selectionMode === 'request') {
       toggleRequestScopeGroup(item.group)
+    } else if (selectionMode === 'invite') {
+      toggleInviteGroup(item.group)
     }
   }
 

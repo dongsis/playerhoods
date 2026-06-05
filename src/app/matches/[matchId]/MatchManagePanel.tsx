@@ -29,8 +29,8 @@ type CurrentRequestTarget = {
 }
 
 type PanelMode = 'invite' | 'remove'
-type InviteSelectionMode = 'invite' | 'request'
-type AdditionMode = InviteSelectionMode
+type InviteSelectionMode = 'invite' | 'request' | 'share'
+type AdditionMode = Exclude<InviteSelectionMode, 'share'>
 type RemoveSelectionMode = 'confirmed' | 'invites' | 'requests'
 type PickerFilter = 'all' | 'people' | 'groups' | 'contacts' | 'saved'
 
@@ -849,10 +849,11 @@ export function MatchManagePanel({
   const currentRequestGroupIds = new Set(activeRequestGroups.map((group) => group.id))
   const pendingAddKeys = new Set(pendingAdds.map((item) => `${item.mode}:${item.key}`))
   const pendingRemovalKeys = new Set(pendingRemovals.map((item) => item.key))
+  const activeAdditionMode: AdditionMode = inviteMode === 'request' ? 'request' : 'invite'
 
   const inviteCandidates = useMemo(() => {
     const pool: CandidateItem[] =
-      inviteMode === 'invite'
+      activeAdditionMode === 'invite'
         ? [
             ...candidateUsers.map((user) => ({
               key: `user:${user.id}`,
@@ -913,7 +914,7 @@ export function MatchManagePanel({
           ]
 
     const filteredCandidates = pool.filter((candidate) => {
-      if (inviteMode === 'invite') {
+      if (activeAdditionMode === 'invite') {
         if (candidate.kind === 'user' && currentInviteUserIds.has(candidate.id)) return false
         if (candidate.kind === 'group' && currentGroupInviteIds.has(candidate.id)) return false
       } else {
@@ -934,7 +935,7 @@ export function MatchManagePanel({
     currentInviteUserIds,
     currentRequestGroupIds,
     currentRequestUserIds,
-    inviteMode,
+    activeAdditionMode,
     isOrganizer,
     availabilityLookup,
     pendingAddKeys,
@@ -942,11 +943,16 @@ export function MatchManagePanel({
     revokedRequestUserIds,
   ])
 
-  const addPlayersMode: AddPlayersMode = inviteMode === 'request' ? 'playerCall' : 'invite'
+  const addPlayersMode: AddPlayersMode =
+    inviteMode === 'request'
+      ? 'playerCall'
+      : inviteMode === 'share'
+        ? 'shareLink'
+        : 'invite'
   const pickerFilterOptions = inviteMode === 'request' ? PLAYER_CALL_FILTER_OPTIONS : INVITE_FILTER_OPTIONS
   const sharedPickerCandidates = useMemo<AddPlayersCandidate[]>(() => (
     inviteCandidates.map((candidate) => {
-      const isSelected = pendingAddKeys.has(`${inviteMode}:${candidate.key}`)
+      const isSelected = pendingAddKeys.has(`${activeAdditionMode}:${candidate.key}`)
       const availabilityDotClass = candidate.kind === 'user'
         ? getAvailabilityStatusDotClass(candidate.availabilityStatus)
         : null
@@ -965,27 +971,29 @@ export function MatchManagePanel({
         selected: isSelected,
         searchText: `${candidate.name} ${candidate.sourceLabel ?? ''}`,
         title: candidate.sourceLabel ? `${candidate.name}: ${candidate.sourceLabel}` : candidate.name,
+        previewTitle: candidate.name,
+        previewSubtitle: candidate.kind === 'group'
+          ? 'Group'
+          : candidate.kind === 'contact'
+            ? 'Contact player'
+            : candidate.sourceLabel ?? 'Player',
+        previewDetails: (
+          <p className="m-0">
+            {candidate.sourceLabel ?? (candidate.kind === 'group' ? 'Group target' : 'Player target')}
+          </p>
+        ),
         leadingNode: availabilityDotClass ? (
           <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${availabilityDotClass}`} aria-hidden="true" />
         ) : null,
         labelNode: candidate.kind === 'group' ? (
           <span>{candidate.name}</span>
         ) : (
-          <ParticipantQuickPreviewTrigger
-            target={{
-              userId: candidate.userId ?? null,
-              guestId: candidate.guestId ?? null,
-              displayName: candidate.name,
-              avatarUrl: candidate.avatarUrl ?? null,
-            }}
-          >
-            <span>{candidate.name}</span>
-          </ParticipantQuickPreviewTrigger>
+          <span>{candidate.name}</span>
         ),
         payload: candidate,
       }
     })
-  ), [inviteCandidates, inviteMode, pendingAddKeys])
+  ), [activeAdditionMode, inviteCandidates, pendingAddKeys])
 
   const handleCreateContactForMatch = async () => {
     const displayName = contactDisplayName.trim()
@@ -1245,23 +1253,23 @@ export function MatchManagePanel({
     removeMode,
   ])
 
-  const stageAdd = (candidate: CandidateItem, mode: AdditionMode = inviteMode) => {
+  const stageAdd = (candidate: CandidateItem, mode: AdditionMode = activeAdditionMode) => {
     setSuccess(null)
     setError(null)
     setPendingAdds((prev) => [...prev.filter((item) => item.key !== candidate.key), { ...candidate, mode }])
   }
 
   const togglePendingAdd = (candidate: CandidateItem) => {
-    const alreadySelected = pendingAddKeys.has(`${inviteMode}:${candidate.key}`)
+    const alreadySelected = pendingAddKeys.has(`${activeAdditionMode}:${candidate.key}`)
     if (alreadySelected) {
-      cancelAdd(candidate.key, inviteMode)
+      cancelAdd(candidate.key, activeAdditionMode)
       return
     }
-    stageAdd(candidate, inviteMode)
+    stageAdd(candidate, activeAdditionMode)
   }
 
   const resetSharedPickerMode = (mode: AddPlayersMode) => {
-    setInviteMode(mode === 'playerCall' ? 'request' : 'invite')
+    setInviteMode(mode === 'playerCall' ? 'request' : mode === 'shareLink' ? 'share' : 'invite')
     setPickerSearch('')
     setPickerFilter('all')
     setContactComposerOpen(false)
@@ -1271,6 +1279,7 @@ export function MatchManagePanel({
   }
 
   const toggleSharedPickerCandidate = (candidate: AddPlayersCandidate) => {
+    if (inviteMode === 'share') return
     const item = candidate.payload as CandidateItem | undefined
     if (!item) return
     togglePendingAdd(item)
@@ -1501,7 +1510,7 @@ export function MatchManagePanel({
   const requestSummaryItems: SummaryEntry[] = [
     ...visibleRequestUsers.map((user) => ({
       key: `request-user-${user.id}`,
-      label: looksLikeInternalUserLabel(user.name) ? 'Open spot' : user.name,
+      label: user.name,
       kind: 'user' as const,
       availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
         kind: 'user',
@@ -1690,7 +1699,7 @@ export function MatchManagePanel({
               displayName: user.name,
             }}
           >
-            <span>{looksLikeInternalUserLabel(user.name) ? 'Open spot' : user.name}</span>
+            <span>{user.name}</span>
           </ParticipantQuickPreviewTrigger>
           <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
         </button>
@@ -1836,7 +1845,7 @@ export function MatchManagePanel({
         onClick={() => {
           setError(null)
           setSuccess(null)
-          if (inviteMode === 'invite') {
+          if (activeAdditionMode === 'invite') {
             setPendingAdds((prev) => prev.filter((item) => item.mode !== 'invite'))
             setLocalContactCandidates([])
           } else {
@@ -1851,16 +1860,16 @@ export function MatchManagePanel({
       </button>
       <button
         type="button"
-        onClick={() => void handleApply(inviteMode)}
+        onClick={() => void handleApply(activeAdditionMode)}
         disabled={inviteActionDisabled}
         className={`text-label rounded-2xl px-5 py-4 text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-50 ${
-          inviteMode === 'request'
+          activeAdditionMode === 'request'
             ? 'bg-green-600 hover:bg-green-700'
             : 'bg-[#0d6efd] hover:bg-[#0b5ed7]'
         }`}
       >
         {isApplying
-          ? inviteMode === 'request' ? 'Updating...' : 'Sending...'
+          ? activeAdditionMode === 'request' ? 'Updating...' : 'Sending...'
           : invitePrimaryLabel}
       </button>
     </div>
