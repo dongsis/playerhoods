@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-05 - DB-20260605-public-join-registered-request
 
 **Type:** Structural Release
-**Code Commits:** Draft PR #106 head commit `b893de94dc0cca30879e9445bfa90f68c944883c`; implementation branch `codex/logged-in-public-join-request`
-**Migration:** `supabase/migrations/20260605153000_logged_in_public_join_request.sql` added locally; not applied to Supabase Remote by Codex
-**Status:** Draft PR / GitHub only; no production deploy; no Supabase Remote change; production not verified
+**Code Commits:** PR #106 merged at `1bad9af794c7941486ca7462cb2131a984db0a53`. Final PR head before merge: `4f601a1a06b89c3e86d639acd835a62e12621686`.
+**Migration:** `supabase/migrations/20260605153000_logged_in_public_join_request.sql` applied to Supabase Remote before merge.
+**Status:** Production aligned / limited verification complete; full scoped `/join/[token]` smoke pending safe production token and registered test session.
 
 ### Summary
 
@@ -36,17 +36,17 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 |---|---|---|
 | Build/typecheck | Passed locally | `npx tsc --noEmit`; `npm run build` |
 | Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
-| SQL regression | Passed in GitHub; blocked locally | GitHub SQL Regression Check passed for PR #106. Local `npm run verify:sql` could not connect to Docker Desktop Linux engine / local Supabase container; no Supabase Remote run |
-| Supabase Remote | Not changed | Migration not applied by Codex |
-| Real SMS/email/provider traffic | Not sent by Codex | No provider sends, queue drains, real emails, or SMS |
-| Vercel Production | Not deployed | Draft PR only; Vercel Preview check passed, but no production deployment was performed by Codex |
-| Production verification | Not verified | No production smoke was run |
+| SQL regression | Passed in GitHub; blocked locally | GitHub SQL Regression Check passed for PR #106. Local `npm run verify:sql` could not connect to Docker Desktop Linux engine / local Supabase container |
+| Supabase Remote | Applied | `npx supabase db push --linked --yes` applied only `20260605153000_logged_in_public_join_request.sql`; `npx supabase migration list --linked` showed `20260605153000 | 20260605153000 | 2026-06-05 15:30:00` |
+| Real SMS/email/provider traffic | Not sent by Codex | No provider sends, queue drains, real emails, SMS, public signup creation, or notification mutation smoke |
+| Vercel Production | Deployed | GitHub Deployment `4949919115` for merge commit `1bad9af794c7941486ca7462cb2131a984db0a53` reached `success`; Vercel deployment URL `https://playerhoods-codex-mw6p06yep-nancys-projects-128e326c.vercel.app` |
+| Production verification | Limited smoke passed; scoped join smoke pending | `https://www.playerhoods.com/` and `https://www.playerhoods.com/login` returned HTTP 200 from Vercel. Full logged-out/logged-in `/join/[token]` smoke was not run because no safe production Open to Join token and registered test-user session were available |
 
 ### Rollback
 
-- Code rollback: revert the implementation commit or close the draft PR before merge.
-- Database rollback if applied later: follow-up migration dropping/revoking `public.rpc_public_match_registered_request_join(uuid)`.
-- App rollback if deployed later: restore previous `/join/[token]` behavior so all public join requests use the unauthenticated name/email verification flow.
+- Code rollback: revert merge commit `1bad9af794c7941486ca7462cb2131a984db0a53`.
+- Database rollback: follow-up migration dropping/revoking `public.rpc_public_match_registered_request_join(uuid)`.
+- App rollback: restore previous `/join/[token]` behavior so all public join requests use the unauthenticated name/email verification flow.
 - Provider rollback: none; no email/SMS/provider configuration changed.
 
 ## 2026-06-04 - STRUCTURAL-20260604-join-link-request-a-spot-v2
