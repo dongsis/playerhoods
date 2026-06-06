@@ -71,6 +71,18 @@ function formatMessageTime(value: string) {
   }).format(date)
 }
 
+function isTechnicalOrganizerNote(value: string | null) {
+  const normalized = value?.trim().toLowerCase() ?? ''
+  if (!normalized) return false
+  return (
+    normalized.includes('disposable qa') ||
+    normalized.includes('qa match') ||
+    normalized.includes('test match') ||
+    normalized.includes('compact mobile card validation') ||
+    normalized.includes('validation')
+  )
+}
+
 function MessageAvatar({
   displayName,
   avatarUrl,
@@ -129,6 +141,7 @@ export function MatchCommunicationSection({
   const [isSendingMessage, startSendMessage] = useTransition()
 
   const hasOrganizerNote = Boolean(organizerNoteText?.trim())
+  const showMobileOrganizerNote = hasOrganizerNote && !isTechnicalOrganizerNote(organizerNoteText)
   const organizerNoteSentences = useMemo(
     () => new Set(parseOrganizerNoteSentences(noteDraft)),
     [noteDraft],
@@ -187,8 +200,99 @@ export function MatchCommunicationSection({
   }
 
   return (
+    <>
+    <section className="mb-3 overflow-hidden rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_12px_28px_rgba(15,23,42,0.05)] md:hidden">
+      <div className="border-b border-[#F1F5F9] px-4 py-3">
+        <h2 className="m-0 text-[15px] font-black text-[#0F172A]">Messages</h2>
+      </div>
+
+      {showMobileOrganizerNote ? (
+        <div className="border-b border-[#F1F5F9] bg-[#F8FBFF] px-4 py-3">
+          <p className="m-0 text-[12px] font-black uppercase tracking-[0.12em] text-[#0d6efd]">Host Note</p>
+          <p className="m-0 mt-1 text-[13px] font-semibold leading-relaxed text-[#475569]">
+            {organizerNoteText}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-2 px-4 py-3">
+        {sortedMessages.length === 0 ? (
+          <p className="m-0 text-[13px] font-semibold text-[#94A3B8]">No messages yet.</p>
+        ) : (
+          sortedMessages.map((message) => {
+            const isMine = viewerUserId !== null && message.author_user_id === viewerUserId
+
+            return (
+              <div
+                key={message.id}
+                className={[
+                  'max-w-[92%] rounded-[14px] px-3 py-2',
+                  isMine
+                    ? 'justify-self-end bg-[#0d6efd] text-white'
+                    : 'justify-self-start border border-[#E2E8F0] bg-[#F8FAFC] text-[#475569]',
+                ].join(' ')}
+              >
+                <div className="mb-1 flex items-center gap-2">
+                  <PlayerProfileTrigger
+                    targetUserId={message.author_user_id}
+                    className="truncate text-[11px] font-black uppercase"
+                    label={`View details for ${message.author_name}`}
+                  >
+                    <span>{isMine ? 'You' : message.author_name}</span>
+                  </PlayerProfileTrigger>
+                  <span className={isMine ? 'text-[11px] font-semibold text-white/70' : 'text-[11px] font-semibold text-[#94A3B8]'}>
+                    {formatMessageTime(message.created_at)}
+                  </span>
+                </div>
+                <p className="m-0 whitespace-pre-wrap text-[13px] font-semibold leading-relaxed">
+                  {message.body}
+                </p>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {canPostCommunication ? (
+        <div className="border-t border-[#F1F5F9] bg-white px-3 py-3">
+          <div className="flex items-center gap-2 rounded-[14px] border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
+            <input
+              type="text"
+              value={composerValue}
+              onChange={(event) => setComposerValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  handleSendMessage()
+                }
+              }}
+              placeholder={inputPlaceholder}
+              disabled={isSendingMessage}
+              className="min-w-0 flex-1 border-0 bg-transparent text-[13px] font-semibold text-[#475569] outline-none placeholder:text-[#94A3B8]"
+            />
+            <button
+              type="button"
+              onClick={handleSendMessage}
+              disabled={isSendingMessage || !composerValue.trim()}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#0d6efd] disabled:cursor-not-allowed disabled:text-[#CBD5E1]"
+              aria-label="Send message"
+            >
+              <IconSend color={composerValue.trim() ? '#0d6efd' : '#CBD5E1'} />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="px-4 pb-3 text-[12px] font-semibold text-[#b42318]">
+          {error}
+        </div>
+      ) : null}
+    </section>
+
     <section
       id="match-communication"
+      className="hidden md:block"
       style={{
         marginBottom: '1rem',
         background: '#fff',
@@ -529,6 +633,7 @@ export function MatchCommunicationSection({
         </div>
       ) : null}
     </section>
+    </>
   )
 }
 
