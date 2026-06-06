@@ -63,9 +63,39 @@ function modeButtonClass(selected: boolean, tone: AddPlayersMode) {
     : 'text-[#334155] hover:bg-white/70 hover:text-[#0d6efd]'
 
   return [
-    'flex h-10 w-full min-w-0 items-center justify-center rounded-lg px-1 text-center text-[11px] font-black leading-tight transition active:scale-[0.98] sm:px-2 sm:text-body-sub',
+    'flex h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-lg px-1.5 text-center text-[12px] font-black leading-tight transition active:scale-[0.98] sm:px-3 sm:text-body-main',
     selected ? selectedClass : idleClass,
   ].join(' ')
+}
+
+function InviteIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8" cy="7" r="3" />
+      <path d="M3.5 16c.7-2.8 2.2-4.2 4.5-4.2s3.8 1.4 4.5 4.2" />
+      <path d="M15 6v5" />
+      <path d="M12.5 8.5h5" />
+    </svg>
+  )
+}
+
+function BoardIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 6.5h7.5l4-2.2v11.4l-4-2.2H4z" />
+      <path d="M7 13.5l1 3" />
+      <path d="M14.8 8.2c.7.5.7 2.1 0 2.6" />
+    </svg>
+  )
+}
+
+function LinkIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8.8 6.2l.9-.9a3 3 0 0 1 4.3 4.2l-1.4 1.4a3 3 0 0 1-4.2 0" />
+      <path d="M11.2 13.8l-.9.9A3 3 0 0 1 6 10.5l1.4-1.4a3 3 0 0 1 4.2 0" />
+    </svg>
+  )
 }
 
 function candidateClass(candidate: AddPlayersCandidate, mode: AddPlayersMode) {
@@ -149,6 +179,7 @@ export function AddPlayersPickerPanel({
           onClick={() => onModeChange('invite')}
           className={modeButtonClass(mode === 'invite', 'invite')}
         >
+          <InviteIcon />
           <span className="whitespace-nowrap">Invite</span>
         </button>
         <button
@@ -156,6 +187,7 @@ export function AddPlayersPickerPanel({
           onClick={() => onModeChange('playerCall')}
           className={modeButtonClass(mode === 'playerCall', 'playerCall')}
         >
+          <BoardIcon />
           <span className="whitespace-nowrap">Post to Board</span>
         </button>
         <button
@@ -163,6 +195,7 @@ export function AddPlayersPickerPanel({
           onClick={() => onModeChange('shareLink')}
           className={modeButtonClass(mode === 'shareLink', 'shareLink')}
         >
+          <LinkIcon />
           <span className="whitespace-nowrap">Share Link</span>
         </button>
       </div>
