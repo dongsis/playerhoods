@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
 import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
+import { AddPlayersPickerPanel, type AddPlayersCandidate, type AddPlayersMode } from '@/app/matches/AddPlayersPickerPanel'
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
 import type { CreateRecurringMatchSeriesInput, RecurringDirectInviteInput } from '@/lib/api/recurring-matches'
@@ -63,7 +64,7 @@ type InviteCandidate = {
 }
 
 type PlayerPickerFilter = 'all' | 'people' | 'groups' | 'contacts' | 'saved'
-type PlayerPickerMode = 'invite' | 'request'
+type PlayerPickerMode = 'invite' | 'request' | 'share'
 type PlayerPickerItem =
   | {
       key: string
@@ -1375,11 +1376,105 @@ export function CreateMatchInline({
     [selectionMode],
   )
 
-  const pickerItems = selectionMode === 'invite' ? invitePickerItems : requestPickerItems
-  const filteredPickerItems = useMemo(
-    () => pickerItems.filter((item) => pickerItemMatches(item, playerPickerSearch, playerPickerFilter)),
-    [pickerItems, playerPickerFilter, playerPickerSearch],
-  )
+  const pickerItems = selectionMode === 'request' ? requestPickerItems : invitePickerItems
+  const addPlayersMode: AddPlayersMode =
+    selectionMode === 'request'
+      ? 'playerCall'
+      : selectionMode === 'share'
+        ? 'shareLink'
+        : 'invite'
+  const sharedPickerCandidates = useMemo<AddPlayersCandidate[]>(() => (
+    pickerItems.map((item) => {
+      if (item.kind === 'group') {
+        const selected = selectionMode === 'invite'
+          ? invitedGroupIds.includes(item.group.id)
+          : scopeGroupIds.includes(item.group.id)
+
+        return {
+          key: item.key,
+          name: item.group.name,
+          kind: 'group',
+          filterTags: ['groups'],
+          selected,
+          title: item.group.name,
+          previewTitle: item.group.name,
+          previewSubtitle: 'Group',
+          previewDetails: (
+            <p className="m-0">
+              Group target for this match.
+            </p>
+          ),
+          payload: item,
+        }
+      }
+
+      const candidate = item.candidate
+      const isContact = candidate.kind === 'contact'
+      const isSelected = selectionMode === 'invite'
+        ? selectedDirectInviteKeys.has(candidate.key)
+        : Boolean(candidate.userId && scopeUserIds.includes(candidate.userId))
+      const contactUnavailable = selectionMode === 'invite'
+        && isContact
+        && candidate.hasReachableChannel === false
+      const contactStatusLabel = contactUnavailable
+        ? candidate.emailOptedOut || candidate.smsOptedOut
+          ? 'Unsubscribed'
+          : 'No email or phone'
+        : null
+      const availabilityWarning = !isContact ? getAvailabilityWarning(candidate) : null
+      const availabilityLabel = !isContact ? getAvailabilityStatusLabel(candidate.availabilityStatus) : null
+      const filterTags = isContact
+        ? ['contacts']
+        : ['people', candidate.source === 'saved_players' ? 'saved' : null].filter((tag): tag is string => Boolean(tag))
+
+      return {
+        key: item.key,
+        name: candidate.name,
+        kind: isContact ? 'contact' : 'person',
+        filterTags,
+        selected: isSelected,
+        disabled: contactUnavailable,
+        searchText: `${candidate.name} ${candidate.sourceLabels.join(' ')}`,
+        title: contactStatusLabel
+          ? `${candidate.name}: ${contactStatusLabel}`
+          : availabilityWarning
+            ? `${candidate.name}: ${candidate.sourceLabels.join(', ')}. ${availabilityWarning.label}. ${availabilityWarning.message}`
+            : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`,
+        previewTitle: candidate.name,
+        previewSubtitle: isContact ? 'Contact player' : candidate.sourceLabels.join(', '),
+        previewDetails: (
+          <div className="space-y-1">
+            {availabilityLabel ? <p className="m-0">{availabilityLabel}</p> : null}
+            {contactStatusLabel ? <p className="m-0">{contactStatusLabel}</p> : null}
+            {availabilityWarning ? <p className="m-0">{availabilityWarning.message}</p> : null}
+          </div>
+        ),
+        leadingNode: !isContact ? (
+          <span
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+            aria-label={availabilityLabel ?? 'Available'}
+            title={availabilityLabel ?? 'Available'}
+          />
+        ) : null,
+        labelNode: (
+          <span>{candidate.name}</span>
+        ),
+        trailingNode: contactStatusLabel ? (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">
+            {contactStatusLabel}
+          </span>
+        ) : null,
+        payload: item,
+      }
+    })
+  ), [
+    invitedGroupIds,
+    pickerItems,
+    scopeGroupIds,
+    scopeUserIds,
+    selectedDirectInviteKeys,
+    selectionMode,
+  ])
 
   const selectedInvitedGroups = useMemo(
     () => groups.filter((group) => invitedGroupIds.includes(group.id)),
@@ -2413,6 +2508,10 @@ export function CreateMatchInline({
     setPlayerPickerFilter('all')
   }
 
+  const switchSharedPlayerPickerMode = (mode: AddPlayersMode) => {
+    switchPlayerPickerMode(mode === 'playerCall' ? 'request' : mode === 'shareLink' ? 'share' : 'invite')
+  }
+
   const toggleDirectInviteCandidate = (candidate: InviteCandidate) => {
     if (candidate.kind === 'contact' && candidate.hasReachableChannel === false) return
 
@@ -2422,6 +2521,52 @@ export function CreateMatchInline({
       else next.add(candidate.key)
       return next
     })
+  }
+
+  const toggleRequestScopeCandidate = (candidate: InviteCandidate) => {
+    if (candidate.kind !== 'user' || !candidate.userId) return
+
+    setScopeUserIds((prev) =>
+      prev.includes(candidate.userId as string)
+        ? prev.filter((id) => id !== candidate.userId)
+        : [...prev, candidate.userId as string],
+    )
+  }
+
+  const toggleInviteGroup = (group: Group) => {
+    setInvitedGroupIds((prev) =>
+      prev.includes(group.id)
+        ? prev.filter((id) => id !== group.id)
+        : [...prev, group.id],
+    )
+  }
+
+  const toggleRequestScopeGroup = (group: Group) => {
+    setScopeGroupIds((prev) =>
+      prev.includes(group.id)
+        ? prev.filter((id) => id !== group.id)
+        : [...prev, group.id],
+    )
+  }
+
+  const toggleSharedPlayerCandidate = (candidate: AddPlayersCandidate) => {
+    const item = candidate.payload as PlayerPickerItem | undefined
+    if (!item) return
+
+    if (item.kind === 'candidate') {
+      if (selectionMode === 'request') {
+        toggleRequestScopeCandidate(item.candidate)
+      } else if (selectionMode === 'invite') {
+        toggleDirectInviteCandidate(item.candidate)
+      }
+      return
+    }
+
+    if (selectionMode === 'request') {
+      toggleRequestScopeGroup(item.group)
+    } else if (selectionMode === 'invite') {
+      toggleInviteGroup(item.group)
+    }
   }
 
   const renderInviteCandidateButton = (candidate: InviteCandidate, compact = false) => {
@@ -3708,195 +3853,105 @@ export function CreateMatchInline({
 
       {createStep === 'players' ? (
       <section className="px-1 py-2 pb-36 md:py-1 md:pb-1">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#EEF4FB] p-1">
-            <button
-              type="button"
-              onClick={() => switchPlayerPickerMode('invite')}
-              className={[
-                'flex h-10 w-full min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 text-body-sub font-black transition active:scale-[0.98]',
-                selectionMode === 'invite'
-                  ? 'bg-white text-[#0d6efd] shadow-sm ring-1 ring-[#0d6efd]/15'
-                  : 'text-[#334155] hover:bg-white/70 hover:text-[#0d6efd]',
-              ].join(' ')}
-            >
-              <span className="text-base leading-none">+</span>
-              <span className="truncate">Invite</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => switchPlayerPickerMode('request')}
-              className={[
-                'flex h-10 w-full min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 text-body-sub font-black transition active:scale-[0.98]',
-                selectionMode === 'request'
-                  ? 'bg-white text-[#15803D] shadow-sm ring-1 ring-[#22C55E]/20'
-                  : 'text-[#334155] hover:bg-white/70 hover:text-[#15803D]',
-              ].join(' ')}
-            >
-              <span className="text-base leading-none">+</span>
-              <span className="truncate">Post Player Call</span>
-            </button>
-          </div>
-
-          {selectionMode === 'request' ? (
-            <div className="space-y-2 px-1">
-              <div className={`${ADD_PLAYERS_SECTION_LABEL} text-[#64748B]`}>
-                Call targets
-              </div>
-              {playerCallTargetCount === 0 ? (
-                <p className="text-body-sub font-semibold text-[#94A3B8]">No one yet</p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedScopeUsers.map((candidate) => (
-                    <button
-                      key={`call-target-${candidate.key}`}
-                      type="button"
-                      onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
-                      className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
-                    >
-                      <ParticipantQuickPreviewTrigger
-                        target={{
-                          userId: candidate.userId ?? null,
-                          guestId: candidate.guestId ?? null,
-                          displayName: candidate.name,
-                          gender: candidate.gender,
-                        }}
-                      >
-                        <span>{candidate.name}</span>
-                      </ParticipantQuickPreviewTrigger>
-                      <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-                    </button>
-                  ))}
-                  {selectedScopeGroups.map((group) =>
-                    renderSelectedGroupChip(
-                      group,
-                      'green',
-                      () => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id)),
-                      `call-target-group-${group.id}`,
-                    ),
-                  )}
-                </div>
+        <AddPlayersPickerPanel
+          mode={addPlayersMode}
+          onModeChange={switchSharedPlayerPickerMode}
+          searchValue={playerPickerSearch}
+          onSearchChange={setPlayerPickerSearch}
+          filterValue={playerPickerFilter}
+          onFilterChange={(value) => setPlayerPickerFilter(value as PlayerPickerFilter)}
+          filterOptions={pickerFilterOptions}
+          candidates={sharedPickerCandidates}
+          onToggleCandidate={toggleSharedPlayerCandidate}
+          shareLinkRow={(
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-body-main font-black text-[#1E293B]">Share link</span>
+              <span className="text-body-sub font-semibold text-[#94A3B8]">Available after creation</span>
+            </div>
+          )}
+          playerCallSummary={playerCallTargetCount === 0 ? (
+            <p className="text-body-sub font-semibold text-[#94A3B8]">No one yet</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {selectedScopeUsers.map((candidate) => (
+                <button
+                  key={`call-target-${candidate.key}`}
+                  type="button"
+                  onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
+                  className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
+                >
+                  <ParticipantQuickPreviewTrigger
+                    target={{
+                      userId: candidate.userId ?? null,
+                      guestId: candidate.guestId ?? null,
+                      displayName: candidate.name,
+                      gender: candidate.gender,
+                    }}
+                  >
+                    <span>{candidate.name}</span>
+                  </ParticipantQuickPreviewTrigger>
+                  <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+                </button>
+              ))}
+              {selectedScopeGroups.map((group) =>
+                renderSelectedGroupChip(
+                  group,
+                  'green',
+                  () => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id)),
+                  `call-target-group-${group.id}`,
+                ),
               )}
             </div>
-          ) : null}
-
-          <div className="w-full space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    type="search"
-                    value={playerPickerSearch}
-                    onChange={(event) => setPlayerPickerSearch(event.target.value)}
-                    placeholder="Search player or group..."
-                    className="min-w-0 flex-1 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-semibold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                  />
-                  <select
-                    value={playerPickerFilter}
-                    onChange={(event) => setPlayerPickerFilter(event.target.value as PlayerPickerFilter)}
-                    className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-bold text-[#334155] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 sm:w-[140px]"
+          )}
+          inviteSummary={inviteSelectionCount === 0 ? (
+            <p className="text-body-sub font-semibold text-[#94A3B8]">No people or groups selected yet.</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-body-sub mr-1 font-semibold text-[#64748B]">
+                {inviteSelectionCount} selected
+              </span>
+              {selectedInvitePlayers.map((member) => (
+                <button
+                  key={`invite-selected-${member.key}`}
+                  type="button"
+                  onClick={() => setSelectedDirectInviteKeys((prev) => {
+                    const next = new Set(prev)
+                    next.delete(member.key)
+                    return next
+                  })}
+                  className="text-body-sub flex items-center rounded-lg border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-1 font-semibold text-[#0d6efd]"
+                >
+                  <ParticipantQuickPreviewTrigger
+                    target={{
+                      userId: member.userId ?? null,
+                      guestId: member.guestId ?? null,
+                      displayName: member.name,
+                      gender: member.gender,
+                    }}
                   >
-                    {pickerFilterOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid max-h-[390px] gap-1.5 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-                  {filteredPickerItems.length === 0 ? (
-                    <div className="text-body-main w-full px-1 py-6 text-center font-semibold text-[#94A3B8]">
-                      {selectionMode === 'invite'
-                        ? 'No matching players, contacts, or groups.'
-                        : 'No matching players or groups.'}
-                      {selectionMode === 'request' ? (
-                        <span className="text-body-sub mt-1 block font-semibold text-[#64748B]">
-                          Use Invite to add a new contact directly.
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    filteredPickerItems.map((item) => {
-                      if (item.kind === 'candidate') {
-                        return selectionMode === 'invite'
-                          ? renderInviteCandidateButton(item.candidate)
-                          : renderRequestScopeCandidateButton(item.candidate)
-                      }
-
-                      if (selectionMode === 'invite') {
-                        return renderGroupSelector(
-                          item.group,
-                          invitedGroupIds.includes(item.group.id),
-                          () =>
-                            setInvitedGroupIds((prev) =>
-                              prev.includes(item.group.id)
-                                ? prev.filter((id) => id !== item.group.id)
-                                : [...prev, item.group.id],
-                            ),
-                          'indigo',
-                        )
-                      }
-
-                      return renderGroupSelector(
-                        item.group,
-                        scopeGroupIds.includes(item.group.id),
-                        () =>
-                          setScopeGroupIds((prev) =>
-                            prev.includes(item.group.id)
-                              ? prev.filter((id) => id !== item.group.id)
-                              : [...prev, item.group.id],
-                          ),
-                        'green',
-                      )
-                    })
-                  )}
-                </div>
-
-                {selectionMode === 'invite' ? (
-                  <div className="px-1">
-                    {inviteSelectionCount === 0 ? (
-                      <p className="text-body-sub font-semibold text-[#94A3B8]">No people or groups selected yet.</p>
-                    ) : (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-body-sub mr-1 font-semibold text-[#64748B]">
-                          {inviteSelectionCount} selected
-                        </span>
-                        {selectedInvitePlayers.map((member) => (
-                          <button
-                            key={`invite-selected-${member.key}`}
-                            type="button"
-                            onClick={() => setSelectedDirectInviteKeys((prev) => {
-                              const next = new Set(prev)
-                              next.delete(member.key)
-                              return next
-                            })}
-                            className="text-body-sub flex items-center rounded-lg border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-1 font-semibold text-[#0d6efd]"
-                          >
-                            <ParticipantQuickPreviewTrigger
-                              target={{
-                                userId: member.userId ?? null,
-                                guestId: member.guestId ?? null,
-                                displayName: member.name,
-                                gender: member.gender,
-                              }}
-                            >
-                              <span>{member.name}</span>
-                            </ParticipantQuickPreviewTrigger>
-                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-                          </button>
-                        ))}
-                        {selectedInvitedGroups.map((group) =>
-                          renderSelectedGroupChip(
-                            group,
-                            'orange',
-                            () => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
-                          ),
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-          </div>
-        </div>
+                    <span>{member.name}</span>
+                  </ParticipantQuickPreviewTrigger>
+                  <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+                </button>
+              ))}
+              {selectedInvitedGroups.map((group) =>
+                renderSelectedGroupChip(
+                  group,
+                  'orange',
+                  () => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
+                ),
+              )}
+            </div>
+          )}
+          playerCallEmptyLabel={(
+            <>
+              No matching players or groups.
+              <span className="text-body-sub mt-1 block font-semibold text-[#64748B]">
+                Use Invite to add a new contact directly.
+              </span>
+            </>
+          )}
+        />
       </section>
       ) : null}
 
