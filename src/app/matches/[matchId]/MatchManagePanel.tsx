@@ -2034,7 +2034,7 @@ export function MatchManagePanel({
                 expandModeButtonsOnMobile
                 shareLinkRow={shareLinkRow}
                 playerCallSummaryLabel="Visible to"
-                playerCallHelperText="Only selected players and groups will see this on their Match Board. Use Venues to filter venue members."
+                playerCallHelperText="Only selected players and groups will see this on their Match Board."
                 playerCallSummary={playerCallSummarySlot}
                 inviteSummary={inviteSummarySlot}
                 addContactSlot={addContactSlot}
