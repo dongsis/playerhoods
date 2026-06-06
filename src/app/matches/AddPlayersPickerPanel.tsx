@@ -63,7 +63,7 @@ function modeButtonClass(selected: boolean, tone: AddPlayersMode) {
     : 'text-[#334155] hover:bg-white/70 hover:text-[#0d6efd]'
 
   return [
-    'flex h-10 w-full min-w-0 items-center justify-center rounded-lg px-2 text-center text-body-sub font-black leading-tight transition active:scale-[0.98]',
+    'flex h-10 w-full min-w-0 items-center justify-center rounded-lg px-1 text-center text-[11px] font-black leading-tight transition active:scale-[0.98] sm:px-2 sm:text-body-sub',
     selected ? selectedClass : idleClass,
   ].join(' ')
 }
@@ -149,21 +149,21 @@ export function AddPlayersPickerPanel({
           onClick={() => onModeChange('invite')}
           className={modeButtonClass(mode === 'invite', 'invite')}
         >
-          <span className="truncate">Invite</span>
+          <span className="whitespace-nowrap">Invite</span>
         </button>
         <button
           type="button"
           onClick={() => onModeChange('playerCall')}
           className={modeButtonClass(mode === 'playerCall', 'playerCall')}
         >
-          <span className="truncate">Post Player Call</span>
+          <span className="whitespace-nowrap">Post to Board</span>
         </button>
         <button
           type="button"
           onClick={() => onModeChange('shareLink')}
           className={modeButtonClass(mode === 'shareLink', 'shareLink')}
         >
-          <span className="truncate">Share a Link</span>
+          <span className="whitespace-nowrap">Share Link</span>
         </button>
       </div>
 

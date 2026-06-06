@@ -766,7 +766,7 @@ function ReviewMatchModal({
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
-                <span className="text-label text-[#64748B]">Post Player Call</span>
+                <span className="text-label text-[#64748B]">Post to Board</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {requestItems.length > 0 ? requestItems.map((item) => (
@@ -3983,7 +3983,7 @@ export function CreateMatchInline({
             ) : null}
             {reviewRequestItems.length > 0 ? (
               <div className="rounded-xl border border-green-100 bg-white p-3 md:p-4">
-                <p className="text-label text-green-700">Post Player Call</p>
+                <p className="text-label text-green-700">Post to Board</p>
                 <p className="mt-1 text-body-main font-semibold text-[#1E293B]">
                   {reviewRequestItems.map((item) => item.label).join(', ')}
                 </p>

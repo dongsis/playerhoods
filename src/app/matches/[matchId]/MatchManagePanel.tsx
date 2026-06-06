@@ -184,7 +184,14 @@ function getInitials(name: string) {
 }
 
 function looksLikeInternalUserLabel(label: string) {
-  return /^user\s+[a-f0-9]{4,}$/i.test(label.trim())
+  const trimmed = label.trim()
+  return /^user\s+[a-f0-9]{4,}$/i.test(trimmed) || /^[a-f0-9]{6,}(-[a-f0-9]{4,})*$/i.test(trimmed)
+}
+
+function getSafePlayerDisplayName(label: string | null | undefined) {
+  const trimmed = label?.trim() ?? ''
+  if (!trimmed || looksLikeInternalUserLabel(trimmed)) return 'Player'
+  return trimmed
 }
 
 function normalizeCandidateName(name: string) {
@@ -841,6 +848,31 @@ export function MatchManagePanel({
   const pendingInviteRemovals = pendingRemovals.filter((item) => item.category === 'invites')
   const pendingRequestRemovals = pendingRemovals.filter((item) => item.category === 'requests')
 
+  const requestUserDisplayNameById = useMemo(() => {
+    const names = new Map<string, string>()
+    const rememberName = (id: string | null | undefined, name: string | null | undefined) => {
+      if (!id) return
+      const safeName = getSafePlayerDisplayName(name)
+      if (safeName !== 'Player') {
+        names.set(id, safeName)
+      }
+    }
+
+    candidateUsers.forEach((user) => rememberName(user.id, user.display_name))
+    confirmedParticipants.forEach((participant) => {
+      rememberName(getParticipantEffectiveUserId(participant), participant.display_name)
+    })
+    activeInviteParticipants.forEach((participant) => {
+      rememberName(getParticipantEffectiveUserId(participant), participant.display_name)
+    })
+    activeRequestUsers.forEach((user) => rememberName(user.id, user.name))
+
+    return names
+  }, [activeInviteParticipants, activeRequestUsers, candidateUsers, confirmedParticipants])
+
+  const getRequestUserDisplayName = (user: CurrentRequestTarget) =>
+    requestUserDisplayNameById.get(user.id) ?? getSafePlayerDisplayName(user.name)
+
   const currentInviteUserIds = new Set(
     activeInviteParticipants.map((participant) => participant.user_id).filter((id): id is string => Boolean(id)),
   )
@@ -1184,35 +1216,38 @@ export function MatchManagePanel({
 
     return [
       ...activeRequestUsers
-        .map((user) => ({
-          key: `request:user:${user.id}`,
-          name: user.name,
-          kind: 'user' as const,
-          userId: user.id,
-          subtitle: "Can choose I'd like to play",
-          badges: [],
-          selected: pendingRemovalKeys.has(`request:user:${user.id}`),
-          onToggle: () => {
-            setSuccess(null)
-            setError(null)
-            setPendingRemovals((prev) =>
-              prev.some((item) => item.key === `request:user:${user.id}`)
-                ? prev.filter((item) => item.key !== `request:user:${user.id}`)
-                : [
-                    ...prev,
-                    {
-                      key: `request:user:${user.id}`,
-                      category: 'requests',
-                      kind: 'user',
-                      id: user.id,
-                      name: user.name,
-                      userId: user.id,
-                      subtitle: "Can choose I'd like to play",
-                    },
-                  ],
-            )
-          },
-        })),
+        .map((user) => {
+          const displayName = getRequestUserDisplayName(user)
+          return {
+            key: `request:user:${user.id}`,
+            name: displayName,
+            kind: 'user' as const,
+            userId: user.id,
+            subtitle: "Can choose I'd like to play",
+            badges: [],
+            selected: pendingRemovalKeys.has(`request:user:${user.id}`),
+            onToggle: () => {
+              setSuccess(null)
+              setError(null)
+              setPendingRemovals((prev) =>
+                prev.some((item) => item.key === `request:user:${user.id}`)
+                  ? prev.filter((item) => item.key !== `request:user:${user.id}`)
+                  : [
+                      ...prev,
+                      {
+                        key: `request:user:${user.id}`,
+                        category: 'requests',
+                        kind: 'user',
+                        id: user.id,
+                        name: displayName,
+                        userId: user.id,
+                        subtitle: "Can choose I'd like to play",
+                      },
+                    ],
+              )
+            },
+          }
+        }),
       ...activeRequestGroups
         .map((group) => ({
           key: `request:group:${group.id}`,
@@ -1251,6 +1286,7 @@ export function MatchManagePanel({
     organizerUserId,
     pendingRemovalKeys,
     removeMode,
+    requestUserDisplayNameById,
   ])
 
   const stageAdd = (candidate: CandidateItem, mode: AdditionMode = activeAdditionMode) => {
@@ -1294,6 +1330,7 @@ export function MatchManagePanel({
   }
 
   const removePostedUserTarget = (user: CurrentRequestTarget) => {
+    const displayName = getRequestUserDisplayName(user)
     setSuccess(null)
     setError(null)
     setPendingRemovals((prev) => [
@@ -1303,7 +1340,7 @@ export function MatchManagePanel({
         category: 'requests',
         kind: 'user',
         id: user.id,
-        name: user.name,
+        name: displayName,
         userId: user.id,
         subtitle: 'Player Call target',
       },
@@ -1510,7 +1547,7 @@ export function MatchManagePanel({
   const requestSummaryItems: SummaryEntry[] = [
     ...visibleRequestUsers.map((user) => ({
       key: `request-user-${user.id}`,
-      label: user.name,
+      label: getRequestUserDisplayName(user),
       kind: 'user' as const,
       availabilityStatus: getLookupAvailabilityStatus(availabilityLookup, {
         kind: 'user',
@@ -1587,7 +1624,7 @@ export function MatchManagePanel({
   const hasPlayerCallChanges = pendingRequestAdds.length > 0 || pendingRequestRemovals.length > 0
   const invitePrimaryLabel =
     inviteMode === 'request'
-      ? hasExistingPlayerCall ? 'Update Player Call' : 'Post Player Call'
+      ? hasExistingPlayerCall ? 'Update Board' : 'Post to Board'
       : 'Send Invites'
   const inviteActionDisabled =
     isApplying ||
@@ -1685,25 +1722,28 @@ export function MatchManagePanel({
     <p className="text-body-sub font-semibold text-[#94A3B8]">No one yet</p>
   ) : (
     <div className="flex flex-wrap gap-1.5">
-      {visibleRequestUsers.map((user) => (
-        <button
-          key={`posted-user-${user.id}`}
-          type="button"
-          onClick={() => removePostedUserTarget(user)}
-          className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
-        >
-          <ParticipantQuickPreviewTrigger
-            target={{
-              userId: user.id,
-              guestId: null,
-              displayName: user.name,
-            }}
+      {visibleRequestUsers.map((user) => {
+        const displayName = getRequestUserDisplayName(user)
+        return (
+          <button
+            key={`posted-user-${user.id}`}
+            type="button"
+            onClick={() => removePostedUserTarget(user)}
+            className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
           >
-            <span>{user.name}</span>
-          </ParticipantQuickPreviewTrigger>
-          <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-        </button>
-      ))}
+            <ParticipantQuickPreviewTrigger
+              target={{
+                userId: user.id,
+                guestId: null,
+                displayName,
+              }}
+            >
+              <span>{displayName}</span>
+            </ParticipantQuickPreviewTrigger>
+            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+          </button>
+        )
+      })}
       {visibleRequestGroups.map((group) => (
         <button
           key={`posted-group-${group.id}`}
