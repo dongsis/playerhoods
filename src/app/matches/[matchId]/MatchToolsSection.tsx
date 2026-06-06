@@ -236,9 +236,41 @@ export function MatchToolsSection({
   return (
     <section
       ref={sectionRef}
-      className="mt-5 overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
+      className={[
+        showInviteTools ? 'mt-3' : 'hidden',
+        'rounded-[18px] md:mt-5 md:block md:overflow-hidden md:rounded-[24px] md:border md:border-slate-100 md:bg-white md:shadow-[0_4px_20px_rgba(0,0,0,0.04)]',
+      ].join(' ')}
     >
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-5">
+      {showInviteTools ? (
+        <div className="grid grid-cols-2 gap-2 md:hidden">
+          <button
+            type="button"
+            onClick={() => togglePanel('invite')}
+            className={[
+              'inline-flex h-10 items-center justify-center rounded-full border px-3 text-[13px] font-black transition active:scale-95',
+              activeTab === 'invite'
+                ? 'border-[#0B1F47] bg-[#0B1F47] text-white'
+                : 'border-[#CBD5E1] bg-white text-[#0F172A]',
+            ].join(' ')}
+          >
+            Add players
+          </button>
+          {isOrganizer && matchStatus === 'active' ? (
+            <button
+              type="button"
+              onClick={copyPublicSignupLink}
+              disabled={isPublicSignupLinkBusy}
+              className="inline-flex h-10 items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 text-[13px] font-black text-[#0F172A] transition active:scale-95 disabled:cursor-wait disabled:opacity-60"
+            >
+              {isPublicSignupLinkBusy ? 'Preparing' : 'Share link'}
+            </button>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+        </div>
+      ) : null}
+
+      <div className="hidden flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-5 md:flex">
         <div>
           <p className="m-0 text-[1rem] font-black text-slate-900">
             {formedActionsCollapsed ? 'Match formed · Players notified' : toolsTitle}
@@ -408,16 +440,18 @@ export function MatchToolsSection({
       ) : null}
 
       {!formedActionsCollapsed && activeTab === 'round_robin' && showRoundRobinTools ? (
-        <RoundRobinPanel
-          gameType={gameType}
-          matchStatus={matchStatus}
-          isOrganizer={isOrganizer}
-          confirmedParticipants={confirmedParticipants}
-          matchCourts={matchCourts}
-          finalCourtLabel={finalCourtLabel}
-          savedLineup={savedLineup}
-          onSaveLineup={onSaveLineup}
-        />
+        <div className="hidden md:block">
+          <RoundRobinPanel
+            gameType={gameType}
+            matchStatus={matchStatus}
+            isOrganizer={isOrganizer}
+            confirmedParticipants={confirmedParticipants}
+            matchCourts={matchCourts}
+            finalCourtLabel={finalCourtLabel}
+            savedLineup={savedLineup}
+            onSaveLineup={onSaveLineup}
+          />
+        </div>
       ) : null}
     </section>
   )

@@ -1716,6 +1716,7 @@ export function MatchesPanel({
   return (
     <div className="space-y-8">
       <div className="space-y-6 md:hidden">
+        {!hasActiveMatchSelection ? (
         <section className="rounded-[24px] border border-[#E2E8F0] bg-white px-4 pb-4 pt-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -1751,9 +1752,10 @@ export function MatchesPanel({
               {subTabBtn('upcoming', 'Upcoming', incoming.length)}
               {subTabBtn('calendar', 'Calendar')}
               {subTabBtn('history', 'History', history.length)}
-            </div>
-          ) : null}
-        </section>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {renderStarterCard()}
 
@@ -2060,16 +2062,18 @@ export function MatchesPanel({
         </div>
       </div>
 
-      <div className="md:hidden">
-        <CreateMatchInline
-          defaultVenueId={defaultVenueId}
-          onExpandedChange={handleCreateExpandedChange}
-          myPlayCities={myPlayCities}
-          venueSports={venueSports}
-          onParseScreenshots={onParseScreenshots}
-          onImportScreenshotContacts={onImportScreenshotContacts}
-        />
-      </div>
+      {!hasActiveMatchSelection ? (
+        <div className="md:hidden">
+          <CreateMatchInline
+            defaultVenueId={defaultVenueId}
+            onExpandedChange={handleCreateExpandedChange}
+            myPlayCities={myPlayCities}
+            venueSports={venueSports}
+            onParseScreenshots={onParseScreenshots}
+            onImportScreenshotContacts={onImportScreenshotContacts}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }
