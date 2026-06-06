@@ -39,6 +39,7 @@ const FALLBACK_ROSTER_INSIGHT = {
 } as const
 
 type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
+type MobileMatchesMainTab = 'my-matches' | 'call-board'
 
 type FirstMatchStarterCardProps = {
   onAddContact?: () => void
@@ -60,20 +61,19 @@ function FirstMatchStarterCard({
         x
       </button>
       <div className="min-w-0 pr-8">
-        <h2 className="text-[16px] font-black tracking-[-0.01em] text-[#0F172A]">Welcome to PlayerHoods</h2>
-        <p className="mt-1 text-[13px] font-semibold leading-5 text-[#536783]">
-          Add players you know, then create your first match.
-        </p>
-
-        <div className="mt-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="min-w-0 text-[16px] font-black tracking-[-0.01em] text-[#0F172A]">Get Started</h2>
           <button
             type="button"
             onClick={onAddContact}
-            className="h-10 rounded-[10px] border border-[#D8E6F6] bg-white px-3 text-[13px] font-black text-[#0B2A5B] transition hover:border-[#B8CCE5] hover:bg-[#F8FBFF]"
+            className="h-9 shrink-0 rounded-[10px] border border-[#D8E6F6] bg-white px-3 text-[12px] font-black text-[#0B2A5B] transition hover:border-[#B8CCE5] hover:bg-[#F8FBFF]"
           >
-            + Add My Contact
+            Add My Contact
           </button>
         </div>
+        <p className="mt-2 text-[13px] font-semibold leading-5 text-[#536783]">
+          Add players you know, then create your first match.
+        </p>
       </div>
     </section>
   )
@@ -1579,8 +1579,11 @@ export function MatchesPanel({
   onImportScreenshotContacts,
 }: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'calendar' | 'history'>('upcoming')
+  const [mobileMainTab, setMobileMainTab] = useState<MobileMatchesMainTab>('my-matches')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
   const [createMatchExpanded, setCreateMatchExpanded] = useState(false)
+  const [mobileCreateMounted, setMobileCreateMounted] = useState(false)
+  const [mobileCreateExpandSignal, setMobileCreateExpandSignal] = useState(0)
   const [pendingMatchId, setPendingMatchId] = useState<string | null>(null)
   const effectiveSelectedMatchId = pendingMatchId ?? selectedMatchId ?? null
   const isMatchDetailLoading = Boolean(pendingMatchId)
@@ -1609,6 +1612,14 @@ export function MatchesPanel({
     if (matchId === selectedMatchId && selectedMatchDetail) return
     setPendingMatchId(matchId)
   }, [selectedMatchDetail, selectedMatchId])
+
+  const handleCreateMatchAction = useCallback(() => {
+    setMobileCreateMounted(true)
+    setMobileCreateExpandSignal((value) => value + 1)
+    window.setTimeout(() => {
+      document.getElementById('mobile-create-match-inline')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 120)
+  }, [])
 
   const now = useMemo(() => new Date().toISOString(), [])
 
@@ -1660,6 +1671,25 @@ export function MatchesPanel({
   const visibleCancelled = cancelled
   const visibleRemoved = removed
   const visibleActionNeeded = actionNeeded
+
+  const mobileMainTabBtn = (key: MobileMatchesMainTab, label: string, count: number) => (
+    <button
+      type="button"
+      onClick={() => setMobileMainTab(key)}
+      className={[
+        'min-h-11 min-w-0 rounded-[14px] border px-2 py-2 text-center text-[12px] font-black leading-tight transition',
+        mobileMainTab === key
+          ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] shadow-[0_8px_18px_rgba(13,110,253,0.13)]'
+          : 'border-[#E2E8F0] bg-white text-[#536783] hover:border-[#B8CCE5] hover:text-[#0F172A]',
+      ].join(' ')}
+      aria-pressed={mobileMainTab === key}
+    >
+      <span>{label}</span>
+      <span className={mobileMainTab === key ? 'ml-1 text-[#0d6efd]/70' : 'ml-1 text-[#94A3B8]'}>
+        {count}
+      </span>
+    </button>
+  )
 
   const subTabBtn = (key: 'upcoming' | 'calendar' | 'history', label: string, count?: number) => (
     <button
@@ -1715,53 +1745,92 @@ export function MatchesPanel({
 
   return (
     <div className="space-y-8">
-      <div className="space-y-6 md:hidden">
+      <div className="space-y-5 md:hidden">
         {!hasActiveMatchSelection ? (
-        <section className="rounded-[24px] border border-[#E2E8F0] bg-white px-4 pb-4 pt-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <img
-                src="/playerhoods-brand-stacked-cropped.png"
-                alt="PlayerHoods"
-                className="h-8 w-32 object-contain"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M15 17H9" />
-                  <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
-                </svg>
-                {(visibleActionNeeded.length + visibleCancelled.length + visibleRemoved.length) > 0 ? (
-                  <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#F97316]" />
-                ) : null}
-              </span>
-              <MobileProfileAvatar
-                avatarUrl={profileAvatarUrl}
-                displayName={profileDisplayName}
-                firstName={profileFirstName}
-                lastName={profileLastName}
-              />
-            </div>
-          </div>
-
-          <h1 className="text-h1 text-[#1E293B]">Matches</h1>
-
-          {!createMatchExpanded && !hasActiveMatchSelection ? (
-            <div className="mt-4 grid w-full grid-cols-3 rounded-full border border-[#E2E8F0] bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-              {subTabBtn('upcoming', 'Upcoming', incoming.length)}
-              {subTabBtn('calendar', 'Calendar')}
-              {subTabBtn('history', 'History', history.length)}
+          <>
+            <section className="rounded-[20px] border border-[#E2E8F0] bg-white px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <img
+                    src="/playerhoods-brand-stacked-cropped.png"
+                    alt="PlayerHoods"
+                    className="h-8 w-32 object-contain"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M15 17H9" />
+                      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+                    </svg>
+                    {(visibleActionNeeded.length + visibleCancelled.length + visibleRemoved.length) > 0 ? (
+                      <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#F97316]" />
+                    ) : null}
+                  </span>
+                  <MobileProfileAvatar
+                    avatarUrl={profileAvatarUrl}
+                    displayName={profileDisplayName}
+                    firstName={profileFirstName}
+                    lastName={profileLastName}
+                  />
+                </div>
               </div>
-            ) : null}
-          </section>
-        ) : null}
+            </section>
 
-        {renderStarterCard()}
+            {renderStarterCard()}
+
+            <section className="rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-4 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
+              <h1 className="text-h1 text-[#1E293B]">Matches</h1>
+
+              <div className="mt-4 grid w-full grid-cols-[1.12fr_1fr_1fr] gap-2">
+                <button
+                  type="button"
+                  onClick={handleCreateMatchAction}
+                  className="flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-[14px] bg-[#0d6efd] px-2 py-2 text-center text-[12px] font-black leading-tight text-white shadow-[0_12px_24px_rgba(13,110,253,0.22)] transition hover:bg-[#0b5ed7]"
+                >
+                  <span className="text-[17px] leading-none">+</span>
+                  <span>Create Match</span>
+                </button>
+                {mobileMainTabBtn('my-matches', 'My Matches', incoming.length)}
+                {mobileMainTabBtn('call-board', 'Call Board', lookingFor.length)}
+              </div>
+
+              {mobileMainTab === 'my-matches' && !createMatchExpanded ? (
+                <div className="mt-3 grid w-full grid-cols-3 rounded-full border border-[#E2E8F0] bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                  {subTabBtn('upcoming', 'Upcoming', incoming.length)}
+                  {subTabBtn('calendar', 'Calendar')}
+                  {subTabBtn('history', 'History', history.length)}
+                </div>
+              ) : null}
+            </section>
+          </>
+        ) : null}
 
         {selectedMatchContent ? (
           <section className="space-y-4">
             {selectedMatchContent}
+          </section>
+        ) : mobileMainTab === 'call-board' ? (
+          <section className="space-y-4">
+            <SectionHeading label="Call Board" count={lookingFor.length} />
+            {lookingFor.length === 0 ? (
+              <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-body-main text-[#94A3B8]">
+                No player calls right now.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {lookingFor.map((item) => (
+                  <MobileMatchCard
+                    key={`mobile-call-board-${item.match.id}`}
+                    item={item}
+                    showOverlapWarning={hasTimeConflictWithItems(item, incoming)}
+                    onViewed={onViewedMatch}
+                    onSelectMatch={handleSelectMatch}
+                    isLoadingDetail={pendingMatchId === item.match.id}
+                  />
+                ))}
+              </div>
+            )}
           </section>
         ) : subTab === 'upcoming' ? (
           <>
@@ -1788,24 +1857,6 @@ export function MatchesPanel({
                 </div>
               )}
             </section>
-
-            {lookingFor.length > 0 ? (
-              <section className="space-y-4">
-                <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                <div className="space-y-4">
-                  {lookingFor.map((item) => (
-                    <MobileMatchCard
-                      key={`mobile-looking-${item.match.id}`}
-                      item={item}
-                      showOverlapWarning={hasTimeConflictWithItems(item, incoming)}
-                      onViewed={onViewedMatch}
-                      onSelectMatch={handleSelectMatch}
-                      isLoadingDetail={pendingMatchId === item.match.id}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
           </>
         ) : subTab === 'calendar' ? (
           <section className="rounded-[28px] border border-[#E2E8F0] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
@@ -2062,10 +2113,14 @@ export function MatchesPanel({
         </div>
       </div>
 
-      {!hasActiveMatchSelection ? (
-        <div className="md:hidden">
+      {!hasActiveMatchSelection && mobileCreateMounted ? (
+        <div
+          id="mobile-create-match-inline"
+          className={createMatchExpanded ? 'md:hidden' : 'hidden'}
+        >
           <CreateMatchInline
             defaultVenueId={defaultVenueId}
+            expandSignal={mobileCreateExpandSignal}
             onExpandedChange={handleCreateExpandedChange}
             myPlayCities={myPlayCities}
             venueSports={venueSports}
