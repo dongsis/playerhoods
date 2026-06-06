@@ -95,9 +95,9 @@ Polishes Add Players method labels and layout across Existing Match Add More Pla
 ## 2026-06-05 - MR-20260605-shared-add-players-picker
 
 **Type:** Mini Release
-**Code Commits:** PR #113 implementation head after rebase: `da5c3b58592ba7c0fa491385808139b1a1dec5a0`; final PR head and merge commit pending.
+**Code Commits:** PR #113 merged at `e5d5e1e459001fe376ec7c501ba38814dfce0b62`. Final PR head before merge: `085d3df37877d84f95825cbd03554d5683088fff`.
 **Migration:** None
-**Status:** Ready for Review / GitHub only; Vercel Production not deployed yet; Supabase Remote no change.
+**Status:** Production deployed / owner safe smoke completed with no blocking issue observed; Supabase Remote no change.
 
 ### Summary
 
@@ -109,10 +109,10 @@ Introduces shared Add Players picker across Create Match Step 2 and Existing Mat
 |---|---|---|
 | Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
 | Vercel Preview | Passed; owner visual review accepted | Preview deployed from PR #113 head; owner accepted visual review on Vercel Preview before merge |
-| Vercel Production | Not deployed yet | PR #113 not merged at time of this entry |
+| Vercel Production | Deployed successfully | GitHub Deployment `4954439621` for merge commit `e5d5e1e459001fe376ec7c501ba38814dfce0b62` reached `success`; deployment URL `https://playerhoods-codex-69d491wu7-nancys-projects-128e326c.vercel.app` |
 | Supabase Remote | No change | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic was sent by Codex validation |
-| Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending after merge/deploy |
+| Production verification | Owner safe smoke completed; no blocking issue observed | Owner visual review accepted on Vercel Preview; owner safe production smoke completed without reporting a blocking issue. This entry does not mark the release fully verified |
 
 ### Rollback
 
@@ -128,6 +128,7 @@ Introduces shared Add Players picker across Create Match Step 2 and Existing Mat
 - No share-link / magic-link / Request-a-Spot backend behavior change.
 - No Contact Player in Player Call targets.
 - No invite/email/SMS/notification provider traffic.
+- Owner safe production smoke completed; no blocking issue observed. This is not a full QA verification.
 - Codex PR review failed due quota infrastructure limits, not a code failure.
 
 ## 2026-06-05 - DB-20260605-public-join-registered-request
