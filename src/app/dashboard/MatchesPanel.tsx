@@ -1750,11 +1750,11 @@ export function MatchesPanel({
           <>
             <section className="rounded-[20px] border border-[#E2E8F0] bg-white px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <img
-                    src="/playerhoods-brand-stacked-cropped.png"
+                    src="/playerhoods-brand-horizontal-cropped.png"
                     alt="PlayerHoods"
-                    className="h-8 w-32 object-contain"
+                    className="h-10 w-auto max-w-[170px] object-contain"
                   />
                 </div>
                 <div className="flex items-center gap-3">
