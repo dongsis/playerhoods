@@ -14,6 +14,44 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-06 - MR-20260606-add-players-mobile-labels-polish
+
+**Type:** Patch
+**Code Commits:** PR #118 head before merge: `d6b3f7cb7fff1cb8b6dbced826aa3a0c02d54b19`; final merge commit pending.
+**Migration:** None
+**Status:** Ready for Review / GitHub only; Vercel Production not deployed yet; Supabase Remote no change.
+
+### Summary
+
+Polishes Add Players method labels and layout across Existing Match Add More Players and Create Match Step 2. Updates visible copy to `Post to Board` / `Share Link`, widens mobile method buttons, keeps mobile search and filter on one row, removes the `People` filter, clarifies Board visibility with `Visible to`, moves Share Link copy feedback into the Share Link section, and prevents raw fallback labels such as `User e70ae6`.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Vercel Preview | Passed; owner visual review accepted | Preview deployed from PR #118 head; owner accepted visual review on Vercel Preview before merge |
+| Vercel Production | Not deployed yet | PR #118 not merged at time of this entry |
+| Supabase Remote | No change | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic was sent by Codex validation |
+| Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending after merge/deploy |
+
+### Rollback
+
+- Code rollback: revert PR #118 and redeploy the previous production commit.
+- Database rollback: none required because this patch has no migration or backend contract change.
+- Provider rollback: none; no invite/email/SMS/notification provider configuration or traffic changed.
+
+### Notes
+
+- No DB migration.
+- No backend contract change.
+- No Supabase Remote action.
+- No share-link / magic-link / Request-a-Spot backend behavior change.
+- No Contact Player rule change.
+- No roster/lineup management change.
+- No invite/email/SMS/notification provider traffic.
+
 ## 2026-06-05 - SR-20260605-scoped-form-match-delivery-drain
 
 **Type:** Structural Release

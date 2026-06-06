@@ -48,6 +48,8 @@ type Props = {
   playerCallEmptyLabel?: ReactNode
   searchPlaceholder?: string
   playerCallSummaryLabel?: string
+  playerCallHelperText?: ReactNode
+  expandModeButtonsOnMobile?: boolean
 }
 
 function modeButtonClass(selected: boolean, tone: AddPlayersMode) {
@@ -63,9 +65,39 @@ function modeButtonClass(selected: boolean, tone: AddPlayersMode) {
     : 'text-[#334155] hover:bg-white/70 hover:text-[#0d6efd]'
 
   return [
-    'flex h-10 w-full min-w-0 items-center justify-center rounded-lg px-2 text-center text-body-sub font-black leading-tight transition active:scale-[0.98]',
+    'flex h-11 w-full min-w-0 items-center justify-center gap-1 rounded-lg px-1 text-center text-[11px] font-black leading-tight transition active:scale-[0.98] min-[380px]:gap-1.5 min-[380px]:px-1.5 min-[380px]:text-[12px] sm:px-3 sm:text-body-main',
     selected ? selectedClass : idleClass,
   ].join(' ')
+}
+
+function InviteIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8" cy="7" r="3" />
+      <path d="M3.5 16c.7-2.8 2.2-4.2 4.5-4.2s3.8 1.4 4.5 4.2" />
+      <path d="M15 6v5" />
+      <path d="M12.5 8.5h5" />
+    </svg>
+  )
+}
+
+function BoardIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 6.5h7.5l4-2.2v11.4l-4-2.2H4z" />
+      <path d="M7 13.5l1 3" />
+      <path d="M14.8 8.2c.7.5.7 2.1 0 2.6" />
+    </svg>
+  )
+}
+
+function LinkIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8.8 6.2l.9-.9a3 3 0 0 1 4.3 4.2l-1.4 1.4a3 3 0 0 1-4.2 0" />
+      <path d="M11.2 13.8l-.9.9A3 3 0 0 1 6 10.5l1.4-1.4a3 3 0 0 1 4.2 0" />
+    </svg>
+  )
 }
 
 function candidateClass(candidate: AddPlayersCandidate, mode: AddPlayersMode) {
@@ -108,9 +140,11 @@ export function AddPlayersPickerPanel({
   shareLinkRow,
   footerSlot,
   inviteEmptyLabel = 'No matching players, contacts, or groups.',
-  playerCallEmptyLabel = 'No matching players or groups.',
+  playerCallEmptyLabel = 'Choose who can see this on their Match Board.',
   searchPlaceholder = 'Search player or group...',
   playerCallSummaryLabel = 'Call targets',
+  playerCallHelperText = 'Only selected players and groups will see this on their Match Board.',
+  expandModeButtonsOnMobile = false,
 }: Props) {
   const [previewCandidate, setPreviewCandidate] = useState<AddPlayersCandidate | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
@@ -143,27 +177,35 @@ export function AddPlayersPickerPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#EEF4FB] p-1">
+      <div
+        className={[
+          'grid grid-cols-3 gap-1 rounded-xl bg-[#EEF4FB] p-1',
+          expandModeButtonsOnMobile ? '-mx-5 sm:mx-0' : '',
+        ].filter(Boolean).join(' ')}
+      >
         <button
           type="button"
           onClick={() => onModeChange('invite')}
           className={modeButtonClass(mode === 'invite', 'invite')}
         >
-          <span className="truncate">Invite</span>
+          <InviteIcon />
+          <span className="whitespace-nowrap">Invite</span>
         </button>
         <button
           type="button"
           onClick={() => onModeChange('playerCall')}
           className={modeButtonClass(mode === 'playerCall', 'playerCall')}
         >
-          <span className="truncate">Post Player Call</span>
+          <BoardIcon />
+          <span className="whitespace-nowrap">Post to Board</span>
         </button>
         <button
           type="button"
           onClick={() => onModeChange('shareLink')}
           className={modeButtonClass(mode === 'shareLink', 'shareLink')}
         >
-          <span className="truncate">Share a Link</span>
+          <LinkIcon />
+          <span className="whitespace-nowrap">Share Link</span>
         </button>
       </div>
 
@@ -179,6 +221,11 @@ export function AddPlayersPickerPanel({
 
       {mode === 'playerCall' ? (
         <div className="space-y-2 px-1">
+          {playerCallHelperText ? (
+            <p className="m-0 text-body-sub font-semibold leading-relaxed text-[#64748B]">
+              {playerCallHelperText}
+            </p>
+          ) : null}
           <div className="text-[9px] font-extrabold leading-[1.2] tracking-normal text-[#64748B]">
             {playerCallSummaryLabel}
           </div>
@@ -188,18 +235,18 @@ export function AddPlayersPickerPanel({
 
       {mode !== 'shareLink' ? (
         <div className="w-full space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-row gap-2">
             <input
               type="search"
               value={searchValue}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder={searchPlaceholder}
-              className="min-w-0 flex-1 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-semibold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+              className="w-0 min-w-0 flex-[1_1_70%] rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-semibold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
             />
             <select
               value={filterValue}
               onChange={(event) => onFilterChange(event.target.value)}
-              className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-bold text-[#334155] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 sm:w-[140px]"
+              className="min-w-[104px] flex-[0_0_30%] rounded-lg border border-[#E2E8F0] bg-white px-2 py-2.5 text-[12px] font-bold text-[#334155] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 sm:min-w-[140px] sm:flex-none sm:px-3 sm:text-body-main"
               aria-label="Filter players"
             >
               {filterOptions.map((option) => (

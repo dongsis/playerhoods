@@ -24,17 +24,6 @@ type CurrentRequestTarget = {
 
 const INVITE_TARGET_LOAD_TIMEOUT_MS = 15000
 
-function TeamsIcon() {
-  return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="6" cy="5.5" r="2" />
-      <circle cx="14" cy="5.5" r="2" />
-      <path d="M3.5 13.8c.6-2.2 1.8-3.3 3.5-3.3s2.9 1.1 3.5 3.3" />
-      <path d="M9.5 13.8c.6-2.2 1.8-3.3 3.5-3.3s2.9 1.1 3.5 3.3" />
-    </svg>
-  )
-}
-
 type Props = {
   showInviteTools: boolean
   showRoundRobinTools: boolean
@@ -98,6 +87,7 @@ export function MatchToolsSection({
   const [isLoadingInviteTargets, setIsLoadingInviteTargets] = useState(false)
   const [targetLoadError, setTargetLoadError] = useState<string | null>(null)
   const [applySuccessMessage, setApplySuccessMessage] = useState<string | null>(null)
+  const [shareLinkStatusMessage, setShareLinkStatusMessage] = useState<string | null>(null)
   const [isPublicSignupLinkBusy, setIsPublicSignupLinkBusy] = useState(false)
   const [publicSignupLinkError, setPublicSignupLinkError] = useState<string | null>(null)
 
@@ -107,6 +97,7 @@ export function MatchToolsSection({
     setLazyContactTargets(contactTargets)
     setTargetLoadError(null)
     setApplySuccessMessage(null)
+    setShareLinkStatusMessage(null)
     setPublicSignupLinkError(null)
   }, [matchId, candidateUsers, contactTargets])
 
@@ -121,6 +112,18 @@ export function MatchToolsSection({
       window.clearTimeout(timeout)
     }
   }, [applySuccessMessage])
+
+  useEffect(() => {
+    if (!shareLinkStatusMessage) return
+
+    const timeout = window.setTimeout(() => {
+      setShareLinkStatusMessage(null)
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [shareLinkStatusMessage])
 
   useEffect(() => {
     if (activeTab !== 'invite' || !showInviteTools || matchStatus !== 'active') return
@@ -176,15 +179,11 @@ export function MatchToolsSection({
   }
 
   const isLineupFull = confirmedParticipants.length >= requiredCount
-  const enoughPlayersForTeams = confirmedParticipants.length >= Math.max(requiredCount, 4)
   const toolsTitle = isFormed
     ? 'Match formed'
     : isLineupFull
       ? 'Lineup is full.'
       : 'Need more players?'
-  const setTeamsHelper = enoughPlayersForTeams
-    ? `Ready to set teams from ${confirmedParticipants.length} confirmed ${confirmedParticipants.length === 1 ? 'player' : 'players'}.`
-    : 'Set Teams'
   const addMoreIsPrimary = !isFormed && !isLineupFull
 
   const togglePanel = (nextTab: 'invite' | 'round_robin') => {
@@ -192,6 +191,7 @@ export function MatchToolsSection({
       const next = current === nextTab ? null : nextTab
       if (next) {
         setApplySuccessMessage(null)
+        setShareLinkStatusMessage(null)
         requestAnimationFrame(() => {
           sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
         })
@@ -206,6 +206,7 @@ export function MatchToolsSection({
     setIsPublicSignupLinkBusy(true)
     setPublicSignupLinkError(null)
     setApplySuccessMessage(null)
+    setShareLinkStatusMessage(null)
     try {
       const supabase = createSupabaseBrowserClient()
       const { data, error } = await supabase.rpc('rpc_public_match_signup_link_get_or_create', {
@@ -221,9 +222,9 @@ export function MatchToolsSection({
       const url = `${window.location.origin}/join/${link.public_token}`
       try {
         await navigator.clipboard.writeText(url)
-        setApplySuccessMessage('Share link copied.')
+        setShareLinkStatusMessage('Link copied.')
       } catch {
-        setApplySuccessMessage('Share link ready.')
+        setShareLinkStatusMessage('Link copied.')
       }
     } catch (error) {
       console.error('[MatchToolsSection] public signup link:', error)
@@ -241,32 +242,15 @@ export function MatchToolsSection({
         'rounded-[18px] md:mt-5 md:block md:overflow-hidden md:rounded-[24px] md:border md:border-slate-100 md:bg-white md:shadow-[0_4px_20px_rgba(0,0,0,0.04)]',
       ].join(' ')}
     >
-      {showInviteTools ? (
-        <div className="grid grid-cols-2 gap-2 md:hidden">
+      {showInviteTools && activeTab !== 'invite' ? (
+        <div className="md:hidden">
           <button
             type="button"
             onClick={() => togglePanel('invite')}
-            className={[
-              'inline-flex h-10 items-center justify-center rounded-full border px-3 text-[13px] font-black transition active:scale-95',
-              activeTab === 'invite'
-                ? 'border-[#0B1F47] bg-[#0B1F47] text-white'
-                : 'border-[#CBD5E1] bg-white text-[#0F172A]',
-            ].join(' ')}
+            className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 text-[13px] font-black text-[#0F172A] transition active:scale-95"
           >
             Add players
           </button>
-          {isOrganizer && matchStatus === 'active' ? (
-            <button
-              type="button"
-              onClick={copyPublicSignupLink}
-              disabled={isPublicSignupLinkBusy}
-              className="inline-flex h-10 items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 text-[13px] font-black text-[#0F172A] transition active:scale-95 disabled:cursor-wait disabled:opacity-60"
-            >
-              {isPublicSignupLinkBusy ? 'Preparing' : 'Share link'}
-            </button>
-          ) : (
-            <span aria-hidden="true" />
-          )}
         </div>
       ) : null}
 
@@ -293,72 +277,34 @@ export function MatchToolsSection({
             </button>
           ) : null}
 
-          {!formedActionsCollapsed && showRoundRobinTools && isLineupFull ? (
-            <button
-              type="button"
-              onClick={() => togglePanel('round_robin')}
-              disabled={!enoughPlayersForTeams}
-              title={setTeamsHelper}
-              className={[
-                'inline-flex items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-black transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-60',
-                enoughPlayersForTeams
-                  ? activeTab === 'round_robin'
-                    ? 'border-[#2F63F6] bg-[#2F63F6] text-white shadow-[0_10px_24px_rgba(47,99,246,0.22)]'
-                    : 'border-[#2F63F6] bg-[#2F63F6] text-white shadow-[0_10px_24px_rgba(47,99,246,0.16)] hover:bg-[#2554D9]'
-                  : 'border-[#BFD1F8] bg-white text-[#2554D9]',
-              ].join(' ')}
-            >
-              <TeamsIcon />
-              <span>Set Teams</span>
-            </button>
-          ) : null}
-
           {!formedActionsCollapsed && showInviteTools ? (
             <button
               type="button"
               onClick={() => togglePanel('invite')}
               className={[
-                'inline-flex items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-black transition active:scale-95',
+                'inline-flex items-center justify-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-black transition active:scale-95',
                 isFormed
                   ? activeTab === 'invite'
                     ? 'border-[#CBD5E1] bg-[#F8FAFC] text-[#1E293B]'
                     : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]'
                   : activeTab === 'invite'
                     ? addMoreIsPrimary
-                      ? 'border-[#7fd300] bg-[#7fd300] text-[#0f2a00] shadow-[0_10px_24px_rgba(127,211,0,0.26)]'
+                      ? 'border-[#B7D7FF] bg-[#EFF6FF] text-[#1D4ED8]'
                       : 'border-[#BFD1F8] bg-[#F5F8FF] text-[#2554D9]'
                     : addMoreIsPrimary
-                      ? 'border-[#9CE600] bg-[#9CE600] text-[#102A00] shadow-[0_10px_24px_rgba(127,211,0,0.18)] hover:bg-[#8CDA00]'
+                      ? 'border-[#B7D7FF] bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#DBEAFE]'
                       : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]',
               ].join(' ')}
             >
               {addMoreIsPrimary ? (
                 <span
                   aria-hidden="true"
-                  className="flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-xl leading-none text-[#5fa900] shadow-sm"
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-base leading-none text-[#1D4ED8]"
                 >
                   +
                 </span>
               ) : null}
               <span>{isFormed ? 'Adjust Lineup' : 'Add More Players'}</span>
-            </button>
-          ) : null}
-
-          {!formedActionsCollapsed && showRoundRobinTools && !isLineupFull ? (
-            <button
-              type="button"
-              onClick={() => togglePanel('round_robin')}
-              disabled={!enoughPlayersForTeams}
-              title={setTeamsHelper}
-              className={[
-                'inline-flex items-center justify-center gap-2 rounded-[14px] border px-4 py-2.5 text-sm font-black transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-55',
-                activeTab === 'round_robin'
-                  ? 'border-[#2F63F6] bg-[#2F63F6] text-white shadow-[0_10px_24px_rgba(47,99,246,0.22)]'
-                  : 'border-[#BFD1F8] bg-white text-[#2554D9] hover:bg-[#F5F8FF]',
-              ].join(' ')}
-            >
-              <TeamsIcon />
-              <span>Set Teams</span>
             </button>
           ) : null}
         </div>
@@ -417,19 +363,26 @@ export function MatchToolsSection({
             setApplySuccessMessage('Changes applied.')
           }}
           shareLinkRow={isOrganizer && matchStatus === 'active' ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="text-body-main font-black text-slate-900">Share link</div>
-                <div className="text-body-sub font-semibold text-slate-500">Let someone request a spot from the match link.</div>
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="text-body-main font-black text-slate-900">Share link</div>
+                  <div className="text-body-sub font-semibold text-slate-500">Let someone request a spot from the match link.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={copyPublicSignupLink}
+                  disabled={isPublicSignupLinkBusy}
+                  className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 py-1.5 font-bold text-[#475569] transition hover:bg-[#F8FAFC] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Link'}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={copyPublicSignupLink}
-                disabled={isPublicSignupLinkBusy}
-                className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 py-1.5 font-bold text-[#475569] transition hover:bg-[#F8FAFC] disabled:cursor-wait disabled:opacity-60"
-              >
-                {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Link'}
-              </button>
+              {shareLinkStatusMessage ? (
+                <p className="m-0 text-body-sub font-semibold text-emerald-700">
+                  {shareLinkStatusMessage}
+                </p>
+              ) : null}
             </div>
           ) : null}
         />

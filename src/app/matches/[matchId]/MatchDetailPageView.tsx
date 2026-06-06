@@ -1085,7 +1085,7 @@ export function MatchDetailPageView({
   })
   const activeRequestUsers = (viewModel.match.invitation_scope_user_ids ?? []).map((id) => ({
     id,
-    name: currentRequestUserMap.get(id) ?? `User ${id.slice(0, 6)}`,
+    name: currentRequestUserMap.get(id) ?? 'Player',
   }))
   const showInviteTools = viewModel.isOrganizer && showManagePanel
   const showRoundRobinTools = viewModel.match.status === 'active' && viewModel.isOrganizer
