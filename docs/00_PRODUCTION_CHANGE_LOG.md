@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-06 - MR-20260606-add-players-mobile-labels-polish
 
 **Type:** Patch
-**Code Commits:** PR #118 head before merge: `d6b3f7cb7fff1cb8b6dbced826aa3a0c02d54b19`; final merge commit pending.
+**Code Commits:** PR #118 merged at `d9ef92c06dbf2ad414f2932b96bd8fd32bb9cf2e`. Final PR head before merge: `ee895a5ba56c97b44ce06913cac333f70db9a695`.
 **Migration:** None
-**Status:** Ready for Review / GitHub only; Vercel Production not deployed yet; Supabase Remote no change.
+**Status:** Production deployed / code aligned; production smoke pending; Supabase Remote no change.
 
 ### Summary
 
@@ -31,10 +31,10 @@ Polishes Add Players method labels and layout across Existing Match Add More Pla
 |---|---|---|
 | Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
 | Vercel Preview | Passed; owner visual review accepted | Preview deployed from PR #118 head; owner accepted visual review on Vercel Preview before merge |
-| Vercel Production | Not deployed yet | PR #118 not merged at time of this entry |
+| Vercel Production | Deployed successfully | GitHub Deployment `4959665952` for merge commit `d9ef92c06dbf2ad414f2932b96bd8fd32bb9cf2e` reached `success`; deployment URL `https://playerhoods-codex-eljp61ni8-nancys-projects-128e326c.vercel.app` |
 | Supabase Remote | No change | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic was sent by Codex validation |
-| Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending after merge/deploy |
+| Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending |
 
 ### Rollback
 
@@ -47,10 +47,12 @@ Polishes Add Players method labels and layout across Existing Match Add More Pla
 - No DB migration.
 - No backend contract change.
 - No Supabase Remote action.
+- No production smoke was run or claimed in this entry.
 - No share-link / magic-link / Request-a-Spot backend behavior change.
 - No Contact Player rule change.
 - No roster/lineup management change.
 - No invite/email/SMS/notification provider traffic.
+- PR #118 polished Add Players mobile/desktop labels and layout after #113, including `Post to Board` / `Share Link` labels, mobile method button sizing, Share Link feedback placement, filter wording, `Visible to` copy, and safe display-name fallback.
 
 ## 2026-06-05 - SR-20260605-scoped-form-match-delivery-drain
 
