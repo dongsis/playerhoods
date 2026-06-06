@@ -48,6 +48,7 @@ type Props = {
   playerCallEmptyLabel?: ReactNode
   searchPlaceholder?: string
   playerCallSummaryLabel?: string
+  playerCallHelperText?: ReactNode
 }
 
 function modeButtonClass(selected: boolean, tone: AddPlayersMode) {
@@ -63,7 +64,7 @@ function modeButtonClass(selected: boolean, tone: AddPlayersMode) {
     : 'text-[#334155] hover:bg-white/70 hover:text-[#0d6efd]'
 
   return [
-    'flex h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-lg px-1.5 text-center text-[12px] font-black leading-tight transition active:scale-[0.98] sm:px-3 sm:text-body-main',
+    'flex h-11 w-full min-w-0 items-center justify-center gap-1 rounded-lg px-1 text-center text-[11px] font-black leading-tight transition active:scale-[0.98] min-[380px]:gap-1.5 min-[380px]:px-1.5 min-[380px]:text-[12px] sm:px-3 sm:text-body-main',
     selected ? selectedClass : idleClass,
   ].join(' ')
 }
@@ -138,9 +139,10 @@ export function AddPlayersPickerPanel({
   shareLinkRow,
   footerSlot,
   inviteEmptyLabel = 'No matching players, contacts, or groups.',
-  playerCallEmptyLabel = 'No matching players or groups.',
+  playerCallEmptyLabel = 'Choose who can see this on their Match Board.',
   searchPlaceholder = 'Search player or group...',
   playerCallSummaryLabel = 'Call targets',
+  playerCallHelperText = 'Only selected players and groups will see this on their Match Board.',
 }: Props) {
   const [previewCandidate, setPreviewCandidate] = useState<AddPlayersCandidate | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
@@ -212,6 +214,11 @@ export function AddPlayersPickerPanel({
 
       {mode === 'playerCall' ? (
         <div className="space-y-2 px-1">
+          {playerCallHelperText ? (
+            <p className="m-0 text-body-sub font-semibold leading-relaxed text-[#64748B]">
+              {playerCallHelperText}
+            </p>
+          ) : null}
           <div className="text-[9px] font-extrabold leading-[1.2] tracking-normal text-[#64748B]">
             {playerCallSummaryLabel}
           </div>
@@ -221,18 +228,18 @@ export function AddPlayersPickerPanel({
 
       {mode !== 'shareLink' ? (
         <div className="w-full space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-row gap-2">
             <input
               type="search"
               value={searchValue}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder={searchPlaceholder}
-              className="min-w-0 flex-1 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-semibold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+              className="w-0 min-w-0 flex-[1_1_70%] rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-semibold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
             />
             <select
               value={filterValue}
               onChange={(event) => onFilterChange(event.target.value)}
-              className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-bold text-[#334155] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 sm:w-[140px]"
+              className="min-w-[104px] flex-[0_0_30%] rounded-lg border border-[#E2E8F0] bg-white px-2 py-2.5 text-[12px] font-bold text-[#334155] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 sm:min-w-[140px] sm:flex-none sm:px-3 sm:text-body-main"
               aria-label="Filter players"
             >
               {filterOptions.map((option) => (

@@ -87,6 +87,7 @@ export function MatchToolsSection({
   const [isLoadingInviteTargets, setIsLoadingInviteTargets] = useState(false)
   const [targetLoadError, setTargetLoadError] = useState<string | null>(null)
   const [applySuccessMessage, setApplySuccessMessage] = useState<string | null>(null)
+  const [shareLinkStatusMessage, setShareLinkStatusMessage] = useState<string | null>(null)
   const [isPublicSignupLinkBusy, setIsPublicSignupLinkBusy] = useState(false)
   const [publicSignupLinkError, setPublicSignupLinkError] = useState<string | null>(null)
 
@@ -96,6 +97,7 @@ export function MatchToolsSection({
     setLazyContactTargets(contactTargets)
     setTargetLoadError(null)
     setApplySuccessMessage(null)
+    setShareLinkStatusMessage(null)
     setPublicSignupLinkError(null)
   }, [matchId, candidateUsers, contactTargets])
 
@@ -110,6 +112,18 @@ export function MatchToolsSection({
       window.clearTimeout(timeout)
     }
   }, [applySuccessMessage])
+
+  useEffect(() => {
+    if (!shareLinkStatusMessage) return
+
+    const timeout = window.setTimeout(() => {
+      setShareLinkStatusMessage(null)
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [shareLinkStatusMessage])
 
   useEffect(() => {
     if (activeTab !== 'invite' || !showInviteTools || matchStatus !== 'active') return
@@ -177,6 +191,7 @@ export function MatchToolsSection({
       const next = current === nextTab ? null : nextTab
       if (next) {
         setApplySuccessMessage(null)
+        setShareLinkStatusMessage(null)
         requestAnimationFrame(() => {
           sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
         })
@@ -191,6 +206,7 @@ export function MatchToolsSection({
     setIsPublicSignupLinkBusy(true)
     setPublicSignupLinkError(null)
     setApplySuccessMessage(null)
+    setShareLinkStatusMessage(null)
     try {
       const supabase = createSupabaseBrowserClient()
       const { data, error } = await supabase.rpc('rpc_public_match_signup_link_get_or_create', {
@@ -206,9 +222,9 @@ export function MatchToolsSection({
       const url = `${window.location.origin}/join/${link.public_token}`
       try {
         await navigator.clipboard.writeText(url)
-        setApplySuccessMessage('Share link copied.')
+        setShareLinkStatusMessage('Link copied.')
       } catch {
-        setApplySuccessMessage('Share link ready.')
+        setShareLinkStatusMessage('Link ready.')
       }
     } catch (error) {
       console.error('[MatchToolsSection] public signup link:', error)
@@ -347,19 +363,26 @@ export function MatchToolsSection({
             setApplySuccessMessage('Changes applied.')
           }}
           shareLinkRow={isOrganizer && matchStatus === 'active' ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="text-body-main font-black text-slate-900">Share link</div>
-                <div className="text-body-sub font-semibold text-slate-500">Let someone request a spot from the match link.</div>
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="text-body-main font-black text-slate-900">Share link</div>
+                  <div className="text-body-sub font-semibold text-slate-500">Let someone request a spot from the match link.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={copyPublicSignupLink}
+                  disabled={isPublicSignupLinkBusy}
+                  className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 py-1.5 font-bold text-[#475569] transition hover:bg-[#F8FAFC] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Link'}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={copyPublicSignupLink}
-                disabled={isPublicSignupLinkBusy}
-                className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 py-1.5 font-bold text-[#475569] transition hover:bg-[#F8FAFC] disabled:cursor-wait disabled:opacity-60"
-              >
-                {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Link'}
-              </button>
+              {shareLinkStatusMessage ? (
+                <p className="m-0 text-body-sub font-semibold text-emerald-700">
+                  {shareLinkStatusMessage}
+                </p>
+              ) : null}
             </div>
           ) : null}
         />

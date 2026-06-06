@@ -63,7 +63,7 @@ type InviteCandidate = {
   hasReachableChannel?: boolean
 }
 
-type PlayerPickerFilter = 'all' | 'people' | 'groups' | 'contacts' | 'saved'
+type PlayerPickerFilter = 'all' | 'saved' | 'contacts' | 'groups'
 type PlayerPickerMode = 'invite' | 'request' | 'share'
 type PlayerPickerItem =
   | {
@@ -135,24 +135,22 @@ function getPickerFilterOptions(mode: PlayerPickerMode): Array<{ value: PlayerPi
   if (mode === 'request') {
     return [
       { value: 'all', label: 'All' },
-      { value: 'people', label: 'People' },
+      { value: 'saved', label: 'Saved' },
       { value: 'groups', label: 'Groups' },
     ]
   }
 
   return [
     { value: 'all', label: 'All' },
-    { value: 'people', label: 'People' },
-    { value: 'groups', label: 'Groups' },
-    { value: 'contacts', label: 'Contacts' },
     { value: 'saved', label: 'Saved' },
+    { value: 'contacts', label: 'Contacts' },
+    { value: 'groups', label: 'Groups' },
   ]
 }
 
 function pickerItemMatches(item: PlayerPickerItem, query: string, filter: PlayerPickerFilter) {
   const normalizedQuery = query.trim().toLowerCase()
 
-  if (filter === 'people' && !(item.kind === 'candidate' && item.candidate.kind === 'user')) return false
   if (filter === 'groups' && item.kind !== 'group') return false
   if (filter === 'contacts' && !(item.kind === 'candidate' && item.candidate.kind === 'contact')) return false
   if (filter === 'saved' && !(item.kind === 'candidate' && item.candidate.source === 'saved_players')) return false
@@ -957,7 +955,7 @@ function CandidatePreviewModal({
             </>
           ) : (
             <p style={{ margin: 0, fontSize: '0.88rem', color: '#4b5563', lineHeight: 1.5 }}>
-              Saved registered players can be added through Invite People here. Open the full profile for more details.
+              Saved registered players can be added through Invite here. Open the full profile for more details.
             </p>
           )}
         </div>
@@ -1425,7 +1423,7 @@ export function CreateMatchInline({
       const availabilityLabel = !isContact ? getAvailabilityStatusLabel(candidate.availabilityStatus) : null
       const filterTags = isContact
         ? ['contacts']
-        : ['people', candidate.source === 'saved_players' ? 'saved' : null].filter((tag): tag is string => Boolean(tag))
+        : [candidate.source === 'saved_players' ? 'saved' : null].filter((tag): tag is string => Boolean(tag))
 
       return {
         key: item.key,
@@ -2842,13 +2840,13 @@ export function CreateMatchInline({
         <div>
           <h4 className="text-h2 m-0 text-gray-900">Invite Player</h4>
           <p className="text-body-main mt-1 text-gray-500">
-            Match created. Pick Invite People from your saved registered players, then open the match once they are recorded as pending.
+            Match created. Pick Invite from your saved registered players, then open the match once they are recorded as pending.
           </p>
         </div>
 
         {inviteTargets.length === 0 ? (
           <div className="text-body-main rounded-2xl border border-gray-200 bg-white px-4 py-4 text-gray-500">
-            No saved registered players are available for Invite People right now.
+            No saved registered players are available for Invite right now.
           </div>
         ) : (
           <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4">
@@ -3944,12 +3942,7 @@ export function CreateMatchInline({
             </div>
           )}
           playerCallEmptyLabel={(
-            <>
-              No matching players or groups.
-              <span className="text-body-sub mt-1 block font-semibold text-[#64748B]">
-                Use Invite to add a new contact directly.
-              </span>
-            </>
+            'Choose who can see this on their Match Board.'
           )}
         />
       </section>

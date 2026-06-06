@@ -32,20 +32,21 @@ type PanelMode = 'invite' | 'remove'
 type InviteSelectionMode = 'invite' | 'request' | 'share'
 type AdditionMode = Exclude<InviteSelectionMode, 'share'>
 type RemoveSelectionMode = 'confirmed' | 'invites' | 'requests'
-type PickerFilter = 'all' | 'people' | 'groups' | 'contacts' | 'saved'
+type PickerFilter = 'all' | 'saved' | 'contacts' | 'groups' | 'venues'
 
 const ADD_PLAYERS_SECTION_LABEL = 'text-[9px] font-extrabold leading-[1.2] tracking-normal normal-case'
 const INVITE_FILTER_OPTIONS: Array<{ value: PickerFilter; label: string }> = [
   { value: 'all', label: 'All' },
-  { value: 'people', label: 'People' },
-  { value: 'groups', label: 'Groups' },
-  { value: 'contacts', label: 'Contacts' },
   { value: 'saved', label: 'Saved' },
+  { value: 'contacts', label: 'Contacts' },
+  { value: 'groups', label: 'Groups' },
+  { value: 'venues', label: 'Venues' },
 ]
 const PLAYER_CALL_FILTER_OPTIONS: Array<{ value: PickerFilter; label: string }> = [
   { value: 'all', label: 'All' },
-  { value: 'people', label: 'People' },
+  { value: 'saved', label: 'Saved' },
   { value: 'groups', label: 'Groups' },
+  { value: 'venues', label: 'Venues' },
 ]
 
 type CandidateItem = {
@@ -54,6 +55,7 @@ type CandidateItem = {
   name: string
   kind: 'user' | 'group' | 'contact'
   availabilityStatus?: AvailabilityStatus | null
+  source?: string | null
   sourceLabel?: string
   avatarUrl?: string | null
   userId?: string | null
@@ -241,6 +243,24 @@ function getLookupAvailabilityStatus(
     return lookup[getAvailabilityLookupKey('contact', item.guestId)] ?? null
   }
   return null
+}
+
+function getCandidateFilterTags(candidate: CandidateItem): PickerFilter[] {
+  if (candidate.kind === 'group') return ['groups']
+  if (candidate.kind === 'contact') return ['contacts']
+
+  const source = candidate.source?.toLowerCase() ?? ''
+  const sourceLabel = candidate.sourceLabel?.toLowerCase() ?? ''
+  const tags: PickerFilter[] = []
+
+  if (source.includes('saved') || sourceLabel.includes('saved')) {
+    tags.push('saved')
+  }
+  if (source === 'club_members' || source.includes('venue') || sourceLabel.includes('venue')) {
+    tags.push('venues')
+  }
+
+  return tags
 }
 
 function getParticipantEffectiveUserId(participant: MatchParticipantEnriched): string | null {
@@ -896,6 +916,7 @@ export function MatchManagePanel({
                 kind: 'user',
                 userId: user.id,
               }),
+              source: user.source,
               sourceLabel: user.sourceLabel,
               userId: user.id,
             })),
@@ -905,6 +926,7 @@ export function MatchManagePanel({
               name: target.display_name ?? 'Contact Player',
               kind: 'contact' as const,
               availabilityStatus: null,
+              source: target.source,
               sourceLabel: target.sourceLabel,
               avatarUrl: target.avatar_url ?? null,
               personId: target.person_id,
@@ -931,6 +953,7 @@ export function MatchManagePanel({
                 kind: 'user',
                 userId: user.id,
               }),
+              source: user.source,
               sourceLabel: user.sourceLabel,
               userId: user.id,
             })),
@@ -988,12 +1011,7 @@ export function MatchManagePanel({
       const availabilityDotClass = candidate.kind === 'user'
         ? getAvailabilityStatusDotClass(candidate.availabilityStatus)
         : null
-      const filterTags = candidate.kind === 'group'
-        ? ['groups']
-        : candidate.kind === 'contact'
-          ? ['contacts']
-          : ['people', candidate.sourceLabel?.toLowerCase().includes('saved') ? 'saved' : null]
-              .filter((tag): tag is string => Boolean(tag))
+      const filterTags = getCandidateFilterTags(candidate)
 
       return {
         key: candidate.key,
@@ -2014,19 +2032,13 @@ export function MatchManagePanel({
                 candidates={sharedPickerCandidates}
                 onToggleCandidate={toggleSharedPickerCandidate}
                 shareLinkRow={shareLinkRow}
-                playerCallSummaryLabel="Currently posted to"
+                playerCallSummaryLabel="Visible to"
+                playerCallHelperText="Only selected players and groups will see this on their Match Board. Use Venues to filter venue members."
                 playerCallSummary={playerCallSummarySlot}
                 inviteSummary={inviteSummarySlot}
                 addContactSlot={addContactSlot}
                 footerSlot={inviteFooterSlot}
-                playerCallEmptyLabel={(
-                  <>
-                    No matching players or groups.
-                    <span className="text-body-sub mt-1 block font-semibold text-[#64748B]">
-                      Use Invite to add a new contact directly.
-                    </span>
-                  </>
-                )}
+                playerCallEmptyLabel="Choose who can see this on their Match Board."
               />
 
               {(error || success) ? (
