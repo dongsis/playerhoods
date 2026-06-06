@@ -49,6 +49,7 @@ type Props = {
   searchPlaceholder?: string
   playerCallSummaryLabel?: string
   playerCallHelperText?: ReactNode
+  expandModeButtonsOnMobile?: boolean
 }
 
 function modeButtonClass(selected: boolean, tone: AddPlayersMode) {
@@ -143,6 +144,7 @@ export function AddPlayersPickerPanel({
   searchPlaceholder = 'Search player or group...',
   playerCallSummaryLabel = 'Call targets',
   playerCallHelperText = 'Only selected players and groups will see this on their Match Board.',
+  expandModeButtonsOnMobile = false,
 }: Props) {
   const [previewCandidate, setPreviewCandidate] = useState<AddPlayersCandidate | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
@@ -175,7 +177,12 @@ export function AddPlayersPickerPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#EEF4FB] p-1">
+      <div
+        className={[
+          'grid grid-cols-3 gap-1 rounded-xl bg-[#EEF4FB] p-1',
+          expandModeButtonsOnMobile ? '-mx-5 sm:mx-0' : '',
+        ].filter(Boolean).join(' ')}
+      >
         <button
           type="button"
           onClick={() => onModeChange('invite')}
