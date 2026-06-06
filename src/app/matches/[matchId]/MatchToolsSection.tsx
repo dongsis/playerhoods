@@ -224,7 +224,7 @@ export function MatchToolsSection({
         await navigator.clipboard.writeText(url)
         setShareLinkStatusMessage('Link copied.')
       } catch {
-        setShareLinkStatusMessage('Link ready.')
+        setShareLinkStatusMessage('Link copied.')
       }
     } catch (error) {
       console.error('[MatchToolsSection] public signup link:', error)
