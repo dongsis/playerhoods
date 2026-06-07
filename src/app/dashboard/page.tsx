@@ -46,7 +46,7 @@ import {
   updateMatchOrganizerNoteAction,
 } from '../matches/[matchId]/match-detail.actions'
 import { MatchDetailPageView } from '../matches/[matchId]/MatchDetailPageView'
-import { loadMatchDetailPageData } from '../matches/[matchId]/match-detail.loader'
+import { loadMatchDetailPageData, type MatchDetailLoaderData } from '../matches/[matchId]/match-detail.loader'
 import { buildMatchDetailPageViewModel } from '../matches/[matchId]/match-detail.view-model'
 import type { MatchListItem } from '@/lib/api/matches'
 
@@ -82,6 +82,54 @@ function hasSelectedMatchConflict(items: MatchListItem[], selectedMatchId: strin
   })
 }
 
+function alignSelectedMatchDetailWithBoard(
+  loaderData: MatchDetailLoaderData,
+  boardItem: MatchListItem | undefined,
+): MatchDetailLoaderData {
+  if (!boardItem || loaderData.detail.isOrganizer) {
+    return loaderData
+  }
+
+  const boardConfirmedParticipants = boardItem.participants.filter(
+    (participant) => participant.status === 'confirmed' && participant.removed_at === null,
+  )
+  const shouldAlign =
+    boardItem.confirmedCount > loaderData.detail.confirmedCount ||
+    boardConfirmedParticipants.some(
+      (participant) => !loaderData.detail.participants.some((detailParticipant) => detailParticipant.id === participant.id),
+    )
+
+  if (!shouldAlign) {
+    return loaderData
+  }
+
+  const participantsById = new Map(
+    loaderData.detail.participants.map((participant) => [participant.id, participant]),
+  )
+  for (const participant of boardConfirmedParticipants) {
+    if (!participantsById.has(participant.id)) {
+      participantsById.set(participant.id, participant)
+    }
+  }
+
+  const participants = Array.from(participantsById.values()).sort((a, b) =>
+    (a.created_at ?? '').localeCompare(b.created_at ?? ''),
+  )
+
+  return {
+    ...loaderData,
+    detail: {
+      ...loaderData.detail,
+      participants,
+      confirmedCount: Math.max(
+        loaderData.detail.confirmedCount,
+        boardItem.confirmedCount,
+        boardConfirmedParticipants.length,
+      ),
+    },
+  }
+}
+
 export default async function DashboardPage({ searchParams }: Props) {
   const { notice, matchId } = await searchParams
   const selectedMatchId = matchId?.trim() || null
@@ -98,7 +146,9 @@ export default async function DashboardPage({ searchParams }: Props) {
   let selectedMatchDetail = null
 
   if (selectedMatchId && matchDetailLoaderData) {
-    const matchDetailViewModel = buildMatchDetailPageViewModel(matchDetailLoaderData)
+    const selectedBoardItem = viewModel.items.find((item) => item.match.id === selectedMatchId)
+    const alignedMatchDetailLoaderData = alignSelectedMatchDetailWithBoard(matchDetailLoaderData, selectedBoardItem)
+    const matchDetailViewModel = buildMatchDetailPageViewModel(alignedMatchDetailLoaderData)
     const hasTimeConflict = hasSelectedMatchConflict(viewModel.items, selectedMatchId)
     const matchSnapshot = {
       id: matchDetailViewModel.match.id,
