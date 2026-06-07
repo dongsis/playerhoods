@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { ContactPlayerResolved } from '@/lib/api/roster'
@@ -137,15 +137,6 @@ function getFileExtensionForMimeType(mimeType: string): string {
   return 'jpg'
 }
 
-function ImageIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M4.5 7.5H8L9.5 5.5H14.5L16 7.5H19.5C20.3 7.5 21 8.2 21 9V18.5C21 19.3 20.3 20 19.5 20H4.5C3.7 20 3 19.3 3 18.5V9C3 8.2 3.7 7.5 4.5 7.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <circle cx="12" cy="13" r="3.2" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  )
-}
-
 function CheckIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -183,32 +174,18 @@ function TrashIcon() {
   )
 }
 
-function InfoIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M12 10V16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="12" cy="7.5" r="1" fill="currentColor" />
-    </svg>
-  )
+type HelpRow = {
+  title: string
+  body: string[]
+  hideOnMobile?: boolean
 }
 
-const HELP_ROWS = [
+const HELP_ROWS: HelpRow[] = [
   {
     title: 'Fastest way: copy & paste',
     body: [
-      'Copy a screenshot from your device.',
-      'Then use Paste image.',
-      'Windows screenshots are usually copied automatically after Windows + Shift + S.',
-      'On Mac, use Control + Shift + Command + 4 to copy a screenshot.',
-    ],
-  },
-  {
-    title: 'Upload a saved image',
-    body: [
-      'Use Upload image.',
-      'Choose a JPG, PNG, or WEBP screenshot from your device.',
-      'Use this if you already saved the screenshot.',
+      'Copy a screenshot image first.',
+      'Then click Paste image.',
     ],
   },
   {
@@ -221,7 +198,16 @@ const HELP_ROWS = [
     ],
   },
   {
+    title: 'Upload a saved image',
+    body: [
+      'Use Upload image.',
+      'Choose a JPG, PNG, or WEBP screenshot from your device.',
+      'Use this if you already saved the screenshot.',
+    ],
+  },
+  {
     title: 'Where screenshots are saved',
+    hideOnMobile: true,
     body: [
       'Mac: usually saved on Desktop.',
       'Windows: usually in Pictures > Screenshots.',
@@ -231,36 +217,45 @@ const HELP_ROWS = [
 ]
 
 function ImportHelpRows() {
+  const renderRows = () => (
+    <>
+      {HELP_ROWS.map((row) => (
+        <details
+          key={row.title}
+          className={[
+            'rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]',
+            row.hideOnMobile ? 'hidden sm:block' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <summary className="cursor-pointer font-black text-[#334155]">{row.title}</summary>
+          <ul className="mt-3 list-disc space-y-2 pl-5">
+            {row.body.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </details>
+      ))}
+      <details className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]">
+        <summary className="cursor-pointer font-black text-[#334155]">What screenshots work best?</summary>
+        <div className="mt-3 space-y-3">
+          <p>Clear screenshots with visible names, emails, or phone numbers work best.</p>
+          <ul className="list-disc space-y-2 pl-5">
+            <li>WhatsApp contact or group member list with names or phone numbers</li>
+            <li>Phone Contacts list</li>
+            <li>Email header or recipient list</li>
+            <li>Contact list or table screenshot</li>
+          </ul>
+        </div>
+      </details>
+    </>
+  )
+
   return (
     <div className="space-y-2">
       <h5 className="text-body-main font-black text-[#0B1F44]">Need help importing contacts?</h5>
-      <div className="space-y-2">
-        {HELP_ROWS.map((row) => (
-          <details
-            key={row.title}
-            className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]"
-          >
-            <summary className="cursor-pointer font-black text-[#334155]">{row.title}</summary>
-            <ul className="mt-3 list-disc space-y-2 pl-5">
-              {row.body.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          </details>
-        ))}
-        <details className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]">
-          <summary className="cursor-pointer font-black text-[#334155]">What screenshots work best?</summary>
-          <div className="mt-3 space-y-3">
-            <p>Clear screenshots with visible names, emails, or phone numbers work best.</p>
-            <ul className="list-disc space-y-2 pl-5">
-              <li>WhatsApp contact or group member list with names or phone numbers</li>
-              <li>Phone Contacts list</li>
-              <li>Email header or recipient list</li>
-              <li>Contact list or table screenshot</li>
-            </ul>
-          </div>
-        </details>
-      </div>
+      <div className="space-y-2">{renderRows()}</div>
     </div>
   )
 }
@@ -276,6 +271,7 @@ export function ContactScreenshotImportSection({
   onSecondaryAction,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const fileInputId = useId()
   const [files, setFiles] = useState<File[]>([])
   const [previewFiles, setPreviewFiles] = useState<PreviewFile[]>([])
   const [drafts, setDrafts] = useState<EditableDraft[]>([])
@@ -364,10 +360,10 @@ export function ContactScreenshotImportSection({
     setFiles(supportedFiles)
     setDrafts([])
     setEditingDraftId(null)
-    setRetryMessage(rejectedCount > 0 ? 'That file type is not supported yet. Try a JPG, PNG, or WEBP screenshot, or add the contact manually.' : null)
+    setRetryMessage(rejectedCount > 0 ? 'That file type is not supported yet. Try a JPG, PNG, or WEBP screenshot image, or add the contact manually.' : null)
     setNotice(
       supportedFiles.length > 0
-        ? `${supportedFiles.length} screenshot${supportedFiles.length === 1 ? '' : 's'} ${source}. Extracting contacts now.`
+        ? `${supportedFiles.length} screenshot image${supportedFiles.length === 1 ? '' : 's'} ${source}. Extracting contacts now.`
         : null,
     )
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -498,24 +494,16 @@ export function ContactScreenshotImportSection({
   return (
     <div className={isMobileMain ? 'bg-white' : 'bg-white px-1 pb-6'}>
       <input
+        id={fileInputId}
         ref={fileInputRef}
         type="file"
         accept="image/png,image/jpeg,image/webp"
         multiple
         onChange={(event) => handleFileSelection(Array.from(event.target.files ?? []), 'uploaded')}
-        className="hidden"
+        className="sr-only"
       />
 
-      <div
-        onDragOver={(event) => {
-          event.preventDefault()
-        }}
-        onDrop={(event) => {
-          event.preventDefault()
-          handleFileSelection(Array.from(event.dataTransfer.files ?? []), 'dropped')
-        }}
-        className="transition"
-      >
+      <div className="transition">
         {step === 'review' ? (
           <div className="space-y-6 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -844,7 +832,7 @@ export function ContactScreenshotImportSection({
                 : 'cursor-not-allowed bg-[#CBD5E1] text-white',
             ].join(' ')}
           >
-            {importing ? 'Importing...' : 'Import Contacts'}
+            {importing ? 'Saving...' : `Save selected (${selectedCount})`}
           </button>
           {secondaryActionLabel && onSecondaryAction ? (
             <button

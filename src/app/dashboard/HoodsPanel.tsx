@@ -56,7 +56,7 @@ import {
 import { Avatar } from '@/app/components/Avatar'
 import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import { ParticipantDetailPanel, type DetailConnection, type DetailValue } from '@/app/components/ParticipantDetailPanel'
-import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
+import { AddMyContactPanel } from '@/app/dashboard/AddMyContactPanel'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { formatTimeWindow } from '@/lib/format-time'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
@@ -80,7 +80,6 @@ type DiscoverSource = 'club_members' | 'city_players' | 'search_people'
 type IdentityType = 'platform' | 'contact' | 'linked'
 type ContactGender = 'male' | 'female' | 'unspecified' | null
 type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
-type MobileContactView = 'smart' | 'manual' | 'benefits'
 type SourceBadge =
   | 'My Contact'
   | 'Starred'
@@ -1773,20 +1772,6 @@ function ContactToolIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' 
   )
 }
 
-function useIsMobileContactLayout() {
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 639px)')
-    const sync = () => setIsMobile(media.matches)
-    sync()
-    media.addEventListener('change', sync)
-    return () => media.removeEventListener('change', sync)
-  }, [])
-
-  return isMobile
-}
-
 export function HoodsPanel({
   userId,
   items,
@@ -1863,8 +1848,6 @@ export function HoodsPanel({
   const [admissionTargetsByMatchId, setAdmissionTargetsByMatchId] = useState<Map<string, AdmissionTarget[]>>(new Map())
   const [contactPersonTargetsByMatchId, setContactPersonTargetsByMatchId] = useState<Map<string, ContactPersonAdmissionTarget[]>>(new Map())
   const [loadingInviteKey, setLoadingInviteKey] = useState<string | null>(null)
-  const [contactComposerMode, setContactComposerMode] = useState<'manual' | 'screenshot' | null>(null)
-  const [mobileContactView, setMobileContactView] = useState<MobileContactView>('smart')
   const [contactDisplayName, setContactDisplayName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
@@ -1874,8 +1857,6 @@ export function HoodsPanel({
   const [starterPreferredFormat, setStarterPreferredFormat] = useState<StarterMatchFormat>('unknown')
   const [starterDismissedAt, setStarterDismissedAt] = useState<number | null>(null)
   const hasLoadedSupportDataRef = useRef(false)
-  const isMobileContactLayout = useIsMobileContactLayout()
-
   useEffect(() => {
     if (sportOptions.some((sport) => sport.code === selectedSportCode)) return
     if (sportOptions[0]) setSelectedSportCode(sportOptions[0].code)
@@ -1899,8 +1880,6 @@ export function HoodsPanel({
   useEffect(() => {
     if (!openContactComposerSignal) return
     setContactToolsOpen(true)
-    setMobileContactView('smart')
-    setContactComposerMode('manual')
   }, [openContactComposerSignal])
 
   useEffect(() => {
@@ -2930,7 +2909,6 @@ export function HoodsPanel({
       setContactEmail('')
       setContactPhone('')
       setContactNotes('')
-      setContactComposerMode('manual')
       setContactToolsOpen(true)
       setHoodFilter('saved')
       void loadSupportData({ foreground: false })
@@ -2994,7 +2972,6 @@ export function HoodsPanel({
       )
 
       setMessage(`Imported contacts were added to your ${selectedSport.display_name} hood.`)
-      setContactComposerMode(null)
       setContactToolsOpen(false)
       setHoodFilter('saved')
       await loadSupportData()
@@ -3107,8 +3084,6 @@ export function HoodsPanel({
     clearMessage()
     setSection('hood')
     setContactToolsOpen(true)
-    setMobileContactView('smart')
-    setContactComposerMode('manual')
     setError(null)
     window.setTimeout(() => {
       document.getElementById('add-my-contact-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -3203,8 +3178,6 @@ export function HoodsPanel({
                       clearMessage()
                       setSection('hood')
                       setContactToolsOpen(true)
-                      setMobileContactView('smart')
-                      setContactComposerMode('manual')
                       setError(null)
                     }}
                     className="text-body-main inline-flex items-center gap-2 rounded-full bg-[#0B1F44] px-5 py-2.5 font-semibold text-white shadow-[0_14px_28px_-20px_rgba(11,31,68,0.9)] transition hover:bg-[#102A5C]"
@@ -3223,7 +3196,6 @@ export function HoodsPanel({
                     onClick={() => {
                       clearMessage()
                       setContactToolsOpen(false)
-                      setContactComposerMode(null)
                       setError(null)
                       setHoodFilter(value)
                     }}
@@ -3367,473 +3339,43 @@ export function HoodsPanel({
         </div>
       ) : null}
 
-      {showContactTools && (
-        <div id="add-my-contact-panel" className="overflow-hidden rounded-[40px] border border-[#E2E8F0] bg-white px-5 py-7 shadow-[0_26px_70px_-42px_rgba(11,31,68,0.35)] sm:px-8 lg:px-10">
-          {isMobileContactLayout ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (mobileContactView === 'benefits') {
-                      setMobileContactView('smart')
-                      return
-                    }
-                    clearMessage()
-                    setContactToolsOpen(false)
-                    setContactComposerMode(null)
-                    setError(null)
-                  }}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#0B1F44] transition hover:bg-[#F1F5F9]"
-                  aria-label={mobileContactView === 'benefits' ? 'Back to add contact' : 'Close add contact panel'}
-                >
-                  {mobileContactView === 'benefits' ? <span className="text-xl font-black leading-none">{'<'}</span> : <ContactToolIcon kind="close" />}
-                </button>
-                <h3 className="min-w-0 flex-1 text-center text-[22px] font-black tracking-[-0.01em] text-[#0B1F44]">
-                  {mobileContactView === 'benefits' ? '5 Benefits for Adding Contacts' : 'Add My Contact'}
-                </h3>
-                <span className="h-10 w-10 shrink-0" aria-hidden="true" />
-              </div>
-
-              {mobileContactView === 'benefits' ? (
-                <div className="space-y-5">
-                  <div className="space-y-3">
-                    {[
-                      ['card', 'Save as player card', 'Add someone not on PlayerHoods yet.', 'bg-[#eff6ff] text-[#0d6efd]'],
-                      ['invite', 'Invite by link', 'Send a private invite anytime.', 'bg-[#F1ECFF] text-[#6D5DF7]'],
-                      ['reply', 'Email or SMS reply', 'They can accept without an account.', 'bg-[#EAFBF0] text-[#07823F]'],
-                      ['bell', 'Register notification', 'Get notified when they join PlayerHoods.', 'bg-[#FFF7E6] text-[#C46B00]'],
-                      ['shield', 'Private by default', 'Contact details stay hidden.', 'bg-[#EAF7FF] text-[#0877B8]'],
-                    ].map(([key, title, body, tone], index) => (
-                      <div key={title} className="flex items-start gap-3">
-                        <span className={['flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/70 shadow-sm', tone].join(' ')}>
-                          <ContactToolIcon kind={key as 'card' | 'invite' | 'reply' | 'bell' | 'shield'} />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-body-main font-black text-[#0B1F44]">{index + 1}. {title}</p>
-                          <p className="mt-1 text-body-sub text-[#64748B]">{body}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="border-t border-[#E2E8F0] pt-5">
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#eff6ff] text-[#0d6efd]">
-                        <ContactToolIcon kind="spark" />
-                      </span>
-                      <div>
-                        <h4 className="text-body-main font-black text-[#0B1F44]">Smart Import</h4>
-                        <p className="mt-1 text-body-sub leading-5 text-[#64748B]">
-                          Extract contact details from chat text, email headers, sheets, screenshots, and photos.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-3 gap-2">
-                      {[
-                        ['Chat Group', 'Paste chat text, e.g. WhatsApp, iMessage'],
-                        ['Email Header', 'Paste header From / To / Cc'],
-                        ['Sheet / List', 'Paste or upload Excel, CSV, image'],
-                      ].map(([title, body]) => (
-                        <div key={title} className="rounded-2xl border border-[#D7E2F0] bg-[#F8FBFF] px-2 py-3 text-center">
-                          <p className="text-[11px] font-black text-[#0B1F44]">{title}</p>
-                          <p className="mt-2 text-[10px] leading-4 text-[#64748B]">{body}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setMobileContactView('smart')}
-                    className="min-h-11 w-full rounded-2xl border border-[#D7E2F0] bg-white px-5 py-3 text-body-main font-semibold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
-                  >
-                    Back to Add My Contact
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setMobileContactView('benefits')}
-                    className="flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl border border-[#D7E2F0] bg-white px-4 py-3 text-left text-body-main font-semibold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
-                  >
-                    <span className="inline-flex items-center gap-3">
-                      <span className="text-[#0d6efd]"><ContactToolIcon kind="spark" /></span>
-                      <span>5 benefits for adding contacts</span>
-                    </span>
-                    <span className="text-xl leading-none text-[#0B1F44]" aria-hidden="true">{'>'}</span>
-                  </button>
-
-                  <div className="grid grid-cols-2 rounded-2xl border border-[#D7E2F0] bg-white p-1 text-body-main font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearMessage()
-                        setMobileContactView('smart')
-                        setError(null)
-                      }}
-                      className={[
-                        'min-h-11 rounded-xl px-3 transition',
-                        mobileContactView === 'smart' ? 'border border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]' : 'text-[#0B1F44]',
-                      ].join(' ')}
-                    >
-                      Smart Import
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearMessage()
-                        setMobileContactView('manual')
-                        setError(null)
-                      }}
-                      className={[
-                        'min-h-11 rounded-xl px-3 transition',
-                        mobileContactView === 'manual' ? 'border border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]' : 'text-[#0B1F44]',
-                      ].join(' ')}
-                    >
-                      Enter Manually
-                    </button>
-                  </div>
-
-                  {mobileContactView === 'smart' ? (
-                    <div className="space-y-4">
-                      <div>
-                        <h4 className="text-body-main font-black text-[#0B1F44]">Smart Import</h4>
-                        <p className="mt-2 text-body-main leading-6 text-[#334155]">
-                          We&apos;ll extract names, phone numbers, and emails from any image or text you paste or upload.
-                        </p>
-                      </div>
-                      {onParseScreenshots && onImportScreenshotContacts ? (
-                        <ContactScreenshotImportSection
-                          userId={userId}
-                          existingContacts={supportData.contacts}
-                          onParseScreenshots={onParseScreenshots}
-                          onImportScreenshotContacts={onImportScreenshotContacts}
-                          onImported={async () => {
-                            await handleScreenshotImported()
-                            setMobileContactView('smart')
-                          }}
-                          variant="mobile-main"
-                          secondaryActionLabel="Switch to Manual Entry"
-                          onSecondaryAction={() => {
-                            clearMessage()
-                            setMobileContactView('manual')
-                            setError(null)
-                          }}
-                        />
-                      ) : (
-                        <div className="space-y-3 rounded-2xl border border-[#D7E2F0] bg-[#F8FBFF] p-4">
-                          <p className="text-body-main font-semibold text-[#475569]">Smart Import is not available right now.</p>
-                          <button
-                            type="button"
-                            onClick={() => setMobileContactView('manual')}
-                            className="min-h-11 w-full rounded-2xl border border-[#D7E2F0] bg-white px-5 py-3 text-body-main font-semibold text-[#0B1F44]"
-                          >
-                            Switch to Manual Entry
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <form onSubmit={handleCreateContact} className="space-y-4">
-                      <label className="text-body-main font-semibold text-[#0B1F44]">
-                        <span className="mb-2 block">Full Name</span>
-                        <input
-                          type="text"
-                          value={contactDisplayName}
-                          onChange={(event) => setContactDisplayName(event.target.value)}
-                          placeholder="Player's full name"
-                          className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                        />
-                      </label>
-                      <label className="text-body-main font-semibold text-[#0B1F44]">
-                        <span className="mb-2 block">Email</span>
-                        <input
-                          type="email"
-                          value={contactEmail}
-                          onChange={(event) => setContactEmail(event.target.value)}
-                          placeholder="email@example.com"
-                          className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                        />
-                      </label>
-                      <label className="text-body-main font-semibold text-[#0B1F44]">
-                        <span className="mb-2 block">Phone</span>
-                        <input
-                          type="tel"
-                          value={contactPhone}
-                          onChange={(event) => setContactPhone(event.target.value)}
-                          placeholder="+1 234 567 890"
-                          className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                        />
-                      </label>
-                      <label className="text-body-main font-semibold text-[#0B1F44]">
-                        <span className="mb-2 block">Notes</span>
-                        <textarea
-                          value={contactNotes}
-                          onChange={(event) => setContactNotes(event.target.value)}
-                          placeholder="Add any notes about this contact..."
-                          rows={4}
-                          className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                        />
-                      </label>
-                      {error ? (
-                        <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-body-main text-rose-700">
-                          {error}
-                        </p>
-                      ) : null}
-                      <div className="sticky bottom-0 z-10 space-y-3 border-t border-[#E2E8F0] bg-white/95 py-4 backdrop-blur">
-                        <button
-                          type="submit"
-                          disabled={creatingContact}
-                          className="min-h-12 w-full rounded-2xl bg-[#0d6efd] px-5 py-3 text-body-main font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7] disabled:cursor-wait disabled:bg-[#94A3B8]"
-                        >
-                          {creatingContact ? 'Saving...' : 'Save Contact'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            clearMessage()
-                            setMobileContactView('smart')
-                            setError(null)
-                          }}
-                          className="min-h-11 w-full rounded-2xl border border-[#D7E2F0] bg-white px-5 py-3 text-body-main font-semibold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
-                        >
-                          Back to Smart Import
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="flex items-start justify-between gap-4">
-                <h3 className="text-[28px] font-black tracking-[-0.02em] text-[#0B1F44]">Add My Contact</h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearMessage()
-                    setContactToolsOpen(false)
-                    setContactComposerMode(null)
-                    setError(null)
-                  }}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
-                  aria-label="Close add contact panel"
-                >
-                  <ContactToolIcon kind="close" />
-                </button>
-              </div>
-
-              <div className="mt-8 grid gap-5 border-b border-[#E2E8F0] pb-9 sm:grid-cols-2 lg:grid-cols-5">
-                {[
-                  {
-                    key: 'card' as const,
-                    title: 'Save as player card',
-                    body: 'Add someone not on PlayerHoods yet.',
-                    tone: 'bg-[#eff6ff] text-[#0d6efd]',
-                  },
-                  {
-                    key: 'invite' as const,
-                    title: 'Invite by link',
-                    body: 'Send a private invite link anytime.',
-                    tone: 'bg-[#F1ECFF] text-[#6D5DF7]',
-                  },
-                  {
-                    key: 'reply' as const,
-                    title: 'Email or SMS reply',
-                    body: 'They can accept without an account.',
-                    tone: 'bg-[#EAFBF0] text-[#07823F]',
-                  },
-                  {
-                    key: 'bell' as const,
-                    title: 'Register notification',
-                    body: 'Get notified when they join PlayerHoods.',
-                    tone: 'bg-[#FFF7E6] text-[#C46B00]',
-                  },
-                  {
-                    key: 'shield' as const,
-                    title: 'Private by default',
-                    body: 'Contact details stay hidden.',
-                    tone: 'bg-[#EAF7FF] text-[#0877B8]',
-                  },
-                ].map((item, index) => (
-                  <div
-                    key={item.title}
-                    className={[
-                      'flex items-start gap-3 lg:flex-col lg:items-center lg:justify-start lg:text-center',
-                      index > 0 ? 'lg:border-l-2 lg:border-[#CBD5E1]' : '',
-                    ].join(' ')}
-                  >
-                    <span className={['flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/70 shadow-sm', item.tone].join(' ')}>
-                      <ContactToolIcon kind={item.key} />
-                    </span>
-                    <span className="grid gap-1">
-                      <span className="text-[11px] font-black leading-tight text-[#0B1F44]">{item.title}</span>
-                      <span className="text-[10px] leading-tight text-[#94A3B8]">{item.body}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-9 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.82fr)] lg:gap-14">
-                <form onSubmit={handleCreateContact} className="grid gap-5 lg:border-r-2 lg:border-[#CBD5E1] lg:pr-10">
-                  <label className="text-label text-[#536179]">
-                    <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Name</span>
-                    <input
-                      type="text"
-                      value={contactDisplayName}
-                      onChange={(event) => setContactDisplayName(event.target.value)}
-                      placeholder="Player's full name"
-                      className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                    />
-                  </label>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="text-label text-[#536179]">
-                      <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Email</span>
-                      <input
-                        type="email"
-                        value={contactEmail}
-                        onChange={(event) => setContactEmail(event.target.value)}
-                        placeholder="email@example.com"
-                        className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                      />
-                    </label>
-                    <label className="text-label text-[#536179]">
-                      <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Phone</span>
-                      <input
-                        type="tel"
-                        value={contactPhone}
-                        onChange={(event) => setContactPhone(event.target.value)}
-                        placeholder="+1 234 567 890"
-                        className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                      />
-                    </label>
-                  </div>
-
-                  <label className="text-label text-[#536179]">
-                    <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Notes</span>
-                    <textarea
-                      value={contactNotes}
-                      onChange={(event) => setContactNotes(event.target.value)}
-                      placeholder="Add details like skill level or preferred times..."
-                      rows={3}
-                      className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-                    />
-                  </label>
-
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
-                    <button
-                      type="submit"
-                      disabled={creatingContact}
-                      className="text-body-main inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-[#0d6efd] px-5 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7] disabled:cursor-wait disabled:bg-[#94A3B8]"
-                    >
-                      <span className="text-lg leading-none">+</span>
-                      {creatingContact ? 'Saving...' : 'Save Contact'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearMessage()
-                        setContactToolsOpen(false)
-                        setContactComposerMode(null)
-                        setError(null)
-                      }}
-                      className="text-body-main rounded-xl border border-[#E2E8F0] bg-white px-5 py-3 font-medium text-[#475569] transition hover:bg-[#F8FBFF]"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-
-                <div className="flex flex-col items-center justify-center gap-5 px-2 py-6 text-center lg:pl-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearMessage()
-                      if (!onParseScreenshots || !onImportScreenshotContacts) {
-                        setError('Smart Import is not available right now. Please refresh and try again.')
-                        return
-                      }
-                      setContactComposerMode('screenshot')
-                      setError(null)
-                    }}
-                    className="text-body-main inline-flex items-center gap-2 rounded-2xl bg-[#0d6efd] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7]"
-                  >
-                    <ContactToolIcon kind="spark" />
-                    Smart Import
-                  </button>
-                  <p className="text-body-main max-w-sm text-[#94A3B8]">
-                    Upload or paste a screenshot from email, chat, or a contact list.
-                  </p>
-                  <div className="grid w-full max-w-md grid-cols-3 gap-4 pt-4">
-                    {[
-                      ['Chat group', 'Tennis Group', 'Roger Federer'],
-                      ['Email header', 'From', 'email@example.com'],
-                      ['Sheet/list', 'Name', 'Sara Novak'],
-                    ].map(([label, heading, body]) => (
-                      <div key={label} className="flex aspect-[3/4] flex-col rounded-2xl border border-[#D7E2F0] bg-[#F8FBFF] p-3 opacity-70 shadow-sm">
-                        <div className="h-2 w-10 rounded-full bg-[#DCE8F8]" />
-                        <div className="mt-3 rounded-lg bg-[#F1F5F9] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
-                          {heading}
-                        </div>
-                        <div className="mt-2 truncate rounded-md bg-[#eff6ff] px-2 py-1 text-[10px] font-semibold text-[#0d6efd]">
-                          {body}
-                        </div>
-                        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#64748B]">{label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {contactComposerMode === 'screenshot' && onParseScreenshots && onImportScreenshotContacts && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
-          <button
-            type="button"
-            aria-label="Close screenshot import"
-            className="absolute inset-0 bg-[#0B1F44]/40 backdrop-blur-sm"
-            onClick={() => setContactComposerMode(null)}
-          />
-          <div className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-[28px] bg-white p-4 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)] sm:max-h-[88vh] sm:rounded-[32px]">
-            <div className="mb-4 flex items-start justify-between gap-4 px-1 pt-1 sm:px-2 sm:pt-2">
-              <div>
-                <h3 className="text-xl font-black text-[#1E293B] sm:text-h2">Smart Import</h3>
-                <p className="text-body-sub mt-1 max-w-xl text-[#64748B]">
-                  Upload or paste a screenshot from a chat group, email header, or contact list. We&apos;ll extract possible names, emails, and phone numbers for you to review before saving them as Contact Players.
-                </p>
-                <p className="text-body-sub mt-2 max-w-xl font-semibold text-[#475569]">
-                  Nothing is sent or invited automatically. You choose which contacts to save.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setContactComposerMode(null)}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
-                aria-label="Close import modal"
-              >
-                <ContactToolIcon kind="close" />
-              </button>
-            </div>
-            <ContactScreenshotImportSection
-              userId={userId}
-              existingContacts={supportData.contacts}
-              onParseScreenshots={onParseScreenshots}
-              onImportScreenshotContacts={onImportScreenshotContacts}
-              onImported={async () => {
-                await handleScreenshotImported()
-                setContactComposerMode(null)
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {showContactTools ? (
+        <AddMyContactPanel
+          mode="embedded"
+          userId={userId}
+          existingContacts={supportData.contacts}
+          onParseScreenshots={onParseScreenshots}
+          onImportScreenshotContacts={onImportScreenshotContacts}
+          onImported={async () => {
+            await handleScreenshotImported()
+          }}
+          displayName={contactDisplayName}
+          email={contactEmail}
+          phone={contactPhone}
+          notes={contactNotes}
+          creatingContact={creatingContact}
+          error={error}
+          onDisplayNameChange={setContactDisplayName}
+          onEmailChange={setContactEmail}
+          onPhoneChange={setContactPhone}
+          onNotesChange={setContactNotes}
+          onManualSubmit={handleCreateContact}
+          onClose={() => {
+            clearMessage()
+            setContactToolsOpen(false)
+            setError(null)
+          }}
+          onCancel={() => {
+            clearMessage()
+            setContactToolsOpen(false)
+            setError(null)
+          }}
+          onClearError={() => {
+            clearMessage()
+            setError(null)
+          }}
+        />
+      ) : null}
 
       {loading ? (
         <div className="text-body-main rounded-[28px] border border-slate-200 bg-white p-6 text-slate-500">
@@ -3983,4 +3525,3 @@ export function HoodsPanel({
     </div>
   )
 }
-
