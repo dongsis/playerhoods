@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-07 - MR-20260607-dashboard-selected-match-roster-normalization
 
 **Type:** Patch
-**Code Commits:** PR #137 current code head `bc9fa4241a003c3a5f6a36b07966d32f3caef41d`.
+**Code Commits:** PR #137 merged at `dc5cb04157ef36b373aaf9fdb7b234245a554e89`. Final PR head before merge: `5251b20c7f1906d05cd9a723a459ca99834ced97`.
 **Migration:** None
-**Status:** Ready for Review / GitHub only; Vercel Production not deployed yet; Supabase Remote no change.
+**Status:** Production deployed / code aligned; production smoke pending; Supabase Remote no change.
 
 ### Summary
 
@@ -31,7 +31,7 @@ Fixes dashboard selected-match detail normalization so non-host participant/requ
 |---|---|---|
 | Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
 | Vercel Preview | Passed; owner visual review accepted | Owner visual review accepted on Vercel Preview for PR #137 |
-| Vercel Production | Not deployed yet | Pending merge and production deployment |
+| Vercel Production | Deployed successfully | GitHub Deployment `4962397761` for merge commit `dc5cb04157ef36b373aaf9fdb7b234245a554e89` reached `success`; deployment URL `https://playerhoods-codex-73mugf12z-nancys-projects-128e326c.vercel.app` |
 | Supabase Remote | No change | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic was sent by Codex validation |
 | Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending |
@@ -50,6 +50,8 @@ Fixes dashboard selected-match detail normalization so non-host participant/requ
 - No provider traffic.
 - No Add Players change.
 - No roster action behavior change.
+- PR #137 fixed dashboard selected-match detail normalization so non-host participant/requester views no longer show a lower confirmed player count than the Match Board.
+- Production smoke has not been run.
 - This patch targets the dashboard selected-match detail path and does not claim to change all direct match-detail entry paths.
 
 ## 2026-06-06 - MR-20260606-mobile-roster-row-actions
