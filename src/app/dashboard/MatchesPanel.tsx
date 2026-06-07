@@ -2258,7 +2258,7 @@ export function MatchesPanel({
             {visibleActionNeededCount > 0 ? (
               <section className="space-y-2">
                 <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {visibleActionNeeded.map((item) => (
                     <MatchRow
                       key={`mobile-action-${item.match.id}`}
@@ -2319,7 +2319,7 @@ export function MatchesPanel({
                   No upcoming matches.
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {incoming.map((item) => {
                     const cardWarning = getCardWarning(item)
 
@@ -2343,7 +2343,7 @@ export function MatchesPanel({
             {lookingFor.length > 0 ? (
               <section className="space-y-2">
                 <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {lookingFor.map((item) => (
                     <MobileMatchCard
                       key={`mobile-looking-${item.match.id}`}
@@ -2456,7 +2456,7 @@ export function MatchesPanel({
                   {visibleActionNeededCount > 0 ? (
                     <section>
                       <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
-                      <div className="space-y-1.5">
+                      <div className="space-y-1">
                         {visibleActionNeeded.map((item) => (
                           <MatchRow
                             key={item.match.id}
@@ -2514,7 +2514,7 @@ export function MatchesPanel({
                         No upcoming matches.
                       </div>
                     ) : (
-                      <div className="space-y-1.5">
+                      <div className="space-y-1">
                         {incoming.map((item) => {
                           const cardWarning = getCardWarning(item)
                           const isNeedsPlayersWarning = cardWarning?.kind === 'needs-players'
@@ -2545,7 +2545,7 @@ export function MatchesPanel({
                   {lookingFor.length > 0 ? (
                     <section>
                       <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                      <div className="space-y-1.5">
+                      <div className="space-y-1">
                         {lookingFor.map((item) => (
                           <MatchRow
                             key={item.match.id}

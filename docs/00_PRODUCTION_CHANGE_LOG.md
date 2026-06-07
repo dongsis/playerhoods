@@ -23,14 +23,14 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 
 ### Summary
 
-Reorganizes the dashboard Match Board Upcoming tab into Action Needed, My Matches, and Looking for Players without a separate Today Alerts section. Same-day urgent needs-player warnings and time conflicts are shown inline on the relevant My Matches card with a leading status icon and warning accent. Compact rows use tighter list density, preserve the full date/time, move mobile actions below match content, and hide zero-count Looking for Players sections without adding notification, email, SMS, DB, or Calendar behavior changes.
+Reorganizes the dashboard Match Board Upcoming tab into Action Needed, My Matches, and Looking for Players without a separate Today Alerts section. Same-day urgent needs-player warnings and time conflicts are shown inline on the relevant My Matches card with a leading status icon and warning accent. Compact rows use tighter list density with reduced row-to-row gaps, preserve the full date/time, move mobile actions below match content, and hide zero-count Looking for Players sections without adding notification, email, SMS, DB, or Calendar behavior changes.
 
 ### Verification Evidence
 
 | Check | Status | Evidence |
 |---|---|---|
 | Build/typecheck | Passed locally | `git diff --check`; `npx tsc --noEmit`; `npm run build` |
-| Manual Match Board visual check | Passed locally | Browser DOM QA at `http://localhost:3005/dashboard` verified no Today Alerts section, hidden zero-count Looking for Players section, no visible time range or row overflow, mobile Action Needed at ~82px, and mobile My Matches rows at ~64px |
+| Manual Match Board visual check | Passed locally | Browser DOM QA at `http://localhost:3005/dashboard` verified no Today Alerts section, hidden zero-count Looking for Players section, no visible time range or row overflow, mobile Action Needed at ~82px, mobile My Matches rows at ~64px, and tighter row-to-row gaps |
 | Supabase Remote | No change | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic is part of this branch |
 | Production verification | Not run | Branch is not deployed |
