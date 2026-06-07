@@ -50,6 +50,14 @@ type Props = {
   playerCallSummaryLabel?: string
   playerCallHelperText?: ReactNode
   expandModeButtonsOnMobile?: boolean
+  previewOnClick?: boolean
+  renderPreview?: (
+    candidate: AddPlayersCandidate,
+    actions: {
+      closePreview: () => void
+      toggleCandidate: () => void
+    },
+  ) => ReactNode
 }
 
 function modeButtonClass(selected: boolean, tone: AddPlayersMode) {
@@ -115,6 +123,19 @@ function candidateClass(candidate: AddPlayersCandidate, mode: AddPlayersMode) {
   ].join(' ')
 }
 
+function compactCandidateClass(candidate: AddPlayersCandidate, mode: AddPlayersMode) {
+  const selectedClass = mode === 'playerCall'
+    ? 'border-green-500 bg-green-50 text-green-700'
+    : 'border-[#0d6efd]/35 bg-[#eff6ff] text-[#0d6efd]'
+  const idleClass = 'border-[#E2E8F0] bg-white text-[#334155] hover:border-[#CBD5E1] hover:bg-[#F8FAFC]'
+  const disabledClass = 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400 opacity-75'
+
+  return [
+    'text-body-main flex min-h-[38px] w-full max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-left font-semibold transition active:scale-[0.99]',
+    candidate.disabled ? disabledClass : candidate.selected ? selectedClass : idleClass,
+  ].join(' ')
+}
+
 function candidateMatches(candidate: AddPlayersCandidate, query: string, filter: string) {
   if (filter !== 'all' && !candidate.filterTags.includes(filter)) return false
 
@@ -145,6 +166,8 @@ export function AddPlayersPickerPanel({
   playerCallSummaryLabel = 'Call targets',
   playerCallHelperText = 'Only selected players and groups will see this on their Match Board.',
   expandModeButtonsOnMobile = false,
+  previewOnClick = false,
+  renderPreview,
 }: Props) {
   const [previewCandidate, setPreviewCandidate] = useState<AddPlayersCandidate | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
@@ -170,6 +193,10 @@ export function AddPlayersPickerPanel({
   const handleCandidateClick = (candidate: AddPlayersCandidate) => {
     if (longPressOpenedRef.current) {
       longPressOpenedRef.current = false
+      return
+    }
+    if (previewOnClick) {
+      setPreviewCandidate(candidate)
       return
     }
     onToggleCandidate(candidate)
@@ -257,7 +284,7 @@ export function AddPlayersPickerPanel({
             </select>
           </div>
 
-          <div className="flex max-h-[390px] flex-wrap content-start gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+          <div className={`${previewOnClick ? 'grid' : 'flex flex-wrap content-start'} max-h-[390px] gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]`}>
             {filteredCandidates.length === 0 ? (
               <div className="text-body-main w-full px-1 py-6 text-center font-semibold text-[#94A3B8]">
                 {mode === 'invite' ? inviteEmptyLabel : playerCallEmptyLabel}
@@ -278,20 +305,29 @@ export function AddPlayersPickerPanel({
                   aria-pressed={candidate.selected}
                   disabled={candidate.disabled}
                   title={candidate.title}
-                  className={candidateClass(candidate, mode)}
+                  className={previewOnClick ? compactCandidateClass(candidate, mode) : candidateClass(candidate, mode)}
                 >
                   {candidate.leadingNode}
-                  <span className="min-w-0">
-                    <span className="block max-w-[12rem] truncate">
+                  <span className={`${previewOnClick ? 'flex min-w-0 flex-1 items-center gap-2' : 'min-w-0'}`}>
+                    <span className={`${previewOnClick ? 'max-w-full' : 'max-w-[12rem]'} block truncate`}>
                       {candidate.labelNode ?? candidate.name}
                     </span>
-                    {candidate.supportingNode ? (
+                    {previewOnClick && candidate.supportingNode ? (
+                      <span className="hidden max-w-[8.5rem] shrink-0 truncate rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-500 min-[360px]:inline-block">
+                        {candidate.supportingNode}
+                      </span>
+                    ) : null}
+                    {!previewOnClick && candidate.supportingNode ? (
                       <span className="mt-0.5 block truncate text-body-sub font-semibold text-current opacity-65">
                         {candidate.supportingNode}
                       </span>
                     ) : null}
                   </span>
-                  {candidate.trailingNode}
+                  {previewOnClick ? (
+                    <span className="ml-auto text-[15px] font-black text-slate-300" aria-hidden="true">
+                      &rsaquo;
+                    </span>
+                  ) : candidate.trailingNode}
                 </button>
               ))
             )}
@@ -322,33 +358,42 @@ export function AddPlayersPickerPanel({
             onClick={() => setPreviewCandidate(null)}
           />
           <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-50 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_22px_55px_rgba(15,23,42,0.22)] sm:bottom-5 sm:left-auto sm:right-5 sm:w-[320px]">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="m-0 truncate text-title-main text-slate-900">
-                  {previewCandidate.previewTitle ?? previewCandidate.name}
-                </p>
-                {previewCandidate.previewSubtitle ? (
-                  <p className="mt-1 text-body-sub font-semibold text-slate-500">
-                    {previewCandidate.previewSubtitle}
-                  </p>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewCandidate(null)}
-                className="text-body-sub rounded-full border border-slate-200 bg-white px-2 py-1 font-bold text-slate-500 transition hover:bg-slate-50"
-              >
-                Close
-              </button>
-            </div>
-            {previewCandidate.previewDetails ? (
-              <div className="mt-3 text-body-sub font-semibold text-slate-600">
-                {previewCandidate.previewDetails}
-              </div>
+            {renderPreview ? (
+              renderPreview(previewCandidate, {
+                closePreview: () => setPreviewCandidate(null),
+                toggleCandidate: () => onToggleCandidate(previewCandidate),
+              })
             ) : (
-              <p className="mt-3 text-body-sub font-semibold text-slate-500">
-                Compact player preview.
-              </p>
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="m-0 truncate text-title-main text-slate-900">
+                      {previewCandidate.previewTitle ?? previewCandidate.name}
+                    </p>
+                    {previewCandidate.previewSubtitle ? (
+                      <p className="mt-1 text-body-sub font-semibold text-slate-500">
+                        {previewCandidate.previewSubtitle}
+                      </p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewCandidate(null)}
+                    className="text-body-sub rounded-full border border-slate-200 bg-white px-2 py-1 font-bold text-slate-500 transition hover:bg-slate-50"
+                  >
+                    Close
+                  </button>
+                </div>
+                {previewCandidate.previewDetails ? (
+                  <div className="mt-3 text-body-sub font-semibold text-slate-600">
+                    {previewCandidate.previewDetails}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-body-sub font-semibold text-slate-500">
+                    Compact player preview.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </>
