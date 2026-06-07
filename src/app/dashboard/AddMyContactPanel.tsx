@@ -39,7 +39,7 @@ type Props = {
 const BENEFITS = [
   {
     title: 'Save as player card',
-    body: 'Add someone on PlayerHoods.',
+    body: 'Save your regular players or teammates so they’re easy to invite next time.',
   },
   {
     title: 'Invite by link anytime',
@@ -374,7 +374,7 @@ export function AddMyContactPanel({
                 </p>
               </div>
 
-              <div className="mt-4">
+              <div className="mt-3 sm:mt-4">
                 {smartImportAvailable && onParseScreenshots && onImportScreenshotContacts ? (
                   <ContactScreenshotImportSection
                     userId={userId}
