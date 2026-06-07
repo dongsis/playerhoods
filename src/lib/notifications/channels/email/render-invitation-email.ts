@@ -5,6 +5,7 @@ export type InvitationEmailData = {
   inviterDisplayName: string
   targetEmail: string
   invitationId: string
+  responseUrl?: string | null
   matchSummary?: {
     game_type: string | null
     match_date: string | null
@@ -32,10 +33,10 @@ function formatClubLabel(clubName: string | null | undefined): string {
   return value || 'TBD'
 }
 
-/** Render invitation email HTML. CTA leads to the invitation response page. */
+/** Render invitation email HTML. CTA leads to the public join/status hub when available. */
 export function renderInvitationEmail(data: InvitationEmailData): string {
   const base = data.siteUrl && data.siteUrl !== 'undefined' ? data.siteUrl : getSiteOrigin()
-  const viewUrl = `${base}/invitations/${data.invitationId}`
+  const viewUrl = data.responseUrl ?? `${base}/invitations/${data.invitationId}`
   const registerUrl = `${base}/login?mode=register&next=${encodeURIComponent(viewUrl)}`
   const unsubscribeUrl = data.unsubscribeUrl ?? `${base}/unsubscribe?invitation=${encodeURIComponent(data.invitationId)}&channel=email&scope=contact_invites`
   const formatLabel = formatMatchFormatLabel(data.matchSummary?.game_type)
@@ -60,7 +61,7 @@ export function renderInvitationEmail(data: InvitationEmailData): string {
     ctaHint: 'No account is required to respond.',
     promoTitle: 'New to PlayerHoods?',
     promoBody:
-      'Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.',
+      'Create a free account to join matches faster, track updates, manage your match status, and stay connected with players you trust.',
     promoCtaLabel: 'Create Free Account',
     promoCtaUrl: registerUrl,
     secondaryTitle: 'Notification note',

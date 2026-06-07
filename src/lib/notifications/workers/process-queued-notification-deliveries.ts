@@ -30,6 +30,7 @@ import {
 } from '@/lib/email/templates'
 import { formatInvitationToken } from '@/lib/invitations/invitation-token'
 import { NotificationService } from '@/lib/notifications/notification-service'
+import { resolvePublicJoinPathForMatch, type PublicJoinIntent } from '@/lib/notifications/public-join-links'
 import { getSiteOrigin } from '@/lib/site-url'
 
 function normalizeConfiguredOrigin(value: string | null | undefined): string | null {
@@ -203,12 +204,31 @@ async function getMatchOrganizerName(supabase: SupabaseClient, matchId: string |
   return getProfileDisplayName(supabase, organizerId)
 }
 
+async function withEmailJoinPath(
+  supabase: SupabaseClient,
+  matchInfo: ReturnType<typeof buildMatchInfo>,
+  intent: PublicJoinIntent,
+): Promise<ReturnType<typeof buildMatchInfo>> {
+  const joinPath = await resolvePublicJoinPathForMatch(supabase, matchInfo.matchId, intent)
+  return joinPath ? { ...matchInfo, magicLinkPath: joinPath } : matchInfo
+}
+
+async function resolveEmailJoinUrl(
+  supabase: SupabaseClient,
+  matchId: string | null | undefined,
+  intent: PublicJoinIntent,
+): Promise<string | null> {
+  const joinPath = await resolvePublicJoinPathForMatch(supabase, matchId, intent)
+  return joinPath ? new URL(joinPath, SITE_URL).toString() : null
+}
+
 async function enrichInvitationContext(
   supabase: SupabaseClient,
   invitationId: string,
   fallback: {
     inviterDisplayName: string
     recipientName: string | null
+    matchId: string | null
     matchSummary: { game_type: string | null; sport_name?: string | null; match_date: string | null; start_time?: string | null; club_name: string | null } | null
   },
 ): Promise<typeof fallback> {
@@ -238,11 +258,16 @@ async function enrichInvitationContext(
     && fallback.matchSummary.start_time
     && fallback.matchSummary.sport_name
   ) {
-    return { inviterDisplayName, recipientName, matchSummary: fallback.matchSummary }
+    return {
+      inviterDisplayName,
+      recipientName,
+      matchId: invitationRow?.related_type === 'match' ? invitationRow.related_id ?? fallback.matchId : fallback.matchId,
+      matchSummary: fallback.matchSummary,
+    }
   }
 
   if (invitationRow?.related_type !== 'match' || !invitationRow.related_id) {
-    return { inviterDisplayName, recipientName, matchSummary: fallback.matchSummary }
+    return { inviterDisplayName, recipientName, matchId: fallback.matchId, matchSummary: fallback.matchSummary }
   }
 
   const { data: match } = await supabase
@@ -282,6 +307,7 @@ async function enrichInvitationContext(
   return {
     inviterDisplayName,
     recipientName,
+    matchId: invitationRow.related_id,
     matchSummary: {
       game_type: matchRow?.game_type ?? fallback.matchSummary?.game_type ?? null,
       sport_name: sportName,
@@ -343,10 +369,12 @@ async function processNotificationDeliveryRows(
       const context = await enrichInvitationContext(supabase, invitationId, {
         inviterDisplayName: (payload.inviter_display_name as string) ?? 'Someone',
         recipientName: ((payload.recipient_name as string) ?? (payload.target_name as string) ?? null)?.trim() || null,
+        matchId: null,
         matchSummary: fallbackMatchSummary,
       })
       const inviterDisplayName = context.inviterDisplayName
       const recipientName = context.recipientName
+      const matchId = context.matchId
       const matchSummary = context.matchSummary
       const unsubscribeUrl = `${SITE_URL}/unsubscribe?invitation=${encodeURIComponent(invitationId)}&channel=email&scope=contact_invites`
       subject = invitationSubject(inviterDisplayName, matchSummary?.club_name)
@@ -360,6 +388,7 @@ async function processNotificationDeliveryRows(
         inviterDisplayName,
         targetEmail: (payload.target_email as string) ?? d.destination,
         invitationId,
+        responseUrl: d.channel === 'email' ? await resolveEmailJoinUrl(supabase, matchId, 'respond') : null,
         matchSummary,
         siteUrl: SITE_URL,
         unsubscribeUrl,
@@ -376,31 +405,36 @@ async function processNotificationDeliveryRows(
     } else if (templateType === 'guest_nominated') {
       const m = buildMatchInfo(payload)
       subject = "You're invited to a match"
-      html = guestParticipantInviteEmail(m, (payload.nominator_display_name as string) ?? 'Someone')
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'respond') : m
+      html = guestParticipantInviteEmail(emailMatch, (payload.nominator_display_name as string) ?? 'Someone')
       smsBody = renderGuestParticipantInviteSms(m, (payload.nominator_display_name as string) ?? 'Someone')
     } else if (templateType === 'guest_org_approved') {
       const m = buildMatchInfo(payload)
       const inviterDisplayName = (payload.nominator_display_name as string) ?? 'Someone'
       subject = invitationSubject(inviterDisplayName, m.venueName)
       emailFrom = inviteSenderFrom(inviterDisplayName)
-      html = guestOrgApprovedEmail(m, inviterDisplayName)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'respond') : m
+      html = guestOrgApprovedEmail(emailMatch, inviterDisplayName)
       smsBody = renderGuestOrgApprovedSms(m, inviterDisplayName)
     } else if (templateType === 'guest_delegate_confirmed') {
       const m = buildMatchInfo(payload)
       subject = "You're confirmed for a match"
-      html = guestDelegateConfirmedEmail(m)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'view') : m
+      html = guestDelegateConfirmedEmail(emailMatch)
       smsBody = renderGuestDelegateConfirmedSms(m)
     } else if (templateType === 'match_formed') {
       const m = buildMatchInfo(payload)
       subject = 'Game formed'
-      html = gameFormedEmail(m)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'view') : m
+      html = gameFormedEmail(emailMatch)
       smsBody = renderGameFormedSms(m)
     } else if (templateType === 'match_invite') {
       const m = buildMatchInfo(payload)
       const organizerDisplayName = (payload.inviter_display_name as string) ?? (await getMatchOrganizerName(supabase, m.matchId)) ?? 'Someone'
       subject = invitationSubject(organizerDisplayName, m.venueName)
       emailFrom = inviteSenderFrom(organizerDisplayName)
-      html = playerhoodsMatchInviteEmail(m, organizerDisplayName)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'respond') : m
+      html = playerhoodsMatchInviteEmail(emailMatch, organizerDisplayName)
       smsBody = renderMatchInviteSms(m, organizerDisplayName)
     } else if (templateType === 'confirmed_lineup') {
       const m = buildMatchInfo(payload)
@@ -410,14 +444,16 @@ async function processNotificationDeliveryRows(
         ? `Game on: ${sanitizeSenderName(organizerDisplayName)} confirmed your match at ${venue}`
         : `Game on: ${sanitizeSenderName(organizerDisplayName)} confirmed your match`
       emailFrom = inviteSenderFrom(organizerDisplayName)
-      html = confirmedLineupEmail(m, organizerDisplayName)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'view') : m
+      html = confirmedLineupEmail(emailMatch, organizerDisplayName)
       smsBody = renderConfirmedLineupSms(m)
     } else if (templateType === 'match_reminder') {
       const m = buildMatchInfo(payload)
       const organizerDisplayName = (payload.inviter_display_name as string) ?? (await getMatchOrganizerName(supabase, m.matchId)) ?? 'Someone'
       subject = 'Reminder: your PlayerHoods match is coming up'
       emailFrom = inviteSenderFrom(organizerDisplayName)
-      html = matchReminderEmail(m)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'view') : m
+      html = matchReminderEmail(emailMatch)
       smsBody = renderMatchReminderSms(m)
     } else if (templateType === 'host_managed_confirmation') {
       const m = buildMatchInfo(payload)
@@ -431,17 +467,20 @@ async function processNotificationDeliveryRows(
         ? `${sanitizeSenderName(organizerDisplayName)} added you as confirmed at ${venue}`
         : `${sanitizeSenderName(organizerDisplayName)} added you as confirmed`
       emailFrom = inviteSenderFrom(organizerDisplayName)
-      html = hostOfflineConfirmationEmail(m, organizerDisplayName)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'view') : m
+      html = hostOfflineConfirmationEmail(emailMatch, organizerDisplayName)
       smsBody = renderHostOfflineConfirmationSms(m, organizerDisplayName)
     } else if (templateType === 'critical_update') {
       const m = buildMatchInfo(payload)
       subject = 'PlayerHoods match update'
-      html = criticalUpdateEmail(m)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'review-changes') : m
+      html = criticalUpdateEmail(emailMatch)
       smsBody = renderCriticalUpdateSms(m)
     } else if (templateType === 'cancellation') {
       const m = buildMatchInfo(payload)
       subject = 'PlayerHoods match cancelled'
-      html = cancellationEmail(m)
+      const emailMatch = d.channel === 'email' ? await withEmailJoinPath(supabase, m, 'view') : m
+      html = cancellationEmail(emailMatch)
       smsBody = renderCancellationSms(m)
     } else {
       continue

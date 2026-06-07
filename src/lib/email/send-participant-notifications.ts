@@ -3,6 +3,7 @@ import { sendEmail } from './send'
 import { sendSms } from '@/lib/sms/send'
 import { renderGameFormedSms, renderMatchRemovedSms, renderMatchTimeChangeSms } from '@/lib/notifications/channels/sms/render-notification-sms'
 import { gameFormedEmail, matchRemovedEmail, matchTimeChangePendingEmail, type MatchInfo } from './templates'
+import { resolvePublicJoinPathForMatch, type PublicJoinIntent } from '@/lib/notifications/public-join-links'
 import { getSiteOrigin } from '@/lib/site-url'
 
 export type ParticipantNotificationTarget = {
@@ -58,6 +59,15 @@ function buildMatchInfo(
   }
 }
 
+async function withEmailJoinPath(
+  supabase: SupabaseClient,
+  matchInfo: MatchInfo,
+  intent: PublicJoinIntent,
+): Promise<MatchInfo> {
+  const joinPath = await resolvePublicJoinPathForMatch(supabase, matchInfo.matchId, intent)
+  return joinPath ? { ...matchInfo, magicLinkPath: joinPath } : matchInfo
+}
+
 async function sendMatchNotificationByChannel(
   targets: ParticipantNotificationTarget[],
   payload: { emailSubject: string; emailHtml: string; smsBody: string },
@@ -104,9 +114,10 @@ export async function sendMatchTimeChangeEmails(
   }
 
   const matchInfo = buildMatchInfo(match, venueName)
+  const emailMatchInfo = await withEmailJoinPath(supabase, matchInfo, 'review-changes')
   return sendMatchNotificationByChannel(targets, {
     emailSubject: 'Match time changed - please confirm',
-    emailHtml: matchTimeChangePendingEmail(matchInfo),
+    emailHtml: matchTimeChangePendingEmail(emailMatchInfo),
     smsBody: renderMatchTimeChangeSms(matchInfo),
   })
 }
@@ -118,9 +129,10 @@ export async function sendGameFormedEmails(
 ): Promise<{ sent: number; skipped: number; errors: string[] }> {
   const targets = await getConfirmedParticipantNotificationTargets(supabase, match.id)
   const matchInfo = buildMatchInfo(match, venueName)
+  const emailMatchInfo = await withEmailJoinPath(supabase, matchInfo, 'view')
   return sendMatchNotificationByChannel(targets, {
     emailSubject: 'Game formed',
-    emailHtml: gameFormedEmail(matchInfo),
+    emailHtml: gameFormedEmail(emailMatchInfo),
     smsBody: renderGameFormedSms(matchInfo),
   })
 }
@@ -133,9 +145,10 @@ export async function sendParticipantRemovedNotification(
 ): Promise<{ sent: number; skipped: number; errors: string[] }> {
   const targets = await getRemovedParticipantNotificationTargets(supabase, participantId)
   const matchInfo = buildMatchInfo(match, venueName)
+  const emailMatchInfo = await withEmailJoinPath(supabase, matchInfo, 'view')
   return sendMatchNotificationByChannel(targets, {
     emailSubject: 'Removed from match',
-    emailHtml: matchRemovedEmail(matchInfo),
+    emailHtml: matchRemovedEmail(emailMatchInfo),
     smsBody: renderMatchRemovedSms(matchInfo),
   })
 }
