@@ -1015,6 +1015,12 @@ function startOfWeek(date: Date): Date {
   return next
 }
 
+function startOfCalendarDay(date: Date): Date {
+  const next = new Date(date)
+  next.setHours(12, 0, 0, 0)
+  return next
+}
+
 function addDays(date: Date, count: number): Date {
   const next = new Date(date)
   next.setDate(next.getDate() + count)
@@ -1033,6 +1039,26 @@ function formatCalendarHeading(date: Date): string {
     month: 'long',
     year: 'numeric',
   }).format(date)
+}
+
+function formatCalendarRangeHeading(days: Date[]): string {
+  const start = days[0]
+  const end = days[days.length - 1]
+  if (!start || !end) return ''
+
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    const month = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(start)
+    return `${month} ${start.getDate()}-${end.getDate()}, ${start.getFullYear()}`
+  }
+
+  const monthDay = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+  const monthDayYear = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+  if (start.getFullYear() === end.getFullYear()) {
+    return `${monthDay.format(start)}-${monthDayYear.format(end)}`
+  }
+
+  return `${monthDayYear.format(start)}-${monthDayYear.format(end)}`
 }
 
 function formatCalendarDayLabel(date: Date): string {
@@ -1171,16 +1197,25 @@ function markCalendarConflicts(entries: CalendarEntry[]): CalendarEntry[] {
 function WeeklyCalendar({
   items,
   userId,
+  rangeMode = 'week',
+  hourHeight = 34,
+  compact = false,
 }: {
   items: MatchListItem[]
   userId: string
+  rangeMode?: 'week' | 'rolling8'
+  hourHeight?: number
+  compact?: boolean
 }) {
   const [weekAnchor, setWeekAnchor] = useState(() => startOfWeek(new Date()))
+  const rollingAnchor = useMemo(() => startOfCalendarDay(new Date()), [])
   const nowIso = useMemo(() => new Date().toISOString(), [])
+  const calendarStart = rangeMode === 'rolling8' ? rollingAnchor : weekAnchor
+  const visibleDayCount = rangeMode === 'rolling8' ? 8 : 7
 
-  const weekDays = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => addDays(weekAnchor, index)),
-    [weekAnchor],
+  const calendarDays = useMemo(
+    () => Array.from({ length: visibleDayCount }, (_, index) => addDays(calendarStart, index)),
+    [calendarStart, visibleDayCount],
   )
 
   const entries = useMemo(() => {
@@ -1245,63 +1280,79 @@ function WeeklyCalendar({
     return next
   }, [entries])
 
-  const heading = formatCalendarHeading(weekAnchor)
+  const heading = rangeMode === 'rolling8'
+    ? formatCalendarRangeHeading(calendarDays)
+    : formatCalendarHeading(weekAnchor)
   const todayKey = toDateKey(new Date())
   const visibleStartMinutes = 7 * 60
   const visibleEndMinutes = 22 * 60
   const visibleHourCount = (visibleEndMinutes - visibleStartMinutes) / 60
   const hourTicks = Array.from({ length: visibleHourCount + 1 }, (_, index) => visibleStartMinutes + index * 60)
-  const hourHeight = 34
   const calendarHeight = hourHeight * visibleHourCount
+  const timeColumnWidth = compact ? 42 : 52
+  const calendarGridTemplate = `${timeColumnWidth}px repeat(${calendarDays.length}, minmax(0, 1fr))`
 
   return (
-    <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
+    <section
+      className={
+        compact
+          ? 'rounded-[22px] border border-[#E2E8F0] bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.05)]'
+          : 'rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6'
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-label text-[#94A3B8]">Match Calendar</p>
           <h3 className="text-h2 mt-2 tracking-tight text-[#1E293B]">{heading}</h3>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setWeekAnchor(startOfWeek(new Date()))}
-            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setWeekAnchor((current) => addDays(current, -7))}
-            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
-            aria-label="Previous week"
-          >
-            {'<'}
-          </button>
-          <button
-            onClick={() => setWeekAnchor((current) => addDays(current, 7))}
-            className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
-            aria-label="Next week"
-          >
-            {'>'}
-          </button>
-        </div>
+        {rangeMode === 'week' ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setWeekAnchor(startOfWeek(new Date()))}
+              className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setWeekAnchor((current) => addDays(current, -7))}
+              className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
+              aria-label="Previous week"
+            >
+              {'<'}
+            </button>
+            <button
+              onClick={() => setWeekAnchor((current) => addDays(current, 7))}
+              className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
+              aria-label="Next week"
+            >
+              {'>'}
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-5 w-full overflow-hidden">
+      <div className={compact ? 'mt-4 w-full overflow-hidden' : 'mt-5 w-full overflow-hidden'}>
         <div className="w-full min-w-0">
-          <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b border-[#E2E8F0]">
+          <div className="grid border-b border-[#E2E8F0]" style={{ gridTemplateColumns: calendarGridTemplate }}>
             <div className="border-r border-[#E2E8F0]" />
-            {weekDays.map((day) => {
+            {calendarDays.map((day) => {
               const dayKey = toDateKey(day)
               const isToday = dayKey === todayKey
 
               return (
-                <div key={dayKey} className="border-r border-[#E2E8F0] px-2 pb-3">
-                  <p className="text-label text-[#94A3B8]">
+                <div
+                  key={dayKey}
+                  className={compact ? 'border-r border-[#E2E8F0] px-1 pb-2 text-center' : 'border-r border-[#E2E8F0] px-2 pb-3'}
+                >
+                  <p className={compact ? 'text-[9px] font-bold uppercase leading-tight text-[#94A3B8]' : 'text-label text-[#94A3B8]'}>
                     {formatCalendarDayLabel(day)}
                   </p>
-                  <div className="mt-1">
+                  <div className={compact ? 'mt-1 flex justify-center' : 'mt-1'}>
                     <span
                       className={[
-                        'text-h2 inline-flex h-9 min-w-9 items-center justify-center rounded-full px-2',
+                        compact
+                          ? 'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-[13px] font-black leading-none'
+                          : 'text-h2 inline-flex h-9 min-w-9 items-center justify-center rounded-full px-2',
                         isToday ? 'bg-[#0d6efd] text-white' : 'text-[#1E293B]',
                       ].join(' ')}
                     >
@@ -1313,12 +1364,16 @@ function WeeklyCalendar({
             })}
           </div>
 
-          <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))]">
+          <div className="grid" style={{ gridTemplateColumns: calendarGridTemplate }}>
             <div className="relative border-r border-[#E2E8F0]" style={{ height: calendarHeight }}>
               {hourTicks.map((minutes, index) => (
                 <div
                   key={minutes}
-                  className="text-label absolute inset-x-0 flex -translate-y-1/2 justify-end pr-2 text-[#94A3B8]"
+                  className={
+                    compact
+                      ? 'absolute inset-x-0 flex -translate-y-1/2 justify-end pr-1.5 text-[9px] font-bold leading-none text-[#94A3B8]'
+                      : 'text-label absolute inset-x-0 flex -translate-y-1/2 justify-end pr-2 text-[#94A3B8]'
+                  }
                   style={{ top: index * hourHeight }}
                 >
                   {formatEventTimeLabel(minutes)}
@@ -1326,7 +1381,7 @@ function WeeklyCalendar({
               ))}
             </div>
 
-            {weekDays.map((day) => {
+            {calendarDays.map((day) => {
               const dayKey = toDateKey(day)
               const dayEntries = entryMap.get(dayKey) ?? []
 
@@ -1357,7 +1412,9 @@ function WeeklyCalendar({
                         href={`/dashboard?matchId=${entry.id}`}
                         title={entry.hasConflict ? 'Time conflict with another match' : undefined}
                         className={[
-                          'absolute left-1 right-1 overflow-hidden rounded-[11px] border px-1.5 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:z-10 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]',
+                          compact
+                            ? 'absolute left-0.5 right-0.5 overflow-hidden rounded-[9px] border px-1 py-0.5 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:z-10 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]'
+                            : 'absolute left-1 right-1 overflow-hidden rounded-[11px] border px-1.5 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:z-10 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]',
                           entry.hasConflict
                             ? 'border-[#FCA5A5] bg-[#FFF1F2]'
                             : entry.tone === 'green'
@@ -1381,13 +1438,22 @@ function WeeklyCalendar({
                             </span>
                           </>
                         ) : null}
-                        <div className="flex items-center gap-1">
+                        <div className="flex min-w-0 items-center gap-1">
                           <SportGlyph sportKey={entry.sportKey} />
-                          <p className={['text-[10px] font-semibold leading-tight text-[#1E293B]', entry.hasConflict ? 'pr-4' : ''].join(' ')}>
+                          <p className={[
+                            compact
+                              ? 'truncate text-[9px] font-medium leading-tight text-[#475569] sm:text-[10px] sm:font-semibold'
+                              : 'truncate text-[10px] font-semibold leading-tight text-[#1E293B]',
+                            entry.hasConflict ? 'pr-4' : '',
+                          ].join(' ')}>
                             {entry.organizerName}
                           </p>
                         </div>
-                        <p className={['mt-0.5 text-[10px] leading-tight', entry.hasConflict ? 'font-semibold text-[#B91C1C]' : 'text-[#475569]'].join(' ')}>
+                        <p className={[
+                          'mt-0.5 leading-tight',
+                          compact ? 'text-[9px] sm:text-[10px]' : 'text-[10px]',
+                          entry.hasConflict ? 'font-semibold text-[#B91C1C]' : 'text-[#475569]',
+                        ].join(' ')}>
                           {entry.timeLabel}
                         </p>
                       </Link>
@@ -1711,6 +1777,14 @@ export function MatchesPanel({
     </button>
   )
 
+  const mobileSubTabs = mobileMainTab === 'my-matches' && !createMatchExpanded ? (
+    <div className="sticky top-2 z-20 grid w-full grid-cols-3 rounded-full border border-[#E2E8F0] bg-white/95 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur">
+      {subTabBtn('upcoming', 'Upcoming', incoming.length)}
+      {subTabBtn('calendar', 'Calendar')}
+      {subTabBtn('history', 'History', history.length)}
+    </div>
+  ) : null
+
   const handleCreateExpandedChange = useCallback((expanded: boolean) => {
     setCreateMatchExpanded(expanded)
   }, [])
@@ -1786,7 +1860,7 @@ export function MatchesPanel({
                 <button
                   type="button"
                   onClick={handleCreateMatchAction}
-                  className="flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-[14px] bg-[#0d6efd] px-2 py-2 text-center text-[12px] font-black leading-tight text-white shadow-[0_12px_24px_rgba(13,110,253,0.22)] transition hover:bg-[#0b5ed7]"
+                  className="flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-[14px] border border-[#86EFAC] bg-[#ECFDF5]/90 px-2 py-2 text-center text-[12px] font-black leading-tight text-[#047857] shadow-[0_12px_24px_rgba(4,120,87,0.12)] transition hover:bg-[#D1FAE5]"
                 >
                   <span className="text-[17px] leading-none">+</span>
                   <span>Create Match</span>
@@ -1795,14 +1869,8 @@ export function MatchesPanel({
                 {mobileMainTabBtn('call-board', 'Call Board', lookingFor.length)}
               </div>
 
-              {mobileMainTab === 'my-matches' && !createMatchExpanded ? (
-                <div className="mt-3 grid w-full grid-cols-3 rounded-full border border-[#E2E8F0] bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                  {subTabBtn('upcoming', 'Upcoming', incoming.length)}
-                  {subTabBtn('calendar', 'Calendar')}
-                  {subTabBtn('history', 'History', history.length)}
-                </div>
-              ) : null}
             </section>
+            {mobileSubTabs}
           </>
         ) : null}
 
@@ -1859,8 +1927,8 @@ export function MatchesPanel({
             </section>
           </>
         ) : subTab === 'calendar' ? (
-          <section className="rounded-[28px] border border-[#E2E8F0] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-            <WeeklyCalendar items={items} userId={userId} />
+          <section className="space-y-4">
+            <WeeklyCalendar items={items} userId={userId} rangeMode="rolling8" hourHeight={28} compact />
           </section>
         ) : (
           <section className="space-y-4">
