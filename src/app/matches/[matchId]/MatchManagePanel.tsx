@@ -2,12 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { Avatar } from '@/app/components/Avatar'
+import { ParticipantDetailPanel, type DetailSportProfile } from '@/app/components/ParticipantDetailPanel'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
+import { PlayerProfileDrawer } from '@/app/components/PlayerProfileDrawer'
 import { AddPlayersPickerPanel, type AddPlayersCandidate, type AddPlayersMode } from '@/app/matches/AddPlayersPickerPanel'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
+import {
+  getAvailabilityStatusDotClass,
+  getAvailabilityStatusLabel,
+  getLevelLabel,
+  getLookingToPlayLabel,
+  getPreferredPlayTimeLabel,
+  getSportFormatOptions,
+} from '@/lib/profile-options'
 import { saveContactPlayer } from '@/lib/api/play-network'
 import { createRosterGuest } from '@/lib/api/roster'
+import { getSharedCityNamesByUserIds } from '@/lib/api/discovery'
+import { getPublicPlayerProfile, type PublicPlayerProfile, type PublicSportProfile } from '@/lib/api/player-profiles'
 import {
   inviteGroupToMatch,
   inviteContactPersonToMatch,
@@ -62,6 +74,8 @@ type CandidateItem = {
   guestId?: string | null
   personId?: string | null
   isLinkedContact?: boolean
+  cityNames?: string[]
+  matchSportLevel?: string | null
 }
 
 type PendingAddition = CandidateItem & {
@@ -148,6 +162,8 @@ type PendingGroup = {
 type Props = {
   panelMode?: PanelMode
   matchId: string
+  matchSportId?: number | null
+  matchSportName?: string | null
   isOrganizer: boolean
   organizerUserId: string | null
   embedded?: boolean
@@ -243,6 +259,80 @@ function getLookupAvailabilityStatus(
     return lookup[getAvailabilityLookupKey('contact', item.guestId)] ?? null
   }
   return null
+}
+
+function splitPlayStyle(value: string | null | undefined): string[] {
+  if (!value) return []
+
+  return value
+    .split(/[,\n;]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+function normalizeSportToken(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, '') ?? ''
+}
+
+function pickMatchSportProfile(
+  profile: PublicPlayerProfile | null,
+  matchSportId: number | null | undefined,
+  matchSportName: string | null | undefined,
+): PublicSportProfile | null {
+  if (!profile || profile.sport_profiles.length === 0) return null
+
+  if (matchSportId != null) {
+    const byId = profile.sport_profiles.find((item) => item.sport_id === matchSportId)
+    if (byId) return byId
+  }
+
+  const matchToken = normalizeSportToken(matchSportName)
+  if (!matchToken) return null
+
+  return profile.sport_profiles.find((item) =>
+    normalizeSportToken(item.sport_name) === matchToken ||
+    normalizeSportToken(item.sport_code) === matchToken
+  ) ?? null
+}
+
+function formatLevelLabel(value: string | null | undefined): string | null {
+  return getLevelLabel(value) ?? value ?? null
+}
+
+function getMatchSportLevelLabel(
+  profile: PublicPlayerProfile | null,
+  matchSportId: number | null | undefined,
+  matchSportName: string | null | undefined,
+): string | null {
+  return formatLevelLabel(pickMatchSportProfile(profile, matchSportId, matchSportName)?.level)
+}
+
+function formatSportProfile(profile: PublicSportProfile): DetailSportProfile {
+  return {
+    key: `${profile.sport_id}`,
+    sportName: profile.sport_name,
+    level: getLevelLabel(profile.level) ?? profile.level ?? null,
+    formatLabels: profile.preferred_formats
+      .map((value) => getSportFormatOptions(profile.sport_code).find((option) => option.value === value)?.label ?? value)
+      .filter(Boolean),
+    playStyles: splitPlayStyle(profile.play_style),
+  }
+}
+
+function getAvailabilityDisplay(
+  availabilityStatus: string | null | undefined,
+  profileLookingToPlay: string | null | undefined,
+) {
+  const value = availabilityStatus ?? profileLookingToPlay ?? null
+  return {
+    dotClassName: getAvailabilityStatusDotClass(value) ?? 'bg-slate-300',
+    label:
+      getAvailabilityStatusLabel(availabilityStatus) ??
+      getLookingToPlayLabel(profileLookingToPlay) ??
+      availabilityStatus ??
+      profileLookingToPlay ??
+      'Availability not shared',
+  }
 }
 
 function getCandidateFilterTags(candidate: CandidateItem): PickerFilter[] {
@@ -610,6 +700,205 @@ function SelectableInviteChip({
   )
 }
 
+function AddPlayerCandidatePreviewCard({
+  item,
+  selected,
+  mode,
+  onToggle,
+  onClose,
+  matchSportId,
+  matchSportName,
+}: {
+  item: CandidateItem
+  selected: boolean
+  mode: AdditionMode
+  onToggle: () => void
+  onClose: () => void
+  matchSportId?: number | null
+  matchSportName?: string | null
+}) {
+  const [profile, setProfile] = useState<PublicPlayerProfile | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+
+  useEffect(() => {
+    if (!item.userId) {
+      setProfile(null)
+      setLoadError(null)
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+    const supabase = createSupabaseBrowserClient()
+    setLoading(true)
+    setLoadError(null)
+
+    getPublicPlayerProfile(supabase, item.userId)
+      .then((nextProfile) => {
+        if (!cancelled) setProfile(nextProfile)
+      })
+      .catch((error) => {
+        if (!cancelled) setLoadError((error as Error).message)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [item.userId])
+
+  const levelLabel = getMatchSportLevelLabel(profile, matchSportId, matchSportName) ?? item.matchSportLevel ?? null
+  const displayName = profile?.display_name ?? item.name
+  const avatarUrl = profile?.avatar_url ?? item.avatarUrl ?? null
+  const isContact = item.kind === 'contact'
+  const availabilityDisplay = getAvailabilityDisplay(item.availabilityStatus, profile?.looking_to_play)
+  const sportProfiles = useMemo(
+    () => (profile?.sport_profiles ?? []).map(formatSportProfile),
+    [profile],
+  )
+  const preferredTimes = useMemo(
+    () => (profile?.preferred_play_times ?? [])
+      .map((value) => getPreferredPlayTimeLabel(value) ?? value)
+      .map((value) => value.trim())
+      .filter(Boolean),
+    [profile],
+  )
+  const detailItems = useMemo(() => {
+    const next: Array<{ key: string; label: string; value: string }> = []
+
+    if ((item.cityNames ?? []).length > 0) {
+      next.push({ key: 'city', label: 'City', value: item.cityNames!.slice(0, 2).join(', ') })
+    }
+    if (profile?.gender) {
+      next.push({
+        key: 'gender',
+        label: 'Gender',
+        value: profile.gender === 'female'
+          ? 'Female'
+          : profile.gender === 'male'
+            ? 'Male'
+            : 'Prefer not to say',
+      })
+    }
+    if ((profile?.sport_profiles ?? []).length > 0) {
+      next.push({
+        key: 'sports',
+        label: 'Sports',
+        value: profile!.sport_profiles.map((sport) => sport.sport_name).filter(Boolean).join(', '),
+      })
+    }
+    if (isContact) {
+      next.push({ key: 'type', label: 'Type', value: 'Contact' })
+    }
+
+    return next
+  }, [isContact, item.cityNames, profile])
+  const toggleLabel = selected
+    ? 'Selected'
+    : mode === 'request'
+      ? 'Open to Join'
+      : 'Add'
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start gap-3">
+        <Avatar
+          src={avatarUrl}
+          displayName={displayName}
+          size="md"
+          fallback={isContact ? 'contact' : 'initial'}
+          className="h-12 w-12 border border-white shadow-sm"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="m-0 truncate text-title-main text-slate-900">{displayName}</p>
+          <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+            <span className={`h-2 w-2 rounded-full ${availabilityDisplay.dotClassName}`} aria-hidden="true" />
+            {availabilityDisplay.label}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {isContact ? (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
+              Contact
+            </span>
+          ) : null}
+          {item.kind !== 'group' ? (
+            <button
+              type="button"
+              onClick={() => setDetailOpen(true)}
+              className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-600 transition hover:bg-slate-50"
+            >
+              Detail
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-slate-50 px-3 py-2 text-[12px] font-bold text-slate-600">
+        {levelLabel ?? (loading ? 'Loading level...' : 'Level not shared')}
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <p className="m-0 min-w-0 truncate text-[11px] font-semibold text-slate-400">
+          {loadError ? 'Profile details unavailable.' : item.sourceLabel ?? (isContact ? 'Contact' : 'Player')}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            onToggle()
+            onClose()
+          }}
+          className={[
+            'shrink-0 rounded-full px-3 py-1 text-[11px] font-black transition',
+            selected
+              ? 'border border-slate-200 bg-slate-100 text-slate-500'
+              : mode === 'request'
+                ? 'bg-green-600 text-white hover:bg-green-700'
+                : 'bg-[#0d6efd] text-white hover:bg-[#0b5ed7]',
+          ].join(' ')}
+        >
+          {toggleLabel}
+        </button>
+      </div>
+
+      {item.userId ? (
+        <PlayerProfileDrawer
+          open={detailOpen}
+          targetUserId={item.userId}
+          matchSportId={matchSportId}
+          matchSportName={matchSportName}
+          cityNames={item.cityNames ?? []}
+          onClose={() => setDetailOpen(false)}
+        />
+      ) : isContact ? (
+        <ParticipantDetailPanel
+          open={detailOpen}
+          displayName={displayName}
+          avatarUrl={avatarUrl}
+          avatarFallback="contact"
+          statusClassName={availabilityDisplay.dotClassName}
+          availabilityLabel={availabilityDisplay.label}
+          headerBadges={(
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
+              Contact
+            </span>
+          )}
+          level={levelLabel}
+          preferredTimes={preferredTimes}
+          sportProfiles={sportProfiles}
+          detailTitle={detailItems.length > 0 ? 'Profile' : null}
+          detailItems={detailItems}
+          onClose={() => setDetailOpen(false)}
+        />
+      ) : null}
+    </div>
+  )
+}
+
 function PendingGroupCard({
   group,
   onUndo,
@@ -708,6 +997,8 @@ function ConfirmationModal({
 export function MatchManagePanel({
   panelMode = 'invite',
   matchId,
+  matchSportId = null,
+  matchSportName = null,
   isOrganizer,
   organizerUserId,
   embedded = false,
@@ -740,6 +1031,8 @@ export function MatchManagePanel({
   const [success, setSuccess] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [availabilityLookup, setAvailabilityLookup] = useState<Record<string, AvailabilityStatus | null>>({})
+  const [sharedCityLookup, setSharedCityLookup] = useState<Record<string, string[]>>({})
+  const [matchSportLevelLookup, setMatchSportLevelLookup] = useState<Record<string, string | null>>({})
   const [localContactCandidates, setLocalContactCandidates] = useState<CandidateItem[]>([])
   const [contactComposerOpen, setContactComposerOpen] = useState(false)
   const [contactDisplayName, setContactDisplayName] = useState('')
@@ -811,6 +1104,71 @@ export function MatchManagePanel({
       cancelled = true
     }
   }, [activeInviteParticipants, activeRequestUsers, candidateUsers, confirmedParticipants, contactTargets])
+
+  useEffect(() => {
+    const userIds = Array.from(new Set(candidateUsers.map((user) => user.id).filter(Boolean)))
+    if (userIds.length === 0) {
+      setSharedCityLookup({})
+      return
+    }
+
+    let cancelled = false
+
+    async function loadSharedCities() {
+      const supabase = createSupabaseBrowserClient()
+
+      try {
+        const cityMap = await getSharedCityNamesByUserIds(supabase, userIds)
+        if (cancelled) return
+
+        setSharedCityLookup(
+          Object.fromEntries(Array.from(cityMap.entries()).map(([userId, cityNames]) => [userId, cityNames])),
+        )
+      } catch {
+        if (!cancelled) setSharedCityLookup({})
+      }
+    }
+
+    loadSharedCities()
+
+    return () => {
+      cancelled = true
+    }
+  }, [candidateUsers])
+
+  useEffect(() => {
+    const userIds = Array.from(new Set(candidateUsers.map((user) => user.id).filter(Boolean)))
+    if (userIds.length === 0 || (matchSportId == null && !matchSportName)) {
+      setMatchSportLevelLookup({})
+      return
+    }
+
+    let cancelled = false
+
+    async function loadMatchSportLevels() {
+      const supabase = createSupabaseBrowserClient()
+      const entries = await Promise.all(
+        userIds.map(async (userId) => {
+          try {
+            const profile = await getPublicPlayerProfile(supabase, userId)
+            return [userId, getMatchSportLevelLabel(profile, matchSportId, matchSportName)] as const
+          } catch {
+            return [userId, null] as const
+          }
+        }),
+      )
+
+      if (!cancelled) {
+        setMatchSportLevelLookup(Object.fromEntries(entries))
+      }
+    }
+
+    loadMatchSportLevels()
+
+    return () => {
+      cancelled = true
+    }
+  }, [candidateUsers, matchSportId, matchSportName])
 
   const removedConfirmedParticipantIds = new Set(
     pendingRemovals
@@ -919,6 +1277,8 @@ export function MatchManagePanel({
               source: user.source,
               sourceLabel: user.sourceLabel,
               userId: user.id,
+              cityNames: sharedCityLookup[user.id] ?? [],
+              matchSportLevel: matchSportLevelLookup[user.id] ?? null,
             })),
             ...contactTargets.filter((target) => target.can_invite).map((target) => ({
               key: `contact-person:${target.person_id}`,
@@ -956,6 +1316,8 @@ export function MatchManagePanel({
               source: user.source,
               sourceLabel: user.sourceLabel,
               userId: user.id,
+              cityNames: sharedCityLookup[user.id] ?? [],
+              matchSportLevel: matchSportLevelLookup[user.id] ?? null,
             })),
             ...(isOrganizer
               ? candidateGroups.map((group) => ({
@@ -993,6 +1355,8 @@ export function MatchManagePanel({
     activeAdditionMode,
     isOrganizer,
     availabilityLookup,
+    sharedCityLookup,
+    matchSportLevelLookup,
     pendingAddKeys,
     revokedRequestGroupIds,
     revokedRequestUserIds,
@@ -1008,9 +1372,9 @@ export function MatchManagePanel({
   const sharedPickerCandidates = useMemo<AddPlayersCandidate[]>(() => (
     inviteCandidates.map((candidate) => {
       const isSelected = pendingAddKeys.has(`${activeAdditionMode}:${candidate.key}`)
-      const availabilityDotClass = candidate.kind === 'user'
-        ? getAvailabilityStatusDotClass(candidate.availabilityStatus)
-        : null
+      const availabilityDotClass = candidate.kind === 'group'
+        ? null
+        : getAvailabilityStatusDotClass(candidate.availabilityStatus) ?? 'bg-slate-300'
       const filterTags = getCandidateFilterTags(candidate)
 
       return {
@@ -1032,6 +1396,7 @@ export function MatchManagePanel({
             {candidate.sourceLabel ?? (candidate.kind === 'group' ? 'Group target' : 'Player target')}
           </p>
         ),
+        supportingNode: candidate.kind === 'group' ? null : candidate.matchSportLevel,
         leadingNode: availabilityDotClass ? (
           <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${availabilityDotClass}`} aria-hidden="true" />
         ) : null,
@@ -2032,6 +2397,23 @@ export function MatchManagePanel({
                 candidates={sharedPickerCandidates}
                 onToggleCandidate={toggleSharedPickerCandidate}
                 expandModeButtonsOnMobile
+                compactPreviewRows
+                renderPreview={(candidate, actions) => {
+                  const item = candidate.payload as CandidateItem | undefined
+                  if (!item) return null
+
+                  return (
+                    <AddPlayerCandidatePreviewCard
+                      item={item}
+                      selected={candidate.selected}
+                      mode={activeAdditionMode}
+                      onToggle={actions.toggleCandidate}
+                      onClose={actions.closePreview}
+                      matchSportId={matchSportId}
+                      matchSportName={matchSportName}
+                    />
+                  )
+                }}
                 shareLinkRow={shareLinkRow}
                 playerCallSummaryLabel="Visible to"
                 playerCallHelperText="Only selected players and groups will see this on their Match Board."

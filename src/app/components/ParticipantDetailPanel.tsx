@@ -18,12 +18,21 @@ export type DetailValue = {
   value: string
 }
 
+export type DetailSportProfile = {
+  key: string
+  sportName: string
+  level?: string | null
+  formatLabels?: string[]
+  playStyles?: string[]
+}
+
 interface Props {
   open: boolean
   displayName: string
   avatarUrl?: string | null
   avatarFallback?: 'initial' | 'contact'
   statusClassName?: string | null
+  availabilityLabel?: string | null
   headerBadges?: ReactNode
   level?: string | null
   formatLabels?: string[]
@@ -31,6 +40,7 @@ interface Props {
   playStyles?: string[]
   experience?: string | null
   preferredTimes?: string[]
+  sportProfiles?: DetailSportProfile[]
   detailTitle?: string | null
   detailItems?: DetailValue[]
   extraContent?: ReactNode
@@ -160,6 +170,7 @@ export function ParticipantDetailPanel({
   avatarUrl,
   avatarFallback = 'initial',
   statusClassName,
+  availabilityLabel,
   headerBadges,
   level,
   formatLabels = [],
@@ -167,6 +178,7 @@ export function ParticipantDetailPanel({
   playStyles = [],
   experience,
   preferredTimes = [],
+  sportProfiles = [],
   detailTitle,
   detailItems = [],
   extraContent,
@@ -175,10 +187,10 @@ export function ParticipantDetailPanel({
 }: Props) {
   if (!open) return null
 
-  const showStatusDot = avatarFallback !== 'contact' && Boolean(statusClassName)
+  const showStatusDot = Boolean(statusClassName)
   const titleClassName = avatarFallback === 'contact'
-    ? 'text-[1.45rem] font-black tracking-tight text-slate-900'
-    : 'text-[1.7rem] font-black tracking-tight text-slate-900'
+    ? 'text-[1.25rem] font-black leading-tight text-slate-900'
+    : 'text-[1.35rem] font-black leading-tight text-slate-900'
 
   return (
     <div className="fixed inset-0 z-[120]">
@@ -188,9 +200,9 @@ export function ParticipantDetailPanel({
         onClick={onClose}
         className="absolute inset-0 bg-slate-950/30"
       />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-[560px] overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-[-18px_0_40px_-24px_rgba(15,23,42,0.32)] sm:p-8">
-        <div className="flex items-center justify-between gap-4 pb-4">
-          <div className="flex items-center gap-4">
+      <aside className="absolute inset-x-2 bottom-2 max-h-[calc(100vh-1rem)] overflow-y-auto rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_22px_60px_rgba(15,23,42,0.22)] sm:inset-y-3 sm:left-auto sm:right-3 sm:w-full sm:max-w-[430px] sm:p-5">
+        <div className="flex items-start justify-between gap-3 pb-3">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="relative">
               <Avatar
                 src={avatarUrl ?? null}
@@ -210,8 +222,16 @@ export function ParticipantDetailPanel({
               <h2 className={titleClassName}>
                 {displayName}
               </h2>
-              {headerBadges ? (
-                <div className="mt-2 flex flex-wrap gap-2">
+              {(headerBadges || availabilityLabel) ? (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {availabilityLabel ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                      {statusClassName ? (
+                        <span className={`h-2 w-2 rounded-full ${statusClassName}`} aria-hidden="true" />
+                      ) : null}
+                      {availabilityLabel}
+                    </span>
+                  ) : null}
                   {headerBadges}
                 </div>
               ) : null}
@@ -227,17 +247,17 @@ export function ParticipantDetailPanel({
           </button>
         </div>
 
-        <div className="space-y-6 pb-4">
+        <div className="space-y-4 pb-2">
           {(level || formatLabels.length > 0) && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {level ? (
-                <div className="flex items-center gap-1.5 rounded-full border border-slate-100 bg-slate-50 px-3 py-1.5">
+                <div className="flex items-center gap-1.5 rounded-full border border-slate-100 bg-slate-50 px-2.5 py-1">
                   <InlineIcon kind="award" className="text-indigo-500" />
                   <span className="text-[11px] font-bold text-slate-600">{level}</span>
                 </div>
               ) : null}
               {formatLabels.map((format) => (
-                <div key={format} className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5">
+                <div key={format} className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1">
                   <span className="text-[11px] font-bold text-indigo-600">{format}</span>
                 </div>
               ))}
@@ -259,11 +279,11 @@ export function ParticipantDetailPanel({
           ) : null}
 
           {playStyles.length > 0 ? (
-            <section className="space-y-3">
+            <section className="space-y-2">
               <SectionTitle icon="play">Play Style</SectionTitle>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {playStyles.map((style) => (
-                  <span key={style} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
+                  <span key={style} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
                     {style}
                   </span>
                 ))}
@@ -271,21 +291,51 @@ export function ParticipantDetailPanel({
             </section>
           ) : null}
 
+          {sportProfiles.length > 0 ? (
+            <section className="space-y-2">
+              <SectionTitle icon="play">Sport Profiles</SectionTitle>
+              <div className="space-y-2">
+                {sportProfiles.map((sport) => {
+                  const details = [
+                    sport.level,
+                    ...(sport.formatLabels ?? []),
+                    ...(sport.playStyles ?? []),
+                  ].filter((value): value is string => Boolean(value))
+
+                  return (
+                    <div key={sport.key} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                      <div className="text-sm font-black text-slate-800">{sport.sportName}</div>
+                      {details.length > 0 ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {details.map((detail) => (
+                            <span key={`${sport.key}-${detail}`} className="rounded-md bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                              {detail}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          ) : null}
+
           {experience ? (
-            <section className="space-y-3">
+            <section className="space-y-2">
               <SectionTitle>Experience</SectionTitle>
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-sm italic leading-relaxed text-slate-500">&quot;{experience}&quot;</p>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <p className="text-xs italic leading-relaxed text-slate-500">&quot;{experience}&quot;</p>
               </div>
             </section>
           ) : null}
 
           {preferredTimes.length > 0 ? (
-            <section className="space-y-3">
+            <section className="space-y-2">
               <SectionTitle icon="times">Preferred Times</SectionTitle>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {preferredTimes.map((time) => (
-                  <span key={time} className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
+                  <span key={time} className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
                     {time}
                   </span>
                 ))}
@@ -294,13 +344,13 @@ export function ParticipantDetailPanel({
           ) : null}
 
           {detailTitle && detailItems.length > 0 ? (
-            <section className="space-y-3">
+            <section className="space-y-2">
               <SectionTitle>{detailTitle}</SectionTitle>
-              <div className="grid gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 {detailItems.map((item) => (
-                  <div key={item.key} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{item.label}</div>
-                    <div className="mt-1 text-sm font-medium text-slate-700">{item.value}</div>
+                  <div key={item.key} className="min-w-0 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                    <div className="text-[9px] font-bold uppercase text-slate-400">{item.label}</div>
+                    <div className="mt-0.5 truncate text-xs font-bold text-slate-700">{item.value}</div>
                   </div>
                 ))}
               </div>

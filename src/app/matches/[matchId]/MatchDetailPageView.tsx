@@ -1125,6 +1125,8 @@ export function MatchDetailPageView({
       isFormed={viewModel.isFormed}
       matchId={viewModel.matchId}
       matchStatus={viewModel.match.status}
+      sportId={viewModel.match.sport_id}
+      sportName={viewModel.sportName}
       gameType={viewModel.match.game_type}
       finalCourtLabel={viewModel.match.final_court_label}
       matchCourts={viewModel.matchCourts}

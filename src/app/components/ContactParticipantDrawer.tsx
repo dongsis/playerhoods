@@ -9,13 +9,15 @@ import {
 } from '@/lib/api/roster'
 import { getPublicPlayerProfile, type PublicPlayerProfile, type PublicSportProfile } from '@/lib/api/player-profiles'
 import {
+  getAvailabilityStatusLabel,
   getAvailabilityStatusDotClass,
   getLevelLabel,
+  getLookingToPlayLabel,
   getPreferredPlayTimeLabel,
   getSportFormatOptions,
 } from '@/lib/profile-options'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import { ParticipantDetailPanel, type DetailConnection, type DetailValue } from './ParticipantDetailPanel'
+import { ParticipantDetailPanel, type DetailConnection, type DetailSportProfile, type DetailValue } from './ParticipantDetailPanel'
 
 type ContactGender = 'male' | 'female' | 'unspecified' | null | undefined
 
@@ -24,6 +26,7 @@ export type ContactParticipantTarget = {
   displayName: string
   avatarUrl?: string | null
   gender?: ContactGender
+  cityNames?: string[]
   savedByViewer?: boolean
   sharesGroupWithViewer?: boolean
 }
@@ -76,6 +79,18 @@ function pickPrimarySportProfile(profile: PublicPlayerProfile | null): PublicSpo
     || item.play_style
     || item.competition_experience,
   ) ?? profile.sport_profiles[0]
+}
+
+function formatSportProfile(profile: PublicSportProfile): DetailSportProfile {
+  return {
+    key: `${profile.sport_id}`,
+    sportName: profile.sport_name,
+    level: getLevelLabel(profile.level) ?? profile.level ?? null,
+    formatLabels: profile.preferred_formats
+      .map((value) => getSportFormatOptions(profile.sport_code).find((option) => option.value === value)?.label ?? value)
+      .filter(Boolean),
+    playStyles: splitPlayStyle(profile.play_style),
+  }
 }
 
 export function ContactParticipantDrawer({
@@ -161,16 +176,6 @@ export function ContactParticipantDrawer({
     [linkedProfile],
   )
 
-  const formatLabels = useMemo(() => {
-    if (!primarySportProfile) return [] as string[]
-
-    return primarySportProfile.preferred_formats
-      .map((value) =>
-        getSportFormatOptions(primarySportProfile.sport_code).find((option) => option.value === value)?.label ?? value,
-      )
-      .filter(Boolean)
-  }, [primarySportProfile])
-
   const preferredTimes = useMemo(() => (
     (linkedProfile?.preferred_play_times ?? [])
       .map((value) => getPreferredPlayTimeLabel(value) ?? value)
@@ -179,18 +184,27 @@ export function ContactParticipantDrawer({
   ), [linkedProfile])
 
   const connections = useMemo(() => [] as DetailConnection[], [])
+  const sportProfiles = useMemo(
+    () => (linkedProfile?.sport_profiles ?? []).map(formatSportProfile),
+    [linkedProfile],
+  )
 
   const detailItems = useMemo(() => {
     const next: DetailValue[] = []
+    const cityNames = (target.cityNames ?? []).map((city) => city.trim()).filter(Boolean)
 
-    if (contact?.phone?.trim()) {
-      next.push({ key: 'phone', label: 'Phone', value: contact.phone.trim() })
-    }
-    if (contact?.email?.trim()) {
-      next.push({ key: 'email', label: 'Email', value: contact.email.trim() })
+    if (cityNames.length > 0) {
+      next.push({ key: 'city', label: 'City', value: cityNames.slice(0, 2).join(', ') })
     }
     if (contact?.gender ?? target.gender) {
       next.push({ key: 'gender', label: 'Gender', value: formatGenderLabel(contact?.gender ?? target.gender) })
+    }
+    if ((linkedProfile?.sport_profiles ?? []).length > 0) {
+      next.push({
+        key: 'sports',
+        label: 'Sports',
+        value: linkedProfile!.sport_profiles.map((sport) => sport.sport_name).filter(Boolean).join(', '),
+      })
     }
     if (contact?.linked_user_id) {
       next.push({ key: 'linked', label: 'Account', value: 'Linked to a PlayerHoods account' })
@@ -200,7 +214,7 @@ export function ContactParticipantDrawer({
     }
 
     return next
-  }, [contact, target.gender, target.savedByViewer])
+  }, [contact, linkedProfile, target.cityNames, target.gender, target.savedByViewer])
   const isOwner = Boolean(contact)
 
   const handleSave = async () => {
@@ -254,14 +268,21 @@ export function ContactParticipantDrawer({
       displayName={editing ? contactName : (linkedProfile?.display_name ?? contact?.display_name ?? target.displayName)}
       avatarUrl={linkedProfile?.avatar_url ?? target.avatarUrl ?? null}
       avatarFallback="contact"
-      statusClassName={null}
+      statusClassName={getAvailabilityStatusDotClass(contact?.availability_status ?? linkedProfile?.looking_to_play)}
+      availabilityLabel={
+        getAvailabilityStatusLabel(contact?.availability_status)
+        ?? getLookingToPlayLabel(linkedProfile?.looking_to_play)
+        ?? contact?.availability_status
+        ?? linkedProfile?.looking_to_play
+        ?? null
+      }
       level={getLevelLabel(primarySportProfile?.level) ?? primarySportProfile?.level ?? null}
-      formatLabels={formatLabels}
+      formatLabels={[]}
       connections={connections}
-      playStyles={splitPlayStyle(primarySportProfile?.play_style)}
-      experience={primarySportProfile?.competition_experience ?? null}
+      playStyles={[]}
       preferredTimes={preferredTimes}
-      detailTitle={detailItems.length > 0 ? 'Contact Info' : null}
+      sportProfiles={sportProfiles}
+      detailTitle={detailItems.length > 0 ? 'Profile' : null}
       detailItems={detailItems}
       extraContent={editing ? (
         <section className="space-y-3">
