@@ -154,20 +154,65 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
 
   return (
     <GroupDetailPageShell>
-      <div className="max-w-[720px] pr-4">
-        <div className="mb-6">
+      <div className="max-w-[720px] pr-4 max-[768px]:max-w-none max-[768px]:pr-0 max-[768px]:pb-24">
+        <div
+          className="hidden max-[768px]:grid"
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 30,
+            gridTemplateColumns: 'auto minmax(0, 1fr)',
+            alignItems: 'center',
+            gap: '0.75rem',
+            minHeight: '3.65rem',
+            padding: '0.55rem 0.85rem',
+            borderBottom: '1px solid #e2e8f0',
+            background: '#ffffff',
+          }}
+        >
+          <Link
+            href="/groups"
+            style={{
+              color: '#0f172a',
+              textDecoration: 'none',
+              fontSize: '0.9rem',
+              fontWeight: 800,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {'<'} Groups
+          </Link>
+          <h1
+            style={{
+              margin: 0,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              textAlign: 'center',
+              color: '#0f172a',
+              fontSize: '1rem',
+              fontWeight: 900,
+              lineHeight: 1.2,
+            }}
+          >
+            New Group
+          </h1>
+        </div>
+
+        <div className="mb-6 max-[768px]:hidden">
           <BrandLogo variant="horizontal" href="/dashboard" />
         </div>
-        <nav className="mb-6 text-[11px] font-black uppercase tracking-[0.16em] text-[#94A3B8]">
+        <nav className="mb-6 text-[11px] font-black uppercase tracking-[0.16em] text-[#94A3B8] max-[768px]:hidden">
           <Link href="/groups" className="ph-link">
             Back to Groups
           </Link>
         </nav>
 
-        <section className="ph-card px-6 py-6">
-          <div className="ph-kicker mb-2">Shared Group</div>
-          <h1 className="ph-title">Create New Group</h1>
-          <p className="ph-subtitle mb-6 mt-2">
+        <section className="ph-card px-6 py-6 max-[768px]:rounded-none max-[768px]:border-0 max-[768px]:px-4 max-[768px]:py-5 max-[768px]:shadow-none">
+          <div className="ph-kicker mb-2 max-[768px]:hidden">Shared Group</div>
+          <h1 className="ph-title max-[768px]:hidden">Create New Group</h1>
+          <p className="ph-subtitle mb-6 mt-2 max-[768px]:hidden">
             Start a lightweight coordination group for regular players and shared match access.
           </p>
 
@@ -427,7 +472,11 @@ export function NewGroupForm({ sports, venues, invitableUsers, contacts }: Props
               </div>
             ) : null}
 
-            <button type="submit" disabled={loading} className="ph-button-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
+            <button
+              type="submit"
+              disabled={loading}
+              className="ph-button-primary w-full disabled:cursor-not-allowed disabled:opacity-60 max-[768px]:fixed max-[768px]:bottom-4 max-[768px]:left-4 max-[768px]:right-4 max-[768px]:z-40 max-[768px]:w-auto"
+            >
               {loading ? 'Creating...' : 'Create Group'}
             </button>
           </form>
