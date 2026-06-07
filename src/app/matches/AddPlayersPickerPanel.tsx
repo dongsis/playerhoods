@@ -131,7 +131,7 @@ function compactCandidateClass(candidate: AddPlayersCandidate, mode: AddPlayersM
   const disabledClass = 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400 opacity-75'
 
   return [
-    'text-body-main flex min-h-[38px] w-full max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-left font-semibold transition active:scale-[0.99]',
+    'text-body-main inline-flex h-8 max-w-full shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-left font-semibold transition active:scale-[0.98]',
     candidate.disabled ? disabledClass : candidate.selected ? selectedClass : idleClass,
   ].join(' ')
 }
@@ -331,7 +331,7 @@ export function AddPlayersPickerPanel({
             </select>
           </div>
 
-          <div className={`${compactPreviewRows ? 'grid' : 'flex flex-wrap content-start'} max-h-[390px] gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]`}>
+          <div className="flex max-h-[390px] flex-wrap content-start gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
             {filteredCandidates.length === 0 ? (
               <div className="text-body-main w-full px-1 py-6 text-center font-semibold text-[#94A3B8]">
                 {mode === 'invite' ? inviteEmptyLabel : playerCallEmptyLabel}
@@ -355,12 +355,12 @@ export function AddPlayersPickerPanel({
                   className={compactPreviewRows ? compactCandidateClass(candidate, mode) : candidateClass(candidate, mode)}
                 >
                   {candidate.leadingNode}
-                  <span className={`${compactPreviewRows ? 'flex min-w-0 flex-1 items-center gap-2' : 'min-w-0'}`}>
-                    <span className={`${compactPreviewRows ? 'max-w-full' : 'max-w-[12rem]'} block truncate`}>
+                  <span className={`${compactPreviewRows ? 'flex min-w-0 items-center gap-1.5' : 'min-w-0'}`}>
+                    <span className={`${compactPreviewRows ? 'max-w-[8rem]' : 'max-w-[12rem]'} block truncate`}>
                       {candidate.labelNode ?? candidate.name}
                     </span>
                     {compactPreviewRows && candidate.supportingNode ? (
-                      <span className="hidden max-w-[8.5rem] shrink-0 truncate rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-500 min-[360px]:inline-block">
+                      <span className="hidden max-w-[7.5rem] shrink-0 truncate rounded-full bg-slate-50 px-1.5 py-0.5 text-[9px] font-black text-slate-500 min-[360px]:inline-block">
                         {candidate.supportingNode}
                       </span>
                     ) : null}
@@ -371,7 +371,7 @@ export function AddPlayersPickerPanel({
                     ) : null}
                   </span>
                   {compactPreviewRows ? (
-                    <span className="ml-auto text-[15px] font-black text-slate-300" aria-hidden="true">
+                    <span className="shrink-0 text-[14px] font-black text-slate-300" aria-hidden="true">
                       &rsaquo;
                     </span>
                   ) : candidate.trailingNode}
