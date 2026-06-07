@@ -137,16 +137,6 @@ function getFileExtensionForMimeType(mimeType: string): string {
   return 'jpg'
 }
 
-function UploadIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 16V5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M8.5 8.5L12 5L15.5 8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5 18.5H19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 function ImageIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -203,75 +193,75 @@ function InfoIcon() {
   )
 }
 
-function ImportExampleCards() {
+const HELP_ROWS = [
+  {
+    title: 'Fastest way: copy & paste',
+    body: [
+      'Copy a screenshot from your device.',
+      'Then use Paste image.',
+      'Windows screenshots are usually copied automatically after Windows + Shift + S.',
+      'On Mac, use Control + Shift + Command + 4 to copy a screenshot.',
+    ],
+  },
+  {
+    title: 'Upload a saved image',
+    body: [
+      'Use Upload image.',
+      'Choose a JPG, PNG, or WEBP screenshot from your device.',
+      'Use this if you already saved the screenshot.',
+    ],
+  },
+  {
+    title: 'How to take a screenshot',
+    body: [
+      'Mac: Shift + Command + 4, then drag to capture.',
+      'Mac copy screenshot: Control + Shift + Command + 4.',
+      'Windows: Windows + Shift + S, then drag to capture.',
+      'Phone: use your normal screenshot buttons.',
+    ],
+  },
+  {
+    title: 'Where screenshots are saved',
+    body: [
+      'Mac: usually saved on Desktop.',
+      'Windows: usually in Pictures > Screenshots.',
+      'Phone: usually in Photos > Screenshots.',
+    ],
+  },
+]
+
+function ImportHelpRows() {
   return (
-    <>
-      <div className="rounded-2xl border border-[#DCE6F2] bg-[#F8FBFF] p-4 text-sm font-semibold leading-6 text-[#475569] sm:hidden">
-        Works best with a clear crop of a chat group, email header, or contact list.
-      </div>
-      <div className="hidden grid-cols-3 gap-4 sm:grid">
-        <div className="text-center">
-          <div className="flex aspect-[3/4] flex-col gap-2 rounded-xl border border-[#DCE6F2] bg-[#F8FBFF] p-2 shadow-[0_8px_18px_-16px_rgba(15,23,42,0.45)]">
-          <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-1 text-left">
-            <span className="h-3 w-3 rounded-full bg-[#2D6CDF]" />
-            <span className="truncate text-[8px] font-black text-[#334155]">Tennis Group (12)</span>
+    <div className="space-y-2">
+      <h5 className="text-body-main font-black text-[#0B1F44]">Need help importing contacts?</h5>
+      <div className="space-y-2">
+        {HELP_ROWS.map((row) => (
+          <details
+            key={row.title}
+            className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]"
+          >
+            <summary className="cursor-pointer font-black text-[#334155]">{row.title}</summary>
+            <ul className="mt-3 list-disc space-y-2 pl-5">
+              {row.body.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </details>
+        ))}
+        <details className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]">
+          <summary className="cursor-pointer font-black text-[#334155]">What screenshots work best?</summary>
+          <div className="mt-3 space-y-3">
+            <p>Clear screenshots with visible names, emails, or phone numbers work best.</p>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>WhatsApp contact or group member list with names or phone numbers</li>
+              <li>Phone Contacts list</li>
+              <li>Email header or recipient list</li>
+              <li>Contact list or table screenshot</li>
+            </ul>
           </div>
-          {[
-            ['RF', 'Roger Federer', 'bg-[#eff6ff] text-[#0d6efd]'],
-            ['RN', 'Rafael Nadal', 'bg-[#EAFBF0] text-[#07823F]'],
-            ['ND', 'Novak Djokovic', 'bg-[#FFF7D6] text-[#B7791F]'],
-          ].map(([initials, name, tone]) => (
-            <div key={name} className="flex items-center gap-2 text-left">
-              <span className={['flex h-4 w-4 items-center justify-center rounded-full text-[6px] font-black', tone].join(' ')}>
-                {initials}
-              </span>
-              <span className="truncate text-[8px] font-semibold text-[#334155]">{name}</span>
-            </div>
-          ))}
-          <span className="mx-auto mt-auto h-0.5 w-7 rounded-full bg-[#CBD5E1]" />
-        </div>
-        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#64748B]">Chat Group</p>
+        </details>
       </div>
-
-      <div className="text-center">
-        <div className="aspect-[3/4] rounded-xl border border-[#DCE6F2] bg-white p-2 shadow-[0_8px_18px_-16px_rgba(15,23,42,0.45)]">
-          <div className="mb-2 border-b border-[#EEF2F7] pb-2 text-left">
-            <div className="text-[7px] font-black text-[#2D6CDF]">To:</div>
-            <div className="mt-1 h-1 w-12 rounded-full bg-[#E2E8F0]" />
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {['serena@gmail.com', 'venus@tennis.com', 'andy.m@uk.co'].map((email) => (
-              <span key={email} className="rounded-full border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-0.5 text-[7px] font-semibold text-[#0d6efd]">
-                {email}
-              </span>
-            ))}
-          </div>
-        </div>
-        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#64748B]">Email Header</p>
-      </div>
-
-      <div className="text-center">
-        <div className="aspect-[3/4] overflow-hidden rounded-xl border border-[#DCE6F2] bg-white shadow-[0_8px_18px_-16px_rgba(15,23,42,0.45)]">
-          <div className="grid grid-cols-2 bg-[#F1F5F9] p-1 text-[7px] font-black text-[#64748B]">
-            <span>Name</span>
-            <span>Phone</span>
-          </div>
-          {[
-            ['Stan Wawrinka', '555-0123'],
-            ['Maria S.', '555-0198'],
-            ['Carlos Alcaraz', '555-0442'],
-            ['Coco Gauff', '555-0771'],
-          ].map(([name, phone]) => (
-            <div key={name} className="grid grid-cols-2 border-t border-[#EEF2F7] p-1.5 text-[7px]">
-              <span className="truncate text-[#334155]">{name}</span>
-              <span className="truncate text-[#94A3B8]">{phone}</span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#64748B]">Sheet/List</p>
-      </div>
-      </div>
-    </>
+    </div>
   )
 }
 
@@ -293,7 +283,6 @@ export function ContactScreenshotImportSection({
   const [notice, setNotice] = useState<string | null>(null)
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
 
   const selectedCount = useMemo(
@@ -392,7 +381,7 @@ export function ContactScreenshotImportSection({
     if (parsing) return
 
     if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
-      setRetryMessage('This browser cannot open clipboard images from a button yet. Copy a screenshot, then press Ctrl + V here, or use Upload screenshot.')
+      setRetryMessage('This browser cannot open clipboard images from a button yet. Copy a screenshot, then press Ctrl + V here, or use Upload image.')
       return
     }
 
@@ -410,13 +399,13 @@ export function ContactScreenshotImportSection({
       }
 
       if (pastedFiles.length === 0) {
-        setRetryMessage('No JPG, PNG, or WEBP image was found in the clipboard. Copy a screenshot first, then try Paste screenshot again.')
+        setRetryMessage('No JPG, PNG, or WEBP image was found in the clipboard. Copy a screenshot first, then try Paste image again.')
         return
       }
 
       handleFileSelection(pastedFiles, 'pasted')
     } catch {
-      setRetryMessage('Clipboard permission was not granted. You can still press Ctrl + V here, or use Upload screenshot.')
+      setRetryMessage('Clipboard permission was not granted. You can still press Ctrl + V here, or use Upload image.')
     }
   }
 
@@ -520,22 +509,12 @@ export function ContactScreenshotImportSection({
       <div
         onDragOver={(event) => {
           event.preventDefault()
-          setIsDragging(true)
         }}
-        onDragLeave={() => setIsDragging(false)}
         onDrop={(event) => {
           event.preventDefault()
-          setIsDragging(false)
           handleFileSelection(Array.from(event.dataTransfer.files ?? []), 'dropped')
         }}
-        className={[
-          isMobileMain ? 'bg-white transition' : 'overflow-hidden rounded-[28px] border bg-white transition',
-          isMobileMain
-            ? ''
-            : isDragging
-              ? 'border-[#2D6CDF] shadow-[0_20px_60px_-36px_rgba(45,108,223,0.8)]'
-              : 'border-[#DCE6F2]',
-        ].join(' ')}
+        className="transition"
       >
         {step === 'review' ? (
           <div className="space-y-6 p-5">
@@ -768,132 +747,76 @@ export function ContactScreenshotImportSection({
         ) : null}
 
         {step !== 'review' ? (
-          <div className={isMobileMain ? 'space-y-4' : 'space-y-5 p-5'}>
-            <div className={isMobileMain ? 'grid gap-4' : 'grid gap-5 md:grid-cols-[1.05fr_0.95fr] md:items-center'}>
-              <div className="space-y-4">
-                <div className={isMobileMain ? 'grid grid-cols-2 gap-3 text-sm font-bold text-[#334155]' : 'grid grid-cols-2 gap-2 text-sm font-bold text-[#334155] md:grid-cols-3'}>
+          <div className="space-y-3 sm:space-y-4">
+            <div className="grid grid-cols-2 gap-2 text-sm font-bold text-[#334155]">
+              <button
+                type="button"
+                onClick={handlePasteFromClipboard}
+                disabled={parsing}
+                aria-label="Paste image from copied screenshot"
+                className="min-h-14 rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-left text-[#475569] transition hover:bg-[#F8FBFF] disabled:cursor-wait disabled:text-[#94A3B8]"
+              >
+                <span className="block">Paste image</span>
+                <span className="mt-0.5 block text-[11px] font-semibold text-[#64748B]">After copying screenshot</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={parsing}
+                aria-label="Upload image, JPG PNG or WEBP"
+                className="min-h-14 rounded-2xl border border-[#bfdbfe] bg-white px-4 py-3 text-left text-[#0d6efd] transition hover:bg-[#eff6ff] disabled:cursor-wait disabled:text-[#94A3B8]"
+              >
+                <span className="block">Upload image</span>
+                <span className="mt-0.5 block text-[11px] font-semibold text-[#64748B]">JPG, PNG, WEBP</span>
+              </button>
+            </div>
+
+            {step === 'extracting' ? (
+              <div className="rounded-[18px] border border-[#bfdbfe] bg-[#F8FBFF] px-4 py-3 text-sm font-semibold leading-5 text-[#475569]">
+                Reading the image and preparing contacts for review.
+              </div>
+            ) : null}
+
+            {step === 'retry' ? (
+              <div className="rounded-[18px] border border-[#bfdbfe] bg-[#F8FBFF] p-4 text-sm leading-6 text-[#475569]">
+                <p className="font-bold text-[#0B1F44]">No contacts saved yet.</p>
+                <p className="mt-1">{retryMessage}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={parsing}
-                    className="min-h-12 rounded-2xl border border-[#bfdbfe] bg-white px-4 py-3 text-[#0d6efd] transition hover:bg-[#eff6ff] disabled:cursor-wait disabled:text-[#94A3B8]"
+                    className="rounded-xl bg-[#0B1F44] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16325F]"
                   >
-                    {isMobileMain ? 'Upload' : 'Upload screenshot'}
+                    Retry import
                   </button>
-                  <button
-                    type="button"
-                    onClick={handlePasteFromClipboard}
-                    disabled={parsing}
-                    className="min-h-12 rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-[#475569] transition hover:bg-[#F8FBFF] disabled:cursor-wait disabled:text-[#94A3B8]"
-                  >
-                    {isMobileMain ? 'Paste' : 'Paste screenshot'}
-                  </button>
-                  <span className={isMobileMain ? 'hidden' : 'hidden min-h-12 items-center justify-center rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-center text-[#475569] md:flex'}>
-                    Drag image here
-                  </span>
+                  <span className="text-sm font-semibold text-[#64748B]">Or use Add My Contact manually.</span>
                 </div>
+              </div>
+            ) : null}
 
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={parsing}
-                  className={[
-                  'block w-full rounded-[24px] border-2 border-dashed px-5 py-7 text-center transition disabled:cursor-wait',
-                  isDragging ? 'border-[#2D6CDF] bg-[#eff6ff]' : 'border-[#DCE6F2] bg-[#F8FBFF]',
-                ].join(' ')}
-                >
-                  <span className="mx-auto flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-[#2D6CDF] shadow-sm">
-                    <UploadIcon />
-                  </span>
-                  <div className="mt-4 text-base font-black text-[#1E293B]">
-                    {step === 'extracting'
-                      ? 'Extracting contacts...'
-                      : step === 'retry'
-                        ? 'Try another screenshot'
-                        : isMobileMain
-                          ? 'Paste or upload'
-                          : 'Import contacts'}
-                  </div>
-                  <p className="mx-auto mt-2 max-w-md text-xs font-semibold leading-5 text-[#64748B]">
-                    {step === 'extracting'
-                      ? isMobileMain
-                        ? 'Reading contact details. Nothing is saved or invited automatically.'
-                        : 'Looking for names, emails, and phone numbers. Nothing is saved or invited automatically.'
-                      : step === 'retry'
-                        ? 'A tighter crop around the email header, chat list, or contact table usually works best.'
-                        : isMobileMain
-                          ? 'Screenshots, photos, email headers, or lists.'
-                          : 'Upload, paste, or drop a screenshot. We will extract contacts automatically, then you choose what to save.'}
+            <div className="space-y-3">
+              {previewFiles.length > 0 ? (
+                <div className="grid gap-3">
+                  {previewFiles.map((file) => (
+                    <figure key={`${file.name}-${file.url}`} className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF]">
+                      <img src={file.url} alt={`Preview of ${file.name}`} className="h-36 w-full object-contain sm:h-44" />
+                      <figcaption className="truncate border-t border-[#E2E8F0] bg-white px-3 py-2 text-xs font-semibold text-[#64748B]">
+                        {file.name}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-[#D7E2F0] bg-white px-4 py-3">
+                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#64748B]">Preview</p>
+                  <p className="mt-1 text-sm font-semibold leading-5 text-[#94A3B8]">
+                    Extracted contacts will appear here before saving.
                   </p>
-                  {files.length > 0 ? (
-                    <p className="mt-3 truncate text-xs font-semibold text-[#94A3B8]">
-                      {files.map((file) => file.name).join(', ')}
-                    </p>
-                  ) : (
-                    <p className="mt-3 text-xs font-semibold text-[#94A3B8]">JPG, PNG, WEBP</p>
-                  )}
-                </button>
-
-                {step === 'retry' ? (
-                  <div className="rounded-[20px] border border-[#bfdbfe] bg-[#F8FBFF] p-4 text-sm leading-6 text-[#475569]">
-                    <p className="font-bold text-[#0B1F44]">No contacts saved yet.</p>
-                    <p className="mt-1">{retryMessage}</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="rounded-xl bg-[#0B1F44] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16325F]"
-                      >
-                        Retry import
-                      </button>
-                      <span className="text-sm font-semibold text-[#64748B]">Or use Add My Contact manually.</span>
-                    </div>
-                  </div>
-                ) : null}
-
-                {!isMobileMain ? (
-                  <details className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]">
-                    <summary className="cursor-pointer font-black text-[#334155]">Need help taking a screenshot?</summary>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <p><strong>Windows:</strong> Press Win + Shift + S, select the email header or contact list, then come back here and press Ctrl + V.</p>
-                      <p><strong>Mac:</strong> Press Command + Shift + 4, select the area, then upload or paste the screenshot.</p>
-                    </div>
-                  </details>
-                ) : null}
-              </div>
-
-              <div className="space-y-3">
-                {previewFiles.length > 0 ? (
-                  <div className="grid gap-3">
-                    {previewFiles.map((file) => (
-                      <figure key={`${file.name}-${file.url}`} className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF]">
-                        <img src={file.url} alt={`Preview of ${file.name}`} className="h-48 w-full object-contain" />
-                        <figcaption className="truncate border-t border-[#E2E8F0] bg-white px-3 py-2 text-xs font-semibold text-[#64748B]">
-                          {file.name}
-                        </figcaption>
-                      </figure>
-                    ))}
-                  </div>
-                ) : isMobileMain ? (
-                  <div className="overflow-hidden rounded-2xl border border-[#D7E2F0] bg-white">
-                    <div className="flex items-center justify-between border-b border-[#E2E8F0] px-3 py-2">
-                      <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[#64748B]">Preview</span>
-                      <span className="text-sm font-semibold text-[#0d6efd]">Edit</span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_1.2fr_1fr] bg-[#F8FAFC] px-3 py-2 text-[11px] font-black text-[#334155]">
-                      <span>Name</span>
-                      <span>Email</span>
-                      <span>Phone</span>
-                    </div>
-                    <div className="px-3 py-4 text-center text-xs font-semibold text-[#94A3B8]">
-                      Extracted contacts will appear here before saving.
-                    </div>
-                  </div>
-                ) : (
-                  <ImportExampleCards />
-                )}
-              </div>
+                </div>
+              )}
             </div>
+
+            <ImportHelpRows />
           </div>
         ) : null}
 
