@@ -252,7 +252,7 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
   return {
     title: 'Join this match',
-    subtext: 'Create or sign in with a free Player Card for the fastest path, or continue as a guest without an account.',
+    subtext: 'Create or sign in with a free account for the fastest path, or continue as a guest without an account.',
     badge: 'Open to requests',
     variant: 'neutral',
   }
@@ -266,24 +266,17 @@ function PlayerCardNudge({
   guestLabel?: string
 } = {}) {
   return (
-    <aside className="public-player-card-nudge" aria-label="Create a Player Card">
+    <aside className="public-player-card-nudge" aria-label="Create a free account">
       <p className="public-player-card-kicker">New to PlayerHoods?</p>
-      <h2 className="public-player-card-title">Create a free Player Card</h2>
-      <p className="public-player-card-copy">
-        Create a Player Card to make joining, tracking, and hosting matches easier while keeping your contact info private.
-      </p>
+      <h2 className="public-player-card-title">Create a free account</h2>
       <ul className="public-player-card-list">
-        <li>Track all your matches in one place</li>
-        <li>Confirm future invites faster</li>
-        <li>Change your response when supported</li>
-        <li>Get useful match updates</li>
-        <li>Keep your phone and email private</li>
-        <li>Stay connected with players you know</li>
-        <li>Save trusted players to your Hood</li>
-        <li>Host your own matches more easily</li>
+        <li><span aria-hidden="true">✓</span> Join matches faster and host with less work</li>
+        <li><span aria-hidden="true">✓</span> Track updates, change responses, and manage your match status in one place</li>
+        <li><span aria-hidden="true">✓</span> Communicate more easily in match chat and group chat</li>
+        <li><span aria-hidden="true">✓</span> Save trusted players to your Hood and stay connected through groups</li>
       </ul>
       <div className="public-player-card-actions">
-        <Link href="/login" className="public-signup-button public-signup-button-secondary">Create Free Player Card</Link>
+        <Link href="/login" className="public-signup-button public-signup-button-secondary">Create Free Account</Link>
         <a href={guestHref} className="public-player-card-later">{guestLabel}</a>
       </div>
     </aside>
@@ -669,9 +662,16 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           gap: 7px;
           font-size: 0.85rem;
           font-weight: 700;
+          list-style: none;
           line-height: 1.35;
           margin: 14px 0 0;
-          padding-left: 18px;
+          padding-left: 0;
+        }
+
+        .public-player-card-list li {
+          display: grid;
+          gap: 8px;
+          grid-template-columns: auto 1fr;
         }
 
         .public-player-card-actions {
