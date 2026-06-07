@@ -17,9 +17,9 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 ## 2026-06-06 - MR-20260606-mobile-roster-row-actions
 
 **Type:** Patch
-**Code Commits:** PR #130 head commit `256767a7c55726dc40347a3b48d72869b574e946`.
+**Code Commits:** PR #130 merged at `6347088274ef6a4dd758340500045a8b8aeb856c`. Final PR head before merge: `53bd3945a068487c5eb27409267b07070974baab`.
 **Migration:** None
-**Status:** Ready for Review / GitHub only; Vercel Production not deployed yet; Supabase Remote no change.
+**Status:** Production deployed / code aligned; production smoke pending; Supabase Remote no change.
 
 ### Summary
 
@@ -31,7 +31,7 @@ Adds a mobile roster row action sheet for existing participant actions, includin
 |---|---|---|
 | Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
 | Vercel Preview | Passed; owner visual review accepted | Owner visual review accepted on Vercel Preview for PR #130 |
-| Vercel Production | Not deployed yet | PR #130 has not been merged |
+| Vercel Production | Deployed successfully | GitHub Deployment `4961894318` for merge commit `6347088274ef6a4dd758340500045a8b8aeb856c` reached `success`; deployment URL `https://playerhoods-codex-1mv3f1hmk-nancys-projects-128e326c.vercel.app` |
 | Supabase Remote | No change | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent | Visual testing opened action sheets only and did not execute remove/cancel/approve/withdraw actions |
 | Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending |
@@ -52,6 +52,8 @@ Adds a mobile roster row action sheet for existing participant actions, includin
 - No lifecycle semantic change.
 - No provider traffic during validation.
 - Visual testing opened action sheets only and did not execute remove/cancel/approve/withdraw actions.
+- PR #130 added mobile roster row action sheet using existing participant actions.
+- Safe production smoke was not run because it was not explicitly approved.
 
 ## 2026-06-06 - MR-20260606-add-players-mobile-labels-polish
 
