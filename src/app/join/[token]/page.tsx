@@ -258,7 +258,13 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
   }
 }
 
-function PlayerCardNudge() {
+function PlayerCardNudge({
+  guestHref = '#guest-request',
+  guestLabel = 'Continue as guest',
+}: {
+  guestHref?: string
+  guestLabel?: string
+} = {}) {
   return (
     <aside className="public-player-card-nudge" aria-label="Create a Player Card">
       <p className="public-player-card-kicker">New to PlayerHoods?</p>
@@ -278,7 +284,7 @@ function PlayerCardNudge() {
       </ul>
       <div className="public-player-card-actions">
         <Link href="/login" className="public-signup-button public-signup-button-secondary">Create Free Player Card</Link>
-        <a href="#guest-request" className="public-player-card-later">Continue as guest</a>
+        <a href={guestHref} className="public-player-card-later">{guestLabel}</a>
       </div>
     </aside>
   )
@@ -324,13 +330,13 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   if (error) notFound()
 
   const context = ((data ?? []) as PublicSignupContext[])[0] ?? null
-  if (!context) notFound()
+  const linkUnavailable = !context
 
-  const user = await getUser()
+  const user = context ? await getUser() : null
   let registeredParticipant: RegisteredParticipantState | null = null
   let playerCardIdentity: PlayerCardIdentity | null = null
 
-  if (user) {
+  if (user && context) {
     const supabase = await createSupabaseServerClient()
     const [{ data: participant }, { data: profile }] = await Promise.all([
       supabase
@@ -355,26 +361,37 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
 
   const signupAction = startPublicMatchSignupAction.bind(null, token)
   const registeredRequestAction = requestRegisteredPublicMatchSpotAction.bind(null, token)
-  const matchType = formatGameType(context.game_type ?? context.sport_name)
-  const matchDate = formatDate(context.match_date)
-  const matchTime = formatTime(context.start_time)
-  const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' - ') || 'Time to be confirmed'
-  const venueName = context.venue_name ?? 'Venue to be confirmed'
+  const matchType = context ? formatGameType(context.game_type ?? context.sport_name) : 'Link unavailable'
+  const matchDate = context ? formatDate(context.match_date) : null
+  const matchTime = context ? formatTime(context.start_time) : null
+  const matchDateTime = context
+    ? [matchDate, matchTime].filter(Boolean).join(' - ') || 'Time to be confirmed'
+    : 'Ask the host for a fresh share link'
+  const venueName = context?.venue_name ?? 'Match details unavailable'
   const pageError = getErrorMessage(pageParams.error)
   const isCheckEmail = pageParams.notice === 'check-email'
   const isAlreadySubmitted = pageParams.notice === 'already-submitted' || pageParams.notice === 'request-sent'
   const isRegisteredRequestSent = pageParams.notice === 'registered-requested'
   const isRegisteredRequestBlocked = pageParams.error === 'organizer-cannot-request'
-  const registeredRequestState = user
+  const registeredRequestState = user && context
     ? getRegisteredRequestState(registeredParticipant, isRegisteredRequestSent) ?? getRegisteredUnavailableState(context)
     : null
-  const guestStatus = !user ? getGuestStatus(context, pageParams.notice, pageParams.error, pageParams.intent) : null
+  const guestStatus = !user
+    ? context
+      ? getGuestStatus(context, pageParams.notice, pageParams.error, pageParams.intent)
+      : {
+          title: 'This link is no longer available',
+          subtext: 'Ask the host for a fresh share link if you still want to join this match.',
+          badge: 'Link unavailable',
+          variant: 'error' as const,
+        }
+    : null
   const showPublicCheckEmail = !user && isCheckEmail
   const showPublicAlreadySubmitted = !user && isAlreadySubmitted
   const showRegisteredRequestButton = Boolean(
-    user && context.signup_open && !registeredRequestState && !isRegisteredRequestBlocked,
+    user && context?.signup_open && !registeredRequestState && !isRegisteredRequestBlocked,
   )
-  const showRequestForm = !user && context.signup_open && !isCheckEmail && !isAlreadySubmitted
+  const showRequestForm = Boolean(!user && context?.signup_open && !isCheckEmail && !isAlreadySubmitted)
   const pageTitle = registeredRequestState?.title
     ?? guestStatus?.title
     ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicCheckEmail ? 'Check your email' : 'Request a spot in this match')
@@ -770,8 +787,8 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             <div className="public-signup-summary-type">{matchType}</div>
             <div className="public-signup-summary-venue">{venueName}</div>
             <div className="public-signup-summary-time">{matchDateTime}</div>
-            <div className="public-signup-summary-host">Host: {context.host_display_name || 'the host'}</div>
-            <div className="public-signup-summary-host">Status: {guestStatus?.badge ?? registeredRequestState?.message ?? (context.signup_open ? 'Open to requests' : 'Closed')}</div>
+            <div className="public-signup-summary-host">Host: {context?.host_display_name || 'Unavailable'}</div>
+            <div className="public-signup-summary-host">Status: {guestStatus?.badge ?? registeredRequestState?.message ?? (context?.signup_open ? 'Open to requests' : 'Closed')}</div>
           </div>
 
           {pageError ? <p className="public-signup-message error">{pageError}</p> : null}
@@ -806,6 +823,10 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : user && isRegisteredRequestBlocked ? (
             <Link href={`/join/${token}`} className="public-signup-link">
               Back to match details
+            </Link>
+          ) : linkUnavailable ? (
+            <Link href="/" className="public-signup-link">
+              Back to PlayerHoods
             </Link>
           ) : showRequestForm ? (
             <form id="guest-request" action={signupAction} className="public-signup-form">
@@ -850,7 +871,10 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             ) : null}
           </aside>
         ) : (
-          <PlayerCardNudge />
+          <PlayerCardNudge
+            guestHref={linkUnavailable ? '/' : '#guest-request'}
+            guestLabel={linkUnavailable ? 'Maybe later' : 'Continue as guest'}
+          />
         )}
         </div>
 
