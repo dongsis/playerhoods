@@ -28,7 +28,7 @@ import { GroupResourcesSection } from './GroupResourcesSection'
 import { AddGroupMemberPanel } from './AddGroupMemberPanel'
 import { GroupSettingsPanel } from './GroupSettingsPanel'
 import { GroupDetailPageShell } from './GroupDetailPageShell'
-import { GroupSidebarTabs } from './GroupSidebarTabs'
+import { GroupMobileMorePanel, GroupSidebarTabs } from './GroupSidebarTabs'
 import { getGroupIconMeta } from '@/lib/group-icons'
 import { formatRecommendedLevelRange } from '@/lib/profile-options'
 import {
@@ -414,10 +414,146 @@ export default async function GroupDetailPage({ params }: Props) {
         listGroupResources(supabase, groupId),
       ])
     : [[], []]
+  const groupInfoContent = (
+    <GroupInfoSummary
+      note={group.description}
+      sportName={sportName}
+      groupVenueName={groupVenueName}
+      groupLocations={groupLocations}
+      openToClubMembers={group.open_to_club_members}
+      recommendedLevelMin={group.recommended_level_min}
+      recommendedLevelMax={group.recommended_level_max}
+    />
+  )
+  const settingsContent = isBoundaryKeeper ? (
+    <GroupSettingsPanel
+      groupName={group.name}
+      description={group.description}
+      primarySportId={group.primary_sport_id}
+      recommendedLevelMin={group.recommended_level_min}
+      recommendedLevelMax={group.recommended_level_max}
+      venueId={group.venue_id}
+      openToClubMembers={group.open_to_club_members}
+      sports={sports}
+      venues={myVenueMemberships.map((membership) => membership.venue)}
+      allVenues={allVenues}
+      groupLocations={groupLocations}
+      cityOptions={locationCityOptions}
+      onSave={updateGroupSettingsAction.bind(null, groupId)}
+      onSaveLocations={replaceGroupLocationsAction.bind(null, groupId)}
+    />
+  ) : null
+  const desktopInfoContent = (
+    <div style={{ display: 'grid', gap: '0.85rem' }}>
+      {groupInfoContent}
+      {settingsContent}
+    </div>
+  )
+  const membersContent = (
+    <div style={{ display: 'grid', gap: '0.85rem' }}>
+      {canManageMembership ? (
+        <AddGroupMemberPanel
+          groupId={groupId}
+          invitableUsers={invitableUsers}
+          contacts={addableContactPlayers}
+        />
+      ) : null}
+
+      <section>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+          <div
+            style={{
+              color: '#94a3b8',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              letterSpacing: '0.16em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Members
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
+            {activeMembers.length} Total
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: '0.3rem' }}>
+          {activeMembers.length === 0 ? (
+            <div style={{ color: '#98a2b3', fontSize: '0.88rem' }}>No members yet.</div>
+          ) : (
+            activeMembers.map((member) => (
+              <MemberListItem
+                key={member.id}
+                member={member}
+                group={group}
+                currentUserId={user?.id ?? null}
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      <section style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.85rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+          <div
+            style={{
+              color: '#94a3b8',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              letterSpacing: '0.16em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Shared Contacts
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
+            {groupContacts.length} Total
+          </div>
+        </div>
+        <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.78rem', lineHeight: 1.45 }}>
+          Shared Contacts can be saved and invited where available. They are not group members, and private contact details stay hidden.
+        </p>
+        <div style={{ display: 'grid', gap: '0.3rem' }}>
+          {groupContacts.length === 0 ? (
+            <div style={{ color: '#98a2b3', fontSize: '0.88rem' }}>
+              No shared contacts yet. Share people your group often plays with so everyone can save and invite them.
+            </div>
+          ) : (
+            groupContacts.map((contact) => (
+              <ContactListItem
+                key={contact.group_contact_id}
+                groupId={groupId}
+                contact={contact}
+                linkedProfile={contact.linked_user_id ? linkedGroupContactProfileMap.get(contact.linked_user_id) ?? null : null}
+                currentPersonId={myPersonId}
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      {isActive && !isBoundaryKeeper ? (
+        <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.8rem' }}>
+          <LeaveGroupButton groupId={groupId} />
+        </div>
+      ) : null}
+    </div>
+  )
+  const resourcesContent = (
+    <GroupResourcesSection
+      groupId={groupId}
+      resources={groupResources}
+      canManage={isBoundaryKeeper}
+      onCreateLink={createGroupLinkResourceAction.bind(null, groupId)}
+      onCreateFile={createGroupFileResourceAction.bind(null, groupId)}
+      onSetPinned={setGroupResourcePinnedAction.bind(null, groupId)}
+      onSetArchived={setGroupResourceArchivedAction.bind(null, groupId)}
+      onDelete={deleteGroupResourceAction.bind(null, groupId)}
+    />
+  )
 
   return (
     <GroupDetailPageShell>
-    <div style={{ maxWidth: '1320px', padding: '1rem 1.25rem 1.5rem 0' }}>
+    <div className="max-[768px]:hidden" style={{ maxWidth: '1320px', padding: '1rem 1.25rem 1.5rem 0' }}>
       <div style={{ marginBottom: '1rem' }}>
         <BrandLogo variant="horizontal" href="/dashboard" />
       </div>
@@ -509,138 +645,9 @@ export default async function GroupDetailPage({ params }: Props) {
           ) : null}
 
           <GroupSidebarTabs
-            info={
-              <div style={{ display: 'grid', gap: '0.85rem' }}>
-                <GroupInfoSummary
-                  note={group.description}
-                  sportName={sportName}
-                  groupVenueName={groupVenueName}
-                  groupLocations={groupLocations}
-                  openToClubMembers={group.open_to_club_members}
-                  recommendedLevelMin={group.recommended_level_min}
-                  recommendedLevelMax={group.recommended_level_max}
-                />
-                {isBoundaryKeeper ? (
-                  <GroupSettingsPanel
-                    groupName={group.name}
-                    description={group.description}
-                    primarySportId={group.primary_sport_id}
-                    recommendedLevelMin={group.recommended_level_min}
-                    recommendedLevelMax={group.recommended_level_max}
-                    venueId={group.venue_id}
-                    openToClubMembers={group.open_to_club_members}
-                    sports={sports}
-                    venues={myVenueMemberships.map((membership) => membership.venue)}
-                    allVenues={allVenues}
-                    groupLocations={groupLocations}
-                    cityOptions={locationCityOptions}
-                    onSave={updateGroupSettingsAction.bind(null, groupId)}
-                    onSaveLocations={replaceGroupLocationsAction.bind(null, groupId)}
-                  />
-                ) : null}
-              </div>
-            }
-            members={
-              <div style={{ display: 'grid', gap: '0.85rem' }}>
-                {canManageMembership ? (
-                  <AddGroupMemberPanel
-                    groupId={groupId}
-                    invitableUsers={invitableUsers}
-                    contacts={addableContactPlayers}
-                  />
-                ) : null}
-
-                <section>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
-                    <div
-                      style={{
-                        color: '#94a3b8',
-                        fontSize: '0.68rem',
-                        fontWeight: 800,
-                        letterSpacing: '0.16em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      Members
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
-                      {activeMembers.length} Total
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gap: '0.3rem' }}>
-                    {activeMembers.length === 0 ? (
-                      <div style={{ color: '#98a2b3', fontSize: '0.88rem' }}>No members yet.</div>
-                    ) : (
-                      activeMembers.map((member) => (
-                        <MemberListItem
-                          key={member.id}
-                          member={member}
-                          group={group}
-                          currentUserId={user?.id ?? null}
-                        />
-                      ))
-                    )}
-                  </div>
-                </section>
-
-                <section style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.85rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
-                    <div
-                      style={{
-                        color: '#94a3b8',
-                        fontSize: '0.68rem',
-                        fontWeight: 800,
-                        letterSpacing: '0.16em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      Shared Contacts
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
-                      {groupContacts.length} Total
-                    </div>
-                  </div>
-                  <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.78rem', lineHeight: 1.45 }}>
-                    Shared Contacts can be saved and invited where available. They are not group members, and private contact details stay hidden.
-                  </p>
-                  <div style={{ display: 'grid', gap: '0.3rem' }}>
-                    {groupContacts.length === 0 ? (
-                      <div style={{ color: '#98a2b3', fontSize: '0.88rem' }}>
-                        No shared contacts yet. Share people your group often plays with so everyone can save and invite them.
-                      </div>
-                    ) : (
-                      groupContacts.map((contact) => (
-                        <ContactListItem
-                          key={contact.group_contact_id}
-                          groupId={groupId}
-                          contact={contact}
-                          linkedProfile={contact.linked_user_id ? linkedGroupContactProfileMap.get(contact.linked_user_id) ?? null : null}
-                          currentPersonId={myPersonId}
-                        />
-                      ))
-                    )}
-                  </div>
-                </section>
-
-                {isActive && !isBoundaryKeeper ? (
-                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.8rem' }}>
-                    <LeaveGroupButton groupId={groupId} />
-                  </div>
-                ) : null}
-              </div>
-            }
-            resources={
-              <GroupResourcesSection
-                groupId={groupId}
-                resources={groupResources}
-                canManage={isBoundaryKeeper}
-                onCreateLink={createGroupLinkResourceAction.bind(null, groupId)}
-                onCreateFile={createGroupFileResourceAction.bind(null, groupId)}
-                onSetPinned={setGroupResourcePinnedAction.bind(null, groupId)}
-                onSetArchived={setGroupResourceArchivedAction.bind(null, groupId)}
-                onDelete={deleteGroupResourceAction.bind(null, groupId)}
-              />
-            }
+            info={desktopInfoContent}
+            members={membersContent}
+            resources={resourcesContent}
           />
         </aside>
 
@@ -659,6 +666,124 @@ export default async function GroupDetailPage({ params }: Props) {
           />
         </main>
       </div>
+    </div>
+    <div
+      className="hidden max-[768px]:grid"
+      style={{
+        minHeight: '100dvh',
+        background: '#f8fafc',
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
+      }}
+    >
+      <header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 30,
+          display: 'grid',
+          gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+          alignItems: 'center',
+          gap: '0.65rem',
+          minHeight: '3.65rem',
+          padding: '0.55rem 0.85rem',
+          borderBottom: '1px solid #e2e8f0',
+          background: '#ffffff',
+        }}
+      >
+        <Link
+          href="/groups"
+          style={{
+            color: '#0f172a',
+            textDecoration: 'none',
+            fontSize: '0.9rem',
+            fontWeight: 800,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {'<'} Groups
+        </Link>
+        <h1
+          style={{
+            margin: 0,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textAlign: 'center',
+            color: '#0f172a',
+            fontSize: '1rem',
+            fontWeight: 900,
+            lineHeight: 1.2,
+          }}
+        >
+          {group.name}
+        </h1>
+        <GroupMobileMorePanel
+          info={groupInfoContent}
+          members={membersContent}
+          resources={resourcesContent}
+          settings={settingsContent}
+        />
+      </header>
+
+      <section
+        style={{
+          display: 'grid',
+          gap: '0.55rem',
+          padding: '0.7rem 0.85rem',
+          borderBottom: '1px solid #e2e8f0',
+          background: '#ffffff',
+        }}
+      >
+        <div
+          style={{
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: '#64748b',
+            fontSize: '0.78rem',
+            fontWeight: 750,
+          }}
+        >
+          <span>{activeMembers.length} members</span>
+          <span aria-hidden="true"> &middot; </span>
+          <span>{groupContacts.length} shared contacts</span>
+          <span aria-hidden="true"> &middot; </span>
+          <span>{sportName ?? 'Sport to be assigned'}</span>
+        </div>
+        {isPending ? (
+          <div
+            style={{
+              borderRadius: '14px',
+              border: '1px solid #e0e7ff',
+              background: '#f8faff',
+              padding: '0.75rem',
+            }}
+          >
+            <div style={{ color: '#475467', fontSize: '0.82rem', lineHeight: 1.45, marginBottom: '0.55rem' }}>
+              Invite pending. Accept to join this Shared Group.
+            </div>
+            <AcceptInviteButton groupId={groupId} />
+          </div>
+        ) : null}
+      </section>
+
+      <main style={{ minHeight: 0 }}>
+        <GroupCommunicationSection
+          announcementText={announcementText}
+          messages={groupMessages}
+          resources={groupResources}
+          viewerUserId={user?.id ?? null}
+          canAccess={canAccessDiscussion}
+          canPost={canPostDiscussion}
+          canSharePhotos={canPostDiscussion}
+          groupId={groupId}
+          variant="mobile"
+          onPostMessage={postGroupMessageAction.bind(null, groupId)}
+          onCreateDiscussionPhotoResource={createGroupDiscussionPhotoResourceAction.bind(null, groupId)}
+        />
+      </main>
     </div>
     </GroupDetailPageShell>
   )

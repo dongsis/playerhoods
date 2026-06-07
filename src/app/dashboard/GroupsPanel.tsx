@@ -106,9 +106,8 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
   )
 
   const availableSportFilters = useMemo(() => {
-    const usedIds = new Set(groups.map((entry) => entry.group.primary_sport_id).filter((id): id is number => id != null))
-    return sports.filter((sport) => usedIds.has(sport.id))
-  }, [groups, sports])
+    return sports
+  }, [sports])
 
   const filteredGroups = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -163,25 +162,27 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[30px] border border-[#E2E8F0] bg-white px-6 py-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)]">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-6 max-[768px]:space-y-4 max-[768px]:pb-20">
+      <section className="rounded-[30px] border border-[#E2E8F0] bg-white px-6 py-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.16)] max-[768px]:rounded-none max-[768px]:border-0 max-[768px]:px-4 max-[768px]:pb-3 max-[768px]:pt-4 max-[768px]:shadow-none">
+        <div className="flex flex-wrap items-start justify-between gap-4 max-[768px]:items-center max-[768px]:gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-label text-[#94A3B8]">Community</div>
-            <h1 className="text-h1 mt-1 text-[#1E293B]">Groups</h1>
+            <div className="text-label text-[#94A3B8] max-[768px]:hidden">Community</div>
+            <h1 className="text-h1 mt-1 text-[#1E293B] max-[768px]:mt-0 max-[768px]:text-[24px] max-[768px]:leading-tight">
+              Groups
+            </h1>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 max-[768px]:shrink-0">
             {showBackToDashboard ? (
               <Link
                 href="/dashboard"
-                className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#475569] transition hover:border-[#0d6efd]/35 hover:bg-[#F8FBFF]"
+                className="text-body-main rounded-full border border-[#E2E8F0] bg-white px-4 py-2 font-medium text-[#475569] transition hover:border-[#0d6efd]/35 hover:bg-[#F8FBFF] max-[768px]:hidden"
               >
                 Back to dashboard
               </Link>
             ) : null}
             <Link
               href="/groups/new"
-              className="text-body-main rounded-full bg-[#0d6efd] px-4 py-2 font-semibold text-white transition hover:bg-[#0b5ed7]"
+              className="text-body-main rounded-full bg-[#0d6efd] px-4 py-2 font-semibold text-white transition hover:bg-[#0b5ed7] max-[768px]:px-3 max-[768px]:py-2 max-[768px]:text-[13px] max-[768px]:leading-none"
             >
               + New Group
             </Link>
@@ -197,18 +198,18 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find a group..."
-              className="text-body-main w-full rounded-[18px] border border-[#D7E2F0] bg-white py-3 pl-11 pr-4 text-[#1E293B] outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-2 focus:ring-[#0d6efd]/10"
+              placeholder="Find a group"
+              className="text-body-main w-full rounded-[18px] border border-[#D7E2F0] bg-white py-3 pl-11 pr-4 text-[#1E293B] outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-2 focus:ring-[#0d6efd]/10 max-[768px]:rounded-[16px] max-[768px]:py-3"
             />
           </label>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="text-label text-[#94A3B8]">Sport</span>
+        <div className="mt-4 flex flex-wrap items-center gap-2 max-[768px]:-mx-4 max-[768px]:flex-nowrap max-[768px]:overflow-x-auto max-[768px]:px-4 max-[768px]:pb-1">
+          <span className="text-label text-[#94A3B8] max-[768px]:hidden">Sport</span>
           <button
             type="button"
             onClick={() => setSelectedSportId('all')}
-            className={`text-body-sub rounded-full px-4 py-2 font-semibold transition ${
+            className={`text-body-sub shrink-0 rounded-full px-4 py-2 font-semibold transition ${
               selectedSportId === 'all'
                 ? 'bg-[#0d6efd] text-white'
                 : 'bg-[#F8FBFF] text-[#94A3B8] hover:bg-[#EEF4FB] hover:text-[#475569]'
@@ -221,7 +222,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
               key={sport.id}
               type="button"
               onClick={() => setSelectedSportId(String(sport.id))}
-              className={`text-body-sub rounded-full px-4 py-2 font-semibold transition ${
+              className={`text-body-sub shrink-0 rounded-full px-4 py-2 font-semibold transition ${
                 selectedSportId === String(sport.id)
                   ? 'bg-[#1E293B] text-white'
                   : 'bg-[#F8FBFF] text-[#94A3B8] hover:bg-[#EEF4FB] hover:text-[#475569]'
@@ -234,19 +235,19 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
       </section>
 
       {feedback ? (
-        <section className="text-body-main rounded-[24px] border border-[#BBF7D0] bg-[#F0FDF4] px-5 py-4 text-[#166534]">
+        <section className="text-body-main rounded-[24px] border border-[#BBF7D0] bg-[#F0FDF4] px-5 py-4 text-[#166534] max-[768px]:mx-4">
           {feedback}
         </section>
       ) : null}
 
       {error ? (
-        <section className="text-body-main rounded-[24px] border border-[#FECACA] bg-[#FEF2F2] px-5 py-4 text-[#B91C1C]">
+        <section className="text-body-main rounded-[24px] border border-[#FECACA] bg-[#FEF2F2] px-5 py-4 text-[#B91C1C] max-[768px]:mx-4">
           {error}
         </section>
       ) : null}
 
       {pendingInvites.length > 0 ? (
-        <section className="rounded-[30px] border border-[#FDE68A] bg-[#FFFBEB] p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.12)]">
+        <section className="rounded-[30px] border border-[#FDE68A] bg-[#FFFBEB] p-5 shadow-[0_20px_42px_-34px_rgba(30,41,59,0.12)] max-[768px]:mx-4 max-[768px]:rounded-[22px] max-[768px]:p-4">
           <div className="text-label text-[#0d6efd]">Pending</div>
           <div className="mt-3 space-y-3">
             {pendingInvites.map((invite) => (
@@ -302,11 +303,11 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
       ) : null}
 
       {filteredGroups.length === 0 ? (
-        <section className="text-body-main rounded-[30px] border border-dashed border-[#CBD5E1] bg-[#F8FBFF] p-8 text-center text-[#64748B]">
+        <section className="text-body-main rounded-[30px] border border-dashed border-[#CBD5E1] bg-[#F8FBFF] p-8 text-center text-[#64748B] max-[768px]:mx-4 max-[768px]:rounded-[22px] max-[768px]:p-6">
           No groups match this view.
         </section>
       ) : (
-        <section className="overflow-hidden rounded-[32px] border border-[#E2E8F0] bg-white shadow-[0_24px_50px_-40px_rgba(30,41,59,0.18)]">
+        <section className="overflow-hidden rounded-[32px] border border-[#E2E8F0] bg-white shadow-[0_24px_50px_-40px_rgba(30,41,59,0.18)] max-[768px]:rounded-none max-[768px]:border-x-0 max-[768px]:shadow-none">
           {filteredGroups.map(({ group, members }, index) => {
             const sportName = group.primary_sport_id
               ? sportNameById.get(group.primary_sport_id) ?? 'Shared Group'
@@ -323,7 +324,7 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
               <Link
                 key={group.id}
                 href={`/groups/${group.id}`}
-                className={`flex items-center gap-4 px-5 py-5 transition hover:bg-[#F8FBFF] ${
+                className={`flex items-center gap-4 px-5 py-5 transition hover:bg-[#F8FBFF] max-[768px]:gap-3 max-[768px]:px-4 max-[768px]:py-4 ${
                   index === 0 ? '' : 'border-t border-[#EEF3F8]'
                 }`}
               >
@@ -334,24 +335,24 @@ export function GroupsPanel({ groups, pendingInvites, sports, showBackToDashboar
                       group.open_to_club_members ? 'bg-[#22C55E]' : 'bg-[#F97316]'
                     }`}
                   />
-                  <div className="flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#EEF2F7] bg-white text-[22px] shadow-[0_10px_24px_-22px_rgba(30,41,59,0.25)]">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[16px] border border-[#EEF2F7] bg-white text-[22px] shadow-[0_10px_24px_-22px_rgba(30,41,59,0.25)] max-[768px]:h-11 max-[768px]:w-11 max-[768px]:text-[20px]">
                     {icon.emoji}
                   </div>
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 max-[768px]:gap-1.5">
                     <h2 className="text-title-main truncate text-[#1E293B]">
                       {group.name}
                     </h2>
-                    <span className="text-label rounded-full bg-[#eff6ff] px-2 py-0.5 text-[#0d6efd]">
+                    <span className="text-label rounded-full bg-[#eff6ff] px-2 py-0.5 text-[#0d6efd] max-[768px]:max-w-full max-[768px]:truncate">
                       {sportName}
                     </span>
                   </div>
                   <p className="text-body-sub mt-1 truncate italic text-[#64748B]">{preview}</p>
                 </div>
 
-                <div className="shrink-0 text-right">
+                <div className="shrink-0 text-right max-[768px]:hidden">
                   <div className="text-body-sub text-[#94A3B8]">{formatGroupMetaTime(group.created_at)}</div>
                   <div className="text-label mt-2 inline-flex min-w-[2rem] items-center justify-center rounded-[10px] bg-[#F8FBFF] px-2 py-1 text-[#94A3B8]">
                     {members.length}
