@@ -3,6 +3,7 @@
  */
 
 import { escapeHtml, renderEmailLayout, type EmailDetail } from '@/lib/email/render-email-layout'
+import { addPublicJoinIntent, type PublicJoinIntent } from '@/lib/notifications/public-join-links'
 import { getSiteOrigin } from '@/lib/site-url'
 
 export type MatchInfo = {
@@ -17,13 +18,28 @@ export type MatchInfo = {
   isFormed?: boolean
 }
 
-function matchLink(m: MatchInfo): string {
+function matchLink(m: MatchInfo, intent?: PublicJoinIntent): string {
   const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : getSiteOrigin()
   if (m.magicLinkPath) {
     const path = m.magicLinkPath.startsWith('/') ? m.magicLinkPath : `/${m.magicLinkPath}`
-    return `${base}${path}`
+    return addPublicJoinIntent(`${base}${path}`, intent)
   }
   return `${base}/matches/${m.matchId}`
+}
+
+function registrationUrl(m: MatchInfo, nextUrl: string): string {
+  const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : getSiteOrigin()
+  return `${base}/login?mode=register&next=${encodeURIComponent(nextUrl)}`
+}
+
+function accountPromo(m: MatchInfo, nextUrl: string) {
+  return {
+    promoTitle: 'New to PlayerHoods?',
+    promoBody:
+      'Create a free account to join matches faster, track updates, manage your match status, and stay connected with players you trust.',
+    promoCtaLabel: 'Create Free Account',
+    promoCtaUrl: registrationUrl(m, nextUrl),
+  }
 }
 
 function formatEmailDate(value: string | null | undefined): string {
@@ -67,111 +83,134 @@ function formatEmailMatchKind(value: string | null | undefined): string {
 }
 
 export function gameFormedEmail(m: MatchInfo): string {
+  const viewUrl = matchLink(m, 'view')
   return renderEmailLayout({
     eyebrow: 'Match update',
     title: 'Game formed',
     introHtml: `Your <strong>${escapeHtml(m.gameType || 'match')}</strong> is now confirmed.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'View Match Details',
+    ctaUrl: viewUrl,
     secondaryTitle: 'What happens next',
     secondaryBody:
       'Open the match page to review the roster, court details, and any last-minute notes from the organizer.',
+    secondaryLinkLabel: 'Change My Response',
+    secondaryLinkUrl: matchLink(m, 'change-response'),
+    ...accountPromo(m, viewUrl),
     footerNote: 'You are receiving this email because you are part of a PlayerHoods match.',
     siteUrl: m.siteUrl,
   })
 }
 
 export function matchTimeChangePendingEmail(m: MatchInfo): string {
+  const reviewUrl = matchLink(m, 'review-changes')
   return renderEmailLayout({
     eyebrow: 'Schedule update',
-    title: 'Match time changed',
-    introHtml: `The schedule for <strong>${escapeHtml(m.gameType || 'your match')}</strong> has been updated. Please confirm that you can still make it.`,
+    title: 'Match details changed',
+    introHtml: `The schedule for <strong>${escapeHtml(m.gameType || 'your match')}</strong> has been updated. Please review the new time, venue, or notes.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'Confirm attendance',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'Review Match Changes',
+    ctaUrl: reviewUrl,
     secondaryTitle: 'Need to adjust?',
     secondaryBody:
       'If the new time no longer works, update your response on the match page as soon as possible so the organizer can refill the spot.',
+    secondaryLinkLabel: 'Change My Response',
+    secondaryLinkUrl: matchLink(m, 'change-response'),
+    ...accountPromo(m, reviewUrl),
     footerNote: 'You are receiving this email because you are part of a PlayerHoods match.',
     siteUrl: m.siteUrl,
   })
 }
 
 export function guestParticipantInviteEmail(m: MatchInfo, inviterName: string): string {
+  const respondUrl = matchLink(m, 'respond')
   return renderEmailLayout({
     eyebrow: 'Invitation',
     title: "You're invited",
     introHtml: `<strong>${escapeHtml(inviterName)}</strong> invited you to <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'Respond to Invitation',
+    ctaUrl: respondUrl,
+    ctaHint: 'No account is required to respond.',
     secondaryTitle: 'Why you got this',
     secondaryBody:
       'A PlayerHoods user invited you as a possible player for this match. Review the details before deciding whether to join.',
+    ...accountPromo(m, respondUrl),
     footerNote: 'This message relates to a PlayerHoods match invitation.',
     siteUrl: m.siteUrl,
   })
 }
 
 export function guestOrgApprovedEmail(m: MatchInfo, inviterName: string): string {
+  const respondUrl = matchLink(m, 'respond')
   return renderEmailLayout({
     eyebrow: 'Invitation',
     title: "You're invited",
     introHtml: `<strong>${escapeHtml(inviterName)}</strong> invited you to <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'Respond to Invitation',
+    ctaUrl: respondUrl,
+    ctaHint: 'No account is required to respond.',
     secondaryTitle: 'Before you respond',
     secondaryBody:
       'Open the match to check the date, venue, and roster details. You can respond from the match page.',
+    ...accountPromo(m, respondUrl),
     footerNote: 'This message relates to a PlayerHoods match invitation.',
     siteUrl: m.siteUrl,
   })
 }
 
 export function guestDelegateConfirmedEmail(m: MatchInfo): string {
+  const viewUrl = matchLink(m, 'view')
   return renderEmailLayout({
     eyebrow: 'Confirmation',
-    title: "You're confirmed",
+    title: "Game on. You're confirmed to play.",
     introHtml: `Your participation in <strong>${escapeHtml(m.gameType || 'this match')}</strong> is confirmed.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'View Match Details',
+    ctaUrl: viewUrl,
     secondaryTitle: 'Be ready to play',
     secondaryBody:
       'Use the match page to check for any organizer notes, court updates, or late schedule changes.',
+    secondaryLinkLabel: 'Change My Response',
+    secondaryLinkUrl: matchLink(m, 'change-response'),
+    ...accountPromo(m, viewUrl),
     footerNote: 'You are receiving this email because your PlayerHoods match status changed.',
     siteUrl: m.siteUrl,
   })
 }
 
 export function matchRemovedEmail(m: MatchInfo): string {
+  const viewUrl = matchLink(m, 'view')
   return renderEmailLayout({
     eyebrow: 'Roster update',
     title: 'Removed from match',
     introHtml: `You were removed from <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'View Match Details',
+    ctaUrl: viewUrl,
     secondaryTitle: 'Need more context?',
     secondaryBody:
       'Open the match page to review the latest status. If you think this was unexpected, reach out to the organizer directly.',
+    ...accountPromo(m, viewUrl),
     footerNote: 'You are receiving this email because your PlayerHoods match status changed.',
     siteUrl: m.siteUrl,
   })
 }
 
 export function matchInvitationEmail(m: MatchInfo, inviterName: string): string {
+  const respondUrl = matchLink(m, 'respond')
   return renderEmailLayout({
     eyebrow: 'Invitation',
     title: "You're invited",
     introHtml: `<strong>${escapeHtml(inviterName)}</strong> invited you to <strong>${escapeHtml(m.gameType || 'a match')}</strong>.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View and respond',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'Respond to Invitation',
+    ctaUrl: respondUrl,
+    ctaHint: 'No account is required to respond.',
     secondaryTitle: 'Next step',
     secondaryBody: 'Review the match details, then respond from the match page when you are ready.',
+    ...accountPromo(m, respondUrl),
     footerNote: 'This message relates to a PlayerHoods match invitation.',
     siteUrl: m.siteUrl,
   })
@@ -180,9 +219,7 @@ export function matchInvitationEmail(m: MatchInfo, inviterName: string): string 
 export function playerhoodsMatchInviteEmail(m: MatchInfo, organizerName = 'Someone'): string {
   const venueName = m.venueName || 'the venue'
   const inviterName = organizerName.trim() || 'Someone'
-  const respondUrl = matchLink(m)
-  const base = m.siteUrl && m.siteUrl !== 'undefined' ? m.siteUrl : getSiteOrigin()
-  const registerUrl = `${base}/login?mode=register&next=${encodeURIComponent(respondUrl)}`
+  const respondUrl = matchLink(m, 'respond')
 
   return renderEmailLayout({
     title: `${inviterName} invited you to play`,
@@ -191,11 +228,7 @@ export function playerhoodsMatchInviteEmail(m: MatchInfo, organizerName = 'Someo
     ctaLabel: 'Respond to Invitation',
     ctaUrl: respondUrl,
     ctaHint: 'No account is required to respond.',
-    promoTitle: 'New to PlayerHoods?',
-    promoBody:
-      'Create a free account to keep this match, confirm future invites faster, and stay connected with players you know.',
-    promoCtaLabel: 'Create Free Account',
-    promoCtaUrl: registerUrl,
+    ...accountPromo(m, respondUrl),
     secondaryTitle: 'Notification note',
     secondaryBody:
       `PlayerHoods is helping ${inviterName} organize this match. You'll only receive important updates, such as when the match is formed, cancelled, or key details change.`,
@@ -232,29 +265,34 @@ export function publicMatchSignupVerificationEmail(
 export function confirmedLineupEmail(m: MatchInfo, organizerName = 'Someone'): string {
   const venueName = m.venueName || 'the venue'
   const inviterName = organizerName.trim() || 'Someone'
+  const viewUrl = matchLink(m, 'view')
 
   return renderEmailLayout({
     title: "Game on. You're confirmed to play.",
     introHtml: `Hi,<br><br><strong>${escapeHtml(inviterName)}</strong> confirmed the match at <strong>${escapeHtml(venueName)}</strong>. You're in the lineup.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match details',
-    ctaUrl: matchLink(m),
-    secondaryTitle: 'Notification note',
+    ctaLabel: 'View Match Details',
+    ctaUrl: viewUrl,
+    secondaryTitle: 'Need to change your response?',
     secondaryBody:
-      'Playerhoods will only contact you again if the match is cancelled or key details change.',
+      "Open your match page to withdraw or let the host know you can't make it.",
+    secondaryLinkLabel: 'Change My Response',
+    secondaryLinkUrl: matchLink(m, 'change-response'),
+    ...accountPromo(m, viewUrl),
     footerNote: `You received this because ${inviterName} confirmed you in the lineup for this match.`,
     siteUrl: m.siteUrl,
   })
 }
 
 export function matchReminderEmail(m: MatchInfo): string {
+  const viewUrl = matchLink(m, 'view')
   return renderEmailLayout({
     eyebrow: 'Match reminder',
     title: 'Your PlayerHoods match is coming up',
     introHtml: `Reminder: you're in for <strong>${escapeHtml(m.gameType || 'a match')}</strong> at <strong>${escapeHtml(m.venueName || 'the venue')}</strong>.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match details',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'View Match Details',
+    ctaUrl: viewUrl,
     secondaryTitle: 'No group chat noise',
     secondaryBody:
       'PlayerHoods sends only useful match updates: invitations, confirmations, reminders, cancellations, and key detail changes.',
@@ -266,43 +304,55 @@ export function matchReminderEmail(m: MatchInfo): string {
 export function hostOfflineConfirmationEmail(m: MatchInfo, organizerName = 'Someone'): string {
   const venueName = m.venueName || 'the venue'
   const hostName = organizerName.trim() || 'Someone'
+  const viewUrl = matchLink(m, 'view')
 
   return renderEmailLayout({
     eyebrow: 'Match confirmation',
     title: "You're listed as confirmed",
     introHtml: `Hi,<br><br><strong>${escapeHtml(hostName)}</strong> added you as confirmed for <strong>${escapeHtml(m.gameType || 'a match')}</strong> at <strong>${escapeHtml(venueName)}</strong>. If anything changed, you can update your response anytime.`,
     details: buildMatchDetails(m),
-    ctaLabel: 'View match',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'View Match Details',
+    ctaUrl: viewUrl,
     secondaryTitle: 'Need to change your response?',
     secondaryBody:
       "Open the match page if you can't make it or need to let the host know something changed.",
+    secondaryLinkLabel: 'Change My Response',
+    secondaryLinkUrl: matchLink(m, 'change-response'),
+    ...accountPromo(m, viewUrl),
     footerNote: `You received this because ${hostName} added you to this PlayerHoods match from offline coordination.`,
     siteUrl: m.siteUrl,
   })
 }
 
 export function criticalUpdateEmail(m: MatchInfo): string {
+  const reviewUrl = matchLink(m, 'review-changes')
   return renderEmailLayout({
     eyebrow: 'Match update',
-    title: 'PlayerHoods match update',
-    introHtml: 'Key details for your match changed.',
+    title: 'Match details changed',
+    introHtml: 'Please review the updated time, venue, or notes for this match.',
     details: buildMatchDetails(m),
-    ctaLabel: 'View details',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'Review Match Changes',
+    ctaUrl: reviewUrl,
+    secondaryTitle: 'Need to adjust?',
+    secondaryBody:
+      "Open your match page to withdraw or let the host know you can't make it.",
+    secondaryLinkLabel: 'Change My Response',
+    secondaryLinkUrl: matchLink(m, 'change-response'),
+    ...accountPromo(m, reviewUrl),
     footerNote: 'You are receiving this email because you are confirmed for a PlayerHoods match.',
     siteUrl: m.siteUrl,
   })
 }
 
 export function cancellationEmail(m: MatchInfo): string {
+  const viewUrl = matchLink(m, 'view')
   return renderEmailLayout({
     eyebrow: 'Match cancelled',
     title: 'PlayerHoods match cancelled',
     introHtml: 'This match has been cancelled.',
     details: buildMatchDetails(m),
-    ctaLabel: 'View details',
-    ctaUrl: matchLink(m),
+    ctaLabel: 'View Match Details',
+    ctaUrl: viewUrl,
     footerNote: 'You are receiving this email because you were confirmed for a PlayerHoods match.',
     siteUrl: m.siteUrl,
   })
