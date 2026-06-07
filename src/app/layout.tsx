@@ -53,6 +53,7 @@ export default async function RootLayout({
         </div>
         {user && (
           <div
+            className="hidden md:block"
             style={{
               position: 'fixed',
               bottom: '0.85rem',
