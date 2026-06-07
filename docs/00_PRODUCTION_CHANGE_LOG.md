@@ -23,14 +23,14 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 
 ### Summary
 
-Reorganizes the dashboard Match Board Upcoming tab into Action Needed, My Matches, and Looking for Players without a separate Today Alerts section. Same-day urgent needs-player warnings and time conflicts are shown inline on the relevant My Matches card with a leading status icon and warning accent, while invite response actions use `Confirm` / `Not this time` without adding notification, email, SMS, DB, or Calendar behavior changes.
+Reorganizes the dashboard Match Board Upcoming tab into Action Needed, My Matches, and Looking for Players without a separate Today Alerts section. Same-day urgent needs-player warnings and time conflicts are shown inline on the relevant My Matches card with a leading status icon and warning accent. Compact rows preserve the full date/time, move mobile actions below match content, and hide zero-count Looking for Players sections without adding notification, email, SMS, DB, or Calendar behavior changes.
 
 ### Verification Evidence
 
 | Check | Status | Evidence |
 |---|---|---|
 | Build/typecheck | Passed locally | `git diff --check`; `npx tsc --noEmit`; `npm run build` |
-| Manual Match Board visual check | Passed locally | Browser DOM QA at `http://localhost:3005/dashboard` verified no Today Alerts section, no `No urgent alerts today` placeholder, and Action Needed, My Matches, Looking for Players render on mobile and desktop viewports |
+| Manual Match Board visual check | Passed locally | Browser DOM QA at `http://localhost:3005/dashboard` verified no Today Alerts section, no visible time range overflow, hidden zero-count Looking for Players section, no horizontal page overflow, and compact mobile/desktop Match Board rows |
 | Supabase Remote | No change | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic is part of this branch |
 | Production verification | Not run | Branch is not deployed |
@@ -46,6 +46,7 @@ Reorganizes the dashboard Match Board Upcoming tab into Action Needed, My Matche
 - No DB migration.
 - No Supabase Remote action.
 - No Today Alerts section or `No urgent alerts today` placeholder.
+- No zero-count Looking for Players section in Upcoming.
 - No Calendar redesign.
 - No notification, email, SMS, reminder, or provider behavior change.
 - `Not this time` uses the existing in-app invitation decline/withdraw path for pending invitation responses only.

@@ -871,20 +871,20 @@ function MatchRow({
       className={[
         useCompactBoardRow
           ? hasLeadingIcon
-            ? 'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 bg-white transition-colors sm:grid-cols-[auto_minmax(0,1fr)_auto]'
+            ? 'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 bg-white transition-colors md:grid-cols-[auto_minmax(0,1fr)_auto]'
             : 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 bg-white transition-colors'
           : 'flex items-center gap-3 bg-white transition-colors',
-        isSelected
-          ? 'rounded-[24px] border border-[#0d6efd] bg-[#eff6ff] px-4 py-4 shadow-[0_12px_30px_rgba(13,110,253,0.10)]'
-          : cardWarning
+        cardWarning
           ? 'rounded-[24px] border border-[#FED7AA] bg-[#FFF7ED] px-4 py-4 shadow-[0_12px_30px_rgba(249,115,22,0.10)] hover:border-[#FDBA74]'
+          : isSelected
+          ? 'rounded-[24px] border border-[#0d6efd] bg-[#eff6ff] px-4 py-4 shadow-[0_12px_30px_rgba(13,110,253,0.10)]'
           : variant !== 'default'
           ? 'rounded-[24px] border border-[#E2E8F0] px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]'
           : 'rounded-[24px] border border-[#E2E8F0] px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]',
       ].join(' ')}
     >
       {hasLeadingIcon ? (
-        <div className={useCompactBoardRow ? 'col-start-1 row-span-4 row-start-1 self-center sm:row-span-3' : 'shrink-0'}>
+        <div className={useCompactBoardRow ? 'col-start-1 row-span-4 row-start-1 self-center md:row-span-3' : 'shrink-0'}>
           <MatchBoardStatusIcon kind={boardIconKind} />
         </div>
       ) : null}
@@ -892,22 +892,29 @@ function MatchRow({
       <div className={[
         useCompactBoardRow
           ? hasLeadingIcon
-            ? 'col-start-2 row-start-1 min-w-0 text-body-sub font-semibold leading-snug text-[#64748B]'
+            ? 'col-start-2 row-start-1 min-w-0 text-body-sub font-semibold leading-snug text-[#64748B] md:min-w-[15rem]'
             : 'col-span-2 min-w-0 text-body-sub font-semibold leading-snug text-[#64748B]'
           : variant !== 'default'
             ? 'w-40 shrink-0 text-body-main leading-snug text-[#64748B]'
             : 'w-36 shrink-0 text-body-sub leading-snug text-[#64748B]',
       ].join(' ')}>
         {useCompactBoardRow ? (
-          <p className="truncate">
-            {timeStr || <span className="italic">No time set</span>}
+          <>
+            <p className="min-w-0 text-[#334155] md:flex md:items-center">
+              <span className="shrink-0 whitespace-nowrap">{timeStr || <span className="italic">No time set</span>}</span>
+              {venueName ? (
+                <>
+                  <span className="hidden px-1 text-[#CBD5E1] md:inline">&middot;</span>
+                  <span className="hidden min-w-0 truncate text-[#64748B] md:inline">{venueName}</span>
+                </>
+              ) : null}
+            </p>
             {venueName ? (
-              <>
-                <span className="px-1 text-[#CBD5E1]">&middot;</span>
-                <span>{venueName}</span>
-              </>
+              <p className="mt-0.5 truncate text-body-sub font-semibold text-[#64748B] md:hidden">
+                {venueName}
+              </p>
             ) : null}
-          </p>
+          </>
         ) : (
           <>
             {!showSportIcon && sportName ? (
@@ -934,7 +941,7 @@ function MatchRow({
                 ))}
               </p>
               {cardWarning ? (
-                <p className="mt-1 text-body-sub font-semibold text-[#DC2626]">
+                <p className="mt-1 line-clamp-2 text-body-sub font-semibold text-[#DC2626]">
                   <span>{cardWarning.message}</span>
                 </p>
               ) : null}
@@ -993,7 +1000,7 @@ function MatchRow({
       )}
 
       {!isHistoryRow && !isCancelled && (isInvited || (isParticipantInvite && !hasUserAccepted) || needsReconfirmRequested) ? (
-        <div className={useCompactBoardRow ? hasLeadingIcon ? 'col-start-2 row-start-3 flex flex-wrap items-center justify-end gap-2 self-center sm:col-start-3 sm:row-span-2 sm:row-start-1' : 'row-start-2 col-start-2 flex flex-wrap items-center justify-end gap-2 self-center' : 'shrink-0 flex items-center gap-2'}>
+        <div className={useCompactBoardRow ? hasLeadingIcon ? 'col-start-2 row-start-3 flex flex-wrap items-center justify-end gap-2 self-center md:col-start-3 md:row-span-2 md:row-start-1' : 'row-start-2 col-start-2 flex flex-wrap items-center justify-end gap-2 self-center' : 'shrink-0 flex items-center gap-2'}>
           {!isActionNeededRow ? (
             <span className="text-label rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd] ring-1 ring-[#dbeafe] whitespace-nowrap">
               {responseStatusLabel}
@@ -1056,7 +1063,7 @@ function MatchRow({
             'ph-request-glow text-label shrink-0 rounded-full bg-[#0d6efd] px-3 py-1.5 text-white ring-1 ring-[#93C5FD] whitespace-nowrap',
             useCompactBoardRow
               ? hasLeadingIcon
-                ? 'col-start-2 row-start-3 justify-self-end self-center sm:col-start-3 sm:row-start-2'
+                ? 'col-start-2 row-start-3 justify-self-end self-center md:col-start-3 md:row-start-2'
                 : 'row-start-2 col-start-2 justify-self-end self-center'
               : '',
           ].join(' ')}
@@ -1071,8 +1078,8 @@ function MatchRow({
           useCompactBoardRow
             ? hasLeadingIcon
               ? isActionNeededRow || showFindPlayersAction || showCancelMatchAction || hostRequestCount > 0
-                ? 'col-start-2 row-start-4 flex flex-wrap items-center justify-end gap-3 self-center sm:col-start-3 sm:row-start-3'
-                : 'col-start-2 row-start-3 flex flex-wrap items-center justify-end gap-3 self-center sm:col-start-3 sm:row-start-2'
+                ? 'col-start-2 row-start-4 flex flex-wrap items-center justify-end gap-3 self-center md:col-start-3 md:row-start-3'
+                : 'col-start-2 row-start-3 flex flex-wrap items-center justify-end gap-3 self-center md:col-start-3 md:row-start-2'
               : isActionNeededRow || (showFindPlayersAction && hostRequestCount > 0)
                 ? 'col-span-2 row-start-3 flex items-center justify-end gap-3 self-center'
                 : 'row-start-2 col-start-2 flex items-center justify-end gap-3 self-center'
@@ -1785,11 +1792,6 @@ function getOrganizerLabel(item: MatchListItem) {
   return organizer?.display_name ?? 'Host'
 }
 
-function getMobileGameTypeLabel(gameType: string | null | undefined) {
-  if (!gameType) return null
-  return gameType.charAt(0).toUpperCase() + gameType.slice(1)
-}
-
 function getMobileCompactCourtLabel(label: string | null | undefined) {
   const boardLabel = getBoardCourtLabel(label)
   if (!boardLabel || boardLabel === 'Court TBD') return null
@@ -1825,11 +1827,10 @@ function MobileMatchCard({
   const hostLabel = getOrganizerLabel(item)
   const dateLabel = getMobileDateLabel(item, item.venueTimezone)
   const timeLabel = getMobileTimeLabel(item)
-  const gameTypeLabel = getMobileGameTypeLabel(item.match.game_type)
   const summaryCount = Math.max(item.confirmedCount - 1, 0)
   const compactCourtLabel = getMobileCompactCourtLabel(item.courtState.badgeLabel)
-  const sportFormatLabel = [item.sportName ?? 'Match', gameTypeLabel].filter(Boolean).join(' \u00b7 ')
-  const whenWhereLabel = [dateLabel, timeLabel, item.venueName ?? 'Venue TBD'].filter(Boolean).join(' \u00b7 ')
+  const whenLabel = [dateLabel, timeLabel].filter(Boolean).join(' \u00b7 ')
+  const venueLabel = item.venueName ?? 'Venue TBD'
   const statusLabel = boardSection === 'history' ? getMobileCompactStatusLabel(item) : null
   const statusLine = [
     statusLabel,
@@ -1848,6 +1849,7 @@ function MobileMatchCard({
         : item.isFormed
           ? 'formed'
           : 'upcoming'
+  const detailsHref = `/dashboard?matchId=${item.match.id}`
 
   const handleSelect = () => {
     onViewed?.(item.match.id)
@@ -1855,12 +1857,10 @@ function MobileMatchCard({
   }
 
   return (
-    <Link
-      href={`/dashboard?matchId=${item.match.id}`}
-      onClick={handleSelect}
+    <article
       aria-busy={isLoadingDetail ? 'true' : undefined}
       className={[
-        'block rounded-[18px] border bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#D6DEE9]',
+        'rounded-[18px] border bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#D6DEE9]',
         isLoadingDetail
           ? 'border-[#0d6efd] ring-2 ring-[#BFDBFE]'
           : cardWarning
@@ -1871,25 +1871,35 @@ function MobileMatchCard({
       <div className="flex min-w-0 gap-3">
         {showLeadingIcon ? <MatchBoardStatusIcon kind={iconKind} size="mobile" /> : null}
         <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <p className="truncate text-[15px] font-black leading-5 text-[#1E293B]">{sportFormatLabel}</p>
-            <span className="shrink-0 text-[13px] font-extrabold text-[#0d6efd]">
-              {isLoadingDetail ? 'Opening...' : primaryActionLabel ?? 'Details ->'}
-            </span>
-          </div>
-          <p className="truncate text-[13px] font-bold leading-5 text-[#334155]">{whenWhereLabel}</p>
+          <p className="whitespace-nowrap text-[13px] font-black leading-5 text-[#1E293B]">{whenLabel}</p>
+          <p className="truncate text-[13px] font-bold leading-5 text-[#334155]">{venueLabel}</p>
           <p className="truncate text-[12px] font-extrabold leading-5 text-[#64748B]">{statusLine}</p>
           {cardWarning ? (
             <p className="text-[12px] font-extrabold leading-5 text-[#DC2626]">
               {cardWarning.message}
             </p>
           ) : null}
-          {primaryActionLabel ? (
-            <p className="text-right text-[12px] font-extrabold leading-5 text-[#0d6efd]">{'Details ->'}</p>
-          ) : null}
         </div>
       </div>
-    </Link>
+      <div className={showLeadingIcon ? 'mt-2 flex flex-wrap items-center justify-end gap-3 pl-[52px]' : 'mt-2 flex flex-wrap items-center justify-end gap-3'}>
+        {primaryActionLabel ? (
+          <Link
+            href={detailsHref}
+            onClick={handleSelect}
+            className="rounded-full bg-[#0d6efd] px-3 py-1.5 text-[12px] font-extrabold leading-5 text-white shadow-[0_8px_18px_rgba(13,110,253,0.18)]"
+          >
+            {primaryActionLabel}
+          </Link>
+        ) : null}
+        <Link
+          href={detailsHref}
+          onClick={handleSelect}
+          className="text-[12px] font-extrabold leading-5 text-[#0d6efd]"
+        >
+          {isLoadingDetail ? 'Opening...' : 'Details ->'}
+        </Link>
+      </div>
+    </article>
   )
 }
 
@@ -2215,13 +2225,9 @@ export function MatchesPanel({
           </section>
         ) : subTab === 'upcoming' ? (
           <>
-            <section className="space-y-3">
-              <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
-              {visibleActionNeededCount === 0 ? (
-                <div className="rounded-[20px] border border-dashed border-[#D7E1EE] bg-white px-4 py-4 text-body-main text-[#94A3B8]">
-                  No responses needed.
-                </div>
-              ) : (
+            {visibleActionNeededCount > 0 ? (
+              <section className="space-y-3">
+                <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
                 <div className="space-y-3">
                   {visibleActionNeeded.map((item) => (
                     <MatchRow
@@ -2270,8 +2276,8 @@ export function MatchesPanel({
                     />
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            ) : null}
 
             <section className="space-y-4">
               <div className="flex items-center justify-between gap-3">
@@ -2304,13 +2310,9 @@ export function MatchesPanel({
               )}
             </section>
 
-            <section className="space-y-3">
-              <SectionHeading label="Looking for Players" count={lookingFor.length} />
-              {lookingFor.length === 0 ? (
-                <div className="rounded-[20px] border border-dashed border-[#D7E1EE] bg-white px-4 py-4 text-body-main text-[#94A3B8]">
-                  No matches need players right now.
-                </div>
-              ) : (
+            {lookingFor.length > 0 ? (
+              <section className="space-y-3">
+                <SectionHeading label="Looking for Players" count={lookingFor.length} />
                 <div className="space-y-3">
                   {lookingFor.map((item) => (
                     <MobileMatchCard
@@ -2325,8 +2327,8 @@ export function MatchesPanel({
                     />
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            ) : null}
           </>
         ) : subTab === 'calendar' ? (
           <section className="space-y-4">
@@ -2421,13 +2423,9 @@ export function MatchesPanel({
             <div className="mt-5 space-y-8">
               {subTab === 'upcoming' ? (
                 <>
-                  <section>
-                    <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
-                    {visibleActionNeededCount === 0 ? (
-                      <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
-                        No responses needed.
-                      </div>
-                    ) : (
+                  {visibleActionNeededCount > 0 ? (
+                    <section>
+                      <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
                       <div className="space-y-2">
                         {visibleActionNeeded.map((item) => (
                           <MatchRow
@@ -2476,8 +2474,8 @@ export function MatchesPanel({
                           />
                         ))}
                       </div>
-                    )}
-                  </section>
+                    </section>
+                  ) : null}
 
                   <section>
                     <SectionHeading label="My Matches" count={incoming.length} />
@@ -2514,13 +2512,9 @@ export function MatchesPanel({
                     )}
                   </section>
 
-                  <section>
-                    <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                    {lookingFor.length === 0 ? (
-                      <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
-                        No matches need players right now.
-                      </div>
-                    ) : (
+                  {lookingFor.length > 0 ? (
+                    <section>
+                      <SectionHeading label="Looking for Players" count={lookingFor.length} />
                       <div className="space-y-2">
                         {lookingFor.map((item) => (
                           <MatchRow
@@ -2539,8 +2533,8 @@ export function MatchesPanel({
                           />
                         ))}
                       </div>
-                    )}
-                  </section>
+                    </section>
+                  ) : null}
                 </>
               ) : subTab === 'calendar' ? (
                 <WeeklyCalendar items={items} userId={userId} />
