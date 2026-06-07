@@ -16,6 +16,7 @@ type InvitationSmsData = {
   siteUrl: string
   unsubscribeUrl?: string | null
   replyCode?: string | null
+  responseUrl?: string | null
 }
 
 type MatchSmsData = MatchInfo & {
@@ -106,7 +107,7 @@ export function renderInvitationSms(data: InvitationSmsData): string {
   const time = formatSmsTime(data.matchSummary?.start_time)
   const venueName = data.matchSummary?.club_name?.trim()
   const token = formatInvitationToken(data.invitationId)
-  const invitationUrl = `${baseUrl}/i/${token}`
+  const invitationUrl = data.responseUrl ?? `${baseUrl}/i/${token}`
   const detailLines = [[date, time].filter(Boolean).join(', ') || null, venueName].filter(Boolean)
   const replyText = data.replyCode ? `Reply YES ${data.replyCode} or NO ${data.replyCode}.` : null
   const recipientName = data.recipientName?.trim()
@@ -222,6 +223,7 @@ export function renderConfirmedLineupSms(match: MatchSmsData): string {
     location,
     '',
     outText,
+    `Details: ${matchLink(match)}`,
     "We'll only text if plans change.",
   ].filter((line): line is string => line != null).join('\n')
 }
