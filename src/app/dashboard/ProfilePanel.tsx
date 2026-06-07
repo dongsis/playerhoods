@@ -115,6 +115,24 @@ interface Props {
   }) => Promise<void>
 }
 
+type GenderSelection = 'male' | 'female' | 'x' | null
+
+const GENDER_OPTIONS: Array<{ value: Exclude<GenderSelection, null>; label: string }> = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'x', label: 'X' },
+]
+
+function normalizeProfileGender(value: Profile['gender']): GenderSelection {
+  if (value === 'male' || value === 'female') return value
+  return null
+}
+
+function getGenderSubmitValue(value: GenderSelection): Profile['gender'] | null {
+  if (value === 'x') return 'unspecified'
+  return value
+}
+
 function SectionCard({
   title,
   description,
@@ -1671,7 +1689,7 @@ export function ProfilePanel({
   const [firstName, setFirstName] = useState(profile.first_name ?? '')
   const [lastName, setLastName] = useState(profile.last_name ?? '')
   const [displayNameDraft, setDisplayNameDraft] = useState(profile.display_name ?? '')
-  const [gender, setGender] = useState<Profile['gender']>(profile.gender ?? 'unspecified')
+  const [gender, setGender] = useState<GenderSelection>(() => normalizeProfileGender(profile.gender))
   const [availabilityStatus, setAvailabilityStatus] = useState<Profile['availability_status']>(profile.availability_status ?? 'available')
   const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>(
     deriveAvailabilityMode(profile.availability_status, profile.looking_to_play),
@@ -1872,7 +1890,7 @@ export function ProfilePanel({
   useEffect(() => {
     const nextFirstName = profile.first_name ?? ''
     const nextLastName = profile.last_name ?? ''
-    const nextGender = profile.gender ?? 'unspecified'
+    const nextGender = normalizeProfileGender(profile.gender)
     const nextAvailabilityStatus = profile.availability_status ?? 'available'
     const nextAvailabilityNote = profile.availability_note ?? ''
     const nextAvailabilityUntil = profile.availability_until ?? ''
@@ -2088,17 +2106,13 @@ export function ProfilePanel({
           <div>
             <h3 className="mb-2.5 text-[11px] font-bold text-[#071A44]">Gender</h3>
             <div className="grid grid-cols-3 overflow-hidden rounded-md border border-[#CBD5E1] bg-white">
-              {[
-                { value: 'male', label: 'Male' },
-                { value: 'female', label: 'Female' },
-                { value: 'unspecified', label: 'Another' },
-              ].map((option) => {
-                const selected = (gender ?? 'unspecified') === option.value
+              {GENDER_OPTIONS.map((option) => {
+                const selected = gender === option.value
                 return (
                   <button
                     key={option.value}
                     type="button"
-                    onClick={() => setGender(option.value as Profile['gender'])}
+                    onClick={() => setGender(option.value)}
                     className={`h-8 border-r border-[#CBD5E1] px-2 text-[10px] transition last:border-r-0 ${
                       selected ? 'bg-[#071A44] font-medium text-white' : 'bg-white text-[#071A44] hover:bg-[#F8FBFF]'
                     }`}
@@ -2676,7 +2690,10 @@ export function ProfilePanel({
         const formData = new FormData()
         formData.set('first_name', firstName)
         formData.set('last_name', lastName)
-        formData.set('gender', gender ?? 'unspecified')
+        const genderSubmitValue = getGenderSubmitValue(gender)
+        if (genderSubmitValue !== null) {
+          formData.set('gender', genderSubmitValue)
+        }
         formData.set('availability_status', availabilityStatus ?? 'available')
         formData.set('availability_note', availabilityNote)
         formData.set('availability_until', availabilityUntil)
@@ -2973,17 +2990,13 @@ export function ProfilePanel({
 
                   <ProfileInfoRow label="Gender">
                     <div className="flex flex-wrap gap-2.5">
-                      {[
-                        { value: 'male', label: 'Male' },
-                        { value: 'female', label: 'Female' },
-                        { value: 'unspecified', label: 'Another' },
-                      ].map((option) => {
-                        const selected = (gender ?? 'unspecified') === option.value
+                      {GENDER_OPTIONS.map((option) => {
+                        const selected = gender === option.value
                         return (
                           <button
                             key={option.value}
                             type="button"
-                            onClick={() => setGender(option.value as Profile['gender'])}
+                            onClick={() => setGender(option.value)}
                             className={`text-body-main inline-flex items-center rounded-full border px-3.5 py-2 transition ${
                               selected
                                 ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
