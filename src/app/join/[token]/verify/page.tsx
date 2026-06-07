@@ -219,8 +219,20 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
         }
 
         .public-signup-verify-shell {
-          width: min(100%, 720px);
+          width: min(100%, 980px);
           margin: 0 auto;
+        }
+
+        .public-signup-verify-layout {
+          align-items: start;
+          display: grid;
+          gap: 18px;
+        }
+
+        @media (min-width: 860px) {
+          .public-signup-verify-layout {
+            grid-template-columns: minmax(0, 1fr) 320px;
+          }
         }
 
         .public-signup-verify-brand {
@@ -321,17 +333,78 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           margin: 0 0 14px;
         }
 
-        .public-signup-verify-button {
+        .public-signup-verify-button,
+        .public-signup-verify-button-link {
+          align-items: center;
           appearance: none;
           background: #2554d9;
           border: 0;
           border-radius: 999px;
           color: #fff;
           cursor: pointer;
+          display: inline-flex;
           font-size: 0.95rem;
           font-weight: 850;
           min-height: 46px;
           padding: 0 20px;
+          text-decoration: none;
+        }
+
+        .public-signup-verify-nudge {
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid #d5e2f2;
+          border-radius: 24px;
+          box-shadow: 0 12px 30px rgba(17, 42, 84, 0.06);
+          padding: 20px;
+        }
+
+        .public-signup-verify-nudge-title {
+          color: #06183d;
+          font-size: 1.12rem;
+          font-weight: 950;
+          line-height: 1.2;
+          margin: 0;
+        }
+
+        .public-signup-verify-nudge-copy {
+          color: #405474;
+          font-size: 0.9rem;
+          font-weight: 700;
+          line-height: 1.5;
+          margin: 10px 0 0;
+        }
+
+        .public-signup-verify-nudge-list {
+          color: #405474;
+          display: grid;
+          gap: 7px;
+          font-size: 0.85rem;
+          font-weight: 700;
+          list-style: none;
+          line-height: 1.35;
+          margin: 14px 0 0;
+          padding-left: 0;
+        }
+
+        .public-signup-verify-nudge-list li {
+          display: grid;
+          gap: 8px;
+          grid-template-columns: auto 1fr;
+        }
+
+        .public-signup-verify-actions {
+          align-items: center;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-top: 16px;
+        }
+
+        .public-signup-verify-guest-link {
+          color: #2554d9;
+          font-size: 0.88rem;
+          font-weight: 850;
+          text-decoration: none;
         }
       `}</style>
 
@@ -340,10 +413,11 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           <BrandLogo variant="horizontal" />
         </div>
 
+        <div className="public-signup-verify-layout">
         <section className="public-signup-verify-card">
           <p className="public-signup-verify-kicker">Join Link</p>
           <h1 className="public-signup-verify-title">
-            {isVerified ? 'Request sent' : isFinishing ? 'Finishing your request...' : 'Verification failed'}
+            {isVerified ? 'Request sent' : isFinishing ? 'Verify your contact' : 'Verification needs attention'}
           </h1>
           {isVerified ? (
             <>
@@ -357,7 +431,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           ) : isFinishing ? (
             <>
               <p className="public-signup-verify-body">
-                Verifying your email and sending your request to the host. This should only take a moment.
+                To help the host know who is joining, we&apos;re verifying the email you used for this match request. This should only take a moment.
               </p>
               <form id="public-signup-verify-form" className="public-signup-verify-form" action={verifyAction}>
                 <input type="hidden" name="signup" value={signupId} />
@@ -408,6 +482,22 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
             Back to match details
           </Link>
         </section>
+
+        <aside className="public-signup-verify-nudge" aria-label="Create a free account">
+          <p className="public-signup-verify-kicker">New to PlayerHoods?</p>
+          <h2 className="public-signup-verify-nudge-title">Create a free account</h2>
+          <ul className="public-signup-verify-nudge-list">
+            <li><span aria-hidden="true">✓</span> Join matches faster and host with less work</li>
+            <li><span aria-hidden="true">✓</span> Track updates, change responses, and manage your match status in one place</li>
+            <li><span aria-hidden="true">✓</span> Communicate more easily in match chat and group chat</li>
+            <li><span aria-hidden="true">✓</span> Save trusted players to your Hood and stay connected through groups</li>
+          </ul>
+          <div className="public-signup-verify-actions">
+            <Link href="/login" className="public-signup-verify-button-link">Create Free Account</Link>
+            <Link href={`/join/${publicToken}`} className="public-signup-verify-guest-link">Maybe later</Link>
+          </div>
+        </aside>
+        </div>
       </main>
     </div>
   )
