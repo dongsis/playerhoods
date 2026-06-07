@@ -14,6 +14,44 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-07 - MR-20260607-dashboard-selected-match-roster-normalization
+
+**Type:** Patch
+**Code Commits:** PR #137 current code head `bc9fa4241a003c3a5f6a36b07966d32f3caef41d`.
+**Migration:** None
+**Status:** Ready for Review / GitHub only; Vercel Production not deployed yet; Supabase Remote no change.
+
+### Summary
+
+Fixes dashboard selected-match detail normalization so non-host participant/requester views do not show a lower confirmed player count than the Match Board. Confirmed players visible on the Match Board are used as the floor for the embedded Match Detail view, without exposing pending/waiting/private host-management rows.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Vercel Preview | Passed; owner visual review accepted | Owner visual review accepted on Vercel Preview for PR #137 |
+| Vercel Production | Not deployed yet | Pending merge and production deployment |
+| Supabase Remote | No change | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic was sent by Codex validation |
+| Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending |
+
+### Rollback
+
+- Code rollback: revert PR #137 and redeploy previous production commit.
+- Database rollback: none required because this patch has no migration or backend contract change.
+- Provider rollback: none; no invite/email/SMS/notification provider configuration or traffic changed.
+
+### Notes
+
+- No DB migration.
+- No backend contract change.
+- No Supabase Remote action.
+- No provider traffic.
+- No Add Players change.
+- No roster action behavior change.
+- This patch targets the dashboard selected-match detail path and does not claim to change all direct match-detail entry paths.
+
 ## 2026-06-06 - MR-20260606-mobile-roster-row-actions
 
 **Type:** Patch
