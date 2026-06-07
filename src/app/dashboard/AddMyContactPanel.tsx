@@ -63,14 +63,6 @@ function CloseIcon() {
   )
 }
 
-function SparkIcon() {
-  return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path d="M10 2.4 11.4 7l4.3 1.5-4.3 1.6L10 14.6l-1.4-4.5-4.3-1.6L8.6 7 10 2.4ZM15.5 12.8l.6 1.7 1.6.6-1.6.6-.6 1.7-.6-1.7-1.6-.6 1.6-.6.6-1.7Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
 function CheckIcon() {
   return (
     <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
@@ -369,25 +361,20 @@ export function AddMyContactPanel({
           </button>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.08fr)_auto_minmax(320px,0.86fr)] lg:gap-8">
+        <div className="mt-4 grid gap-5 lg:mt-6 lg:grid-cols-[minmax(0,1.08fr)_auto_minmax(320px,0.86fr)] lg:gap-8">
           <div className={mobileTab === 'smart' ? 'block' : 'hidden sm:block'}>
-            <div className="rounded-[24px] border border-[#bfdbfe] bg-[#F8FBFF] p-4 sm:p-5">
-              <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-[#0d6efd] shadow-sm">
-                  <SparkIcon />
-                </span>
-                <div>
-                  <h4 className="text-xl font-black text-[#0B1F44]">Smart Import</h4>
-                  <p className="mt-2 text-body-main leading-6 text-[#334155]">
-                    We&apos;ll find names, emails, and phone numbers from screenshots or pasted/uploaded images.
-                  </p>
-                  <p className="mt-3 rounded-2xl border border-[#D7E3F4] bg-white px-4 py-3 text-body-sub font-semibold leading-5 text-[#475569]">
-                    Private import: your uploaded or pasted images are not shown to other players. No email, SMS, invite, or reminder is sent unless you choose to.
-                  </p>
-                </div>
+            <div className="rounded-[24px] border border-[#bfdbfe] bg-[#F8FBFF] p-3 sm:p-5">
+              <div>
+                <h4 className="text-xl font-black text-[#0B1F44]">Smart Import 🔒</h4>
+                <p className="mt-2 text-body-main leading-6 text-[#334155]">
+                  Import names, emails, and phone numbers from screenshots or pasted/uploaded images.
+                </p>
+                <p className="mt-2 text-body-sub font-semibold leading-5 text-[#475569]">
+                  Private import: your image is not shown to other players, and no email, SMS, invite, or reminder is sent unless you choose to.
+                </p>
               </div>
 
-              <div className="mt-5">
+              <div className="mt-4">
                 {smartImportAvailable && onParseScreenshots && onImportScreenshotContacts ? (
                   <ContactScreenshotImportSection
                     userId={userId}

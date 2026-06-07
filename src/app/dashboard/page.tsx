@@ -173,6 +173,8 @@ export default async function DashboardPage({ searchParams }: Props) {
         onRemoveParticipant={removeMatchParticipantAction.bind(null, selectedMatchId)}
         onAcceptIdentityLink={acceptMatchIdentityLinkAction.bind(null, selectedMatchId)}
         onKeepSeparateIdentityLink={keepSeparateMatchIdentityLinkAction.bind(null, selectedMatchId)}
+        onParseScreenshots={parseDashboardContactScreenshotAction}
+        onImportScreenshotContacts={importDashboardScreenshotContactsAction}
       />
     )
   }

@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
+import { AddMyContactPanel } from '@/app/dashboard/AddMyContactPanel'
 import { AddPlayersPickerPanel, type AddPlayersCandidate, type AddPlayersMode } from '@/app/matches/AddPlayersPickerPanel'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { getAvailabilityStatusDotClass } from '@/lib/profile-options'
 import { saveContactPlayer } from '@/lib/api/play-network'
-import { createRosterGuest } from '@/lib/api/roster'
+import { createRosterGuest, type ContactPlayerResolved } from '@/lib/api/roster'
 import {
+  getContactPersonAdmissionTargets,
   inviteGroupToMatch,
   inviteContactPersonToMatch,
   inviteUserToMatch,
@@ -21,6 +23,7 @@ import {
 } from '@/lib/api/matches'
 import type { AvailabilityStatus, Group } from '@/lib/types/database'
 import type { MatchUpdateInput } from './match-detail.actions'
+import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import { processDeliveriesAction } from './process-deliveries-action'
 
 type CurrentRequestTarget = {
@@ -164,6 +167,13 @@ type Props = {
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
   onRequestPanelMode?: (mode: PanelMode) => void
   onApplied?: () => void
+  onParseScreenshots?: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
+  onImportScreenshotContacts?: (drafts: Array<{
+    display_name: string
+    phone?: string | null
+    email?: string | null
+    source_file_name?: string | null
+  }>) => Promise<{ created: number; skipped: number }>
   shareLinkRow?: ReactNode
 }
 
@@ -261,6 +271,37 @@ function getCandidateFilterTags(candidate: CandidateItem): PickerFilter[] {
   }
 
   return tags
+}
+
+function contactTargetToCandidate(target: ContactPersonAdmissionTarget): CandidateItem {
+  return {
+    key: `contact-person:${target.person_id}`,
+    id: target.person_id,
+    name: target.display_name ?? 'Contact Player',
+    kind: 'contact',
+    availabilityStatus: null,
+    source: target.source,
+    sourceLabel: target.sourceLabel,
+    avatarUrl: target.avatar_url ?? null,
+    personId: target.person_id,
+    isLinkedContact: target.eligible_via === 'registered_user_path',
+  }
+}
+
+function contactTargetsToImportContacts(targets: ContactPersonAdmissionTarget[]): ContactPlayerResolved[] {
+  return targets.map((target) => ({
+    guest_id: target.person_id,
+    display_name: target.display_name ?? 'Contact Player',
+    email: null,
+    phone: null,
+    notes: null,
+    gender: null,
+    availability_status: null,
+    availability_note: null,
+    availability_until: null,
+    linked_user_id: null,
+    resolution_state: 'contact_only',
+  }))
 }
 
 function getParticipantEffectiveUserId(participant: MatchParticipantEnriched): string | null {
@@ -724,6 +765,8 @@ export function MatchManagePanel({
   onRemoveParticipant,
   onRequestPanelMode,
   onApplied,
+  onParseScreenshots,
+  onImportScreenshotContacts,
   shareLinkRow,
 }: Props) {
   const router = useRouter()
@@ -902,6 +945,10 @@ export function MatchManagePanel({
   const pendingAddKeys = new Set(pendingAdds.map((item) => `${item.mode}:${item.key}`))
   const pendingRemovalKeys = new Set(pendingRemovals.map((item) => item.key))
   const activeAdditionMode: AdditionMode = inviteMode === 'request' ? 'request' : 'invite'
+  const existingImportContacts = useMemo(
+    () => contactTargetsToImportContacts(contactTargets),
+    [contactTargets],
+  )
 
   const inviteCandidates = useMemo(() => {
     const pool: CandidateItem[] =
@@ -920,18 +967,7 @@ export function MatchManagePanel({
               sourceLabel: user.sourceLabel,
               userId: user.id,
             })),
-            ...contactTargets.filter((target) => target.can_invite).map((target) => ({
-              key: `contact-person:${target.person_id}`,
-              id: target.person_id,
-              name: target.display_name ?? 'Contact Player',
-              kind: 'contact' as const,
-              availabilityStatus: null,
-              source: target.source,
-              sourceLabel: target.sourceLabel,
-              avatarUrl: target.avatar_url ?? null,
-              personId: target.person_id,
-              isLinkedContact: target.eligible_via === 'registered_user_path',
-            })),
+            ...contactTargets.filter((target) => target.can_invite).map(contactTargetToCandidate),
             ...localContactCandidates,
             ...(isOrganizer
               ? candidateGroups.map((group) => ({
@@ -1111,6 +1147,29 @@ export function MatchManagePanel({
       setContactCreateError(message)
     } finally {
       setIsCreatingContact(false)
+    }
+  }
+
+  const handleCreateContactSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void handleCreateContactForMatch()
+  }
+
+  const handleScreenshotImportedForMatch = async () => {
+    const supabase = createSupabaseBrowserClient()
+
+    try {
+      const nextContactTargets = await getContactPersonAdmissionTargets(supabase, matchId)
+      const nextCandidates = nextContactTargets
+        .filter((target) => target.can_invite)
+        .map(contactTargetToCandidate)
+
+      setLocalContactCandidates((previous) => dedupeCandidateItems([...previous, ...nextCandidates]))
+      setInviteMode('invite')
+      setContactComposerOpen(false)
+      setSuccess('Imported contacts were saved. Add them from Contacts when ready.')
+    } catch (importError) {
+      setContactCreateError((importError as { message?: string })?.message ?? 'Imported contacts were saved, but invite options could not refresh yet.')
     }
   }
 
@@ -1817,81 +1876,34 @@ export function MatchManagePanel({
       </div>
 
       {contactComposerOpen ? (
-        <form
-          className="space-y-3 rounded-xl border border-[#E2E8F0] bg-white p-3"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleCreateContactForMatch()
+        <AddMyContactPanel
+          mode="modal"
+          userId={organizerUserId ?? ''}
+          existingContacts={existingImportContacts}
+          onParseScreenshots={organizerUserId ? onParseScreenshots : undefined}
+          onImportScreenshotContacts={organizerUserId ? onImportScreenshotContacts : undefined}
+          onImported={handleScreenshotImportedForMatch}
+          displayName={contactDisplayName}
+          email={contactEmail}
+          phone={contactPhone}
+          notes={contactNotes}
+          creatingContact={isCreatingContact}
+          error={contactCreateError}
+          onDisplayNameChange={setContactDisplayName}
+          onEmailChange={setContactEmail}
+          onPhoneChange={setContactPhone}
+          onNotesChange={setContactNotes}
+          onManualSubmit={handleCreateContactSubmit}
+          onClose={() => {
+            setContactComposerOpen(false)
+            setContactCreateError(null)
           }}
-        >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="text-label text-slate-500">
-              Name
-              <input
-                type="text"
-                value={contactDisplayName}
-                onChange={(event) => setContactDisplayName(event.target.value)}
-                placeholder="Player's full name"
-                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-            <label className="text-label text-slate-500">
-              Email
-              <input
-                type="email"
-                value={contactEmail}
-                onChange={(event) => setContactEmail(event.target.value)}
-                placeholder="email@example.com"
-                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-            <label className="text-label text-slate-500">
-              Phone
-              <input
-                type="tel"
-                value={contactPhone}
-                onChange={(event) => setContactPhone(event.target.value)}
-                placeholder="+1 234 567 890"
-                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-            <label className="text-label text-slate-500">
-              Notes
-              <input
-                type="text"
-                value={contactNotes}
-                onChange={(event) => setContactNotes(event.target.value)}
-                placeholder="Optional"
-                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-          </div>
-          {contactCreateError ? (
-            <p className="text-body-sub rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-red-600">
-              {contactCreateError}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setContactComposerOpen(false)
-                setContactCreateError(null)
-              }}
-              disabled={isCreatingContact}
-              className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isCreatingContact}
-              className="text-body-main rounded-xl bg-blue-600 px-4 py-2 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isCreatingContact ? 'Saving...' : 'Save & Add'}
-            </button>
-          </div>
-        </form>
+          onCancel={() => {
+            setContactComposerOpen(false)
+            setContactCreateError(null)
+          }}
+          onClearError={() => setContactCreateError(null)}
+        />
       ) : null}
     </div>
   )

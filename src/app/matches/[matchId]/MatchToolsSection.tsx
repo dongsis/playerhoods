@@ -16,6 +16,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Group, MatchCourt, MatchStatus } from '@/lib/types/database'
 import type { MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
+import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 
 type CurrentRequestTarget = {
   id: string
@@ -49,6 +50,13 @@ type Props = {
   onUpdateMatchDetails: (data: MatchUpdateInput) => Promise<void>
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
   onSaveLineup: (lineup: MatchLineupSnapshot | null) => Promise<void>
+  onParseScreenshots?: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
+  onImportScreenshotContacts?: (drafts: Array<{
+    display_name: string
+    phone?: string | null
+    email?: string | null
+    source_file_name?: string | null
+  }>) => Promise<{ created: number; skipped: number }>
 }
 
 export function MatchToolsSection({
@@ -76,6 +84,8 @@ export function MatchToolsSection({
   onUpdateMatchDetails,
   onRemoveParticipant,
   onSaveLineup,
+  onParseScreenshots,
+  onImportScreenshotContacts,
 }: Props) {
   const RoundRobinPanel = MatchRoundRobinPanel as ComponentType<MatchRoundRobinPanelProps>
   const sectionRef = useRef<HTMLElement | null>(null)
@@ -362,6 +372,8 @@ export function MatchToolsSection({
             setActiveTab(null)
             setApplySuccessMessage('Changes applied.')
           }}
+          onParseScreenshots={onParseScreenshots}
+          onImportScreenshotContacts={onImportScreenshotContacts}
           shareLinkRow={isOrganizer && matchStatus === 'active' ? (
             <div className="space-y-2">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

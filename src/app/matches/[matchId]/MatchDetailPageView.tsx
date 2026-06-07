@@ -16,6 +16,7 @@ import type { MatchDetailPageViewModel } from './match-detail.view-model'
 import type { MatchCourtPlanUpdateInput, MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
+import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 
 function IconCalendar({ size = 12, color = '#0d6efd' }: { size?: number; color?: string }) {
   return (
@@ -120,6 +121,13 @@ type MatchDetailPageViewProps = {
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
   onAcceptIdentityLink: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
   onKeepSeparateIdentityLink: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
+  onParseScreenshots?: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
+  onImportScreenshotContacts?: (drafts: Array<{
+    display_name: string
+    phone?: string | null
+    email?: string | null
+    source_file_name?: string | null
+  }>) => Promise<{ created: number; skipped: number }>
 }
 
 function MobileMatchDetailHeaderSection({
@@ -1091,6 +1099,8 @@ export function MatchDetailPageView({
   onConfirmMatch,
   onAcceptIdentityLink,
   onKeepSeparateIdentityLink,
+  onParseScreenshots,
+  onImportScreenshotContacts,
 }: MatchDetailPageViewProps) {
   const showManagePanel =
     viewModel.showOrganizerAdminSection ||
@@ -1146,6 +1156,8 @@ export function MatchDetailPageView({
       onUpdateMatchDetails={onUpdateMatchDetails}
       onRemoveParticipant={onRemoveParticipant}
       onSaveLineup={onSaveLineup}
+      onParseScreenshots={onParseScreenshots}
+      onImportScreenshotContacts={onImportScreenshotContacts}
     />
   ) : null
 
