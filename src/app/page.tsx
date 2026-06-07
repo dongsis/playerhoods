@@ -14,6 +14,17 @@ import {
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 type AuthMode = 'login' | 'register' | 'forgot'
+type PostAuthProfile = {
+  onboarding_completed: boolean | null
+  onboarding_profile_completed: boolean | null
+  age_confirmed_at: string | null
+  terms_accepted_at: string | null
+  privacy_accepted_at: string | null
+  responsible_use_accepted_at: string | null
+}
+
+const POST_AUTH_PROFILE_SELECT =
+  'onboarding_completed, onboarding_profile_completed, age_confirmed_at, terms_accepted_at, privacy_accepted_at, responsible_use_accepted_at'
 
 type Slide = {
   key: string
@@ -102,6 +113,31 @@ const benefits = [
     icon: 'lock',
   },
 ]
+
+function hasLegalAgreement(profile: PostAuthProfile | null) {
+  return Boolean(
+    profile?.age_confirmed_at &&
+      profile?.terms_accepted_at &&
+      profile?.privacy_accepted_at &&
+      profile?.responsible_use_accepted_at,
+  )
+}
+
+function buildPostAuthDestination(nextPath: string, profile: PostAuthProfile | null) {
+  const hasLegal = hasLegalAgreement(profile)
+  if (profile?.onboarding_completed && hasLegal) {
+    return nextPath
+  }
+
+  const params = new URLSearchParams()
+  params.set('next', nextPath)
+
+  if (profile?.onboarding_profile_completed && hasLegal) {
+    return `/onboarding/next-steps?${params.toString()}`
+  }
+
+  return `/onboarding/profile?${params.toString()}`
+}
 
 export default function HomePage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -364,6 +400,31 @@ function HomeAuthOverlay({
     return true
   }
 
+  async function getPostAuthDestination(supabase: ReturnType<typeof createSupabaseBrowserClient>) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return nextPath
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select(POST_AUTH_PROFILE_SELECT)
+        .eq('id', user.id)
+        .maybeSingle<PostAuthProfile>()
+
+      if (profileError) {
+        console.error('[home-auth:post-auth-profile]', profileError)
+        return nextPath
+      }
+
+      return buildPostAuthDestination(nextPath, profile)
+    } catch (error) {
+      console.error('[home-auth:post-auth-destination]', error)
+      return nextPath
+    }
+  }
+
   async function handleGoogleAuth(targetMode: 'login' | 'register') {
     setError(null)
     setInfo(null)
@@ -418,7 +479,7 @@ function HomeAuthOverlay({
         return
       }
 
-      window.location.assign(nextPath)
+      window.location.assign(await getPostAuthDestination(supabase))
     } catch (err) {
       console.error('[home-auth:login]', err)
       setError(mapAuthErrorToUiMessage('login'))
@@ -466,7 +527,7 @@ function HomeAuthOverlay({
       }
 
       if (data.session) {
-        window.location.assign('/onboarding/intro')
+        window.location.assign(await getPostAuthDestination(supabase))
         return
       }
 
