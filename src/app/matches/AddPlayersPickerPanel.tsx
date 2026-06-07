@@ -355,15 +355,10 @@ export function AddPlayersPickerPanel({
                   className={compactPreviewRows ? compactCandidateClass(candidate, mode) : candidateClass(candidate, mode)}
                 >
                   {candidate.leadingNode}
-                  <span className={`${compactPreviewRows ? 'flex min-w-0 items-center gap-1.5' : 'min-w-0'}`}>
-                    <span className={`${compactPreviewRows ? 'max-w-[8rem]' : 'max-w-[12rem]'} block truncate`}>
+                  <span className="min-w-0">
+                    <span className={`${compactPreviewRows ? 'max-w-[10rem]' : 'max-w-[12rem]'} block truncate`}>
                       {candidate.labelNode ?? candidate.name}
                     </span>
-                    {compactPreviewRows && candidate.supportingNode ? (
-                      <span className="hidden max-w-[7.5rem] shrink-0 truncate rounded-full bg-slate-50 px-1.5 py-0.5 text-[9px] font-black text-slate-500 min-[360px]:inline-block">
-                        {candidate.supportingNode}
-                      </span>
-                    ) : null}
                     {!compactPreviewRows && candidate.supportingNode ? (
                       <span className="mt-0.5 block truncate text-body-sub font-semibold text-current opacity-65">
                         {candidate.supportingNode}
