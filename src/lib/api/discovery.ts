@@ -81,6 +81,44 @@ export async function getCityPlayersDiscovery(
   }))
 }
 
+export async function getSharedCityNamesByUserIds(
+  supabase: Client,
+  userIds: string[],
+): Promise<Map<string, string[]>> {
+  const targetIds = Array.from(new Set(userIds.filter(Boolean)))
+  const result = new Map<string, string[]>()
+  if (targetIds.length === 0) return result
+
+  const { data: myCities, error: citiesError } = await supabase
+    .from('user_play_cities')
+    .select('city_name')
+    .order('created_at', { ascending: true })
+
+  if (citiesError) throw citiesError
+
+  const cityNames = Array.from(
+    new Set((myCities ?? []).map((row) => row.city_name?.trim()).filter((city): city is string => Boolean(city))),
+  )
+  if (cityNames.length === 0) return result
+
+  const targetIdSet = new Set(targetIds)
+  const discoveryRows = await Promise.all(
+    cityNames.map((city) => getCityPlayersDiscovery(supabase, city).catch(() => [] as CityDiscoveryRow[])),
+  )
+
+  for (const row of discoveryRows.flat()) {
+    if (!targetIdSet.has(row.user_id)) continue
+
+    const current = result.get(row.user_id) ?? []
+    for (const cityName of row.shared_city_names) {
+      if (!current.includes(cityName)) current.push(cityName)
+    }
+    result.set(row.user_id, current)
+  }
+
+  return result
+}
+
 export async function searchPlayersByEmailOrPhone(
   supabase: Client,
   query: string,

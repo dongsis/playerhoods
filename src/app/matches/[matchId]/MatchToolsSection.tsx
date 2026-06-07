@@ -30,6 +30,8 @@ type Props = {
   isFormed: boolean
   matchId: string
   matchStatus: MatchStatus
+  sportId: number | null
+  sportName: string | null
   gameType: string | null
   finalCourtLabel: string | null
   matchCourts: MatchCourt[]
@@ -57,6 +59,8 @@ export function MatchToolsSection({
   isFormed,
   matchId,
   matchStatus,
+  sportId,
+  sportName,
   gameType,
   finalCourtLabel,
   matchCourts,
@@ -344,6 +348,8 @@ export function MatchToolsSection({
           embedded
           panelMode="invite"
           matchId={matchId}
+          matchSportId={sportId}
+          matchSportName={sportName}
           isOrganizer={isOrganizer}
           organizerUserId={organizerUserId}
           requiredCount={requiredCount}
