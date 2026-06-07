@@ -581,8 +581,8 @@ function MatchBoardStatusIcon({
         : kind === 'warning' || kind === 'cancelled'
           ? 'bg-[#FEF2F2] text-[#F97316] ring-[#FED7AA]'
           : 'bg-[#EFF6FF] text-[#0d6efd] ring-[#BFDBFE]'
-  const sizeClass = size === 'mobile' ? 'h-10 w-10' : 'h-11 w-11'
-  const iconClass = size === 'mobile' ? 'h-5 w-5' : 'h-[22px] w-[22px]'
+  const sizeClass = size === 'mobile' ? 'h-8 w-8' : 'h-9 w-9'
+  const iconClass = size === 'mobile' ? 'h-4 w-4' : 'h-[18px] w-[18px]'
 
   return (
     <span
@@ -871,16 +871,16 @@ function MatchRow({
       className={[
         useCompactBoardRow
           ? hasLeadingIcon
-            ? 'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 bg-white transition-colors md:grid-cols-[auto_minmax(0,1fr)_auto]'
-            : 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 bg-white transition-colors'
+            ? 'grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-0.5 bg-white transition-colors md:grid-cols-[auto_minmax(0,1fr)_auto]'
+            : 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 bg-white transition-colors'
           : 'flex items-center gap-3 bg-white transition-colors',
         cardWarning
-          ? 'rounded-[24px] border border-[#FED7AA] bg-[#FFF7ED] px-4 py-4 shadow-[0_12px_30px_rgba(249,115,22,0.10)] hover:border-[#FDBA74]'
+          ? 'rounded-[16px] border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2.5 shadow-[0_8px_20px_rgba(249,115,22,0.08)] hover:border-[#FDBA74]'
           : isSelected
-          ? 'rounded-[24px] border border-[#0d6efd] bg-[#eff6ff] px-4 py-4 shadow-[0_12px_30px_rgba(13,110,253,0.10)]'
+          ? 'rounded-[16px] border border-[#0d6efd] bg-[#eff6ff] px-3 py-2.5 shadow-[0_8px_20px_rgba(13,110,253,0.10)]'
           : variant !== 'default'
-          ? 'rounded-[24px] border border-[#E2E8F0] px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]'
-          : 'rounded-[24px] border border-[#E2E8F0] px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]',
+          ? 'rounded-[16px] border border-[#E2E8F0] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.045)] hover:border-[#CBD5E1]'
+          : 'rounded-[16px] border border-[#E2E8F0] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.045)] hover:border-[#CBD5E1]',
       ].join(' ')}
     >
       {hasLeadingIcon ? (
@@ -892,28 +892,23 @@ function MatchRow({
       <div className={[
         useCompactBoardRow
           ? hasLeadingIcon
-            ? 'col-start-2 row-start-1 min-w-0 text-body-sub font-semibold leading-snug text-[#64748B] md:min-w-[15rem]'
-            : 'col-span-2 min-w-0 text-body-sub font-semibold leading-snug text-[#64748B]'
+            ? 'col-start-2 row-start-1 min-w-0 text-[12px] font-semibold leading-4 text-[#64748B] md:min-w-[15rem]'
+            : 'col-span-2 min-w-0 text-[12px] font-semibold leading-4 text-[#64748B]'
           : variant !== 'default'
             ? 'w-40 shrink-0 text-body-main leading-snug text-[#64748B]'
             : 'w-36 shrink-0 text-body-sub leading-snug text-[#64748B]',
       ].join(' ')}>
         {useCompactBoardRow ? (
           <>
-            <p className="min-w-0 text-[#334155] md:flex md:items-center">
+            <p className="flex min-w-0 items-center text-[#334155]">
               <span className="shrink-0 whitespace-nowrap">{timeStr || <span className="italic">No time set</span>}</span>
               {venueName ? (
                 <>
-                  <span className="hidden px-1 text-[#CBD5E1] md:inline">&middot;</span>
-                  <span className="hidden min-w-0 truncate text-[#64748B] md:inline">{venueName}</span>
+                  <span className="px-1 text-[#CBD5E1]">&middot;</span>
+                  <span className="min-w-0 truncate text-[#64748B]">{venueName}</span>
                 </>
               ) : null}
             </p>
-            {venueName ? (
-              <p className="mt-0.5 truncate text-body-sub font-semibold text-[#64748B] md:hidden">
-                {venueName}
-              </p>
-            ) : null}
           </>
         ) : (
           <>
@@ -932,7 +927,7 @@ function MatchRow({
         <div className={useCompactBoardRow ? hasLeadingIcon ? 'col-start-2 row-start-2 min-w-0 self-center' : 'min-w-0 self-center' : 'flex min-w-0 flex-1 flex-col gap-2'}>
           {useCompactBoardRow ? (
             <>
-              <p className="truncate text-body-sub font-semibold text-[#64748B]">
+              <p className="truncate text-[11px] font-semibold leading-4 text-[#64748B]">
                 {compactBoardMeta.map((label, index) => (
                   <span key={`${label}-${index}`}>
                     {index > 0 ? <span className="px-1 text-[#CBD5E1]">&middot;</span> : null}
@@ -941,7 +936,7 @@ function MatchRow({
                 ))}
               </p>
               {cardWarning ? (
-                <p className="mt-1 line-clamp-2 text-body-sub font-semibold text-[#DC2626]">
+                <p className="line-clamp-2 text-[11px] font-semibold leading-4 text-[#DC2626]">
                   <span>{cardWarning.message}</span>
                 </p>
               ) : null}
@@ -1009,7 +1004,7 @@ function MatchRow({
           <button
             onClick={handleConfirm}
             disabled={isPending || optimisticDeclined}
-            className="text-body-sub whitespace-nowrap rounded-full bg-[#0d6efd] px-3 py-1.5 font-semibold text-white hover:bg-[#0b5ed7] disabled:opacity-50"
+            className="whitespace-nowrap rounded-full bg-[#0d6efd] px-2.5 py-1 text-[11px] font-semibold leading-4 text-white hover:bg-[#0b5ed7] disabled:opacity-50"
           >
             Confirm
           </button>
@@ -1018,10 +1013,27 @@ function MatchRow({
               type="button"
               onClick={handleNotThisTime}
               disabled={isPending || optimisticDeclined}
-              className="text-body-sub whitespace-nowrap rounded-full border border-[#D7DEE7] bg-white px-3 py-1.5 font-semibold text-[#64748B] transition hover:border-[#CBD5E1] hover:text-[#1E293B] disabled:opacity-50"
+              className="whitespace-nowrap rounded-full border border-[#D7DEE7] bg-white px-2.5 py-1 text-[11px] font-semibold leading-4 text-[#64748B] transition hover:border-[#CBD5E1] hover:text-[#1E293B] disabled:opacity-50"
             >
               Not this time
             </button>
+          ) : null}
+          {isActionNeededRow ? (
+            <Link
+              href={`/dashboard?matchId=${match.id}`}
+              onClick={handleDetailsClick}
+              aria-current={isSelected ? 'page' : undefined}
+              className={[
+                'inline-flex items-center justify-end whitespace-nowrap text-[11px] font-semibold leading-4 transition',
+                isLoadingDetail
+                  ? 'pointer-events-none text-[#0d6efd]'
+                  : isSelected
+                  ? 'text-[#0d6efd]'
+                  : 'text-[#1E293B] hover:text-[#0d6efd]',
+              ].join(' ')}
+            >
+              {isLoadingDetail ? 'Loading' : 'Details ->'}
+            </Link>
           ) : null}
           {confirmError ? <span className="text-body-sub text-[#EF4444]">{confirmError}</span> : null}
         </div>
@@ -1073,24 +1085,25 @@ function MatchRow({
         </span>
       ) : null}
 
-      <div
-        className={
-          useCompactBoardRow
-            ? hasLeadingIcon
-              ? isActionNeededRow || showFindPlayersAction || showCancelMatchAction || hostRequestCount > 0
-                ? 'col-start-2 row-start-4 flex flex-wrap items-center justify-end gap-3 self-center md:col-start-3 md:row-start-3'
-                : 'col-start-2 row-start-3 flex flex-wrap items-center justify-end gap-3 self-center md:col-start-3 md:row-start-2'
-              : isActionNeededRow || (showFindPlayersAction && hostRequestCount > 0)
-                ? 'col-span-2 row-start-3 flex items-center justify-end gap-3 self-center'
-                : 'row-start-2 col-start-2 flex items-center justify-end gap-3 self-center'
-            : 'shrink-0 flex items-center gap-3'
-        }
-      >
+      {!isActionNeededRow ? (
+        <div
+          className={
+            useCompactBoardRow
+              ? hasLeadingIcon
+                ? showFindPlayersAction || showCancelMatchAction || hostRequestCount > 0
+                  ? 'col-start-2 row-start-4 flex flex-wrap items-center justify-end gap-2 self-center md:col-start-3 md:row-start-3'
+                  : 'col-start-2 row-start-3 flex flex-wrap items-center justify-end gap-2 self-center md:col-start-3 md:row-start-2'
+                : showFindPlayersAction && hostRequestCount > 0
+                  ? 'col-span-2 row-start-3 flex items-center justify-end gap-2 self-center'
+                  : 'row-start-2 col-start-2 flex items-center justify-end gap-2 self-center'
+              : 'shrink-0 flex items-center gap-3'
+          }
+        >
         {showFindPlayersAction ? (
           <Link
             href={`/dashboard?matchId=${match.id}`}
             onClick={handleDetailsClick}
-            className="text-body-sub whitespace-nowrap rounded-full bg-[#0d6efd] px-3 py-1.5 font-semibold text-white transition hover:bg-[#0b5ed7]"
+            className="whitespace-nowrap rounded-full bg-[#0d6efd] px-2.5 py-1 text-[11px] font-semibold leading-4 text-white transition hover:bg-[#0b5ed7]"
           >
             Find Players
           </Link>
@@ -1102,7 +1115,7 @@ function MatchRow({
                 type="button"
                 onClick={handleCancelMatch}
                 disabled={isPending}
-                className="text-body-sub whitespace-nowrap rounded-full border border-[#FCA5A5] bg-white px-3 py-1.5 font-semibold text-[#DC2626] transition hover:bg-[#FEF2F2] disabled:opacity-50"
+                className="whitespace-nowrap rounded-full border border-[#FCA5A5] bg-white px-2.5 py-1 text-[11px] font-semibold leading-4 text-[#DC2626] transition hover:bg-[#FEF2F2] disabled:opacity-50"
               >
                 Cancel match
               </button>
@@ -1110,7 +1123,7 @@ function MatchRow({
                 type="button"
                 onClick={() => setConfirmingCancel(false)}
                 disabled={isPending}
-                className="text-body-sub whitespace-nowrap rounded-full border border-[#D7DEE7] bg-white px-3 py-1.5 font-semibold text-[#64748B] transition hover:border-[#CBD5E1] hover:text-[#1E293B] disabled:opacity-50"
+                className="whitespace-nowrap rounded-full border border-[#D7DEE7] bg-white px-2.5 py-1 text-[11px] font-semibold leading-4 text-[#64748B] transition hover:border-[#CBD5E1] hover:text-[#1E293B] disabled:opacity-50"
               >
                 Keep
               </button>
@@ -1119,7 +1132,7 @@ function MatchRow({
             <button
               type="button"
               onClick={() => setConfirmingCancel(true)}
-              className="text-body-sub whitespace-nowrap font-semibold text-[#1E293B] transition hover:text-[#DC2626]"
+              className="whitespace-nowrap text-[11px] font-semibold leading-4 text-[#1E293B] transition hover:text-[#DC2626]"
             >
               Cancel match
             </button>
@@ -1138,7 +1151,7 @@ function MatchRow({
           onClick={handleDetailsClick}
           aria-current={isSelected ? 'page' : undefined}
           className={[
-            'text-body-sub inline-flex min-w-[5.4rem] items-center justify-end gap-1.5 whitespace-nowrap font-semibold transition',
+            'inline-flex min-w-[4.5rem] items-center justify-end gap-1.5 whitespace-nowrap text-[11px] font-semibold leading-4 transition',
             isLoadingDetail
               ? 'pointer-events-none text-[#0d6efd]'
               : isSelected
@@ -1156,7 +1169,8 @@ function MatchRow({
           )}
         </Link>
         {cancelError ? <span className="text-body-sub text-[#EF4444]">{cancelError}</span> : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -1256,7 +1270,7 @@ function ProvisionalMatchDetailSummary({ item }: { item: MatchListItem }) {
 
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
-    <div className="mb-3 flex items-center gap-2">
+    <div className="mb-2 flex items-center gap-2">
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8] sm:text-[12px]">
         {label}
       </h3>
@@ -1860,7 +1874,7 @@ function MobileMatchCard({
     <article
       aria-busy={isLoadingDetail ? 'true' : undefined}
       className={[
-        'rounded-[18px] border bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#D6DEE9]',
+        'min-h-[64px] rounded-[14px] border bg-white px-3 py-2 shadow-[0_7px_18px_rgba(15,23,42,0.045)] transition hover:border-[#D6DEE9]',
         isLoadingDetail
           ? 'border-[#0d6efd] ring-2 ring-[#BFDBFE]'
           : cardWarning
@@ -1868,25 +1882,40 @@ function MobileMatchCard({
             : 'border-[#E2E8F0]',
       ].join(' ')}
     >
-      <div className="flex min-w-0 gap-3">
+      <div className="flex min-w-0 gap-2.5">
         {showLeadingIcon ? <MatchBoardStatusIcon kind={iconKind} size="mobile" /> : null}
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="whitespace-nowrap text-[13px] font-black leading-5 text-[#1E293B]">{whenLabel}</p>
-          <p className="truncate text-[13px] font-bold leading-5 text-[#334155]">{venueLabel}</p>
-          <p className="truncate text-[12px] font-extrabold leading-5 text-[#64748B]">{statusLine}</p>
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <p className="flex min-w-0 items-center text-[12px] font-black leading-4 text-[#1E293B]">
+            <span className="shrink-0 whitespace-nowrap">{whenLabel}</span>
+            <span className="px-1 text-[#CBD5E1]">&middot;</span>
+            <span className="min-w-0 truncate text-[#334155]">{venueLabel}</span>
+          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-[11px] font-extrabold leading-4 text-[#64748B]">{statusLine}</p>
+            {!primaryActionLabel && !cardWarning ? (
+              <Link
+                href={detailsHref}
+                onClick={handleSelect}
+                className="shrink-0 text-[11px] font-extrabold leading-4 text-[#0d6efd]"
+              >
+                {isLoadingDetail ? 'Opening...' : 'Details ->'}
+              </Link>
+            ) : null}
+          </div>
           {cardWarning ? (
-            <p className="text-[12px] font-extrabold leading-5 text-[#DC2626]">
+            <p className="text-[11px] font-extrabold leading-4 text-[#DC2626]">
               {cardWarning.message}
             </p>
           ) : null}
         </div>
       </div>
-      <div className={showLeadingIcon ? 'mt-2 flex flex-wrap items-center justify-end gap-3 pl-[52px]' : 'mt-2 flex flex-wrap items-center justify-end gap-3'}>
+      {primaryActionLabel || cardWarning ? (
+        <div className={showLeadingIcon ? 'mt-1.5 flex flex-wrap items-center justify-end gap-2.5 pl-[42px]' : 'mt-1.5 flex flex-wrap items-center justify-end gap-2.5'}>
         {primaryActionLabel ? (
           <Link
             href={detailsHref}
             onClick={handleSelect}
-            className="rounded-full bg-[#0d6efd] px-3 py-1.5 text-[12px] font-extrabold leading-5 text-white shadow-[0_8px_18px_rgba(13,110,253,0.18)]"
+            className="rounded-full bg-[#0d6efd] px-2.5 py-1 text-[11px] font-extrabold leading-4 text-white shadow-[0_6px_14px_rgba(13,110,253,0.16)]"
           >
             {primaryActionLabel}
           </Link>
@@ -1894,11 +1923,12 @@ function MobileMatchCard({
         <Link
           href={detailsHref}
           onClick={handleSelect}
-          className="text-[12px] font-extrabold leading-5 text-[#0d6efd]"
+          className="text-[11px] font-extrabold leading-4 text-[#0d6efd]"
         >
           {isLoadingDetail ? 'Opening...' : 'Details ->'}
         </Link>
-      </div>
+        </div>
+      ) : null}
     </article>
   )
 }
@@ -2226,9 +2256,9 @@ export function MatchesPanel({
         ) : subTab === 'upcoming' ? (
           <>
             {visibleActionNeededCount > 0 ? (
-              <section className="space-y-3">
+              <section className="space-y-2">
                 <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {visibleActionNeeded.map((item) => (
                     <MatchRow
                       key={`mobile-action-${item.match.id}`}
@@ -2279,17 +2309,17 @@ export function MatchesPanel({
               </section>
             ) : null}
 
-            <section className="space-y-4">
+            <section className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <SectionHeading label="My Matches" count={incoming.length} />
                 {incoming.length > 0 ? <span className="text-body-main font-bold text-[#0d6efd]">View all -&gt;</span> : null}
               </div>
               {incoming.length === 0 ? (
-                <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-body-main text-[#94A3B8]">
+                <div className="rounded-[14px] border border-dashed border-[#D7E1EE] bg-white px-3 py-2.5 text-center text-[12px] font-semibold leading-4 text-[#94A3B8]">
                   No upcoming matches.
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {incoming.map((item) => {
                     const cardWarning = getCardWarning(item)
 
@@ -2311,9 +2341,9 @@ export function MatchesPanel({
             </section>
 
             {lookingFor.length > 0 ? (
-              <section className="space-y-3">
+              <section className="space-y-2">
                 <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {lookingFor.map((item) => (
                     <MobileMatchCard
                       key={`mobile-looking-${item.match.id}`}
@@ -2407,7 +2437,7 @@ export function MatchesPanel({
           </section>
 
           <section className="min-w-0 rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E8F0] pb-3">
               <div>
                 <h2 className="text-h2 font-semibold tracking-tight text-[#0F172A]">Match Board</h2>
               </div>
@@ -2420,13 +2450,13 @@ export function MatchesPanel({
               ) : null}
             </div>
 
-            <div className="mt-5 space-y-8">
+            <div className="mt-4 space-y-5">
               {subTab === 'upcoming' ? (
                 <>
                   {visibleActionNeededCount > 0 ? (
                     <section>
                       <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {visibleActionNeeded.map((item) => (
                           <MatchRow
                             key={item.match.id}
@@ -2480,11 +2510,11 @@ export function MatchesPanel({
                   <section>
                     <SectionHeading label="My Matches" count={incoming.length} />
                     {incoming.length === 0 ? (
-                      <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
+                      <div className="rounded-[14px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5 text-[12px] font-semibold leading-4 text-[#94A3B8]">
                         No upcoming matches.
                       </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {incoming.map((item) => {
                           const cardWarning = getCardWarning(item)
                           const isNeedsPlayersWarning = cardWarning?.kind === 'needs-players'
@@ -2515,7 +2545,7 @@ export function MatchesPanel({
                   {lookingFor.length > 0 ? (
                     <section>
                       <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {lookingFor.map((item) => (
                           <MatchRow
                             key={item.match.id}
