@@ -11,6 +11,7 @@ import { MatchCommunicationSection } from './MatchCommunicationSection'
 import { MatchCourtInfoButton } from './MatchCourtInfoButton'
 import { ParticipantDetailTrigger } from '@/app/components/ParticipantDetailTrigger'
 import { SafeConfirmedParticipantMenu } from './SafeConfirmedParticipantMenu'
+import { MobileRosterActionMenu } from './MobileRosterActionMenu'
 import type { MatchDetailPageViewModel } from './match-detail.view-model'
 import type { MatchCourtPlanUpdateInput, MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
@@ -707,9 +708,10 @@ function MatchParticipantsSection({
   const hasProxyManagedParticipants = viewModel.participantsForDisplay.some(
     (participant) => participant.proxy_manageable_by_viewer === true,
   )
+  const showManagedMobileRows = viewModel.isOrganizer || hasProxyManagedParticipants
   const mobilePlayers = viewModel.participantsForDisplay.filter((participant) =>
     participant.removed_at === null &&
-    (participant.status === 'confirmed' || participant.status === 'waiting_list'),
+    (showManagedMobileRows || participant.status === 'confirmed' || participant.status === 'waiting_list'),
   )
 
   return (
@@ -731,6 +733,18 @@ function MatchParticipantsSection({
           {mobilePlayers.map((participant) => {
             const isHost = participant.user_id === viewModel.match.organizer_id || participant.display_name === viewModel.organizerName
             const isCurrentUser = participant.user_id === viewModel.userId
+            const isPendingRequest =
+              participant.status === 'pending' &&
+              participant.join_method === 'requested' &&
+              participant.org_approved_at === null
+            const participantStatusLabel =
+              participant.status === 'waiting_list'
+                ? 'Waitlist'
+                : participant.status === 'pending'
+                  ? isPendingRequest
+                    ? 'Requested'
+                    : 'Waiting'
+                  : null
             return (
               <div key={participant.id} className="flex min-h-10 items-center justify-between gap-3 py-2">
                 <ParticipantDetailTrigger
@@ -745,7 +759,20 @@ function MatchParticipantsSection({
                 <div className="flex shrink-0 items-center gap-1.5">
                   {isHost ? <span className="rounded-full bg-[#fff7ed] px-2 py-0.5 text-[11px] font-black text-[#9a3412] ring-1 ring-[#fed7aa]">Host</span> : null}
                   {isCurrentUser ? <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-black text-[#64748B]">You</span> : null}
-                  {participant.status === 'waiting_list' ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-700 ring-1 ring-amber-200">Waitlist</span> : null}
+                  {participantStatusLabel ? (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-700 ring-1 ring-amber-200">
+                      {participantStatusLabel}
+                    </span>
+                  ) : null}
+                  <MobileRosterActionMenu
+                    matchId={viewModel.matchId}
+                    matchStatus={viewModel.match.status}
+                    participant={participant}
+                    isOrganizer={viewModel.isOrganizer}
+                    myUserId={viewModel.userId}
+                    organizerUserId={viewModel.match.organizer_id}
+                    onRemoveParticipant={onRemoveParticipant}
+                  />
                 </div>
               </div>
             )

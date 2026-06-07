@@ -14,6 +14,45 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-06 - MR-20260606-mobile-roster-row-actions
+
+**Type:** Patch
+**Code Commits:** PR #130 head commit `256767a7c55726dc40347a3b48d72869b574e946`.
+**Migration:** None
+**Status:** Ready for Review / GitHub only; Vercel Production not deployed yet; Supabase Remote no change.
+
+### Summary
+
+Adds a mobile roster row action sheet for existing participant actions, including Remove from Lineup, Cancel Invite, Add to Lineup, Not This Time, Remove from Waitlist, and existing self withdraw/cancel actions, using existing APIs and lifecycle behavior.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Vercel Preview | Passed; owner visual review accepted | Owner visual review accepted on Vercel Preview for PR #130 |
+| Vercel Production | Not deployed yet | PR #130 has not been merged |
+| Supabase Remote | No change | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent | Visual testing opened action sheets only and did not execute remove/cancel/approve/withdraw actions |
+| Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending |
+
+### Rollback
+
+- Code rollback: revert PR #130 and redeploy previous production commit.
+- Database rollback: none required because this patch has no migration or backend contract change.
+- Provider rollback: none; no invite/email/SMS/notification provider configuration or traffic changed.
+
+### Notes
+
+- No DB migration.
+- No backend contract change.
+- No Supabase Remote action.
+- No Add Players change.
+- No Contact Player rule change.
+- No lifecycle semantic change.
+- No provider traffic during validation.
+- Visual testing opened action sheets only and did not execute remove/cancel/approve/withdraw actions.
+
 ## 2026-06-06 - MR-20260606-add-players-mobile-labels-polish
 
 **Type:** Patch
