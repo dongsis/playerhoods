@@ -304,6 +304,7 @@ function ParticipantRow({
   const canOpenDetails = Boolean(p.user_id || p.guest_id)
   const isPendingParticipant = p.status === 'pending'
   const isWaitingListParticipant = p.status === 'waiting_list'
+  const isPublicSignup = p.public_signup_source === 'public_match_signup'
   const isHostManagedConfirmation =
     p.confirmation_source === 'host_managed_offline'
     || p.confirmation_source === 'contact_owner_managed'
@@ -424,13 +425,15 @@ function ParticipantRow({
   } else if (p.join_method === 'requested') {
     timelineEvents.push({
       key: 'requested',
-      label: `Asked to join`,
+      label: isPublicSignup ? 'Requested from public link' : `Asked to join`,
       at: p.created_at,
     })
   }
 
   if (p.participant_accepted_at) {
-    if (isOrganizer && isHostManagedConfirmation) {
+    if (isPublicSignup && p.public_signup_email_verified) {
+      // Keep public signup internals out of the host-facing status timeline.
+    } else if (isOrganizer && isHostManagedConfirmation) {
       timelineEvents.push({
         key: 'host-offline-confirmed',
         label: 'Confirmed by host offline',
@@ -688,10 +691,22 @@ function ParticipantRow({
                 Host-confirmed
               </span>
             ) : null}
+            {isOrganizer && isPublicSignup ? (
+              <span
+                style={{
+                  color: '#64748b',
+                  fontSize: '0.62rem',
+                  fontWeight: 650,
+                  lineHeight: 1.35,
+                }}
+              >
+                Requested from public link
+              </span>
+            ) : null}
           </div>
         </div>
 
-        {!isHostRow && pendingState && p.status !== 'confirmed' && (
+        {!isHostRow && pendingState && p.status !== 'confirmed' && !isPublicSignup && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginTop: '0.18rem' }}>
             <ConfirmationBadge
               label="Host"
@@ -1250,15 +1265,12 @@ export function ParticipantGroups({
 
   const savedPlayerIdSet = new Set(savedPlayerIds)
 
-  // Removed first — used to exclude duplicates from confirmed/pending
+  // Keep removed history visible without suppressing fresh active rows
+  // that reuse the same Contact Player identity.
   const removed = participants.filter(p => p.status === 'removed')
-  const removedIdentityIds = new Set(
-    removed.map(p => p.guest_id ?? p.user_id).filter((id): id is string => !!id)
-  )
 
-  // Confirmed participants — exclude anyone who is also in removed (handles duplicate rows for same guest/user)
+  // Confirmed participants
   const confirmed = participants.filter(p => {
-    if (removedIdentityIds.has(p.guest_id ?? p.user_id ?? '')) return false
     return p.status === 'confirmed' && p.removed_at === null
   })
   const isLineupFull = confirmed.length >= requiredCount
@@ -1268,10 +1280,9 @@ export function ParticipantGroups({
       ? 'Ready Lineup'
       : 'Lineup so far'
 
-  // Pending — exclude anyone in removed
+  // Pending
   const pending = participants.filter(
-    p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
-      p.status === 'pending' && p.join_method !== 'guest_add'
+    p => p.status === 'pending' && p.removed_at === null && p.join_method !== 'guest_add'
   )
   const playersWhoWantToJoin = pending.filter(
     p => p.join_method === 'requested' && p.org_approved_at === null
@@ -1286,8 +1297,7 @@ export function ParticipantGroups({
     ? waitingForConfirmation
     : waitingForConfirmation.filter((p) => p.proxy_manageable_by_viewer === true)
   const waiting = participants.filter(
-    p => !removedIdentityIds.has(p.guest_id ?? p.user_id ?? '') &&
-      p.status === 'waiting_list' && p.join_method !== 'guest_add'
+    p => p.status === 'waiting_list' && p.removed_at === null && p.join_method !== 'guest_add'
   )
   const visibleWaiting = isOrganizer
     ? waiting

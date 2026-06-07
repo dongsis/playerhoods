@@ -18,6 +18,7 @@ export async function middleware(request: NextRequest) {
   const isResetPasswordRoute = pathname.startsWith('/reset-password')
   const isUnsubscribeRoute = pathname.startsWith('/unsubscribe')
   const isShortInvitationRoute = pathname.startsWith('/i/')
+  const isPublicMatchSignupRoute = pathname.startsWith('/join/')
   const isShortStopRoute = pathname.startsWith('/stop/')
   const isSeoFileRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   const isDevHelperRoute = pathname.startsWith('/dev/')
@@ -70,6 +71,7 @@ export async function middleware(request: NextRequest) {
     || isResetPasswordRoute
     || isUnsubscribeRoute
     || isShortInvitationRoute
+    || isPublicMatchSignupRoute
     || isShortStopRoute
     || isSeoFileRoute
     || isInvitationPage

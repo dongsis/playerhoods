@@ -12,7 +12,7 @@ export function MatchInbox({ items, userId }: Props) {
   if (items.length === 0) {
     return (
       <div className="rounded-[24px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-5 py-6 text-[12px] font-medium text-[#94A3B8]">
-        No upcoming matches or pending actions.
+        No upcoming matches.
       </div>
     )
   }

@@ -96,6 +96,10 @@ const suites = [
     functionName: 'test_runner_issue58_reminder_only_drain',
   },
   {
+    file: 'tests/test_runner_scoped_confirmed_lineup_drain.sql',
+    functionName: 'test_runner_scoped_confirmed_lineup_drain',
+  },
+  {
     file: 'tests/test_runner_issue55_daily_reminder_cron.sql',
     functionName: 'test_runner_issue55_daily_reminder_cron',
   },
@@ -114,6 +118,14 @@ const suites = [
   {
     file: 'tests/test_runner_issue73_sms_out_disambiguation.sql',
     functionName: 'test_runner_issue73_sms_out_disambiguation',
+  },
+  {
+    file: 'tests/test_runner_issue76_public_match_signup.sql',
+    functionName: 'test_runner_issue76_public_match_signup',
+  },
+  {
+    file: 'tests/test_runner_issue87_exposed_auth_users_view.sql',
+    functionName: 'test_runner_issue87_exposed_auth_users_view',
   },
 ]
 

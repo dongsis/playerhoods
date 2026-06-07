@@ -14,6 +14,442 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-06 - MR-20260606-add-players-mobile-labels-polish
+
+**Type:** Patch
+**Code Commits:** PR #118 merged at `d9ef92c06dbf2ad414f2932b96bd8fd32bb9cf2e`. Final PR head before merge: `ee895a5ba56c97b44ce06913cac333f70db9a695`.
+**Migration:** None
+**Status:** Production deployed / code aligned; production smoke pending; Supabase Remote no change.
+
+### Summary
+
+Polishes Add Players method labels and layout across Existing Match Add More Players and Create Match Step 2. Updates visible copy to `Post to Board` / `Share Link`, widens mobile method buttons, keeps mobile search and filter on one row, removes the `People` filter, clarifies Board visibility with `Visible to`, moves Share Link copy feedback into the Share Link section, and prevents raw fallback labels such as `User e70ae6`.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Vercel Preview | Passed; owner visual review accepted | Preview deployed from PR #118 head; owner accepted visual review on Vercel Preview before merge |
+| Vercel Production | Deployed successfully | GitHub Deployment `4959665952` for merge commit `d9ef92c06dbf2ad414f2932b96bd8fd32bb9cf2e` reached `success`; deployment URL `https://playerhoods-codex-eljp61ni8-nancys-projects-128e326c.vercel.app` |
+| Supabase Remote | No change | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic was sent by Codex validation |
+| Production verification | Pending | Owner visual review accepted on Vercel Preview; production smoke pending |
+
+### Rollback
+
+- Code rollback: revert PR #118 and redeploy the previous production commit.
+- Database rollback: none required because this patch has no migration or backend contract change.
+- Provider rollback: none; no invite/email/SMS/notification provider configuration or traffic changed.
+
+### Notes
+
+- No DB migration.
+- No backend contract change.
+- No Supabase Remote action.
+- No production smoke was run or claimed in this entry.
+- No share-link / magic-link / Request-a-Spot backend behavior change.
+- No Contact Player rule change.
+- No roster/lineup management change.
+- No invite/email/SMS/notification provider traffic.
+- PR #118 polished Add Players mobile/desktop labels and layout after #113, including `Post to Board` / `Share Link` labels, mobile method button sizing, Share Link feedback placement, filter wording, `Visible to` copy, and safe display-name fallback.
+
+## 2026-06-05 - SR-20260605-scoped-form-match-delivery-drain
+
+**Type:** Structural Release
+**Code Commits:** PR #112 merged at `22e4db39ad238a316742ab1f0331a0430dfed56e`. Final PR head before merge: `d571d81e6e22de91e7364247233cd85a1970358b`.
+**Migration:** `supabase/migrations/20260605184500_scoped_confirmed_lineup_delivery_drain.sql` applied to Supabase Remote before merge.
+**Status:** Production aligned / limited reachability verification complete; full scoped notification delivery smoke and unauthenticated public join verification email delivery verification pending.
+
+### Summary
+
+- Adds scoped `confirmed_lineup` notification delivery drain after Form Match.
+- Adds a service-role-only scoped claimant RPC for queued `confirmed_lineup` notification deliveries belonging to one match.
+- Updates manual Form Match confirmation to process only the newly queued current-match `confirmed_lineup` deliveries through the existing notification worker path.
+- Does not enable the generic queued-delivery drain and does not claim unrelated notification backlog.
+- Does not add request-created, host-action, approval, public signup, or public `/join/[token]` notifications.
+- Does not change Contact Player, public signup verification email, PR #98, or PR #104 behavior.
+- Known issue: unauthenticated public join verification email delivery returned `email-delivery-unavailable` in manual testing; this release does not fix or verify that path.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally | `npx tsc --noEmit`; `npm run build` |
+| Static guards | Partially blocked locally | `node scripts/check-issue58-reminder-drain.mjs` passed. `npm run verify:build` failed in existing `check-issue55-reminder-cron.mjs` copy guard: Create Match reminder copy must say `day before at 5:00 PM`; unrelated to scoped drain files |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Passed in GitHub; blocked locally | GitHub SQL Regression Check passed for PR #112 latest head. New suite `test_runner_scoped_confirmed_lineup_drain` covers scoped claiming and non-claiming boundaries. Local `npm run verify:sql` could not connect to Docker Desktop Linux engine / local Supabase container |
+| Supabase Remote | Applied | `npx supabase db push --linked --yes` applied only `20260605184500_scoped_confirmed_lineup_delivery_drain.sql`; `npx supabase migration list --linked` showed `20260605184500 | 20260605184500 | 2026-06-05 18:45:00` |
+| Vercel Production | Deployed | GitHub Deployment `4952404344` for merge commit `22e4db39ad238a316742ab1f0331a0430dfed56e` reached `success`; Vercel deployment URL `https://playerhoods-codex-nxq95aype-nancys-projects-128e326c.vercel.app` |
+| Real SMS/email/provider traffic | Not sent by Codex | No provider sends, production drains, real emails, SMS, or notifications |
+| Production verification | Limited reachability smoke passed; notification smoke pending | `https://www.playerhoods.com/`, `https://www.playerhoods.com/login`, and the Vercel deployment URL returned HTTP 200. Full Form Match / scoped notification smoke was not run because no safe production match and safe recipients were approved |
+| Public join email verification | Known issue / not verified | Unauthenticated `/join/[token]` verification email returned `email-delivery-unavailable` in manual testing. Registered-user public join path is separate and remains OK. Do not mark public Open to Join email delivery or full `/join` flow as verified until follow-up provider/env audit passes |
+
+### Rollback
+
+- Code rollback: revert the PR merge commit if merged.
+- Database rollback: follow-up migration revoking and dropping `public.rpc_get_queued_confirmed_lineup_deliveries_for_match(uuid, integer)`.
+- Operational rollback: disable the Form Match scoped drain call by reverting the server action change; do not run any broad queue drain unless separately approved.
+- Provider rollback: none; no provider configuration changed.
+
+## 2026-06-05 - MR-20260605-shared-add-players-picker
+
+**Type:** Mini Release
+**Code Commits:** PR #113 merged at `e5d5e1e459001fe376ec7c501ba38814dfce0b62`. Final PR head before merge: `085d3df37877d84f95825cbd03554d5683088fff`.
+**Migration:** None
+**Status:** Production deployed / owner safe smoke completed with no blocking issue observed; Supabase Remote no change.
+
+### Summary
+
+Introduces shared Add Players picker across Create Match Step 2 and Existing Match Add More Players with Invite / Post Player Call / Share a Link methods, chip-based candidate selection, and no backend behavior changes.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Vercel Preview | Passed; owner visual review accepted | Preview deployed from PR #113 head; owner accepted visual review on Vercel Preview before merge |
+| Vercel Production | Deployed successfully | GitHub Deployment `4954439621` for merge commit `e5d5e1e459001fe376ec7c501ba38814dfce0b62` reached `success`; deployment URL `https://playerhoods-codex-69d491wu7-nancys-projects-128e326c.vercel.app` |
+| Supabase Remote | No change | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic was sent by Codex validation |
+| Production verification | Owner safe smoke completed; no blocking issue observed | Owner visual review accepted on Vercel Preview; owner safe production smoke completed without reporting a blocking issue. This entry does not mark the release fully verified |
+
+### Rollback
+
+- Code rollback: revert PR #113 and redeploy the previous production commit.
+- Database rollback: none required because this release has no migration or backend contract change.
+- Provider rollback: none; no invite/email/SMS/notification provider configuration or traffic changed.
+
+### Notes
+
+- No DB migration.
+- No backend contract change.
+- No Supabase Remote action.
+- No share-link / magic-link / Request-a-Spot backend behavior change.
+- No Contact Player in Player Call targets.
+- No invite/email/SMS/notification provider traffic.
+- Owner safe production smoke completed; no blocking issue observed. This is not a full QA verification.
+- Codex PR review failed due quota infrastructure limits, not a code failure.
+
+## 2026-06-05 - DB-20260605-public-join-registered-request
+
+**Type:** Structural Release
+**Code Commits:** PR #106 merged at `1bad9af794c7941486ca7462cb2131a984db0a53`. Final PR head before merge: `4f601a1a06b89c3e86d639acd835a62e12621686`.
+**Migration:** `supabase/migrations/20260605153000_logged_in_public_join_request.sql` applied to Supabase Remote before merge.
+**Status:** Production aligned / limited verification complete; full scoped `/join/[token]` smoke pending safe production token and registered test session.
+
+### Summary
+
+- Added authenticated-only public-token request RPC for logged-in registered users opening `/join/[token]`.
+- The new RPC resolves the existing Open to Join token, rejects anonymous callers and hosts, and writes through `apply_participant_admission(..., 'requested')`.
+- Logged-in users on `/join/[token]` no longer see name/email entry or email verification; they see match details and must explicitly click `Request a Spot`.
+- Existing unauthenticated public signup verification and Contact Player public flow are unchanged.
+- Added SQL regression coverage for token authorization outside normal scope, anonymous rejection, organizer rejection, idempotency, user-based participant rows, pending host action, and unchanged public signup coverage.
+- Types note: `src/lib/types/database.ts` was manually updated because this repository currently has no typegen command/script and appears to maintain this file as an app-level database interface. This is a policy tension with `docs/prelaunch_schema_policy.md`; follow-up should add a proper Supabase typegen workflow and regenerate types rather than relying on silent manual edits.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally | `npx tsc --noEmit`; `npm run build` |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Passed in GitHub; blocked locally | GitHub SQL Regression Check passed for PR #106. Local `npm run verify:sql` could not connect to Docker Desktop Linux engine / local Supabase container |
+| Supabase Remote | Applied | `npx supabase db push --linked --yes` applied only `20260605153000_logged_in_public_join_request.sql`; `npx supabase migration list --linked` showed `20260605153000 | 20260605153000 | 2026-06-05 15:30:00` |
+| Real SMS/email/provider traffic | Not sent by Codex | No provider sends, queue drains, real emails, SMS, public signup creation, or notification mutation smoke |
+| Vercel Production | Deployed | GitHub Deployment `4949919115` for merge commit `1bad9af794c7941486ca7462cb2131a984db0a53` reached `success`; Vercel deployment URL `https://playerhoods-codex-mw6p06yep-nancys-projects-128e326c.vercel.app` |
+| Production verification | Limited smoke passed; scoped join smoke pending | `https://www.playerhoods.com/` and `https://www.playerhoods.com/login` returned HTTP 200 from Vercel. Full logged-out/logged-in `/join/[token]` smoke was not run because no safe production Open to Join token and registered test-user session were available |
+
+### Rollback
+
+- Code rollback: revert merge commit `1bad9af794c7941486ca7462cb2131a984db0a53`.
+- Database rollback: follow-up migration dropping/revoking `public.rpc_public_match_registered_request_join(uuid)`.
+- App rollback: restore previous `/join/[token]` behavior so all public join requests use the unauthenticated name/email verification flow.
+- Provider rollback: none; no email/SMS/provider configuration changed.
+
+## 2026-06-04 - STRUCTURAL-20260604-join-link-request-a-spot-v2
+
+**Type:** Structural Release
+**Code Commits:** PR #101 merged at `7c551aadd568f0d19f61e6edd796d61fc7f683e8`. Final PR head before merge: `7df41ecb88736753219d33fd99803c0aaef04fae`.
+**Migration:** None
+**Status:** Production deployed / code aligned; full production shared-link browser/email smoke pending; no Supabase Remote change
+
+### Summary
+
+PR #101 updates the player-facing Join by Shared Link flow to the revised v2 `Request a spot` copy and one-click email verification behavior:
+
+- Public join-link page uses `Request a spot` language and collects Name plus Email only.
+- After submit, the player sees `Check your email` with match context and inbox/spam/junk/safe-sender guidance.
+- Verification email subject/body now use `Verify your email to request a spot` language.
+- Verification link GET is non-mutating and renders a lightweight finishing page with match context.
+- The finishing page automatically POSTs to finalize the pending request, then redirects to `Request sent`; no second user decision is required.
+- The `Request sent` state performs a read-only backend confirmation that the signup was finalized and has an active participant before rendering success.
+- If JavaScript is unavailable, a fallback `Finish request` button can submit the same idempotent POST.
+- Success copy includes `We'll email you when the host responds.`
+- Focused repeated-verification SQL regression coverage was added.
+- No Host-management copy, MatchToolsSection, MatchManagePanel, Post Player Call, Hood player-call behavior, DB schema, Supabase migration, SMS, marketing campaign, or provider configuration changed.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Passed in GitHub; not run locally | GitHub SQL regression check passed for PR #101 and covers repeated verification idempotency. Local SQL runner was not executed because Docker Desktop Linux engine was unavailable. |
+| Vercel Preview | Passed deploy; smoke not run | Preview deploy passed before merge; no real email/browser smoke was run |
+| Vercel Production | Deployed | Vercel auto-deploy for merge commit `7c551aadd568f0d19f61e6edd796d61fc7f683e8` completed successfully: `https://vercel.com/nancys-projects-128e326c/playerhoods-codex/2yK8VKuvsYSESvPeQT5PTPGkhKD8` |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
+| Production smoke | Not run | Full shared-link browser/email smoke still needs a safe join link and disposable inbox |
+
+### Post-Merge Status
+
+1. PR #101 merged to `main` at merge commit `7c551aadd568f0d19f61e6edd796d61fc7f683e8`.
+2. Vercel auto-deploy for the merge commit completed successfully.
+3. No Supabase migration was added or applied.
+4. No production smoke was run and no real email delivery was triggered by Codex.
+5. Remaining before full verification: run controlled production smoke with a fresh join link and disposable inbox; do not reuse exposed tokenized links.
+
+### Rollback
+
+- Code rollback: revert merge commit `7c551aadd568f0d19f61e6edd796d61fc7f683e8` or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this patch has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- Local SQL regression was not run because Docker Desktop Linux engine was unavailable; GitHub SQL regression passed.
+- Full real end-to-end shared-link browser/email smoke still needs a safe public join link and disposable test email to verify the production email click path without exposing tokens or PII.
+
+## 2026-06-04 - UI-20260604-issue96-public-signup-pending-polish
+
+**Type:** UI Polish
+**Code Commits:** PR #97 implementation commit `5a5a4f944ec6757576c851ea06b87f86aff0af58`; final PR head and merge commit pending
+**Migration:** None
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+
+### Summary
+
+PR #97 fixes Issue #96 by polishing the production-facing public signup pending UI after email verification:
+
+- Public signup verification success page now uses friendlier `Request sent` copy.
+- Removed user-facing status badges from the verification success page.
+- Removed `Email verified` and `Pending approval` badges from the host pending request row.
+- Host can still see the request and use Add to Lineup through the existing lifecycle.
+- This is UI display/copy only.
+- No DB schema, Supabase migration, RPC, RLS, email/SMS, notification delivery, marketing opt-in, or lifecycle behavior changed.
+- No raw email, phone, marketing consent, token, or hash exposure was added.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx.cmd tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Not applicable | No DB migration, grant, RLS, or SQL test surface changed |
+| Vercel Preview | Passed | Preview only; no production deployment performed by Codex |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
+| Production verification | Not verified | Requires owner-approved merge, Vercel Production auto-deploy, and continued controlled public signup smoke |
+
+### Release Order
+
+1. Merge PR #97 only after owner approval and green review/check gates.
+2. Let Vercel Production auto-deploy the merge commit.
+3. Continue controlled public signup production smoke with a fresh signup and newly generated verification email.
+4. Confirm:
+   - Public signup verification email is delivered through the production provider.
+   - Verification link opens.
+   - POST confirmation creates a pending public signup request.
+   - Verification success page shows the friendly `Request sent` copy.
+   - Host pending request row does not show `Email verified` or `Pending approval` badges.
+   - Host can add the player through the existing Add to Lineup lifecycle.
+   - Phone-only path remains blocked with SMS-coming-next copy.
+   - No SMS, marketing email, unrelated provider traffic, or queue drain occurs.
+
+### Rollback
+
+- Code rollback: revert the PR #97 merge commit or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this UI polish has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- This PR does not mark the public signup flow fully validated in production.
+- Production smoke remains required after merge/deploy and must not reuse previously exposed verification links or tokens.
+
+## 2026-06-04 - HOTFIX-20260604-issue94-public-signup-verify-link-404
+
+**Type:** Hotfix
+**Code Commits:** PR #95 implementation commit `8f5872b3b46cb55af25e6bc006a3a4e29fa95591`; final PR head and merge commit pending
+**Migration:** None
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+
+### Summary
+
+This hotfix addresses the Issue #94 public signup verification-link 404 found during controlled production smoke after PR #77 and PR #93:
+
+- Public signup submit reached the verification-email step and the production provider delivered the email.
+- Opening the verification email link returned a Next.js 404 before POST confirmation.
+- Safe diagnosis showed the App Router route was deployed and middleware passed `/join/[token]/verify`.
+- The failing link shape used `?signup=...&token=...`, where the verification query parameter name collided with the dynamic public signup route token.
+- New verification emails now use `verification_token=...` for the email verification secret.
+- The verify page and POST action keep `publicToken`, `signupId`, and `verificationToken` separate.
+- The verify page keeps a best-effort legacy `token` query fallback for already-sent emails if the value is safely available from `searchParams`.
+- Missing or malformed verification input now renders a safe invalid-verification state instead of a raw 404.
+- GET render remains non-mutating; participant creation still requires explicit POST confirmation.
+- No DB schema, grants, RLS, email provider config, notification drain, SMS, or marketing behavior changes are included.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally at PR stage | `npx.cmd tsc --noEmit`; `npm run build` |
+| Diff whitespace | Passed locally at PR stage | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Not applicable | No DB migration, grant, RLS, or SQL test surface changed |
+| Vercel Preview | Pending PR validation | Preview only; no production deployment performed by Codex |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run by this hotfix |
+| Production verification | Not verified | Requires owner-approved merge, Vercel Production auto-deploy, and a fresh controlled public signup smoke using a new verification email |
+
+### Release Order
+
+1. Merge PR #95 for Issue #94 only after owner approval and green review/check gates.
+2. Let Vercel Production auto-deploy the merge commit.
+3. Rerun controlled public signup production smoke from a fresh signup and a newly generated verification email. Do not reuse any previously exposed verification link or token.
+4. Confirm:
+   - Anonymous user opens public signup link.
+   - Name plus email signup starts verification.
+   - Actual verification email is delivered through the production provider.
+   - The new verification link opens a safe confirmation page.
+   - POST confirmation creates a pending public signup request.
+   - Host sees the pending public signup without raw email/phone.
+   - Host can add the player through the existing lifecycle.
+   - Phone-only path remains blocked with SMS-coming-next copy.
+
+### Rollback
+
+- Code rollback: revert the PR #95 merge commit or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this hotfix has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- Already-sent verification emails using `token=...` have a best-effort fallback, but any tokenized URL exposed in screenshots or chat should not be reused as final smoke evidence.
+- Production smoke must use a newly generated verification email and must not report raw signup ids, verification tokens, raw emails, phone numbers, or full verification links.
+
+## 2026-06-03 - HOTFIX-20260603-issue92-public-signup-start-failure
+
+**Type:** Hotfix
+**Code Commits:** PR #93 implementation commits `b544d551d95c62e26dcd7d589b2fef5c48080b23` and `fb11f3f2dbaffb997b572a43cdd1526ab07f07f7`; final PR head and merge commit pending
+**Migration:** None
+**Status:** GitHub PR / Vercel Preview only; not merged; no Vercel Production deploy by Codex; no Supabase Remote change; production not verified
+
+### Summary
+
+This hotfix improves the production-facing public match signup start path after Issue #92 smoke found the anonymous name plus email submit showing the generic signup failure before any verification email was delivered:
+
+- Splits public signup start failures into stage-specific service client, RPC start, email delivery disabled, email send/template/runtime, delivery-result audit, and unexpected payload paths.
+- Keeps the service-role public signup RPC path server-only.
+- Shows explicit verification-email failure copy when verification email delivery is unavailable or fails.
+- Prevents non-critical delivery-result/audit recording failures after a successful verification email send from becoming a generic signup failure.
+- Records email/template/runtime delivery failures as `failed` with safe internal error codes instead of `skipped` / `delivery_disabled`.
+- Keeps public signup action logs allowlisted and PII-safe: no raw email, phone, verification token/link, email hash, marketing consent details, provider payloads, arbitrary serialized errors, or raw error messages are logged by the action.
+- Confirms the marketing opt-in checkbox remains unchecked by default and only records opt-in when explicitly checked.
+- Does not change DB schema, grants, RLS, match lifecycle semantics, SMS, notification drains, or provider configuration.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx.cmd tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check`, with Windows LF-to-CRLF warnings only |
+| SQL regression | Not applicable | No DB migration, grant, RLS, or SQL test surface changed |
+| Vercel Preview | Passed | Preview only; no production deployment performed by Codex |
+| Supabase Remote | Not changed | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent by Codex | No production smoke, provider send, queue drain, or notification/email/SMS delivery was run |
+| Production verification | Not verified | Requires owner-approved merge, Vercel Production auto-deploy, and controlled #77/#92 public signup smoke |
+
+### Release Order
+
+1. Merge PR #93 only after owner approval and green review/check gates.
+2. Let Vercel Production auto-deploy the merge commit.
+3. Rerun controlled public signup production smoke:
+   - Host can create/copy a public signup link.
+   - Anonymous user can open the link.
+   - Name plus email signup starts verification.
+   - The actual verification email is delivered through the configured production email provider.
+   - Verification link opens and POST confirmation creates a pending public signup request.
+   - Host sees the pending public signup without raw email/phone.
+   - Phone-only path remains blocked with SMS-coming-next copy.
+4. Do not mark smoke passed unless the verification email is actually received through the production provider. Queue/audit row creation alone is not enough.
+5. Do not manually drain unrelated production notification/email/SMS queues during smoke.
+
+### Rollback
+
+- Code rollback: revert the PR #93 merge commit or redeploy the previous Vercel Production commit.
+- Database rollback: none required because this hotfix has no migration or remote Supabase change.
+- Provider rollback: none performed by Codex; no provider configuration was changed.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- This hotfix improves diagnostics and failure handling for plausible public signup start failure paths; it does not by itself prove the confirmed production root cause.
+- If Vercel is missing or misconfigures `SUPABASE_SERVICE_ROLE_KEY`, the fix remains a Vercel environment correction, not a code workaround.
+- Production smoke must still verify actual public signup verification email delivery through the configured production email provider after merge/deploy.
+
+## 2026-06-03 - SECURITY-20260603-issue87-verified-email-view-access
+
+**Type:** Security Hotfix
+**Code Commit:** PR #87 branch head; final merge commit pending
+**Migration:** `20260603020000_issue87_verified_email_view_security.sql`
+**Status:** GitHub PR only; not merged; no Vercel Production deploy; Supabase Remote not applied; production not verified
+
+### Summary
+
+This security hotfix addresses the Supabase Advisor critical finding for `public.v_user_verified_emails`:
+
+- `public.v_user_verified_emails` is a normal public-schema view derived partly from `auth.users.email`.
+- Direct `anon` and `authenticated` access is revoked in the migration.
+- A caller-scoped `rpc_my_verified_emails()` RPC returns only the current authenticated user's verified email rows.
+- Dashboard loading becomes RPC-first with a temporary server-side fallback to the existing view for the merge-before-migration window.
+- No `auth.users` rows are modified, no data is backfilled or deleted, and no provider traffic is touched.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Pending PR validation | `npx tsc --noEmit`; `npm run build` required before merge |
+| Diff whitespace | Pending PR validation | `git diff --check` required before merge |
+| SQL regression | Pending GitHub PR check | Issue #87 runner verifies view grants and caller-scoped RPC behavior |
+| Vercel Preview | PR-stage only | Preview only; no production deployment performed by this entry |
+| Supabase Remote | Not applied | Migration requires separate owner L5 approval |
+| Real SMS/email/provider traffic | Not sent | This patch does not touch delivery code |
+| Production verification | Not verified | Requires owner-approved merge/deploy, remote migration apply, and dashboard smoke |
+
+### Release Order
+
+1. Merge #87 app code after owner approval so production can use RPC-first behavior with a temporary server-side fallback.
+2. Let Vercel Production auto-deploy the merge commit.
+3. At explicit L5 gate, apply the Supabase Remote migration.
+4. Confirm `anon` and `authenticated` cannot select `public.v_user_verified_emails`.
+5. Confirm authenticated dashboard loading works through `rpc_my_verified_emails()`.
+6. Confirm Supabase Advisor critical issue is resolved or reduced.
+7. Resume #77 Phase B only after this security hotfix is complete.
+
+### Rollback
+
+- Before Supabase Remote migration apply: revert the app change or redeploy the previous production commit.
+- After Supabase Remote migration apply: use a forward-only migration to restore a safe compatible read path if needed. Do not restore broad public view access except as an explicitly approved emergency rollback.
+- Do not run production notification/email/SMS drains during rollback.
+
+### Known Risks
+
+- The remote migration must not be applied before production app code has the RPC-first/fallback path unless a separate no-downtime plan is approved.
+- The temporary fallback should stop being used after the remote migration because direct `authenticated` view access is revoked.
+
 ## 2026-06-03 - PATCH-20260603-remove-onboarding-intro-carousel
 
 **Type:** Patch
@@ -52,6 +488,112 @@ This patch removes the repeated post-login onboarding intro carousel as a requir
 
 - This is a production-visible routing change; manual smoke should verify fresh, incomplete, and completed user routing after deployment.
 - Historical users with `onboarding_completed = true` but missing legal timestamps remain gated by the existing legal/profile routing behavior.
+
+## 2026-06-02 - STRUCTURAL-20260602-issue76-public-match-signup
+
+**Type:** Structural Release
+**Code Commit:** PR #77 branch head; final merge commit pending
+**Migrations:** `20260602193000_issue76_public_match_signup.sql`; `20260603161348_issue76_public_signup_rpc_grant_hardening.sql`
+**Status:** GitHub PR / Vercel Preview only; app not merged; no Vercel Production deploy; base Supabase Remote migration and system actor config applied; corrective grant-hardening migration pending; production not verified
+
+### Summary
+
+This structural release adds the Issue #76 public match signup link flow:
+
+- Hosts can create/copy an Open to Join public match signup link.
+- Public signup requires name plus email for the active V1 verification channel; phone is optional metadata only.
+- Email verification must complete before a match participant is created.
+- Verified public signups create or reuse a system-level ownerless Contact Player/person identity and create a pending `requested` match participant.
+- Organizer approval remains required before the participant enters the confirmed lineup.
+- Host-facing metadata stays PII-safe: display name, public signup source, email verified flag, and pending/participant status only.
+- Raw email, phone, marketing consent, token, and hash values are not exposed to host/public UI.
+- Marketing opt-in may be captured, but marketing campaign sending is not part of this release.
+- SMS/phone verification remains deferred to follow-up Issue #79.
+- Public signup verification email provider sends are gated to Vercel Production or explicit `PUBLIC_MATCH_SIGNUP_VERIFICATION_EMAIL_DELIVERY` enablement; preview/local attempts record skipped delivery audit only.
+- Production smoke must prove the verification email is actually delivered by the configured production email provider. Queue/audit row creation alone is not enough.
+- Public signup compatibility/audit rows use a restricted configured system actor; the organizer is never used as fallback owner for public signup Contact Player rows.
+- The corrective grant-hardening migration revokes default/PUBLIC and `anon` execute from host/authenticated-only public signup RPCs while preserving the public context RPC and service-only mutation RPC boundaries.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Diff whitespace | Passed locally | `git diff --check` |
+| SQL regression | Passed in GitHub PR check | Local `npm run verify:sql` remains blocked when Docker/Supabase local is unavailable; GitHub SQL regression is the completed SQL evidence |
+| Vercel Preview | PR-stage only | Preview only; no production deployment performed by this entry |
+| Supabase Remote base migration | Applied | `20260602193000_issue76_public_match_signup.sql` was applied remotely before app merge at the approved L5 gate |
+| Supabase Remote config | Written | `public.public_match_signup_config.system_actor_user_id` points to the approved production system actor |
+| Supabase Remote corrective migration | Pending | `20260603161348_issue76_public_signup_rpc_grant_hardening.sql` must be applied before merging PR #77 |
+| Real SMS/email/provider traffic | Not sent by Codex | No production drain or provider delivery may run without owner approval; production smoke must use only the approved public signup verification email path |
+| Production verification | Not verified | Requires owner-approved corrective migration apply, PR merge, production deployment, and smoke verification |
+
+### Release Order
+
+Current production DB state before PR #77 merge:
+
+- `20260602193000_issue76_public_match_signup.sql` has already been applied to Supabase Remote.
+- `public.public_match_signup_config.system_actor_user_id` has already been written to the approved production system actor.
+- `20260603161348_issue76_public_signup_rpc_grant_hardening.sql` is still pending remote apply and must be applied before PR #77 merge.
+
+Remaining release order:
+
+1. At explicit L5 approval, apply `20260603161348_issue76_public_signup_rpc_grant_hardening.sql` to Supabase Remote.
+2. Rerun live RPC grant verification and confirm:
+   - `rpc_public_match_signup_context(uuid)`: `anon`, `authenticated`, and `service_role` can execute.
+   - `rpc_public_match_signup_link_get_or_create(uuid)`: `anon` cannot execute; `authenticated` and `service_role` can execute.
+   - `rpc_public_match_signup_participant_metadata(uuid)`: `anon` cannot execute; `authenticated` and `service_role` can execute.
+   - `rpc_public_match_signup_start(uuid, text, text, text, boolean)`: only `service_role` can execute.
+   - `rpc_public_match_signup_verify(uuid, uuid, text)`: only `service_role` can execute.
+   - `rpc_public_match_signup_record_delivery_result(uuid, text, text)`: only `service_role` can execute.
+3. Run the production config preflight query confirming config exists, the configured actor id is present, and the actor exists in `auth.users`.
+4. Merge PR #77 only after the corrective migration, grant verification, and config preflight pass.
+5. Confirm Vercel Production is serving the merge commit and has email provider configuration available for verification delivery.
+6. Run production smoke:
+   - Host can create/copy a public signup link.
+   - Anonymous user can open the public signup link.
+   - Name plus email signup starts verification.
+   - Verification email is actually delivered by the configured production email provider.
+   - Verification link opens.
+   - POST confirmation creates a pending request.
+   - Host sees the pending public signup without raw email/phone.
+   - Host uses Add to Lineup through the existing lifecycle.
+   - Phone-only path remains blocked with SMS-coming-next copy.
+7. Do not mark production smoke passed unless the actual public signup verification email is delivered through the production provider. Queue creation alone is not enough. Do not manually drain unrelated production notification/email queues.
+
+### Production Preflight
+
+Run after the corrective grant-hardening migration is applied and before PR #77 merge:
+
+```sql
+select
+  cfg.system_actor_user_id as configured_actor_id,
+  exists (
+    select 1
+    from auth.users u
+    where u.id = cfg.system_actor_user_id
+  ) as system_actor_exists
+from public.public_match_signup_config cfg
+where cfg.singleton_key = true;
+```
+
+Expected result: exactly one row and `system_actor_exists = true`.
+
+### Rollback
+
+- Before PR #77 merge: do not deploy app code; if the corrective grant-hardening migration apply fails, leave the app unmerged and use a follow-up forward migration to repair the grant state.
+- After PR #77 merge but before successful production smoke: disable public signup link usage and revert or patch app code as needed, then redeploy the previous production commit if required.
+- After Supabase Remote migration apply: use a forward-only migration/feature disable path to stop public signup usage or repair grants; do not edit already-applied migrations.
+- Do not delete legacy schema objects as rollback.
+- Do not run production notification/email/SMS drains during rollback unless separately approved.
+
+### Known Risks
+
+- App code calls new public signup RPCs, so production code and Supabase Remote schema must be released in a coordinated gate.
+- Verification fails closed until the restricted `public_match_signup_config` row points to a real Supabase Auth system actor. This is intentional and must be preflighted before merge.
+- The grant-hardening migration is required even though the base public signup migration and config are already remote; skipping it leaves host/authenticated-only RPCs executable by `anon`.
+- Verification email delivery uses a direct provider-send path from the server action when production-gated. Production smoke must prove delivery through that provider path and must not run broad production notification/email drains.
+- Local SQL verification may remain blocked when Docker Desktop / Supabase local is unavailable; rely on GitHub SQL regression before review approval.
 
 ## 2026-06-02 - PATCH-20260602-issue72-host-exit-visibility
 
@@ -947,6 +1489,7 @@ If a status cannot be confirmed, write `Unknown`. Do not infer.
 
 | Date | Change ID | Type | Summary | Commit | Migration | Vercel Prod | Supabase Remote | Production Verified | Status | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| 2026-06-05 | MR-20260605-create-match-players-step2-simplify | Mini Release | Simplifies Create Match Step 2 Players UI into Invite / Post Player Call modes. | 17e2e53d3c9bc070fa6e1853f768ca728e5d9d62 | None | Deployed successfully | No change | Owner visual review accepted; safe production create-flow smoke passed without match creation | Production deployed / verified for safe create-flow smoke | PR #104 head before merge: 1beca7152bf443a2ef65274ff298f730bd75ce9f. Vercel Production deployment succeeded for merge commit. Smoke covered /matches load, Create Match open, and Step 2 Players showing Invite / Post Player Call. No final Create Match submission was performed. No invite/email/SMS/notification traffic was sent. Rollback: Revert PR #104 and redeploy previous production commit. Codex PR review failed due to GitHub Action quota, not code failure. |
 | 2026-05-10 | DB-20260510-group-recommended-level-range | Patch | Added optional Shared Group recommended level range fields and create/update UI support | Unknown | 20260510102000_add_group_recommended_level_range.sql | Unknown | Unknown | Not verified | Draft | Local schema/UI change only. Stores ranges such as 3.0-4.0 as numeric min/max; not used as a hard admission gate. Roll back with a follow-up migration dropping the columns/RPC params and by reverting app changes. |
 | 2026-05-09 | DBFIX-20260509-onboarding-legal-gate | Patch | Enforces legal agreement as a required onboarding completion gate in UI, middleware, and RPCs | Unknown | 20260509201000_enforce_onboarding_legal_gate.sql | Unknown | Unknown | Not verified | Draft | Local drift correction. No historical legal timestamps are backfilled; affected completed users must accept legal terms on next protected-page access. Roll back with a follow-up migration restoring previous RPC bodies and by reverting the frontend/middleware changes. |
 | 2026-05-08 | baseline-2026-05-08-bc36051 | Baseline | Production baseline confirmed | bc3605189be29fc432747f6ad728161140e90827 | Up to 20260508144500_mark_legacy_group_invite_user_rpc.sql | Yes | Yes | Login page only | Production aligned, smoke test pending | GitHub main, Vercel Production, and Supabase Remote aligned. |

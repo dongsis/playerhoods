@@ -9,6 +9,7 @@ import { MatchHistory } from './MatchHistory'
 interface Props {
   items: MatchListItem[]
   userId: string | null
+  hideStatusTabs?: boolean
 }
 
 type CalendarEntry = {
@@ -435,7 +436,7 @@ function WeeklyCalendar({ items, userId }: { items: MatchListItem[]; userId: str
   )
 }
 
-export function MatchesShell({ items, userId }: Props) {
+export function MatchesShell({ items, userId, hideStatusTabs = false }: Props) {
   const [tab, setTab] = useState<'inbox' | 'calendar' | 'history'>('inbox')
   const nowIso = useMemo(() => new Date().toISOString(), [])
 
@@ -463,9 +464,10 @@ export function MatchesShell({ items, userId }: Props) {
 
   const tabBtn = (key: 'inbox' | 'calendar' | 'history', label: string, count?: number) => (
     <button
+      type="button"
       onClick={() => setTab(key)}
       className={[
-        'text-body-main rounded-full px-4 py-2 font-medium transition',
+        'h-8 min-w-0 rounded-full px-2 text-[12px] font-bold transition sm:h-9 sm:px-3 sm:text-[13px]',
         tab === key
           ? 'bg-[#0d6efd] text-white shadow-[0_8px_18px_rgba(13, 110, 253, 0.24)]'
           : 'text-[#64748B] hover:text-[#1E293B]',
@@ -481,22 +483,19 @@ export function MatchesShell({ items, userId }: Props) {
   )
 
   return (
-    <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
-      <div className="flex items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
-        <div>
-          <p className="text-label text-[#94A3B8]">
-            Match Board
-          </p>
-          <h2 className="text-h2 mt-2 text-[#1E293B]">
-            Upcoming, calendar and history
-          </h2>
-        </div>
+    <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-5">
+      <div className="border-b border-[#E2E8F0] pb-3">
+        <p className="text-label text-[#94A3B8]">
+          Match Board
+        </p>
 
-        <div className="inline-flex rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
-          {tabBtn('inbox', 'Upcoming', inbox.length)}
-          {tabBtn('calendar', 'Calendar')}
-          {tabBtn('history', 'History', history.length)}
-        </div>
+        {!hideStatusTabs ? (
+          <div className="mt-3 grid grid-cols-3 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
+            {tabBtn('inbox', 'Upcoming', inbox.length)}
+            {tabBtn('calendar', 'Calendar')}
+            {tabBtn('history', 'History', history.length)}
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-5">

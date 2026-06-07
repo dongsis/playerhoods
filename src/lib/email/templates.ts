@@ -60,6 +60,12 @@ function buildMatchDetails(m: MatchInfo): EmailDetail[] {
   ]
 }
 
+function formatEmailMatchKind(value: string | null | undefined): string {
+  const normalized = value?.replace(/_/g, ' ').trim().toLowerCase()
+  if (!normalized) return 'match'
+  return /\bmatch\b/i.test(normalized) ? normalized : `${normalized} match`
+}
+
 export function gameFormedEmail(m: MatchInfo): string {
   return renderEmailLayout({
     eyebrow: 'Match update',
@@ -194,6 +200,31 @@ export function playerhoodsMatchInviteEmail(m: MatchInfo, organizerName = 'Someo
     secondaryBody:
       `PlayerHoods is helping ${inviterName} organize this match. You'll only receive important updates, such as when the match is formed, cancelled, or key details change.`,
     footerNote: `You received this because ${inviterName} invited you to this match.`,
+    siteUrl: m.siteUrl,
+  })
+}
+
+export function publicMatchSignupVerificationEmail(
+  m: MatchInfo,
+  recipientName: string | null,
+  verificationUrl: string,
+): string {
+  const name = recipientName?.trim() || 'there'
+  const venueName = m.venueName || 'the venue'
+  const matchKind = formatEmailMatchKind(m.gameType)
+
+  return renderEmailLayout({
+    eyebrow: 'JOIN LINK',
+    title: 'Verify your email',
+    introHtml: `Hi ${escapeHtml(name)},<br><br>Click once to verify your email and send your spot request for this <strong>${escapeHtml(matchKind)}</strong> at <strong>${escapeHtml(venueName)}</strong>.`,
+    details: buildMatchDetails(m),
+    ctaLabel: 'Verify email',
+    ctaUrl: verificationUrl,
+    ctaHint: 'This sends a request only. The host still needs to add you to the lineup.',
+    secondaryTitle: 'Privacy note',
+    secondaryBody:
+      'Your contact details will not be shared with the host.',
+    footerNote: 'You received this because this email was used to request a spot in a PlayerHoods match.',
     siteUrl: m.siteUrl,
   })
 }

@@ -26,6 +26,7 @@ import {
   hostOfflineConfirmationEmail,
   matchReminderEmail,
   playerhoodsMatchInviteEmail,
+  publicMatchSignupVerificationEmail,
 } from '@/lib/email/templates'
 import { formatInvitationToken } from '@/lib/invitations/invitation-token'
 import { NotificationService } from '@/lib/notifications/notification-service'
@@ -81,6 +82,22 @@ export type ReminderDrainPreview = {
   }
 }
 
+export type PublicMatchSignupVerificationEmailInput = {
+  destination: string
+  recipientName: string | null
+  publicToken: string
+  signupId: string
+  verificationToken: string
+  matchInfo: {
+    matchId: string
+    gameType: string
+    matchDate: string | null
+    startTime: string | null
+    venueName: string | null
+    siteUrl?: string | null
+  }
+}
+
 function buildMatchInfo(payload: Record<string, unknown>): {
   matchId: string
   gameType: string
@@ -111,6 +128,31 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     sportName: (payload.sport_name as string) ?? null,
     venueTimezone: (payload.venue_timezone as string) ?? null,
   }
+}
+
+export async function sendPublicMatchSignupVerificationEmail(
+  input: PublicMatchSignupVerificationEmailInput,
+) {
+  const verificationUrl = new URL(`/join/${encodeURIComponent(input.publicToken)}/verify`, SITE_URL)
+  verificationUrl.searchParams.set('signup', input.signupId)
+  verificationUrl.searchParams.set('verification_token', input.verificationToken)
+
+  return sendEmail(
+    input.destination,
+    'Verify your email to request a spot',
+    publicMatchSignupVerificationEmail(
+      {
+        matchId: input.matchInfo.matchId,
+        gameType: input.matchInfo.gameType,
+        matchDate: input.matchInfo.matchDate,
+        startTime: input.matchInfo.startTime,
+        venueName: input.matchInfo.venueName,
+        siteUrl: input.matchInfo.siteUrl || SITE_URL,
+      },
+      input.recipientName,
+      verificationUrl.toString(),
+    ),
+  )
 }
 
 function extractEmailAddress(from: string): string {
@@ -279,6 +321,9 @@ async function processNotificationDeliveryRows(
       magic_link_path?: string
       venue_timezone?: string
       change_set?: Record<string, unknown>
+      public_token?: string
+      signup_id?: string
+      verification_token?: string
     }
 
     let subject = ''
@@ -438,6 +483,23 @@ export async function processQueuedNotificationDeliveries(
   const { data: rows, error } = await supabase.rpc('rpc_get_queued_deliveries', {
     p_limit: limit,
   })
+  if (error) throw error
+
+  return processNotificationDeliveryRows(supabase, (rows ?? []) as DeliveryRow[])
+}
+
+export async function processQueuedConfirmedLineupDeliveriesForMatch(
+  supabase: SupabaseClient,
+  matchId: string,
+  limit = 10,
+): Promise<{ processed: number; sent: number; failed: number }> {
+  const { data: rows, error } = await supabase.rpc(
+    'rpc_get_queued_confirmed_lineup_deliveries_for_match',
+    {
+      p_match_id: matchId,
+      p_limit: limit,
+    },
+  )
   if (error) throw error
 
   return processNotificationDeliveryRows(supabase, (rows ?? []) as DeliveryRow[])

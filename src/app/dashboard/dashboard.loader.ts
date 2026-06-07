@@ -16,6 +16,7 @@ import { listMyGearImages, listMyGearItems, listMyGearShowcaseEntries, listMyGea
 import type { GearImage, GearItem, GearShowcaseEntry, GearStringJob, IdentityLinkCandidate, Profile, UserPlayCity, UserVerifiedEmail, Venue, VenueAdmin, VenueSport, Sport, UserSport, UserSportProfile } from '@/lib/types/database'
 
 type DashboardUser = NonNullable<Awaited<ReturnType<typeof getUser>>>
+type DashboardSupabaseClient = Awaited<ReturnType<typeof createSupabaseServerClient>>
 
 export type DashboardLoaderData = {
   user: DashboardUser
@@ -65,6 +66,54 @@ export type DashboardLoaderData = {
       | 'preferred_play_times'
   > | null
   myVenuePrefs: Venue[]
+}
+
+function isMissingVerifiedEmailRpcError(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown; details?: unknown }
+  const code = typeof candidate?.code === 'string' ? candidate.code : ''
+  const message = typeof candidate?.message === 'string' ? candidate.message : ''
+  const details = typeof candidate?.details === 'string' ? candidate.details : ''
+  const text = `${message}\n${details}`.toLowerCase()
+
+  return code === 'PGRST202'
+    || code === '42883'
+    || (
+      text.includes('rpc_my_verified_emails')
+      && (
+        text.includes('could not find')
+        || text.includes('does not exist')
+        || text.includes('undefined function')
+      )
+    )
+}
+
+async function loadVerifiedEmails(
+  supabase: DashboardSupabaseClient,
+  userId: string,
+): Promise<UserVerifiedEmail[]> {
+  const rpcResult = await supabase.rpc('rpc_my_verified_emails')
+
+  if (!rpcResult.error) {
+    return (rpcResult.data ?? []) as UserVerifiedEmail[]
+  }
+
+  if (!isMissingVerifiedEmailRpcError(rpcResult.error)) {
+    console.error('[Dashboard] verified emails rpc:', rpcResult.error)
+    return []
+  }
+
+  // Temporary server-side fallback for the merge-before-migration window.
+  const fallbackResult = await supabase
+    .from('v_user_verified_emails')
+    .select('*')
+    .eq('user_id', userId)
+
+  if (fallbackResult.error) {
+    console.error('[Dashboard] verified emails fallback:', fallbackResult.error)
+    return []
+  }
+
+  return (fallbackResult.data ?? []) as UserVerifiedEmail[]
 }
 
 export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
@@ -117,7 +166,7 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
       proxyPendingCount: 0,
     }) as PlayersData),
     getInviteCircleList(supabase).catch(() => [] as InviteCircleRow[]),
-    supabase.from('v_user_verified_emails').select('*').eq('user_id', user.id),
+    loadVerifiedEmails(supabase, user.id),
     getIdentityLinkCandidates(supabase).catch(() => [] as IdentityLinkCandidate[]),
     getMyVenueMemberships(supabase, user.id).catch(() => [] as VenueMembership[]),
     getAllVenues(supabase).catch(() => [] as Venue[]),
@@ -143,7 +192,7 @@ export async function loadDashboardPageData(): Promise<DashboardLoaderData> {
     inboxUnreadCount,
     playersData,
     inviteCircle,
-    verifiedEmails: verifiedEmails.error ? [] : (verifiedEmails.data ?? []),
+    verifiedEmails,
     identityLinkCandidates,
     myVenueMemberships,
     joinableVenues,

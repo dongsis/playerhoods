@@ -723,6 +723,63 @@ export type MatchParticipantAction = {
   created_at: string
 }
 
+export type PublicMatchSignupLink = {
+  id: string
+  match_id: string
+  public_token: string
+  created_by: string
+  enabled_at: string
+  disabled_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type PublicMatchSignupIdentity = {
+  id: string
+  email_sha256: string
+  person_id: string
+  guest_id: string
+  created_at: string
+  updated_at: string
+  last_verified_at: string | null
+}
+
+export type PublicMatchSignup = {
+  id: string
+  link_id: string
+  match_id: string
+  identity_id: string | null
+  person_id: string | null
+  guest_id: string | null
+  match_participant_id: string | null
+  display_name: string
+  email_normalized: string
+  email_sha256: string
+  phone_normalized: string | null
+  marketing_email_opt_in: boolean
+  marketing_email_opt_in_at: string | null
+  match_notification_consent_at: string
+  verification_token_hash: string
+  verification_sent_at: string | null
+  verification_delivery_status: 'not_requested' | 'queued' | 'sent' | 'failed' | 'skipped' | 'throttled'
+  verification_delivery_attempt_count: number
+  verification_delivery_last_attempt_at: string | null
+  verification_delivery_sent_at: string | null
+  verification_delivery_error: string | null
+  verification_expires_at: string
+  verified_at: string | null
+  status: 'pending_verification' | 'participant_created' | 'participant_removed' | 'expired' | 'cancelled'
+  created_at: string
+  updated_at: string
+}
+
+export type PublicMatchSignupConfig = {
+  singleton_key: boolean
+  system_actor_user_id: string
+  created_at: string
+  updated_at: string
+}
+
 export type MatchMessage = {
   id: string
   match_id: string
@@ -1074,6 +1131,30 @@ export interface Database {
         Row: MatchParticipantAction
         Insert: Partial<MatchParticipantAction> & { match_participant_id: string; action_type: string; created_by: string }
         Update: Partial<MatchParticipantAction>
+        Relationships: []
+      }
+      public_match_signup_links: {
+        Row: PublicMatchSignupLink
+        Insert: Partial<PublicMatchSignupLink> & { match_id: string; created_by: string }
+        Update: Partial<PublicMatchSignupLink>
+        Relationships: []
+      }
+      public_match_signup_identities: {
+        Row: PublicMatchSignupIdentity
+        Insert: Partial<PublicMatchSignupIdentity> & { email_sha256: string; person_id: string; guest_id: string }
+        Update: Partial<PublicMatchSignupIdentity>
+        Relationships: []
+      }
+      public_match_signup_config: {
+        Row: PublicMatchSignupConfig
+        Insert: Partial<PublicMatchSignupConfig> & { system_actor_user_id: string }
+        Update: Partial<PublicMatchSignupConfig>
+        Relationships: []
+      }
+      public_match_signups: {
+        Row: PublicMatchSignup
+        Insert: Partial<PublicMatchSignup> & { link_id: string; match_id: string; display_name: string; email_normalized: string; email_sha256: string; verification_token_hash: string; verification_expires_at: string }
+        Update: Partial<PublicMatchSignup>
         Relationships: []
       }
       match_messages: {
@@ -1653,6 +1734,90 @@ export interface Database {
         Args: { p_match_participant_id: string; p_note?: string | null }
         Returns: MatchParticipant
       }
+      rpc_public_match_signup_link_get_or_create: {
+        Args: { p_match_id: string }
+        Returns: {
+          link_id: string
+          match_id: string
+          public_token: string
+          enabled_at: string
+          disabled_at: string | null
+        }[]
+      }
+      rpc_public_match_registered_request_join: {
+        Args: { p_public_token: string }
+        Returns: MatchParticipant
+      }
+      rpc_public_match_signup_context: {
+        Args: { p_public_token: string }
+        Returns: {
+          match_id: string
+          signup_open: boolean
+          match_status: string
+          host_display_name: string
+          game_type: string | null
+          sport_name: string | null
+          match_date: string | null
+          start_time: string | null
+          venue_name: string | null
+          venue_timezone: string | null
+        }[]
+      }
+      rpc_public_match_signup_start: {
+        Args: {
+          p_public_token: string
+          p_display_name: string
+          p_email: string
+          p_phone?: string | null
+          p_marketing_email_opt_in?: boolean | null
+        }
+        Returns: {
+          signup_id: string
+          status: string
+          verification_required: boolean
+          verification_token: string | null
+          email_normalized: string | null
+          recipient_name: string | null
+          match_id: string
+          game_type: string | null
+          sport_name: string | null
+          match_date: string | null
+          start_time: string | null
+          venue_name: string | null
+        }[]
+      }
+      rpc_public_match_signup_record_delivery_result: {
+        Args: {
+          p_signup_id: string
+          p_delivery_status: 'sent' | 'failed' | 'skipped'
+          p_error?: string | null
+        }
+        Returns: void
+      }
+      rpc_public_match_signup_verify: {
+        Args: {
+          p_public_token: string
+          p_signup_id: string
+          p_verification_token: string
+        }
+        Returns: {
+          status: string
+          match_id: string
+          match_participant_id: string
+          participant_status: string
+          display_name: string
+        }[]
+      }
+      rpc_public_match_signup_participant_metadata: {
+        Args: { p_match_id: string }
+        Returns: {
+          match_participant_id: string
+          match_id: string
+          source: 'public_match_signup'
+          email_verified: boolean
+          signup_status: string
+        }[]
+      }
       // v1.7: Guest / Contact Player flows
       rpc_match_nominate_guest: {
         Args: { p_match_id: string; p_guest_id: string }
@@ -1803,6 +1968,10 @@ export interface Database {
       rpc_contact_player_lookup_v2: {
         Args: { p_guest_ids: string[] }
         Returns: { guest_id: string; person_id: string | null; display_name: string; avatar_url: string | null; primary_sport_id: number | null; linked_user_id: string | null }[]
+      }
+      rpc_my_verified_emails: {
+        Args: Record<string, never>
+        Returns: UserVerifiedEmail[]
       }
       // v1.6.3: Sports RPCs
       rpc_sports_list: {

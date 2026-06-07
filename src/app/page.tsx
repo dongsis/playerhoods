@@ -272,8 +272,8 @@ export default function HomePage() {
             aria-hidden="true"
             className="hidden h-full w-full object-cover object-center sm:block"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-white/82 via-white/48 to-[#071A44]/10" />
-          <div className="absolute inset-0 bg-gradient-to-b from-white/36 via-white/8 to-[#F0F7FF]/62" />
+          <div className="absolute inset-0 bg-gradient-to-r from-white/88 via-white/60 to-[#071A44]/8 sm:from-white/82 sm:via-white/48 sm:to-[#071A44]/10" />
+          <div className="absolute inset-0 bg-gradient-to-b from-white/48 via-white/18 to-[#F0F7FF]/78 sm:from-white/36 sm:via-white/8 sm:to-[#F0F7FF]/62" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_40%_16%,rgba(255,255,255,0.9)_0%,rgba(255,255,255,0.58)_30%,rgba(255,255,255,0.14)_58%,rgba(7,26,68,0.14)_100%)]" />
         </div>
 
@@ -808,8 +808,8 @@ function FeatureCarousel() {
 
   const motionClass = {
     visible: 'translate-x-0 opacity-100',
-    exit: '-translate-x-[120%] opacity-100',
-    enter: 'translate-x-[120%] opacity-100',
+    exit: '-translate-x-[120%] opacity-100 max-md:translate-x-0',
+    enter: 'translate-x-[120%] opacity-100 max-md:translate-x-0',
   }[phase]
 
   return (
@@ -824,7 +824,7 @@ function FeatureCarousel() {
         className={`absolute inset-0 overflow-hidden rounded-lg border border-white/80 bg-white/95 shadow-[0_30px_74px_-38px_rgba(7,26,68,0.48)] backdrop-blur-md transition-all duration-500 ease-in-out ${motionClass}`}
       >
         <div className="grid min-h-[413px] gap-0 lg:grid-cols-[0.76fr_1fr]">
-          <div className="order-2 flex flex-col justify-center px-6 py-5 sm:px-8 lg:order-1 lg:px-9">
+          <div className="order-2 hidden flex-col justify-center px-6 py-5 sm:px-8 md:flex lg:order-1 lg:px-9">
             <p className="text-xs font-black uppercase text-[#0d6efd]">{activeSlide.imageTitle}</p>
             <h2 className="mt-3 max-w-xl text-2xl font-black leading-tight text-[#071A44] md:text-3xl">
               {activeSlide.title}
