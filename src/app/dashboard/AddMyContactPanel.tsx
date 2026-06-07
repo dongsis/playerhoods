@@ -8,7 +8,7 @@ import type { ContactPlayerResolved } from '@/lib/api/roster'
 type MobileTab = 'smart' | 'manual'
 
 type Props = {
-  userId: string
+  userId?: string | null
   existingContacts: ContactPlayerResolved[]
   onParseScreenshots?: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
   onImportScreenshotContacts?: (drafts: Array<{
@@ -221,7 +221,7 @@ export function AddMyContactPanel({
 }: Props) {
   const titleId = useId()
   const [mobileTab, setMobileTab] = useState<MobileTab>('smart')
-  const smartImportAvailable = Boolean(onParseScreenshots && onImportScreenshotContacts)
+  const smartImportAvailable = Boolean(userId && onParseScreenshots && onImportScreenshotContacts)
 
   const selectMobileTab = (tab: MobileTab) => {
     setMobileTab(tab)
@@ -320,7 +320,7 @@ export function AddMyContactPanel({
             </div>
 
             <div className="mt-3 sm:mt-4">
-              {smartImportAvailable && onParseScreenshots && onImportScreenshotContacts ? (
+              {smartImportAvailable && userId && onParseScreenshots && onImportScreenshotContacts ? (
                 <ContactScreenshotImportSection
                   userId={userId}
                   existingContacts={existingContacts}
