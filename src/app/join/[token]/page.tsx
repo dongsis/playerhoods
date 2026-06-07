@@ -11,6 +11,7 @@ type Props = {
   searchParams: Promise<{
     error?: string
     notice?: string
+    intent?: string
   }>
 }
 
@@ -43,6 +44,19 @@ type RegisteredRequestState = {
   note: string | null
   message: string
   variant: 'success' | 'error'
+}
+
+type PlayerCardIdentity = {
+  display_name: string | null
+  avatar_url: string | null
+  level: string | null
+}
+
+type PublicJoinStatus = {
+  title: string
+  subtext: string
+  badge: string
+  variant: 'success' | 'warning' | 'error' | 'neutral'
 }
 
 function isUuid(value: string): boolean {
@@ -120,6 +134,156 @@ function getRegisteredRequestState(
   return null
 }
 
+function getRegisteredUnavailableState(context: PublicSignupContext): RegisteredRequestState | null {
+  if (context.match_status === 'cancelled') {
+    return {
+      title: 'This match is cancelled',
+      subtext: 'This match is no longer taking spot requests.',
+      note: null,
+      message: 'Closed for requests.',
+      variant: 'error',
+    }
+  }
+
+  if (context.match_status === 'formed') {
+    return {
+      title: 'This match has already been formed',
+      subtext: 'The host has already formed the lineup for this match.',
+      note: null,
+      message: 'Lineup formed.',
+      variant: 'success',
+    }
+  }
+
+  if (!context.signup_open || context.match_status !== 'active') {
+    return {
+      title: 'This match is closed',
+      subtext: 'This match is not taking spot requests right now.',
+      note: null,
+      message: 'Closed for requests.',
+      variant: 'error',
+    }
+  }
+
+  return null
+}
+
+function getGuestStatus(context: PublicSignupContext, notice?: string, error?: string, intent?: string): PublicJoinStatus {
+  if (error === 'link-not-found') {
+    return {
+      title: 'This link is no longer available',
+      subtext: 'Ask the host for a fresh share link if you still want to join this match.',
+      badge: 'Link unavailable',
+      variant: 'error',
+    }
+  }
+
+  if (context.match_status === 'cancelled') {
+    return {
+      title: 'This match is cancelled',
+      subtext: 'The host cancelled this match, so the share link is no longer taking responses.',
+      badge: 'Cancelled',
+      variant: 'error',
+    }
+  }
+
+  if (context.match_status === 'formed') {
+    return {
+      title: 'This match has been formed',
+      subtext: 'The host has already formed the lineup. You can still review the details here.',
+      badge: 'Formed',
+      variant: 'success',
+    }
+  }
+
+  if (!context.signup_open || context.match_status !== 'active') {
+    return {
+      title: 'This match is not taking requests',
+      subtext: 'The host is not accepting new spot requests from this link right now.',
+      badge: 'Closed',
+      variant: 'error',
+    }
+  }
+
+  if (notice === 'check-email') {
+    return {
+      title: 'Verify your contact',
+      subtext: 'Check your email for the verification link. Once verified, your spot request is sent to the host.',
+      badge: 'Verification needed',
+      variant: 'warning',
+    }
+  }
+
+  if (notice === 'already-submitted' || notice === 'request-sent') {
+    return {
+      title: 'Your request has been sent to the host',
+      subtext: 'You do not need to submit again. The host still needs to add you to the lineup.',
+      badge: 'Requested',
+      variant: 'success',
+    }
+  }
+
+  if (intent === 'withdraw') {
+    return {
+      title: 'Review your request',
+      subtext: 'Guest withdraw is not available safely from this link yet. If you need to change plans, contact the host.',
+      badge: 'Action unavailable',
+      variant: 'warning',
+    }
+  }
+
+  if (intent === 'change-response') {
+    return {
+      title: 'Review your response',
+      subtext: 'Changing a guest response is not available safely from this link yet. You can ask the host to update your status.',
+      badge: 'Action unavailable',
+      variant: 'warning',
+    }
+  }
+
+  if (intent === 'review-changes') {
+    return {
+      title: 'Review match details',
+      subtext: 'Check the latest safe match details below before deciding whether to request a spot.',
+      badge: 'Review details',
+      variant: 'neutral',
+    }
+  }
+
+  return {
+    title: 'Join this match',
+    subtext: 'Create or sign in with a free Player Card for the fastest path, or continue as a guest without an account.',
+    badge: 'Open to requests',
+    variant: 'neutral',
+  }
+}
+
+function PlayerCardNudge() {
+  return (
+    <aside className="public-player-card-nudge" aria-label="Create a Player Card">
+      <p className="public-player-card-kicker">New to PlayerHoods?</p>
+      <h2 className="public-player-card-title">Create a free Player Card</h2>
+      <p className="public-player-card-copy">
+        Create a Player Card to make joining, tracking, and hosting matches easier while keeping your contact info private.
+      </p>
+      <ul className="public-player-card-list">
+        <li>Track all your matches in one place</li>
+        <li>Confirm future invites faster</li>
+        <li>Change your response when supported</li>
+        <li>Get useful match updates</li>
+        <li>Keep your phone and email private</li>
+        <li>Stay connected with players you know</li>
+        <li>Save trusted players to your Hood</li>
+        <li>Host your own matches more easily</li>
+      </ul>
+      <div className="public-player-card-actions">
+        <Link href="/login" className="public-signup-button public-signup-button-secondary">Create Free Player Card</Link>
+        <a href="#guest-request" className="public-player-card-later">Continue as guest</a>
+      </div>
+    </aside>
+  )
+}
+
 function getErrorMessage(code: string | undefined): string | null {
   switch (code) {
     case 'name-required':
@@ -164,20 +328,29 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
 
   const user = await getUser()
   let registeredParticipant: RegisteredParticipantState | null = null
+  let playerCardIdentity: PlayerCardIdentity | null = null
 
   if (user) {
     const supabase = await createSupabaseServerClient()
-    const { data: participant } = await supabase
-      .from('match_participants')
-      .select('id,status,join_method,org_approved_at,participant_accepted_at,confirmed_at,removed_at')
-      .eq('match_id', context.match_id)
-      .eq('user_id', user.id)
-      .is('removed_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const [{ data: participant }, { data: profile }] = await Promise.all([
+      supabase
+        .from('match_participants')
+        .select('id,status,join_method,org_approved_at,participant_accepted_at,confirmed_at,removed_at')
+        .eq('match_id', context.match_id)
+        .eq('user_id', user.id)
+        .is('removed_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('display_name,avatar_url,level')
+        .eq('id', user.id)
+        .maybeSingle(),
+    ])
 
     registeredParticipant = (participant as RegisteredParticipantState | null) ?? null
+    playerCardIdentity = (profile as PlayerCardIdentity | null) ?? null
   }
 
   const signupAction = startPublicMatchSignupAction.bind(null, token)
@@ -189,10 +362,13 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const venueName = context.venue_name ?? 'Venue to be confirmed'
   const pageError = getErrorMessage(pageParams.error)
   const isCheckEmail = pageParams.notice === 'check-email'
-  const isAlreadySubmitted = pageParams.notice === 'already-submitted'
+  const isAlreadySubmitted = pageParams.notice === 'already-submitted' || pageParams.notice === 'request-sent'
   const isRegisteredRequestSent = pageParams.notice === 'registered-requested'
   const isRegisteredRequestBlocked = pageParams.error === 'organizer-cannot-request'
-  const registeredRequestState = user ? getRegisteredRequestState(registeredParticipant, isRegisteredRequestSent) : null
+  const registeredRequestState = user
+    ? getRegisteredRequestState(registeredParticipant, isRegisteredRequestSent) ?? getRegisteredUnavailableState(context)
+    : null
+  const guestStatus = !user ? getGuestStatus(context, pageParams.notice, pageParams.error, pageParams.intent) : null
   const showPublicCheckEmail = !user && isCheckEmail
   const showPublicAlreadySubmitted = !user && isAlreadySubmitted
   const showRegisteredRequestButton = Boolean(
@@ -200,6 +376,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   )
   const showRequestForm = !user && context.signup_open && !isCheckEmail && !isAlreadySubmitted
   const pageTitle = registeredRequestState?.title
+    ?? guestStatus?.title
     ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicCheckEmail ? 'Check your email' : 'Request a spot in this match')
 
   return (
@@ -213,8 +390,20 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
         }
 
         .public-signup-shell {
-          width: min(100%, 920px);
+          width: min(100%, 1040px);
           margin: 0 auto;
+        }
+
+        .public-signup-layout {
+          align-items: start;
+          display: grid;
+          gap: 18px;
+        }
+
+        @media (min-width: 860px) {
+          .public-signup-layout {
+            grid-template-columns: minmax(0, 1fr) 320px;
+          }
         }
 
         .public-signup-brand {
@@ -402,6 +591,87 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           color: #b42318;
         }
 
+        .public-signup-message.warning {
+          background: #fffbeb;
+          border: 1px solid #fde68a;
+          color: #92400e;
+        }
+
+        .public-signup-message.neutral {
+          background: #f8fbff;
+          border: 1px solid #d9e6f4;
+          color: #405474;
+        }
+
+        .public-signup-button-secondary {
+          background: #2554d9;
+          color: #fff;
+          text-decoration: none;
+        }
+
+        .public-player-card-nudge,
+        .public-signed-in-card {
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid #d5e2f2;
+          border-radius: 24px;
+          box-shadow: 0 12px 30px rgba(17, 42, 84, 0.06);
+          padding: 20px;
+        }
+
+        .public-player-card-kicker,
+        .public-signed-in-kicker {
+          color: #7c8eaa;
+          font-size: 0.68rem;
+          font-weight: 900;
+          letter-spacing: 0.14em;
+          margin: 0 0 10px;
+          text-transform: uppercase;
+        }
+
+        .public-player-card-title,
+        .public-signed-in-title {
+          color: #06183d;
+          font-size: 1.12rem;
+          font-weight: 950;
+          line-height: 1.2;
+          margin: 0;
+        }
+
+        .public-player-card-copy,
+        .public-signed-in-copy {
+          color: #405474;
+          font-size: 0.9rem;
+          font-weight: 700;
+          line-height: 1.5;
+          margin: 10px 0 0;
+        }
+
+        .public-player-card-list {
+          color: #405474;
+          display: grid;
+          gap: 7px;
+          font-size: 0.85rem;
+          font-weight: 700;
+          line-height: 1.35;
+          margin: 14px 0 0;
+          padding-left: 18px;
+        }
+
+        .public-player-card-actions {
+          align-items: center;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-top: 16px;
+        }
+
+        .public-player-card-later {
+          color: #2554d9;
+          font-size: 0.88rem;
+          font-weight: 850;
+          text-decoration: none;
+        }
+
         .public-signup-note,
         .public-signup-help {
           color: #526784;
@@ -446,6 +716,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           <BrandLogo variant="horizontal" />
         </div>
 
+        <div className="public-signup-layout">
         <section className="public-signup-card">
           <p className="public-signup-kicker">Join Link</p>
           <h1 className="public-signup-title">{pageTitle}</h1>
@@ -472,11 +743,16 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : user ? (
             <>
               <p className="public-signup-subtext">
-                You&apos;re signed in. Request a Spot when you&apos;re ready.
+                You&apos;re signed in. Use your Player Card to request a spot for this match.
               </p>
               <p className="public-signup-note">
                 The host still needs to add you to the lineup.
               </p>
+            </>
+          ) : guestStatus ? (
+            <>
+              <p className="public-signup-subtext">{guestStatus.subtext}</p>
+              <p className={`public-signup-message ${guestStatus.variant}`}>{guestStatus.badge}</p>
             </>
           ) : (
             <>
@@ -495,6 +771,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             <div className="public-signup-summary-venue">{venueName}</div>
             <div className="public-signup-summary-time">{matchDateTime}</div>
             <div className="public-signup-summary-host">Host: {context.host_display_name || 'the host'}</div>
+            <div className="public-signup-summary-host">Status: {guestStatus?.badge ?? registeredRequestState?.message ?? (context.signup_open ? 'Open to requests' : 'Closed')}</div>
           </div>
 
           {pageError ? <p className="public-signup-message error">{pageError}</p> : null}
@@ -531,7 +808,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
               Back to match details
             </Link>
           ) : showRequestForm ? (
-            <form action={signupAction} className="public-signup-form">
+            <form id="guest-request" action={signupAction} className="public-signup-form">
               <label className="public-signup-field">
                 <span className="public-signup-label">Name</span>
                 <input className="public-signup-input" name="display_name" autoComplete="name" required maxLength={120} />
@@ -560,6 +837,22 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             </p>
           )}
         </section>
+
+        {user ? (
+          <aside className="public-signed-in-card" aria-label="Signed-in Player Card">
+            <p className="public-signed-in-kicker">Your Player Card</p>
+            <h2 className="public-signed-in-title">{playerCardIdentity?.display_name ?? user.email ?? 'Signed-in player'}</h2>
+            <p className="public-signed-in-copy">
+              This request uses your registered PlayerHoods identity, not the anonymous guest verification flow.
+            </p>
+            {playerCardIdentity?.level ? (
+              <p className="public-signed-in-copy">Level: {playerCardIdentity.level}</p>
+            ) : null}
+          </aside>
+        ) : (
+          <PlayerCardNudge />
+        )}
+        </div>
 
         <p className="public-signup-footer">
           <Link href="/">PlayerHoods</Link>
