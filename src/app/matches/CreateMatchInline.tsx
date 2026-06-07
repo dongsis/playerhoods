@@ -2844,6 +2844,100 @@ export function CreateMatchInline({
         ? 'Creating...'
         : 'Create Match'
 
+  const selectedPlayersFooter = selectionMode === 'share' ? null : (
+    <div className="space-y-2 px-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[9px] font-extrabold leading-[1.2] tracking-normal text-[#64748B]">
+          {selectionMode === 'request' ? 'Selected audience' : 'Selected invitees'}
+        </p>
+        {selectionMode === 'invite' ? (
+          <AddContactSecondaryAction
+            onAdd={() => {
+              setError(null)
+              setContactAddPanelOpen(true)
+            }}
+          />
+        ) : null}
+      </div>
+
+      {selectionMode === 'request' ? (
+        playerCallTargetCount === 0 ? (
+          <p className="text-body-sub font-semibold text-[#94A3B8]">No one yet</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {selectedScopeUsers.map((candidate) => (
+              <button
+                key={`call-target-${candidate.key}`}
+                type="button"
+                onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
+                className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
+              >
+                <ParticipantQuickPreviewTrigger
+                  target={{
+                    userId: candidate.userId ?? null,
+                    guestId: candidate.guestId ?? null,
+                    displayName: candidate.name,
+                    gender: candidate.gender,
+                  }}
+                >
+                  <span>{candidate.name}</span>
+                </ParticipantQuickPreviewTrigger>
+                <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+              </button>
+            ))}
+            {selectedScopeGroups.map((group) =>
+              renderSelectedGroupChip(
+                group,
+                'green',
+                () => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id)),
+                `call-target-group-${group.id}`,
+              ),
+            )}
+          </div>
+        )
+      ) : inviteSelectionCount === 0 ? (
+        <p className="text-body-sub font-semibold text-[#94A3B8]">No people or groups selected yet.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-body-sub mr-1 font-semibold text-[#64748B]">
+            {inviteSelectionCount} selected
+          </span>
+          {selectedInvitePlayers.map((member) => (
+            <button
+              key={`invite-selected-${member.key}`}
+              type="button"
+              onClick={() => setSelectedDirectInviteKeys((prev) => {
+                const next = new Set(prev)
+                next.delete(member.key)
+                return next
+              })}
+              className="text-body-sub flex items-center rounded-lg border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-1 font-semibold text-[#0d6efd]"
+            >
+              <ParticipantQuickPreviewTrigger
+                target={{
+                  userId: member.userId ?? null,
+                  guestId: member.guestId ?? null,
+                  displayName: member.name,
+                  gender: member.gender,
+                }}
+              >
+                <span>{member.name}</span>
+              </ParticipantQuickPreviewTrigger>
+              <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+            </button>
+          ))}
+          {selectedInvitedGroups.map((group) =>
+            renderSelectedGroupChip(
+              group,
+              'orange',
+              () => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
+            ),
+          )}
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <>
     {contactAddPanelOpen ? (
@@ -3365,80 +3459,9 @@ export function CreateMatchInline({
               <span className="text-body-sub font-semibold text-[#94A3B8]">Available after creation</span>
             </div>
           )}
-          playerCallSummary={playerCallTargetCount === 0 ? (
-            <p className="text-body-sub font-semibold text-[#94A3B8]">No one yet</p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {selectedScopeUsers.map((candidate) => (
-                <button
-                  key={`call-target-${candidate.key}`}
-                  type="button"
-                  onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
-                  className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
-                >
-                  <ParticipantQuickPreviewTrigger
-                    target={{
-                      userId: candidate.userId ?? null,
-                      guestId: candidate.guestId ?? null,
-                      displayName: candidate.name,
-                      gender: candidate.gender,
-                    }}
-                  >
-                    <span>{candidate.name}</span>
-                  </ParticipantQuickPreviewTrigger>
-                  <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-                </button>
-              ))}
-              {selectedScopeGroups.map((group) =>
-                renderSelectedGroupChip(
-                  group,
-                  'green',
-                  () => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id)),
-                  `call-target-group-${group.id}`,
-                ),
-              )}
-            </div>
-          )}
-          inviteSummary={inviteSelectionCount === 0 ? (
-            <p className="text-body-sub font-semibold text-[#94A3B8]">No people or groups selected yet.</p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-body-sub mr-1 font-semibold text-[#64748B]">
-                {inviteSelectionCount} selected
-              </span>
-              {selectedInvitePlayers.map((member) => (
-                <button
-                  key={`invite-selected-${member.key}`}
-                  type="button"
-                  onClick={() => setSelectedDirectInviteKeys((prev) => {
-                    const next = new Set(prev)
-                    next.delete(member.key)
-                    return next
-                  })}
-                  className="text-body-sub flex items-center rounded-lg border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-1 font-semibold text-[#0d6efd]"
-                >
-                  <ParticipantQuickPreviewTrigger
-                    target={{
-                      userId: member.userId ?? null,
-                      guestId: member.guestId ?? null,
-                      displayName: member.name,
-                      gender: member.gender,
-                    }}
-                  >
-                    <span>{member.name}</span>
-                  </ParticipantQuickPreviewTrigger>
-                  <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-                </button>
-              ))}
-              {selectedInvitedGroups.map((group) =>
-                renderSelectedGroupChip(
-                  group,
-                  'orange',
-                  () => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
-                ),
-              )}
-            </div>
-          )}
+          footerSlot={selectedPlayersFooter}
+          playerCallSummaryLabel=""
+          playerCallHelperText={null}
           playerCallEmptyLabel={(
             'Choose who can see this on their Match Board.'
           )}
@@ -3581,15 +3604,6 @@ export function CreateMatchInline({
 
             <div className="h-32 md:hidden" aria-hidden="true" />
             <div className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+7rem)] z-40 rounded-xl border border-[#E2E8F0] bg-white/95 p-1.5 shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] backdrop-blur md:static md:inset-auto md:mt-2 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
-            {createStep === 'players' && selectionMode === 'invite' ? (
-              <AddContactSecondaryAction
-                className="justify-end px-1 pb-1"
-                onAdd={() => {
-                  setError(null)
-                  setContactAddPanelOpen(true)
-                }}
-              />
-            ) : null}
             <div className="flex flex-col gap-4 md:flex-row">
               <button
                 type="submit"
