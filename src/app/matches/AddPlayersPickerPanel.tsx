@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export type AddPlayersMode = 'invite' | 'playerCall' | 'shareLink'
 
@@ -50,7 +50,7 @@ type Props = {
   playerCallSummaryLabel?: string
   playerCallHelperText?: ReactNode
   expandModeButtonsOnMobile?: boolean
-  previewOnClick?: boolean
+  compactPreviewRows?: boolean
   renderPreview?: (
     candidate: AddPlayersCandidate,
     actions: {
@@ -145,6 +145,9 @@ function candidateMatches(candidate: AddPlayersCandidate, query: string, filter:
   return (candidate.searchText ?? candidate.name).toLowerCase().includes(normalizedQuery)
 }
 
+const COMPACT_PREVIEW_CLICK_DELAY_MS = 300
+const COMPACT_PREVIEW_DOUBLE_TAP_MS = 280
+
 export function AddPlayersPickerPanel({
   mode,
   onModeChange,
@@ -166,13 +169,23 @@ export function AddPlayersPickerPanel({
   playerCallSummaryLabel = 'Call targets',
   playerCallHelperText = 'Only selected players and groups will see this on their Match Board.',
   expandModeButtonsOnMobile = false,
-  previewOnClick = false,
+  compactPreviewRows = false,
   renderPreview,
 }: Props) {
   const [previewCandidate, setPreviewCandidate] = useState<AddPlayersCandidate | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
+  const clickTimerRef = useRef<number | null>(null)
+  const lastTapRef = useRef<{ key: string; at: number } | null>(null)
+  const suppressNextClickRef = useRef(false)
   const longPressOpenedRef = useRef(false)
   const filteredCandidates = candidates.filter((candidate) => candidateMatches(candidate, searchValue, filterValue))
+
+  const clearClickTimer = () => {
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+  }
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current) {
@@ -181,25 +194,59 @@ export function AddPlayersPickerPanel({
     }
   }
 
+  useEffect(() => () => {
+    clearClickTimer()
+    clearLongPressTimer()
+  }, [])
+
+  const openCandidatePreview = (candidate: AddPlayersCandidate) => {
+    clearClickTimer()
+    setPreviewCandidate(candidate)
+  }
+
   const startLongPressPreview = (candidate: AddPlayersCandidate) => {
     clearLongPressTimer()
     longPressOpenedRef.current = false
     longPressTimerRef.current = window.setTimeout(() => {
       longPressOpenedRef.current = true
-      setPreviewCandidate(candidate)
+      suppressNextClickRef.current = true
+      openCandidatePreview(candidate)
     }, 550)
   }
 
   const handleCandidateClick = (candidate: AddPlayersCandidate) => {
-    if (longPressOpenedRef.current) {
+    if (longPressOpenedRef.current || suppressNextClickRef.current) {
       longPressOpenedRef.current = false
+      suppressNextClickRef.current = false
       return
     }
-    if (previewOnClick) {
-      setPreviewCandidate(candidate)
+
+    if (!compactPreviewRows) {
+      onToggleCandidate(candidate)
       return
     }
-    onToggleCandidate(candidate)
+
+    clearClickTimer()
+    clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null
+      onToggleCandidate(candidate)
+    }, COMPACT_PREVIEW_CLICK_DELAY_MS)
+  }
+
+  const handleCandidateTouchEnd = (candidate: AddPlayersCandidate) => {
+    clearLongPressTimer()
+    if (!compactPreviewRows || longPressOpenedRef.current) return
+
+    const now = Date.now()
+    const lastTap = lastTapRef.current
+    if (lastTap?.key === candidate.key && now - lastTap.at <= COMPACT_PREVIEW_DOUBLE_TAP_MS) {
+      lastTapRef.current = null
+      suppressNextClickRef.current = true
+      openCandidatePreview(candidate)
+      return
+    }
+
+    lastTapRef.current = { key: candidate.key, at: now }
   }
 
   return (
@@ -284,7 +331,7 @@ export function AddPlayersPickerPanel({
             </select>
           </div>
 
-          <div className={`${previewOnClick ? 'grid' : 'flex flex-wrap content-start'} max-h-[390px] gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]`}>
+          <div className={`${compactPreviewRows ? 'grid' : 'flex flex-wrap content-start'} max-h-[390px] gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]`}>
             {filteredCandidates.length === 0 ? (
               <div className="text-body-main w-full px-1 py-6 text-center font-semibold text-[#94A3B8]">
                 {mode === 'invite' ? inviteEmptyLabel : playerCallEmptyLabel}
@@ -297,33 +344,33 @@ export function AddPlayersPickerPanel({
                   onClick={() => handleCandidateClick(candidate)}
                   onDoubleClick={(event) => {
                     event.preventDefault()
-                    setPreviewCandidate(candidate)
+                    openCandidatePreview(candidate)
                   }}
                   onTouchStart={() => startLongPressPreview(candidate)}
-                  onTouchEnd={clearLongPressTimer}
+                  onTouchEnd={() => handleCandidateTouchEnd(candidate)}
                   onTouchCancel={clearLongPressTimer}
                   aria-pressed={candidate.selected}
                   disabled={candidate.disabled}
                   title={candidate.title}
-                  className={previewOnClick ? compactCandidateClass(candidate, mode) : candidateClass(candidate, mode)}
+                  className={compactPreviewRows ? compactCandidateClass(candidate, mode) : candidateClass(candidate, mode)}
                 >
                   {candidate.leadingNode}
-                  <span className={`${previewOnClick ? 'flex min-w-0 flex-1 items-center gap-2' : 'min-w-0'}`}>
-                    <span className={`${previewOnClick ? 'max-w-full' : 'max-w-[12rem]'} block truncate`}>
+                  <span className={`${compactPreviewRows ? 'flex min-w-0 flex-1 items-center gap-2' : 'min-w-0'}`}>
+                    <span className={`${compactPreviewRows ? 'max-w-full' : 'max-w-[12rem]'} block truncate`}>
                       {candidate.labelNode ?? candidate.name}
                     </span>
-                    {previewOnClick && candidate.supportingNode ? (
+                    {compactPreviewRows && candidate.supportingNode ? (
                       <span className="hidden max-w-[8.5rem] shrink-0 truncate rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-500 min-[360px]:inline-block">
                         {candidate.supportingNode}
                       </span>
                     ) : null}
-                    {!previewOnClick && candidate.supportingNode ? (
+                    {!compactPreviewRows && candidate.supportingNode ? (
                       <span className="mt-0.5 block truncate text-body-sub font-semibold text-current opacity-65">
                         {candidate.supportingNode}
                       </span>
                     ) : null}
                   </span>
-                  {previewOnClick ? (
+                  {compactPreviewRows ? (
                     <span className="ml-auto text-[15px] font-black text-slate-300" aria-hidden="true">
                       &rsaquo;
                     </span>

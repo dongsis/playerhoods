@@ -2397,7 +2397,7 @@ export function MatchManagePanel({
                 candidates={sharedPickerCandidates}
                 onToggleCandidate={toggleSharedPickerCandidate}
                 expandModeButtonsOnMobile
-                previewOnClick
+                compactPreviewRows
                 renderPreview={(candidate, actions) => {
                   const item = candidate.payload as CandidateItem | undefined
                   if (!item) return null
