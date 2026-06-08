@@ -286,8 +286,8 @@ begin
   if v_signup.match_participant_id is not null then
     select * into v_mp
     from public.match_participants
-    where id = v_signup.match_participant_id
-      and removed_at is null
+    where match_participants.id = v_signup.match_participant_id
+      and match_participants.removed_at is null
     for update;
   end if;
 
@@ -308,10 +308,10 @@ begin
   if v_mp.id is null then
     select * into v_mp
     from public.match_participants
-    where match_id = v_match.id
-      and guest_id = v_guest_id
-      and removed_at is null
-    order by created_at desc
+    where match_participants.match_id = v_match.id
+      and match_participants.guest_id = v_guest_id
+      and match_participants.removed_at is null
+    order by match_participants.created_at desc
     limit 1
     for update;
   end if;
@@ -548,7 +548,7 @@ begin
   if v_signup.match_participant_id is not null then
     select * into v_mp
     from public.match_participants
-    where id = v_signup.match_participant_id
+    where match_participants.id = v_signup.match_participant_id
     for update;
   end if;
 
@@ -601,7 +601,9 @@ begin
   end if;
 
   perform public.match_participant_reconcile_status(v_mp.id);
-  select * into v_mp from public.match_participants where id = v_mp.id;
+  select * into v_mp
+  from public.match_participants
+  where match_participants.id = v_mp.id;
 
   update public.public_match_signups
   set
