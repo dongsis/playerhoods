@@ -17,6 +17,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'daily',
       priority: 0.8,
     },
+    {
+      url: getAbsoluteUrl('/about'),
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
   ]
 
   const supabaseUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
