@@ -17,6 +17,7 @@ export async function middleware(request: NextRequest) {
   const isAuthCallback = pathname.startsWith('/auth/callback')
   const isResetPasswordRoute = pathname.startsWith('/reset-password')
   const isUnsubscribeRoute = pathname.startsWith('/unsubscribe')
+  const isAboutRoute = pathname === '/about'
   const isShortInvitationRoute = pathname.startsWith('/i/')
   const isPublicMatchSignupRoute = pathname.startsWith('/join/')
   const isShortStopRoute = pathname.startsWith('/stop/')
@@ -70,6 +71,7 @@ export async function middleware(request: NextRequest) {
     || isAuthCallback
     || isResetPasswordRoute
     || isUnsubscribeRoute
+    || isAboutRoute
     || isShortInvitationRoute
     || isPublicMatchSignupRoute
     || isShortStopRoute

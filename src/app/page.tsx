@@ -195,6 +195,9 @@ export default function HomePage() {
             <a href="/venues" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
               Venues
             </a>
+            <a href="/about" className="text-sm font-bold text-[#30445F] hover:text-[#0d6efd]">
+              About
+            </a>
           </div>
 
           <div className="hidden items-center gap-3 md:flex">
@@ -238,6 +241,9 @@ export default function HomePage() {
               </a>
               <a className="rounded-lg px-3 py-2 font-bold text-[#30445F]" href="/venues">
                 Venues
+              </a>
+              <a className="rounded-lg px-3 py-2 font-bold text-[#30445F]" href="/about">
+                About
               </a>
               <button
                 type="button"
