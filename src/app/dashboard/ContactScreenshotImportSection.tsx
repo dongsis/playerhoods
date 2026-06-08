@@ -472,7 +472,7 @@ export function ContactScreenshotImportSection({
       if (uploaded.length > 0) {
         await supabase.storage.from('contact-imports').remove(uploaded.map((item) => item.storage_path))
       }
-      setRetryMessage(getFriendlyImportError(err, 'We could not read that screenshot. Try a clearer crop, paste another screenshot, or add the contact manually.'))
+      setRetryMessage(getFriendlyImportError(err, 'Smart Import could not read that image right now. Try another screenshot, or add the contact manually.'))
     } finally {
       setParsing(false)
     }

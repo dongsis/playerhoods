@@ -33,15 +33,49 @@ export type ContactImportDraft = {
 }
 
 type ModelCandidate = {
-  display_name?: string
-  phone?: string
-  email?: string
-  source_excerpt?: string
-  confidence?: ContactImportConfidence
+  name: string
+  phone: string
+  email: string
+  confidence: ContactImportConfidence
+  sourceNotes: string
 }
 
 type ModelResponse = {
-  candidates?: ModelCandidate[]
+  contacts: ModelCandidate[]
+}
+
+const CONTACT_EXTRACTION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['contacts'],
+  properties: {
+    contacts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'phone', 'email', 'confidence', 'sourceNotes'],
+        properties: {
+          name: { type: 'string' },
+          phone: { type: 'string' },
+          email: { type: 'string' },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+          sourceNotes: { type: 'string' },
+        },
+      },
+    },
+  },
+} as const
+
+class ContactScreenshotImportError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ContactScreenshotImportError'
+  }
+}
+
+function smartImportError(message: string): ContactScreenshotImportError {
+  return new ContactScreenshotImportError(message)
 }
 
 function makeDraftId(seed: string): string {
@@ -88,6 +122,13 @@ function sanitizeEmail(value: string | null | undefined): string {
 
 function sanitizeName(value: string | null | undefined): string {
   return cleanText(value)
+}
+
+function sanitizeSourceNotes(value: string | null | undefined): string {
+  return cleanText(value)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\+?\d[\d\s().-]{6,}\d/g, '[phone]')
+    .slice(0, 160)
 }
 
 function buildMissingFields(candidate: {
@@ -193,6 +234,24 @@ function mergeByIdentity(candidates: ContactImportDraft[]): ContactImportDraft[]
   return Array.from(map.values())
 }
 
+function responseHasRefusal(payload: Record<string, unknown>): boolean {
+  const output = Array.isArray(payload.output) ? payload.output : []
+  for (const item of output) {
+    if (!item || typeof item !== 'object') continue
+    const content = Array.isArray((item as { content?: unknown[] }).content)
+      ? ((item as { content?: unknown[] }).content ?? [])
+      : []
+    for (const part of content) {
+      if (!part || typeof part !== 'object') continue
+      const type = typeof (part as { type?: unknown }).type === 'string'
+        ? (part as { type: string }).type
+        : ''
+      if (type === 'refusal' || 'refusal' in part) return true
+    }
+  }
+  return false
+}
+
 function extractOutputText(payload: Record<string, unknown>): string {
   const direct = typeof payload.output_text === 'string' ? payload.output_text : ''
   if (direct) return direct
@@ -218,15 +277,51 @@ function extractOutputText(payload: Record<string, unknown>): string {
   return ''
 }
 
-function parseJsonResponse(raw: string): ModelResponse {
-  const cleaned = raw
-    .trim()
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim()
-  const parsed = JSON.parse(cleaned) as ModelResponse
-  return parsed
+function isConfidence(value: unknown): value is ContactImportConfidence {
+  return value === 'high' || value === 'medium' || value === 'low'
+}
+
+function parseStructuredResponse(raw: string): ModelCandidate[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw smartImportError('Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.')
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw smartImportError('Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.')
+  }
+
+  const contacts = (parsed as Partial<ModelResponse>).contacts
+  if (!Array.isArray(contacts)) {
+    throw smartImportError('Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.')
+  }
+
+  return contacts.map((contact) => {
+    if (!contact || typeof contact !== 'object' || Array.isArray(contact)) {
+      throw smartImportError('Smart Import could not understand one of the detected contacts. Try a clearer crop, paste another screenshot, or add the contact manually.')
+    }
+
+    const record = contact as Record<string, unknown>
+    if (
+      typeof record.name !== 'string'
+      || typeof record.phone !== 'string'
+      || typeof record.email !== 'string'
+      || typeof record.sourceNotes !== 'string'
+      || !isConfidence(record.confidence)
+    ) {
+      throw smartImportError('Smart Import could not understand one of the detected contacts. Try a clearer crop, paste another screenshot, or add the contact manually.')
+    }
+
+    return {
+      name: record.name,
+      phone: record.phone,
+      email: record.email,
+      confidence: record.confidence,
+      sourceNotes: sanitizeSourceNotes(record.sourceNotes),
+    }
+  })
 }
 
 async function parseImageWithVisionModel(
@@ -234,70 +329,93 @@ async function parseImageWithVisionModel(
   mimeType: string,
   base64Image: string,
 ): Promise<ModelCandidate[]> {
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) {
-    throw new Error('OPENAI_API_KEY not configured for screenshot parsing.')
+    throw smartImportError('Smart Import is not fully configured yet. Add the contact manually for now.')
   }
 
   const prompt = [
-    'Extract contact candidates from this screenshot.',
-    'It may be a WhatsApp group info screenshot, a contact list, or another simple list.',
+    'Extract contact candidates from this screenshot or uploaded image.',
+    'The image may be an iOS Contacts detail screen, an Android Contacts detail screen, a messaging profile, a contact list, a group info screen, or another contact-like screenshot.',
+    'Support screenshots where a single name and phone number are visible in normal app UI, even when the content is not a table, spreadsheet, or CSV.',
     'Identify likely person records and group adjacent lines that belong to the same contact.',
-    'For each candidate, return:',
-    '- display_name',
-    '- phone',
-    '- email',
-    '- source_excerpt',
-    '- confidence (high, medium, or low)',
+    'For each contact, return name, phone, email, confidence, and a short debugging-safe sourceNotes explanation.',
     'Rules:',
     '- Return only likely human contacts, not section headers or UI labels.',
     '- Use empty strings for missing phone/email.',
+    '- A contact is useful if it has a name plus phone or email, or a very clear phone/email with nearby person context.',
     '- Prefer one structured candidate per person.',
     '- Do not invent contact details.',
-    '- Return strict JSON only in the shape {"candidates":[...]} with no markdown.',
+    '- If no likely contacts are visible, return an empty contacts array.',
+    '- Keep sourceNotes short and do not include full phone numbers, emails, or raw OCR text.',
     `Source file: ${fileName}`,
   ].join('\n')
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4.1-mini',
-      max_output_tokens: 1200,
-      input: [
-        {
-          role: 'user',
-          content: [
-            { type: 'input_text', text: prompt },
-            {
-              type: 'input_image',
-              image_url: `data:${mimeType};base64,${base64Image}`,
-            },
-          ],
+  let response: Response
+  try {
+    response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4.1-mini',
+        max_output_tokens: 1200,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'contact_screenshot_import',
+            strict: true,
+            schema: CONTACT_EXTRACTION_SCHEMA,
+          },
         },
-      ],
-    }),
-  })
+        input: [
+          {
+            role: 'user',
+            content: [
+              { type: 'input_text', text: prompt },
+              {
+                type: 'input_image',
+                detail: 'high',
+                image_url: `data:${mimeType};base64,${base64Image}`,
+              },
+            ],
+          },
+        ],
+      }),
+    })
+  } catch {
+    throw smartImportError('Smart Import could not reach the screenshot reader. Try again in a moment, or add the contact manually.')
+  }
 
-  const payload = (await response.json()) as Record<string, unknown>
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>
   if (!response.ok) {
-    const message =
-      typeof payload.error === 'object' && payload.error && 'message' in payload.error
-        ? String((payload.error as { message?: unknown }).message ?? 'OpenAI request failed')
-        : 'OpenAI request failed'
-    throw new Error(message)
+    if (response.status === 401 || response.status === 403) {
+      throw smartImportError('Smart Import is not fully configured yet. Add the contact manually for now.')
+    }
+    throw smartImportError('Smart Import could not read that screenshot right now. Try again in a moment, use a clearer crop, or add the contact manually.')
+  }
+
+  const status = typeof payload.status === 'string' ? payload.status : ''
+  if (status && status !== 'completed') {
+    throw smartImportError(
+      status === 'incomplete'
+        ? 'Smart Import could not finish reading that screenshot. Try a clearer crop, paste another screenshot, or add the contact manually.'
+        : 'Smart Import could not read that screenshot right now. Try again in a moment, use a clearer crop, or add the contact manually.',
+    )
+  }
+
+  if (responseHasRefusal(payload)) {
+    throw smartImportError('Smart Import could not process that image. Try a clearer contact screenshot, or add the contact manually.')
   }
 
   const outputText = extractOutputText(payload)
   if (!outputText) {
-    return []
+    throw smartImportError('Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.')
   }
 
-  const parsed = parseJsonResponse(outputText)
-  return Array.isArray(parsed.candidates) ? parsed.candidates : []
+  return parseStructuredResponse(outputText)
 }
 
 export async function parseContactScreenshotUploads(
@@ -322,12 +440,12 @@ export async function parseContactScreenshotUploads(
           id: makeDraftId(upload.file_name.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()),
           source_file_name: upload.file_name,
           source_label: `Imported from ${upload.file_name}`,
-          display_name: sanitizeName(candidate.display_name),
+          display_name: sanitizeName(candidate.name),
           phone: sanitizePhone(candidate.phone),
           email: sanitizeEmail(candidate.email),
-          source_excerpt: cleanText(candidate.source_excerpt),
+          source_excerpt: sanitizeSourceNotes(candidate.sourceNotes),
           confidence: inferConfidence({
-            display_name: sanitizeName(candidate.display_name),
+            display_name: sanitizeName(candidate.name),
             phone: sanitizePhone(candidate.phone),
             email: sanitizeEmail(candidate.email),
             confidence: candidate.confidence,
