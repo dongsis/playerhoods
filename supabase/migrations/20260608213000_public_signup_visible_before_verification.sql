@@ -183,7 +183,21 @@ begin
         returning * into v_signup;
         v_should_send_verification := false;
       else
-        raise exception 'public_signup_rate_limited';
+        return query
+        select
+          null::uuid,
+          'verification_sent'::text,
+          false,
+          null::text,
+          null::text,
+          null::text,
+          v_match.id,
+          v_match.game_type,
+          (select s.display_name from public.sports s where s.id = v_match.sport_id),
+          v_match.match_date,
+          v_match.start_time,
+          (select v.name from public.venues v where v.id = v_match.venue_id);
+        return;
       end if;
     elsif v_existing_signup_found then
       update public.public_match_signups

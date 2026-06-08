@@ -31,8 +31,6 @@ DECLARE
   v_rerequest record;
   v_unavailable_signup record;
   v_disabled_after_start_signup record;
-  v_missing_config_signup record;
-  v_invalid_config_signup record;
   v_verify record;
   v_verify_repeat record;
   v_verify_two record;
@@ -481,6 +479,11 @@ BEGIN
 
   PERFORM set_config('request.jwt.claims', '{}'::text, true);
 
+  INSERT INTO public.public_match_signup_config(singleton_key, system_actor_user_id)
+  VALUES (true, v_system)
+  ON CONFLICT (singleton_key) DO UPDATE
+  SET system_actor_user_id = excluded.system_actor_user_id;
+
   SELECT * INTO v_context
   FROM public.rpc_public_match_signup_context(v_link.public_token)
   LIMIT 1;
@@ -643,22 +646,16 @@ BEGIN
     );
   END;
 
-  SELECT * INTO v_missing_config_signup
-  FROM public.rpc_public_match_signup_start(
-    v_link_two.public_token,
-    'Missing Config Public Signup',
-    'issue76-missing-config@example.test',
-    null,
-    false
-  )
-  LIMIT 1;
+  DELETE FROM public.public_match_signup_config;
 
   BEGIN
     PERFORM *
-    FROM public.rpc_public_match_signup_verify(
+    FROM public.rpc_public_match_signup_start(
       v_link_two.public_token,
-      v_missing_config_signup.signup_id,
-      v_missing_config_signup.verification_token
+      'Missing Config Public Signup',
+      'issue76-missing-config@example.test',
+      null,
+      false
     );
     INSERT INTO _issue76_results VALUES ('missing system actor config fails closed', false, 'no exception');
   EXCEPTION WHEN OTHERS THEN
@@ -674,22 +671,14 @@ BEGIN
   ON CONFLICT (singleton_key) DO UPDATE
   SET system_actor_user_id = excluded.system_actor_user_id;
 
-  SELECT * INTO v_invalid_config_signup
-  FROM public.rpc_public_match_signup_start(
-    v_link_two.public_token,
-    'Invalid Config Public Signup',
-    'issue76-invalid-config@example.test',
-    null,
-    false
-  )
-  LIMIT 1;
-
   BEGIN
     PERFORM *
-    FROM public.rpc_public_match_signup_verify(
+    FROM public.rpc_public_match_signup_start(
       v_link_two.public_token,
-      v_invalid_config_signup.signup_id,
-      v_invalid_config_signup.verification_token
+      'Invalid Config Public Signup',
+      'issue76-invalid-config@example.test',
+      null,
+      false
     );
     INSERT INTO _issue76_results VALUES ('non-existing configured system actor fails closed', false, 'no exception');
   EXCEPTION WHEN OTHERS THEN
@@ -730,20 +719,71 @@ BEGIN
   FROM public.public_match_signups
   WHERE id = v_signup.signup_id;
 
+  SELECT * INTO v_mp
+  FROM public.match_participants
+  WHERE id = (
+    SELECT match_participant_id
+    FROM public.public_match_signups
+    WHERE id = v_signup.signup_id
+  );
+
+  SELECT * INTO v_guest
+  FROM public.guests
+  WHERE id = v_mp.guest_id;
+
   INSERT INTO _issue76_results VALUES (
-    'signup creates server-only verification token and audited delivery request but no participant before verification',
+    'signup creates visible pending request before email verification without exposing unverified email',
     v_signup.verification_required = true
-      AND v_participant_count = 0
+      AND v_participant_count = 1
       AND nullif(v_signup.verification_token, '') IS NOT NULL
       AND v_signup.email_normalized = v_email
+      AND v_mp.status = 'pending'
+      AND v_mp.join_method = 'requested'
+      AND v_mp.participant_accepted_at IS NULL
+      AND v_mp.participant_accepted_via IS NULL
+      AND v_mp.org_approved_at IS NULL
+      AND v_mp.confirmed_at IS NULL
+      AND v_mp.created_by = v_system
+      AND v_guest.created_by = v_system
+      AND v_guest.email IS NULL
+      AND v_guest.phone IS NULL
       AND v_delivery_status = 'queued'
       AND v_delivery_attempt_count = 0
       AND v_delivery_count = 0,
     'participants=' || v_participant_count::text
       || ', token_present=' || (nullif(v_signup.verification_token, '') IS NOT NULL)::text
+      || ', participant=' || coalesce(v_mp.id::text, 'missing')
+      || ', guest_email=' || coalesce(v_guest.email, 'null')
       || ', delivery_status=' || coalesce(v_delivery_status, 'null')
       || ', queued_public_signup_deliveries=' || v_delivery_count::text
   );
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_host::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  SELECT to_jsonb(m)
+  INTO v_metadata_json
+  FROM public.rpc_public_match_signup_participant_metadata(v_match) m
+  WHERE m.match_participant_id = v_mp.id
+  LIMIT 1;
+
+  INSERT INTO _issue76_results VALUES (
+    'host metadata marks pre-verification public signup as email pending',
+    v_metadata_json->>'source' = 'public_match_signup'
+      AND (v_metadata_json->>'email_verified')::boolean = false
+      AND v_metadata_json->>'signup_status' = 'pending_verification'
+      AND NOT (v_metadata_json ? 'email_normalized')
+      AND NOT (v_metadata_json ? 'phone_normalized')
+      AND NOT (v_metadata_json ? 'email_sha256')
+      AND NOT (v_metadata_json ? 'marketing_email_opt_in')
+      AND NOT (v_metadata_json ? 'verification_token_hash'),
+    coalesce(v_metadata_json::text, 'missing_metadata')
+  );
+
+  PERFORM set_config('request.jwt.claims', '{}'::text, true);
 
   PERFORM public.rpc_public_match_signup_record_delivery_result(v_signup.signup_id, 'sent', null);
 
@@ -855,18 +895,30 @@ BEGIN
   FROM public.guests
   WHERE id = v_mp.guest_id;
 
+  SELECT count(*)::integer INTO v_participant_count
+  FROM public.match_participants
+  WHERE match_id = v_match
+    AND guest_id = v_mp.guest_id
+    AND removed_at IS NULL;
+
   INSERT INTO _issue76_results VALUES (
-    'verified signup creates pending requested participant using existing email_invitation acceptance value',
-    v_mp.status = 'pending'
+    'email verification marks the existing visible request accepted without duplicating participant',
+    v_verify.match_participant_id = v_mp.id
+      AND v_participant_count = 1
+      AND v_mp.status = 'pending'
       AND v_mp.join_method = 'requested'
       AND v_mp.participant_accepted_at IS NOT NULL
       AND v_mp.participant_accepted_via = 'email_invitation'
       AND v_mp.org_approved_at IS NULL
+      AND v_mp.confirmed_at IS NULL
       AND v_mp.created_by = v_system
-      AND v_guest.created_by = v_system,
+      AND v_guest.created_by = v_system
+      AND v_guest.email = v_email,
     'status=' || v_mp.status::text
       || ', join_method=' || v_mp.join_method::text
       || ', via=' || coalesce(v_mp.participant_accepted_via, 'null')
+      || ', active_participants=' || coalesce(v_participant_count::text, 'null')
+      || ', guest_email=' || coalesce(v_guest.email, 'null')
   );
 
   SELECT * INTO v_verify_repeat
@@ -945,6 +997,7 @@ BEGIN
   SELECT to_jsonb(m)
   INTO v_metadata_json
   FROM public.rpc_public_match_signup_participant_metadata(v_match) m
+  WHERE m.match_participant_id = v_mp.id
   LIMIT 1;
 
   INSERT INTO _issue76_results VALUES (
@@ -1049,11 +1102,11 @@ BEGIN
       AND v_rerequest.verification_required = true
       AND nullif(v_rerequest.verification_token, '') IS NOT NULL
       AND v_active_signup_count = 1
-      AND v_participant_count = 0,
+      AND v_participant_count = 1,
     'old_signup_status=' || coalesce(v_old_signup_status, 'null')
       || ', new_signup=' || coalesce(v_rerequest.signup_id::text, 'missing')
       || ', active_signups=' || coalesce(v_active_signup_count::text, 'null')
-      || ', active_participants_before_verify=' || coalesce(v_participant_count::text, 'null')
+      || ', visible_participants_before_verify=' || coalesce(v_participant_count::text, 'null')
   );
 
   SELECT * INTO v_rerequest_verify
@@ -1085,16 +1138,6 @@ BEGIN
       || ', old_removed_at=' || coalesce(v_removed_original_mp.removed_at::text, 'null')
       || ', new_org_approved_at=' || coalesce(v_rerequest_mp.org_approved_at::text, 'null')
   );
-
-  SELECT * INTO v_signup_two
-  FROM public.rpc_public_match_signup_start(
-    v_link_two.public_token,
-    'Public Signup Player Second Match',
-    v_email,
-    null,
-    false
-  )
-  LIMIT 1;
 
   INSERT INTO public.match_participants (
     match_id,
@@ -1149,6 +1192,16 @@ BEGIN
     null
   )
   RETURNING id INTO v_dirty_status_removed_mp_id;
+
+  SELECT * INTO v_signup_two
+  FROM public.rpc_public_match_signup_start(
+    v_link_two.public_token,
+    'Public Signup Player Second Match',
+    v_email,
+    null,
+    false
+  )
+  LIMIT 1;
 
   v_token_two := v_signup_two.verification_token;
 
