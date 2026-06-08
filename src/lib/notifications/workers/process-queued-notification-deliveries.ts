@@ -175,6 +175,17 @@ function invitationSubject(organizerName: string, venueName: string | null | und
   return venue ? `${name} invited you to play at ${venue}` : `${name} invited you to play`
 }
 
+function buildInvitationResponseUrl(invitationId: string, channel: 'email' | 'sms'): string | null {
+  const trimmedInvitationId = invitationId.trim()
+  if (!trimmedInvitationId) return null
+
+  const path = channel === 'sms'
+    ? `/i/${formatInvitationToken(trimmedInvitationId)}`
+    : `/invitations/${encodeURIComponent(trimmedInvitationId)}`
+  const baseUrl = channel === 'sms' ? SMS_SITE_URL : SITE_URL
+  return new URL(path, baseUrl).toString()
+}
+
 function emailUnsubscribeHeaders(unsubscribeUrl: string | null | undefined): Record<string, string> | undefined {
   if (!unsubscribeUrl) return undefined
   return {
@@ -209,6 +220,8 @@ async function withEmailJoinPath(
   matchInfo: ReturnType<typeof buildMatchInfo>,
   intent: PublicJoinIntent,
 ): Promise<ReturnType<typeof buildMatchInfo>> {
+  if (matchInfo.magicLinkPath?.trim()) return matchInfo
+
   const joinPath = await resolvePublicJoinPathForMatch(supabase, matchInfo.matchId, intent)
   return joinPath ? { ...matchInfo, magicLinkPath: joinPath } : matchInfo
 }
@@ -218,26 +231,10 @@ async function withSmsJoinPath(
   matchInfo: ReturnType<typeof buildMatchInfo>,
   intent: PublicJoinIntent,
 ): Promise<ReturnType<typeof buildMatchInfo>> {
+  if (matchInfo.magicLinkPath?.trim()) return matchInfo
+
   const joinPath = await resolvePublicJoinPathForMatch(supabase, matchInfo.matchId, intent)
   return joinPath ? { ...matchInfo, magicLinkPath: joinPath } : matchInfo
-}
-
-async function resolveEmailJoinUrl(
-  supabase: SupabaseClient,
-  matchId: string | null | undefined,
-  intent: PublicJoinIntent,
-): Promise<string | null> {
-  const joinPath = await resolvePublicJoinPathForMatch(supabase, matchId, intent)
-  return joinPath ? new URL(joinPath, SITE_URL).toString() : null
-}
-
-async function resolveSmsJoinUrl(
-  supabase: SupabaseClient,
-  matchId: string | null | undefined,
-  intent: PublicJoinIntent,
-): Promise<string | null> {
-  const joinPath = await resolvePublicJoinPathForMatch(supabase, matchId, intent)
-  return joinPath ? new URL(joinPath, SMS_SITE_URL).toString() : null
 }
 
 async function enrichInvitationContext(
@@ -392,7 +389,6 @@ async function processNotificationDeliveryRows(
       })
       const inviterDisplayName = context.inviterDisplayName
       const recipientName = context.recipientName
-      const matchId = context.matchId
       const matchSummary = context.matchSummary
       const unsubscribeUrl = `${SITE_URL}/unsubscribe?invitation=${encodeURIComponent(invitationId)}&channel=email&scope=contact_invites`
       subject = invitationSubject(inviterDisplayName, matchSummary?.club_name)
@@ -406,7 +402,7 @@ async function processNotificationDeliveryRows(
         inviterDisplayName,
         targetEmail: (payload.target_email as string) ?? d.destination,
         invitationId,
-        responseUrl: d.channel === 'email' ? await resolveEmailJoinUrl(supabase, matchId, 'respond') : null,
+        responseUrl: d.channel === 'email' ? buildInvitationResponseUrl(invitationId, 'email') : null,
         matchSummary,
         siteUrl: SITE_URL,
         unsubscribeUrl,
@@ -415,7 +411,7 @@ async function processNotificationDeliveryRows(
         inviterDisplayName,
         recipientName,
         invitationId,
-        responseUrl: d.channel === 'sms' ? await resolveSmsJoinUrl(supabase, matchId, 'respond') : null,
+        responseUrl: d.channel === 'sms' ? buildInvitationResponseUrl(invitationId, 'sms') : null,
         matchSummary,
         siteUrl: SMS_SITE_URL,
         unsubscribeUrl: `${SMS_SITE_URL}/stop/${formatInvitationToken(invitationId)}`,
