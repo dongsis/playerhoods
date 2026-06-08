@@ -305,6 +305,7 @@ function ParticipantRow({
   const isPendingParticipant = p.status === 'pending'
   const isWaitingListParticipant = p.status === 'waiting_list'
   const isPublicSignup = p.public_signup_source === 'public_match_signup'
+  const publicSignupEmailLabel = p.public_signup_email_verified ? 'Email confirmed' : 'Email pending verification'
   const isHostManagedConfirmation =
     p.confirmation_source === 'host_managed_offline'
     || p.confirmation_source === 'contact_owner_managed'
@@ -700,7 +701,11 @@ function ParticipantRow({
                   lineHeight: 1.35,
                 }}
               >
-                Requested from public link
+                Guest player
+                {' · '}
+                {publicSignupEmailLabel}
+                {' · '}
+                Joined from share link
               </span>
             ) : null}
           </div>

@@ -422,7 +422,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           {isVerified ? (
             <>
               <p className="public-signup-verify-body">
-                Thanks &mdash; your request has been sent to the host. If there&apos;s a spot, the host can add you to the lineup.
+                Your request has already been sent to the host. Your email is now verified for match updates.
               </p>
               <p className="public-signup-verify-second-line">
                 We&apos;ll email you when the host responds.
@@ -431,7 +431,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           ) : isFinishing ? (
             <>
               <p className="public-signup-verify-body">
-                We sent you a verification link. Tap the link once to send your request to the host.
+                Your request has been sent to the host. Please verify your email so we can send you match updates and confirmations.
               </p>
               <p className="public-signup-verify-second-line">
                 Your name will be shown to the host with your request. Your email will not be shared.
@@ -450,10 +450,10 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
                 <input type="hidden" name="verification_token" value={verificationToken} />
                 <noscript>
                   <p className="public-signup-verify-fallback">
-                    JavaScript is unavailable, so use this button to finish sending your request.
+                    JavaScript is unavailable, so use this button to finish verifying your email.
                   </p>
                   <button type="submit" className="public-signup-verify-button">
-                    Finish request
+                    Verify email
                   </button>
                 </noscript>
               </form>

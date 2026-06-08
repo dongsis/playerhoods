@@ -221,7 +221,7 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
   const email = String(formData.get('email') ?? '').trim()
   const phone = String(formData.get('phone') ?? '').trim()
   const marketingOptIn = formData.get('marketing_email_opt_in') === 'on'
-  let notice = 'check-email'
+  let notice = 'request-visible'
   let supabase: ReturnType<typeof createPublicSignupMutationClient>
 
   if (!email && !phone) {

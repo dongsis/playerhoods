@@ -249,11 +249,11 @@ export function publicMatchSignupVerificationEmail(
   return renderEmailLayout({
     eyebrow: 'JOIN LINK',
     title: 'Verify your email',
-    introHtml: `Hi ${escapeHtml(name)},<br><br>Click once to verify your email and send your spot request for this <strong>${escapeHtml(matchKind)}</strong> at <strong>${escapeHtml(venueName)}</strong>.`,
+    introHtml: `Hi ${escapeHtml(name)},<br><br>Your request for this <strong>${escapeHtml(matchKind)}</strong> at <strong>${escapeHtml(venueName)}</strong> has been sent to the host. Click once to verify your email for match updates and confirmations.`,
     details: buildMatchDetails(m),
     ctaLabel: 'Verify email',
     ctaUrl: verificationUrl,
-    ctaHint: 'This sends a request only. The host still needs to add you to the lineup.',
+    ctaHint: 'The host still needs to add you to the lineup.',
     secondaryTitle: 'Privacy note',
     secondaryBody:
       'Your contact details will not be shared with the host.',
