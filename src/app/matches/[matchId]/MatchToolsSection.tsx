@@ -24,6 +24,60 @@ type CurrentRequestTarget = {
 
 const INVITE_TARGET_LOAD_TIMEOUT_MS = 15000
 
+function formatShareMatchKind(sportName: string | null, gameType: string | null): string {
+  const label = (sportName || gameType || '').replace(/_/g, ' ').trim()
+  if (!label) return 'match'
+  const lowerLabel = label.toLowerCase()
+  return /\bmatch\b/i.test(lowerLabel) ? lowerLabel : `${lowerLabel} match`
+}
+
+function buildPublicSignupShareText(input: {
+  sportName: string | null
+  gameType: string | null
+  openSpots: number
+  url: string
+}): string {
+  const matchKind = formatShareMatchKind(input.sportName, input.gameType)
+  const openSpotsLine = input.openSpots > 0
+    ? `Looking for ${input.openSpots} ${input.openSpots === 1 ? 'player' : 'players'}`
+    : null
+
+  return [
+    `Join my ${matchKind} on PlayerHoods`,
+    '',
+    openSpotsLine,
+    'View details and request to join:',
+    input.url,
+  ].filter((line): line is string => line != null).join('\n')
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // Fall through to the textarea fallback for older browsers or denied clipboard access.
+    }
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+
+  try {
+    return document.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
 type Props = {
   showInviteTools: boolean
   showRoundRobinTools: boolean
@@ -224,12 +278,14 @@ export function MatchToolsSection({
       }
 
       const url = `${window.location.origin}/join/${link.public_token}`
-      try {
-        await navigator.clipboard.writeText(url)
-        setShareLinkStatusMessage('Link copied.')
-      } catch {
-        setShareLinkStatusMessage('Link copied.')
-      }
+      const shareText = buildPublicSignupShareText({
+        sportName,
+        gameType,
+        openSpots: Math.max(requiredCount - confirmedParticipants.length, 0),
+        url,
+      })
+      const copied = await copyTextToClipboard(shareText)
+      setShareLinkStatusMessage(copied ? 'Invite text copied.' : 'Share text ready. Copy the link if your browser asks.')
     } catch (error) {
       console.error('[MatchToolsSection] public signup link:', error)
       setPublicSignupLinkError((error as { message?: string })?.message ?? 'Could not create the public signup link.')
@@ -373,7 +429,7 @@ export function MatchToolsSection({
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <div className="text-body-main font-black text-slate-900">Share link</div>
-                  <div className="text-body-sub font-semibold text-slate-500">Let someone request a spot from the match link.</div>
+                  <div className="text-body-sub font-semibold text-slate-500">Copy a friendly invite for someone to request a spot.</div>
                 </div>
                 <button
                   type="button"

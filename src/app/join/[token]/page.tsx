@@ -1,7 +1,9 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { createSupabasePublicServerClient, createSupabaseServerClient, getUser } from '@/lib/supabase/server'
+import { getAbsoluteUrl } from '@/lib/site-url'
 import { requestRegisteredPublicMatchSpotAction, startPublicMatchSignupAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -26,6 +28,11 @@ type PublicSignupContext = {
   start_time: string | null
   venue_name: string | null
   venue_timezone: string | null
+}
+
+type PublicSignupContextResult = {
+  context: PublicSignupContext | null
+  error: boolean
 }
 
 type RegisteredParticipantState = {
@@ -95,6 +102,84 @@ function formatTime(value: string | null | undefined): string | null {
     hour12: true,
     timeZone: 'UTC',
   }).format(date)
+}
+
+async function getPublicSignupContextResult(token: string): Promise<PublicSignupContextResult> {
+  const publicSupabase = createSupabasePublicServerClient()
+  const { data, error } = await publicSupabase.rpc('rpc_public_match_signup_context', {
+    p_public_token: token,
+  })
+
+  return {
+    context: ((data ?? []) as PublicSignupContext[])[0] ?? null,
+    error: Boolean(error),
+  }
+}
+
+function getPublicJoinMetadataCopy(context: PublicSignupContext) {
+  const matchType = formatGameType(context.game_type ?? context.sport_name)
+  const venueName = context.venue_name?.trim() || null
+  const matchDate = formatDate(context.match_date)
+  const matchTime = formatTime(context.start_time)
+  const matchDateTime = [matchDate, matchTime].filter(Boolean).join(', ')
+  const matchLabel = `${matchType}${venueName ? ` at ${venueName}` : ''}`
+  const title = `${[matchLabel, matchDateTime].filter(Boolean).join(' - ')} | PlayerHoods`
+  const description = [
+    matchLabel,
+    matchDateTime ? `on ${matchDateTime}` : null,
+    'is open to join on PlayerHoods. Use this public link to say you would like to play.',
+  ].filter(Boolean).join(' ')
+
+  return { title, description }
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { token } = await params
+  const canonicalUrl = getAbsoluteUrl(`/join/${encodeURIComponent(token)}`)
+
+  if (!isUuid(token)) {
+    return {
+      title: 'Join a match | PlayerHoods',
+      description: 'Use PlayerHoods public match links to request a spot and wait for the host to add you to the lineup.',
+      robots: {
+        index: false,
+        follow: false,
+      },
+    }
+  }
+
+  const { context } = await getPublicSignupContextResult(token)
+  const fallbackTitle = 'Join a match | PlayerHoods'
+  const fallbackDescription = 'Use this public match link to request a spot and wait for the host to add you to the lineup.'
+  const { title, description } = context
+    ? getPublicJoinMetadataCopy(context)
+    : { title: fallbackTitle, description: fallbackDescription }
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title,
+      description,
+      url: canonicalUrl,
+      siteName: 'PlayerHoods',
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
+    robots: context
+      ? undefined
+      : {
+          index: false,
+          follow: false,
+        },
+  }
 }
 
 function getRegisteredRequestState(
@@ -207,9 +292,9 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
   if (notice === 'check-email') {
     return {
-      title: 'Verify your contact',
-      subtext: 'Check your email for the verification link. Once verified, your spot request is sent to the host.',
-      badge: 'Verification needed',
+      title: 'Check your email',
+      subtext: 'We sent you a verification link. Tap the link once to send your request to the host.',
+      badge: 'Waiting for email verification',
       variant: 'warning',
     }
   }
@@ -252,15 +337,15 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
   return {
     title: 'Join this match',
-    subtext: 'Create or sign in with a free account for the fastest path, or continue as a guest without an account.',
-    badge: 'Open to requests',
+    subtext: 'Create or sign in to your free PlayerHoods account to request a spot and track match updates. You can join with email verification instead.',
+    badge: 'Open to Join',
     variant: 'neutral',
   }
 }
 
 function PlayerCardNudge({
   guestHref = '#guest-request',
-  guestLabel = 'Continue as guest',
+  guestLabel = 'Join with email verification',
 }: {
   guestHref?: string
   guestLabel?: string
@@ -316,13 +401,9 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const pageParams = await searchParams
   if (!isUuid(token)) notFound()
 
-  const publicSupabase = createSupabasePublicServerClient()
-  const { data, error } = await publicSupabase.rpc('rpc_public_match_signup_context', {
-    p_public_token: token,
-  })
+  const { context, error } = await getPublicSignupContextResult(token)
   if (error) notFound()
 
-  const context = ((data ?? []) as PublicSignupContext[])[0] ?? null
   const linkUnavailable = !context
 
   const user = context ? await getUser() : null
@@ -387,7 +468,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const showRequestForm = Boolean(!user && context?.signup_open && !isCheckEmail && !isAlreadySubmitted)
   const pageTitle = registeredRequestState?.title
     ?? guestStatus?.title
-    ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicCheckEmail ? 'Check your email' : 'Request a spot in this match')
+    ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicCheckEmail ? 'Check your email' : 'Join this match')
 
   return (
     <div className="public-signup-page">
@@ -500,6 +581,13 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
         .public-signup-form {
           display: grid;
           gap: 14px;
+          max-width: 520px;
+        }
+
+        .public-signup-primary-action {
+          display: grid;
+          gap: 8px;
+          margin: 0 0 18px;
           max-width: 520px;
         }
 
@@ -751,16 +839,19 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : showPublicCheckEmail ? (
             <>
               <p className="public-signup-subtext">
-                Verify your email to send your request for this match to the host. Your contact information will not be shared with the host.
+                We sent you a verification link. Tap the link once to send your request to the host.
               </p>
               <p className="public-signup-note">
-                We sent you a verification link. Click it once to send your request.
+                Your name will be shown to the host with your request. Your email will not be shared.
+              </p>
+              <p className="public-signup-note">
+                After verifying your email, you can create a free account to track matches and join future games faster.
               </p>
             </>
           ) : user ? (
             <>
               <p className="public-signup-subtext">
-                You&apos;re signed in. Use your Player Card to request a spot for this match.
+                You&apos;re signed in. Use your Player Card to say you&apos;d like to play.
               </p>
               <p className="public-signup-note">
                 The host still needs to add you to the lineup.
@@ -788,7 +879,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             <div className="public-signup-summary-venue">{venueName}</div>
             <div className="public-signup-summary-time">{matchDateTime}</div>
             <div className="public-signup-summary-host">Host: {context?.host_display_name || 'Unavailable'}</div>
-            <div className="public-signup-summary-host">Status: {guestStatus?.badge ?? registeredRequestState?.message ?? (context?.signup_open ? 'Open to requests' : 'Closed')}</div>
+            <div className="public-signup-summary-host">Status: {guestStatus?.badge ?? registeredRequestState?.message ?? (context?.signup_open ? 'Open to Join' : 'Closed')}</div>
           </div>
 
           {pageError ? <p className="public-signup-message error">{pageError}</p> : null}
@@ -817,7 +908,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : showRegisteredRequestButton ? (
             <form action={registeredRequestAction} className="public-signup-form">
               <button type="submit" className="public-signup-button">
-                Request a Spot
+                I&apos;d like to play
               </button>
             </form>
           ) : user && isRegisteredRequestBlocked ? (
@@ -829,29 +920,39 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
               Back to PlayerHoods
             </Link>
           ) : showRequestForm ? (
-            <form id="guest-request" action={signupAction} className="public-signup-form">
-              <label className="public-signup-field">
-                <span className="public-signup-label">Name</span>
-                <input className="public-signup-input" name="display_name" autoComplete="name" required maxLength={120} />
-              </label>
+            <>
+              <div className="public-signup-primary-action">
+                <Link href={`/login?next=${encodeURIComponent(`/join/${token}`)}`} className="public-signup-button public-signup-button-secondary">
+                  Create / Sign in to Join
+                </Link>
+                <p className="public-signup-helper">
+                  Join with email verification instead
+                </p>
+              </div>
+              <form id="guest-request" action={signupAction} className="public-signup-form">
+                <label className="public-signup-field">
+                  <span className="public-signup-label">Name</span>
+                  <input className="public-signup-input" name="display_name" autoComplete="name" required maxLength={120} />
+                </label>
 
-              <label className="public-signup-field">
-                <span className="public-signup-label">Email</span>
-                <input className="public-signup-input" name="email" type="email" autoComplete="email" required />
-              </label>
+                <label className="public-signup-field">
+                  <span className="public-signup-label">Email</span>
+                  <input className="public-signup-input" name="email" type="email" autoComplete="email" required />
+                </label>
 
-              <label className="public-signup-check">
-                <input name="marketing_email_opt_in" type="checkbox" />
-                <span className="public-signup-check-copy">
-                  <span>Send me occasional PlayerHoods updates.</span>
-                  <span className="public-signup-check-note">Match verification and status emails are separate.</span>
-                </span>
-              </label>
+                <label className="public-signup-check">
+                  <input name="marketing_email_opt_in" type="checkbox" />
+                  <span className="public-signup-check-copy">
+                    <span>Send me occasional PlayerHoods updates.</span>
+                    <span className="public-signup-check-note">Match verification and status emails are separate.</span>
+                  </span>
+                </label>
 
-              <button type="submit" className="public-signup-button">
-                Request a spot
-              </button>
-            </form>
+                <button type="submit" className="public-signup-button">
+                  Send verification email
+                </button>
+              </form>
+            </>
           ) : (
             <p className="public-signup-message error">
               This match is not taking spot requests right now.
@@ -873,7 +974,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
         ) : (
           <PlayerCardNudge
             guestHref={linkUnavailable ? '/' : '#guest-request'}
-            guestLabel={linkUnavailable ? 'Maybe later' : 'Continue as guest'}
+            guestLabel={linkUnavailable ? 'Maybe later' : 'Join with email verification'}
           />
         )}
         </div>

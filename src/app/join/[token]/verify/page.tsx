@@ -417,7 +417,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
         <section className="public-signup-verify-card">
           <p className="public-signup-verify-kicker">Join Link</p>
           <h1 className="public-signup-verify-title">
-            {isVerified ? 'Request sent' : isFinishing ? 'Verify your contact' : 'Verification needs attention'}
+            {isVerified ? 'Request sent' : isFinishing ? 'Check your email' : 'Verification needs attention'}
           </h1>
           {isVerified ? (
             <>
@@ -431,7 +431,19 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           ) : isFinishing ? (
             <>
               <p className="public-signup-verify-body">
-                To help the host know who is joining, we&apos;re verifying the email you used for this match request. This should only take a moment.
+                We sent you a verification link. Tap the link once to send your request to the host.
+              </p>
+              <p className="public-signup-verify-second-line">
+                Your name will be shown to the host with your request. Your email will not be shared.
+              </p>
+              <p className="public-signup-verify-second-line">
+                Status: Waiting for email verification.
+              </p>
+              <p className="public-signup-verify-second-line">
+                After verifying your email, you can create a free account to track matches and join future games faster.
+              </p>
+              <p className="public-signup-verify-second-line">
+                Can&apos;t find the email? Check your inbox, spam, or junk folder. You can also add noreply@playerhoods.com to your safe sender list.
               </p>
               <form id="public-signup-verify-form" className="public-signup-verify-form" action={verifyAction}>
                 <input type="hidden" name="signup" value={signupId} />
@@ -483,7 +495,8 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
           </Link>
         </section>
 
-        <aside className="public-signup-verify-nudge" aria-label="Create a free account">
+        {false ? (
+          <aside className="public-signup-verify-nudge" aria-label="Create a free account">
           <p className="public-signup-verify-kicker">New to PlayerHoods?</p>
           <h2 className="public-signup-verify-nudge-title">Create a free account</h2>
           <ul className="public-signup-verify-nudge-list">
@@ -496,7 +509,8 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
             <Link href="/login" className="public-signup-verify-button-link">Create Free Account</Link>
             <Link href={`/join/${publicToken}`} className="public-signup-verify-guest-link">Maybe later</Link>
           </div>
-        </aside>
+          </aside>
+        ) : null}
         </div>
       </main>
     </div>
