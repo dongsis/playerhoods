@@ -19,7 +19,7 @@ Do not record secrets, tokens, passwords, service-role keys, or private user dat
 **Type:** Patch
 **Code Commits:** PR #148 merged via `cba2c7c`. Final PR head before merge: `35dcfaa`.
 **Migration:** None
-**Status:** Production deployed / smoke pending; Supabase Remote no change.
+**Status:** Production deployed / smoke verified; Supabase Remote no change.
 
 ### Summary
 
@@ -31,10 +31,10 @@ Reorganizes the dashboard Match Board Upcoming tab into Action Needed, My Matche
 |---|---|---|
 | Build/typecheck | Passed locally | `git diff --check`; `npx tsc --noEmit`; `npm run build` |
 | Manual Match Board visual check | Passed locally | Browser DOM QA at `http://localhost:3005/dashboard` verified no Today Alerts section, hidden zero-count Looking for Players section, no visible time range or row overflow, mobile Action Needed at ~82px, mobile My Matches rows at ~64px, and tighter row-to-row gaps |
-| Production deployment | Success / smoke pending | Deployment `4966446756` for merge commit `cba2c7c` completed at `2026-06-07T17:37:52Z`; URL: `https://playerhoods-codex-qu8oz2r1b-nancys-projects-128e326c.vercel.app`. Later production deployment `26f90a3` succeeded at `2026-06-07T17:41:28Z` and superseded it while retaining PR #148 changes. |
+| Production deployment | Success / smoke verified | Deployment `4966446756` for merge commit `cba2c7c` completed at `2026-06-07T17:37:52Z`; URL: `https://playerhoods-codex-qu8oz2r1b-nancys-projects-128e326c.vercel.app`. Later production deployment `26f90a3` succeeded at `2026-06-07T17:41:28Z` and superseded it while retaining PR #148 changes. |
 | Supabase Remote | No change | No migration added or applied |
 | Real SMS/email/provider traffic | Not sent | No invite/email/SMS/notification provider traffic is part of this branch |
-| Production verification | Pending | Production smoke pending |
+| Production verification | Passed | Owner reported production smoke completed on `2026-06-08`. |
 
 ### Rollback
 
