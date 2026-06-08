@@ -193,7 +193,13 @@ function InfoIcon() {
   )
 }
 
-const HELP_ROWS = [
+type ImportHelpRow = {
+  title: string
+  body: string[]
+  desktopOnly?: boolean
+}
+
+const HELP_ROWS: ImportHelpRow[] = [
   {
     title: 'Fastest way: copy & paste',
     body: [
@@ -228,6 +234,13 @@ const HELP_ROWS = [
       'Phone: usually in Photos > Screenshots.',
     ],
   },
+  {
+    title: 'How camera scan works',
+    body: [
+      'Open a contact on your phone, hold it in front of your computer camera, then review the detected name, phone, and email before saving.',
+    ],
+    desktopOnly: true,
+  },
 ]
 
 function ImportHelpRows() {
@@ -238,7 +251,10 @@ function ImportHelpRows() {
         {HELP_ROWS.map((row) => (
           <details
             key={row.title}
-            className="rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]"
+            className={[
+              'rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 text-xs font-semibold leading-5 text-[#64748B]',
+              row.desktopOnly ? 'hidden sm:block' : '',
+            ].join(' ')}
           >
             <summary className="cursor-pointer font-black text-[#334155]">{row.title}</summary>
             <ul className="mt-3 list-disc space-y-2 pl-5">
@@ -284,6 +300,7 @@ export function ContactScreenshotImportSection({
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
+  const [cameraPanelOpen, setCameraPanelOpen] = useState(false)
 
   const selectedCount = useMemo(
     () => drafts.filter((draft) => draft.selected).length,
@@ -354,6 +371,7 @@ export function ContactScreenshotImportSection({
     setDrafts([])
     setEditingDraftId(null)
     setRetryMessage(null)
+    setCameraPanelOpen(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -364,6 +382,7 @@ export function ContactScreenshotImportSection({
     setFiles(supportedFiles)
     setDrafts([])
     setEditingDraftId(null)
+    setCameraPanelOpen(false)
     setRetryMessage(rejectedCount > 0 ? 'That file type is not supported yet. Try a JPG, PNG, or WEBP screenshot, or add the contact manually.' : null)
     setNotice(
       supportedFiles.length > 0
@@ -748,7 +767,7 @@ export function ContactScreenshotImportSection({
 
         {step !== 'review' ? (
           <div className="space-y-3 sm:space-y-4">
-            <div className="grid grid-cols-2 gap-2 text-sm font-bold text-[#334155]">
+            <div className="grid grid-cols-2 gap-2 text-sm font-bold text-[#334155] sm:grid-cols-3">
               <button
                 type="button"
                 onClick={handlePasteFromClipboard}
@@ -769,7 +788,57 @@ export function ContactScreenshotImportSection({
                 <span className="block">Upload image</span>
                 <span className="mt-0.5 block text-[11px] font-semibold text-[#64748B]">JPG, PNG, WEBP</span>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCameraPanelOpen(true)
+                  setRetryMessage(null)
+                  setNotice(null)
+                }}
+                disabled={parsing}
+                aria-expanded={cameraPanelOpen}
+                aria-controls="smart-import-camera-placeholder"
+                aria-label="Start Camera Scan"
+                className="hidden min-h-20 rounded-2xl border border-[#DCE6F2] bg-white px-4 py-3 text-left text-[#0B1F44] transition hover:bg-[#F8FBFF] disabled:cursor-wait disabled:text-[#94A3B8] sm:block"
+              >
+                <span className="block">Scan with Camera</span>
+                <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-[#64748B]">
+                  Use your computer camera to scan contact info from your phone screen.
+                </span>
+                <span className="mt-2 block text-[11px] font-black text-[#0d6efd]">Start Camera Scan</span>
+              </button>
             </div>
+
+            {cameraPanelOpen ? (
+              <div
+                id="smart-import-camera-placeholder"
+                className="hidden rounded-[18px] border border-[#bfdbfe] bg-white px-4 py-4 text-sm leading-6 text-[#475569] sm:block"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="font-black text-[#0B1F44]">Scan with Camera</p>
+                    <p className="mt-1">
+                      Use your computer camera to scan contact info from your phone screen.
+                    </p>
+                    <div className="mt-3 space-y-1 font-semibold">
+                      <p>Open a contact on your phone and hold it in front of your computer camera.</p>
+                      <p>When camera scanning is available, PlayerHoods will try to read the name, phone, and email.</p>
+                      <p>Review the details before saving.</p>
+                    </div>
+                    <p className="mt-3 text-xs font-semibold text-[#64748B]">
+                      Camera capture is not active yet, so this preview does not request camera access or save contacts.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCameraPanelOpen(false)}
+                    className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl border border-[#D7E2F0] bg-white px-4 py-2 text-sm font-semibold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {step === 'extracting' ? (
               <div className="rounded-[18px] border border-[#bfdbfe] bg-[#F8FBFF] px-4 py-3 text-sm font-semibold leading-5 text-[#475569]">
