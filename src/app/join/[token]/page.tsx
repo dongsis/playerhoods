@@ -389,6 +389,8 @@ function getErrorMessage(code: string | undefined): string | null {
       return "Hosts can't request a spot in their own match."
     case 'email-delivery-unavailable':
       return 'Could not send the verification email. Please try again.'
+    case 'request-throttled':
+      return "We couldn't process this request right now. Please try again shortly."
     case 'failed':
       return 'Could not request a spot. Please try again.'
     default:
