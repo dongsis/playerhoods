@@ -197,7 +197,9 @@ function ManualEntryForm({
 }
 
 export function AddMyContactPanel({
+  userId,
   existingContacts,
+  onParseScreenshots,
   onImportScreenshotContacts,
   onImported,
   displayName,
@@ -283,7 +285,9 @@ export function AddMyContactPanel({
             <div className="mt-3 sm:mt-4">
               {smartImportAvailable && onImportScreenshotContacts ? (
                 <ContactScreenshotImportSection
+                  userId={userId}
                   existingContacts={existingContacts}
+                  onParseScreenshots={onParseScreenshots}
                   onImportScreenshotContacts={onImportScreenshotContacts}
                   onImported={onImported}
                 />
