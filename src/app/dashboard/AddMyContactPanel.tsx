@@ -303,11 +303,11 @@ export function AddMyContactPanel({
         </div>
 
         <div className="flex items-center gap-3 py-1 text-[#94A3B8] lg:min-h-[360px] lg:flex-col lg:justify-center lg:py-0">
-          <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-px lg:flex-none" aria-hidden="true" />
-          <span className="inline-flex min-h-7 min-w-7 items-center justify-center rounded-full border border-[#E2E8F0] bg-white px-2 text-[10px] font-black tracking-[0.12em]">
+          <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-0.5 lg:flex-none" aria-hidden="true" />
+          <span className="inline-flex min-h-7 min-w-7 items-center justify-center rounded-full border border-[#E2E8F0] bg-[#F1F5F9] px-2 text-[10px] font-black tracking-[0.12em] text-[#0B1F44]">
             OR
           </span>
-          <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-px lg:flex-none" aria-hidden="true" />
+          <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-0.5 lg:flex-none" aria-hidden="true" />
         </div>
 
         <div>
