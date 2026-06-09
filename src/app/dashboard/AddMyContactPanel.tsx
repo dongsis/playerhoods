@@ -1,11 +1,9 @@
 'use client'
 
-import { useId, useState, type FormEvent } from 'react'
+import { useId, type FormEvent } from 'react'
 import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
 import type { ContactPlayerResolved } from '@/lib/api/roster'
-
-type MobileTab = 'smart' | 'manual'
 
 type Props = {
   userId?: string | null
@@ -138,8 +136,8 @@ function ManualEntryForm({
   return (
     <form onSubmit={onManualSubmit} className="grid gap-5">
       <div>
-        <h4 className="text-xl font-black text-[#0B1F44]">Manual Entry</h4>
-        <p className="mt-1 text-body-main text-[#64748B]">Enter one contact yourself.</p>
+        <h4 className="text-xl font-black text-[#0B1F44]">Add one manually</h4>
+        <p className="mt-1 text-body-main text-[#64748B]">Add a single player by name, phone, or email.</p>
       </div>
 
       <ContactField
@@ -199,9 +197,7 @@ function ManualEntryForm({
 }
 
 export function AddMyContactPanel({
-  userId,
   existingContacts,
-  onParseScreenshots,
   onImportScreenshotContacts,
   onImported,
   displayName,
@@ -217,16 +213,9 @@ export function AddMyContactPanel({
   onManualSubmit,
   onClose,
   onCancel,
-  onClearError,
 }: Props) {
   const titleId = useId()
-  const [mobileTab, setMobileTab] = useState<MobileTab>('smart')
-  const smartImportAvailable = Boolean(userId && onParseScreenshots && onImportScreenshotContacts)
-
-  const selectMobileTab = (tab: MobileTab) => {
-    setMobileTab(tab)
-    onClearError?.()
-  }
+  const smartImportAvailable = Boolean(onImportScreenshotContacts)
 
   return (
     <section
@@ -236,7 +225,7 @@ export function AddMyContactPanel({
     >
       <div className="flex items-start justify-between gap-4">
         <h3 id={titleId} className="min-w-0 text-[26px] font-black text-[#0B1F44] sm:text-[28px]">
-          Add My Contact
+          Add Contacts
         </h3>
         <button
           type="button"
@@ -281,57 +270,27 @@ export function AddMyContactPanel({
         ))}
       </div>
 
-      <div className="mt-5 grid grid-cols-2 rounded-2xl border border-[#D7E2F0] bg-white p-1 text-body-main font-semibold sm:hidden">
-        <button
-          type="button"
-          onClick={() => selectMobileTab('smart')}
-          aria-pressed={mobileTab === 'smart'}
-          className={[
-            'min-h-11 rounded-xl px-3 transition',
-            mobileTab === 'smart' ? 'border border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]' : 'text-[#0B1F44]',
-          ].join(' ')}
-        >
-          Smart Import
-        </button>
-        <button
-          type="button"
-          onClick={() => selectMobileTab('manual')}
-          aria-pressed={mobileTab === 'manual'}
-          className={[
-            'min-h-11 rounded-xl px-3 transition',
-            mobileTab === 'manual' ? 'border border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]' : 'text-[#0B1F44]',
-          ].join(' ')}
-        >
-          Manual Entry
-        </button>
-      </div>
-
-      <div className="mt-4 grid gap-5 lg:mt-6 lg:grid-cols-[minmax(0,1.08fr)_auto_minmax(320px,0.86fr)] lg:gap-8">
-        <div className={mobileTab === 'smart' ? 'block' : 'hidden sm:block'}>
+      <div className="mt-4 space-y-6 lg:mt-6">
+        <div>
           <div className="rounded-[24px] border border-[#bfdbfe] bg-[#F8FBFF] p-3 sm:p-5">
             <div>
-              <h4 className="text-xl font-black text-[#0B1F44]">Smart Import</h4>
+              <h4 className="text-xl font-black text-[#0B1F44]">Import from text</h4>
               <p className="mt-2 text-body-main leading-6 text-[#334155]">
-                Import names, emails, and phone numbers from screenshots or pasted/uploaded images.
-              </p>
-              <p className="mt-2 text-body-sub font-semibold leading-5 text-[#475569]">
-                Private import: your image is not shown to other players, and no email, SMS, invite, or reminder is sent unless you choose to.
+                Paste names, phones, or emails from WeChat, SMS, Contacts, Excel, or Notes. We'll help split them into player cards before saving.
               </p>
             </div>
 
             <div className="mt-3 sm:mt-4">
-              {smartImportAvailable && userId && onParseScreenshots && onImportScreenshotContacts ? (
+              {smartImportAvailable && onImportScreenshotContacts ? (
                 <ContactScreenshotImportSection
-                  userId={userId}
                   existingContacts={existingContacts}
-                  onParseScreenshots={onParseScreenshots}
                   onImportScreenshotContacts={onImportScreenshotContacts}
                   onImported={onImported}
                 />
               ) : (
                 <div className="rounded-2xl border border-[#D7E2F0] bg-white p-4">
                   <p className="text-body-main font-semibold text-[#475569]">
-                    Smart Import is not available right now.
+                    Text import is not available right now.
                   </p>
                 </div>
               )}
@@ -339,15 +298,15 @@ export function AddMyContactPanel({
           </div>
         </div>
 
-        <div className="hidden items-stretch justify-center lg:flex">
-          <div className="relative w-px bg-[#D7E2F0]">
-            <span className="absolute left-1/2 top-10 -translate-x-1/2 rounded-full border border-[#D7E2F0] bg-white px-2 py-1 text-[10px] font-black text-[#64748B]">
-              OR
-            </span>
-          </div>
+        <div className="flex items-center gap-4 py-1 sm:py-2">
+          <span className="h-px flex-1 bg-[#C9D7E8]" aria-hidden="true" />
+          <span className="inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-[#C9D7E8] bg-white px-3 text-[11px] font-black tracking-[0.14em] text-[#0B1F44] shadow-sm">
+            OR
+          </span>
+          <span className="h-px flex-1 bg-[#C9D7E8]" aria-hidden="true" />
         </div>
 
-        <div className={mobileTab === 'manual' ? 'block' : 'hidden sm:block'}>
+        <div>
           <div className="rounded-[24px] border border-[#E2E8F0] bg-white p-4 sm:p-5">
             <ManualEntryForm
               displayName={displayName}

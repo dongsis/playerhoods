@@ -580,68 +580,11 @@ async function parseImageWithVisionModel(
 export async function parseContactScreenshotUploads(
   supabase: Client,
   uploads: ContactScreenshotUpload[],
-  existingContacts: ContactPlayerResolved[],
+  _existingContacts: ContactPlayerResolved[],
 ): Promise<ContactImportDraft[]> {
-  const drafts: ContactImportDraft[] = []
-
-  try {
-    for (const upload of uploads) {
-      const { data, error } = await supabase.storage.from('contact-imports').download(upload.storage_path)
-      if (error) {
-        throw smartImportError(
-          'Smart Import could not open that uploaded image. Try another screenshot, or add the contact manually.',
-          {
-            category: 'storage_download_error',
-            stage: 'storage_download',
-            errorName: safeErrorName(error),
-          },
-        )
-      }
-
-      const mimeType = upload.mime_type?.trim() || data.type || 'image/jpeg'
-      const buffer = Buffer.from(await data.arrayBuffer())
-      const base64Image = buffer.toString('base64')
-      const modelCandidates = await parseImageWithVisionModel(upload.file_name, mimeType, base64Image)
-
-      for (const candidate of modelCandidates) {
-        const draft = {
-          id: makeDraftId(upload.file_name.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()),
-          source_file_name: upload.file_name,
-          source_label: `Imported from ${upload.file_name}`,
-          display_name: sanitizeName(candidate.name),
-          phone: sanitizePhone(candidate.phone),
-          email: sanitizeEmail(candidate.email),
-          source_excerpt: sanitizeSourceNotes(candidate.sourceNotes),
-          confidence: inferConfidence({
-            display_name: sanitizeName(candidate.name),
-            phone: sanitizePhone(candidate.phone),
-            email: sanitizeEmail(candidate.email),
-            confidence: candidate.confidence,
-          }),
-          missing_fields: [] as string[],
-          possible_duplicate: null as ContactImportDuplicate | null,
-          selected_by_default: false,
-        }
-
-        draft.missing_fields = buildMissingFields(draft)
-        draft.possible_duplicate = existingContacts
-          .map((existing) => compareDuplicate(draft, existing))
-          .find(Boolean) ?? null
-        draft.selected_by_default = draft.missing_fields.length === 0
-
-        if (draft.display_name || draft.phone || draft.email) {
-          drafts.push(draft)
-        }
-      }
-    }
-
-    return mergeByIdentity(drafts)
-  } catch (error) {
-    logUnknownImportError(error)
-    throw error
-  } finally {
-    if (uploads.length > 0) {
-      await supabase.storage.from('contact-imports').remove(uploads.map((upload) => upload.storage_path))
-    }
+  if (uploads.length > 0) {
+    await supabase.storage.from('contact-imports').remove(uploads.map((upload) => upload.storage_path))
   }
+
+  throw smartImportError('Image Smart Import is no longer available. Paste contact text instead.')
 }
