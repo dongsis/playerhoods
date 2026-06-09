@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
+  hostConfirmParticipantOffline,
   orgApproveParticipant,
   proxyConfirmParticipant,
   proxyDeclineParticipant,
@@ -16,7 +17,14 @@ import type { MatchStatus } from '@/lib/types/database'
 import { MatchExitNoteComposer } from './MatchExitNoteComposer'
 import { processDeliveriesAction } from './process-deliveries-action'
 
-type RosterActionKey = 'approve' | 'remove' | 'withdraw' | 'proxy-confirm' | 'proxy-withdraw'
+type RosterActionKey =
+  | 'send-reminder'
+  | 'host-confirm-offline'
+  | 'approve'
+  | 'remove'
+  | 'withdraw'
+  | 'proxy-confirm'
+  | 'proxy-withdraw'
 
 type RosterAction = {
   key: RosterActionKey
@@ -110,8 +118,41 @@ function getRosterActions({
   const canProxyWithdraw =
     canProxyManage &&
     participant.participant_accepted_at !== null
+  const isPendingRequest =
+    participant.status === 'pending' &&
+    participant.join_method === 'requested' &&
+    participant.org_approved_at === null
+  const isWaitingForPlayer = participant.status === 'pending' && !isPendingRequest
+  const canSendReminder =
+    isOrganizer &&
+    isActive &&
+    isWaitingForPlayer &&
+    participant.org_approved_at !== null &&
+    participant.participant_accepted_at === null
+  const canHostConfirmOffline =
+    isOrganizer &&
+    isActive &&
+    (participant.status === 'pending' || participant.status === 'waiting_list') &&
+    participant.participant_accepted_at === null &&
+    !isOrganizerRow
 
   const actions: Array<RosterAction | null> = [
+    canSendReminder
+      ? {
+          key: 'send-reminder' as const,
+          label: 'Send Reminder',
+          tone: 'secondary' as const,
+          requiresConfirm: false,
+        }
+      : null,
+    canHostConfirmOffline
+      ? {
+          key: 'host-confirm-offline' as const,
+          label: 'Mark as Host-Confirmed',
+          tone: 'primary' as const,
+          requiresConfirm: true,
+        }
+      : null,
     canApprove
       ? {
           key: 'approve' as const,
@@ -173,6 +214,10 @@ function getConfirmCopy(action: RosterAction, participant: MatchParticipantEnric
 
   if (action.key === 'proxy-withdraw') {
     return 'This updates participation for the player you manage.'
+  }
+
+  if (action.key === 'host-confirm-offline') {
+    return 'Use this when the player already agreed outside the app, such as by text, phone, WeChat, or in person. They will be added to the confirmed lineup and receive a confirmation notice.'
   }
 
   return participant.status === 'confirmed'
@@ -260,6 +305,24 @@ export function MobileRosterActionMenu({
       try {
         if (action.key === 'approve') {
           await orgApproveParticipant(supabase, participant.id)
+        } else if (action.key === 'send-reminder') {
+          const result = await (supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data?: string | null; error?: { message?: string } | null }>)(
+            'notification_enqueue_for_participant',
+            {
+              p_participant_id: participant.id,
+              p_notification_type: 'invite',
+              p_dedupe_key: `invite_reminder:${participant.id}:${Date.now()}`,
+              p_change_set: { reminder: true },
+            },
+          )
+          if (result.error) {
+            throw new Error(result.error.message ?? 'Could not send reminder')
+          }
+          if (!result.data) {
+            throw new Error(`No email or text channel is available for ${participant.display_name}.`)
+          }
+        } else if (action.key === 'host-confirm-offline') {
+          await hostConfirmParticipantOffline(supabase, participant.id)
         } else if (action.key === 'proxy-confirm') {
           await proxyConfirmParticipant(supabase, participant.id)
         } else if (action.key === 'remove') {
@@ -367,7 +430,7 @@ export function MobileRosterActionMenu({
                 placeholder="Add a note (optional)"
                 className="min-h-24 w-full resize-y rounded-[16px] border border-[#CBD5E1] px-3 py-3 text-[14px] font-semibold text-[#0F172A] outline-none focus:border-[#0d6efd] focus:ring-2 focus:ring-[#0d6efd]/15"
               />
-            ) : (
+            ) : confirmAction.key === 'host-confirm-offline' ? null : (
               <MatchExitNoteComposer
                 mode={confirmMode}
                 note={actionReason}
@@ -391,7 +454,11 @@ export function MobileRosterActionMenu({
                   runAction(action, note)
                 }}
                 disabled={isPending}
-                className="min-h-11 rounded-[14px] bg-[#B91C1C] px-4 text-[14px] font-black text-white"
+                className={
+                  confirmAction.tone === 'primary'
+                    ? 'min-h-11 rounded-[14px] bg-[#0B1F47] px-4 text-[14px] font-black text-white'
+                    : 'min-h-11 rounded-[14px] bg-[#B91C1C] px-4 text-[14px] font-black text-white'
+                }
               >
                 {confirmAction.label}
               </button>
