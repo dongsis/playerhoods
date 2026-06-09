@@ -41,9 +41,9 @@ type PreviewFile = {
 const ENABLE_IMAGE_SMART_IMPORT = false
 
 const SAMPLE_TEXT = [
-  'Karen Hickerson 416-333-5916',
-  'Mike Chen mike@gmail.com',
-  'Linda +1 647 888 1234',
+  'Avery Example (555) 010-1001',
+  'Jordan Sample jordan@example.com',
+  'Casey Demo +1 555-010-1002',
 ].join('\n')
 
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -544,7 +544,7 @@ function ContactTextImportSection({
           )}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <label className="block">
             <span className="sr-only">Paste contact text</span>
             <textarea
@@ -555,16 +555,16 @@ function ContactTextImportSection({
                 setNotice(null)
               }}
               placeholder={SAMPLE_TEXT}
-              rows={7}
-              className="w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-sm leading-6 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+              rows={4}
+              className="w-full resize-none rounded-xl border border-[#C9D7E8] bg-white px-3 py-2.5 text-sm leading-5 text-[#0F172A] outline-none transition placeholder:text-[#94A3B8] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
             />
           </label>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <button
               type="button"
               onClick={handleParseText}
-              className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-[#0d6efd] px-5 py-3 text-sm font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7]"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#0d6efd] px-4 py-2.5 text-sm font-bold text-white shadow-[0_14px_26px_-18px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7]"
             >
               Import from text
             </button>
@@ -572,7 +572,7 @@ function ContactTextImportSection({
               <button
                 type="button"
                 onClick={onSecondaryAction}
-                className="min-h-11 rounded-2xl border border-[#D7E2F0] bg-white px-5 py-3 text-sm font-semibold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
+                className="min-h-10 rounded-xl border border-[#D7E2F0] bg-white px-4 py-2 text-sm font-semibold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
               >
                 {secondaryActionLabel}
               </button>
@@ -580,15 +580,15 @@ function ContactTextImportSection({
           </div>
 
           {step === 'retry' ? (
-            <div className="rounded-[18px] border border-[#bfdbfe] bg-[#F8FBFF] p-4 text-sm leading-6 text-[#475569]">
+            <div className="rounded-xl border border-[#D7E2F0] bg-[#F8FBFF] px-3 py-2.5 text-sm leading-5 text-[#475569]">
               <p className="font-bold text-[#0B1F44]">No contacts saved yet.</p>
               <p className="mt-1">{retryMessage}</p>
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-[#D7E2F0] bg-white px-4 py-3">
+          <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-2.5">
             <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#64748B]">Preview</p>
-            <p className="mt-1 text-sm font-semibold leading-5 text-[#94A3B8]">
+            <p className="mt-0.5 text-xs font-semibold leading-5 text-[#94A3B8]">
               Parsed contacts will appear here before saving.
             </p>
           </div>

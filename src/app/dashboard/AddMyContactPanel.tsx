@@ -134,10 +134,10 @@ function ManualEntryForm({
   | 'onCancel'
 >) {
   return (
-    <form onSubmit={onManualSubmit} className="grid gap-5">
+    <form onSubmit={onManualSubmit} className="grid gap-4">
       <div>
-        <h4 className="text-xl font-black text-[#0B1F44]">Add one manually</h4>
-        <p className="mt-1 text-body-main text-[#64748B]">Add a single player by name, phone, or email.</p>
+        <h4 className="text-lg font-black text-[#0B1F44]">Add one manually</h4>
+        <p className="mt-1 text-sm leading-5 text-[#64748B]">Add a single player by name, phone, or email.</p>
       </div>
 
       <ContactField
@@ -272,17 +272,17 @@ export function AddMyContactPanel({
         ))}
       </div>
 
-      <div className="mt-4 space-y-6 lg:mt-6">
+      <div className="mt-4 grid gap-4 lg:mt-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-start lg:gap-5">
         <div>
-          <div className="rounded-[24px] border border-[#bfdbfe] bg-[#F8FBFF] p-3 sm:p-5">
+          <div className="rounded-[20px] border border-[#D7E2F0] bg-white p-4 sm:p-5">
             <div>
-              <h4 className="text-xl font-black text-[#0B1F44]">Import from text</h4>
-              <p className="mt-2 text-body-main leading-6 text-[#334155]">
-                Paste names, phones, or emails from WeChat, SMS, Contacts, Excel, or Notes. We'll help split them into player cards before saving.
+              <h4 className="text-lg font-black text-[#0B1F44]">Import from text</h4>
+              <p className="mt-1 text-sm leading-5 text-[#64748B]">
+                Paste names, phones, or emails from chats, contacts, spreadsheets, or notes. Review each draft before saving.
               </p>
             </div>
 
-            <div className="mt-3 sm:mt-4">
+            <div className="mt-3">
               {smartImportAvailable && onImportScreenshotContacts ? (
                 <ContactScreenshotImportSection
                   userId={userId}
@@ -302,16 +302,16 @@ export function AddMyContactPanel({
           </div>
         </div>
 
-        <div className="flex items-center gap-4 py-1 sm:py-2">
-          <span className="h-px flex-1 bg-[#C9D7E8]" aria-hidden="true" />
-          <span className="inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-[#C9D7E8] bg-white px-3 text-[11px] font-black tracking-[0.14em] text-[#0B1F44] shadow-sm">
+        <div className="flex items-center gap-3 py-1 text-[#94A3B8] lg:min-h-[360px] lg:flex-col lg:justify-center lg:py-0">
+          <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-px lg:flex-none" aria-hidden="true" />
+          <span className="inline-flex min-h-7 min-w-7 items-center justify-center rounded-full border border-[#E2E8F0] bg-white px-2 text-[10px] font-black tracking-[0.12em]">
             OR
           </span>
-          <span className="h-px flex-1 bg-[#C9D7E8]" aria-hidden="true" />
+          <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-px lg:flex-none" aria-hidden="true" />
         </div>
 
         <div>
-          <div className="rounded-[24px] border border-[#E2E8F0] bg-white p-4 sm:p-5">
+          <div className="rounded-[20px] border border-[#E2E8F0] bg-white p-4 sm:p-5">
             <ManualEntryForm
               displayName={displayName}
               email={email}
