@@ -297,7 +297,7 @@ export default async function PublicJoinSmsPage({ params, searchParams }: Props)
               </form>
               <form action={declineAction}>
                 <button type="submit" className="public-sms-button public-sms-button-secondary">
-                  Not this time
+                  Not This Time
                 </button>
               </form>
             </div>

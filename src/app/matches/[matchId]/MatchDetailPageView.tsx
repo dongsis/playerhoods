@@ -1128,6 +1128,8 @@ export function MatchDetailPageView({
       sportId={viewModel.match.sport_id}
       sportName={viewModel.sportName}
       gameType={viewModel.match.game_type}
+      venueName={viewModel.venueName}
+      dateTimeLabel={viewModel.timeLabel}
       finalCourtLabel={viewModel.match.final_court_label}
       matchCourts={viewModel.matchCourts}
       isOrganizer={viewModel.isOrganizer}

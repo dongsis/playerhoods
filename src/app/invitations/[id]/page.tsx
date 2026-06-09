@@ -6,6 +6,7 @@ import { getIdentityLinkCandidates } from '@/lib/api/identity-links'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
 import { getInvitationById } from '@/lib/invitations/get-invitation-by-id'
+import { InvitationShareLinkSection } from './InvitationShareLinkSection'
 import { acceptInvitationAsGuestAction, declineInvitationAsGuestAction } from './guest-invitation-actions'
 import {
   acceptInvitationAuthenticatedAction,
@@ -209,6 +210,17 @@ export default async function InvitationPage({ params, searchParams }: Props) {
     && Boolean(inv.match_summary?.participant_org_approved_at)
     && !isParticipantRemoved
   const isMatchFormed = Boolean(inv.match_summary?.formed_at)
+  const isMatchCancelled =
+    inv.match_summary?.match_status === 'cancelled'
+    || inv.match_summary?.match_status === 'canceled'
+  const showShareLinkSection =
+    inv.related_type === 'match'
+    && !isExpired
+    && inv.status !== 'canceled'
+    && inv.status !== 'expired'
+    && !isParticipantRemoved
+    && !isMatchFormed
+    && !isMatchCancelled
   const shouldShowConfirmedLanding =
     !isInvitationInactive
     && (isHostConfirmed || (isParticipantConfirmed && inv.status === 'pending'))
@@ -841,6 +853,10 @@ export default async function InvitationPage({ params, searchParams }: Props) {
                 )}
               </div>
             )}
+
+            {showShareLinkSection ? (
+              <InvitationShareLinkSection invitationId={id} />
+            ) : null}
           </section>
 
           <aside className="invitation-value-panel" aria-label="Why PlayerHoods">
