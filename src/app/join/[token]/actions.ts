@@ -7,7 +7,7 @@ import { sendPublicMatchSignupVerificationEmail } from '@/lib/notifications/work
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 type PublicSignupStartRow = {
-  signup_id: string
+  signup_id: string | null
   status: string | null
   verification_required: boolean | null
   verification_token: string | null
@@ -221,7 +221,7 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
   const email = String(formData.get('email') ?? '').trim()
   const phone = String(formData.get('phone') ?? '').trim()
   const marketingOptIn = formData.get('marketing_email_opt_in') === 'on'
-  let notice = 'check-email'
+  let notice = 'request-visible'
   let supabase: ReturnType<typeof createPublicSignupMutationClient>
 
   if (!email && !phone) {
@@ -267,13 +267,23 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
   const signup = Array.isArray(data) ? data[0] as PublicSignupStartRow | undefined : null
   const status = signup?.status ?? null
   const verificationRequired = signup?.verification_required === true
+  const isSoftThrottled =
+    status === 'verification_sent' &&
+    !verificationRequired &&
+    !signup?.signup_id &&
+    !signup?.email_normalized
 
   if (status === 'already_verified') {
     notice = 'already-submitted'
   }
 
+  if (isSoftThrottled) {
+    redirectToSignup(token, { error: 'request-throttled' })
+  }
+
   if (
     verificationRequired &&
+    signup?.signup_id &&
     signup?.email_normalized &&
     signup?.verification_token
   ) {

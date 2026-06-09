@@ -290,12 +290,12 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
     }
   }
 
-  if (notice === 'check-email') {
+  if (notice === 'request-visible' || notice === 'check-email') {
     return {
-      title: 'Check your email',
-      subtext: 'We sent you a verification link. Tap the link once to send your request to the host.',
-      badge: 'Waiting for email verification',
-      variant: 'warning',
+      title: "You're on the list",
+      subtext: 'The host can now review your request. We also sent you an email to verify your address for match updates.',
+      badge: 'Request sent',
+      variant: 'success',
     }
   }
 
@@ -389,6 +389,8 @@ function getErrorMessage(code: string | undefined): string | null {
       return "Hosts can't request a spot in their own match."
     case 'email-delivery-unavailable':
       return 'Could not send the verification email. Please try again.'
+    case 'request-throttled':
+      return "We couldn't process this request right now. Please try again shortly."
     case 'failed':
       return 'Could not request a spot. Please try again.'
     default:
@@ -460,7 +462,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           variant: 'error' as const,
         }
     : null
-  const showPublicCheckEmail = !user && isCheckEmail
+  const showPublicCheckEmail = !user && (isCheckEmail || pageParams.notice === 'request-visible')
   const showPublicAlreadySubmitted = !user && isAlreadySubmitted
   const showRegisteredRequestButton = Boolean(
     user && context?.signup_open && !registeredRequestState && !isRegisteredRequestBlocked,
@@ -468,7 +470,17 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const showRequestForm = Boolean(!user && context?.signup_open && !isCheckEmail && !isAlreadySubmitted)
   const pageTitle = registeredRequestState?.title
     ?? guestStatus?.title
-    ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicCheckEmail ? 'Check your email' : 'Join this match')
+    ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicCheckEmail ? "You're on the list" : 'Join this match')
+  const guestNudgeHref = linkUnavailable
+    ? '/'
+    : (showPublicCheckEmail || showPublicAlreadySubmitted)
+      ? `/join/${token}`
+      : '#guest-request'
+  const guestNudgeLabel = linkUnavailable
+    ? 'Maybe later'
+    : (showPublicCheckEmail || showPublicAlreadySubmitted)
+      ? 'Back to match details'
+      : 'Join with email verification'
 
   return (
     <div className="public-signup-page">
@@ -839,13 +851,13 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : showPublicCheckEmail ? (
             <>
               <p className="public-signup-subtext">
-                We sent you a verification link. Tap the link once to send your request to the host.
+                Thanks. The host can now review your request.
               </p>
               <p className="public-signup-note">
-                Your name will be shown to the host with your request. Your email will not be shared.
+                We also sent you an email to verify your address for match updates. Your name is shown to the host with your request, but your email is not shared.
               </p>
               <p className="public-signup-note">
-                After verifying your email, you can create a free account to track matches and join future games faster.
+                If you&apos;re added to the lineup, we&apos;ll let you know. After verifying your email, you can create a free account to track matches and join future games faster.
               </p>
             </>
           ) : user ? (
@@ -865,7 +877,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : (
             <>
               <p className="public-signup-subtext">
-                Add your name and email. Once verified, your request will be sent to the host.
+                Add your name and email. Your request will be sent to the host, and we&apos;ll ask you to verify your email for match updates.
               </p>
               <p className="public-signup-note">
                 The host still needs to add you to the lineup.
@@ -973,8 +985,8 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           </aside>
         ) : (
           <PlayerCardNudge
-            guestHref={linkUnavailable ? '/' : '#guest-request'}
-            guestLabel={linkUnavailable ? 'Maybe later' : 'Join with email verification'}
+            guestHref={guestNudgeHref}
+            guestLabel={guestNudgeLabel}
           />
         )}
         </div>
