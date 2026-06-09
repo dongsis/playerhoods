@@ -251,8 +251,8 @@ BEGIN
   FROM public.rpc_public_match_signup_confirm_sms(v_optout_start.sms_token)
   LIMIT 1;
 
-  INSERT INTO public.contact_communication_opt_outs(channel, destination_normalized, scope, reason, unsubscribed_at)
-  VALUES ('sms', v_optout_phone, 'match_invites', 'test_opt_out', now())
+  INSERT INTO public.contact_communication_opt_outs(channel, destination, destination_normalized, scope, reason, unsubscribed_at)
+  VALUES ('sms', v_optout_phone, v_optout_phone, 'match_invites', 'test_opt_out', now())
   ON CONFLICT (channel, destination_normalized, scope)
   DO UPDATE SET unsubscribed_at = excluded.unsubscribed_at,
                 reason = excluded.reason;
