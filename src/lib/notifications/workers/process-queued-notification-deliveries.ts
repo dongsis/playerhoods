@@ -14,6 +14,7 @@ import {
   renderInvitationSms,
   renderMatchInviteSms,
   renderMatchReminderSms,
+  renderPublicJoinNotThisTimeSms,
 } from '@/lib/notifications/channels/sms/render-notification-sms'
 import {
   cancellationEmail,
@@ -493,6 +494,24 @@ async function processNotificationDeliveryRows(
       html = hostOfflineConfirmationEmail(emailMatch, organizerDisplayName)
       const smsMatch = d.channel === 'sms' ? await withSmsJoinPath(supabase, m, 'view') : m
       smsBody = renderHostOfflineConfirmationSms(smsMatch, organizerDisplayName)
+    } else if (templateType === 'public_join_not_this_time') {
+      if (d.channel !== 'sms') {
+        await supabase.rpc('rpc_update_delivery_result', {
+          p_delivery_id: d.id,
+          p_status: 'skipped',
+          p_provider_message_id: null,
+          p_error_message: 'public_join_not_this_time_sms_only',
+        })
+        continue
+      }
+
+      const m = buildMatchInfo(payload)
+      const organizerDisplayName =
+        (payload.organizer_display_name as string)
+        ?? (payload.inviter_display_name as string)
+        ?? (await getMatchOrganizerName(supabase, m.matchId))
+        ?? 'The host'
+      smsBody = renderPublicJoinNotThisTimeSms(organizerDisplayName)
     } else if (templateType === 'critical_update') {
       const m = buildMatchInfo(payload)
       subject = 'PlayerHoods match update'

@@ -53,6 +53,15 @@ type MatchRemovalNotificationSnapshot = MatchNotificationSnapshot & {
   venue_id: string | null
 }
 
+type PublicJoinNotThisTimeSmsStatus =
+  | 'queued'
+  | 'already_queued'
+  | 'skipped_not_public_join'
+  | 'skipped_no_phone'
+  | 'skipped_opted_out'
+  | 'skipped_not_authorized'
+  | 'skipped_not_removed'
+
 type IdentityLinkActionResult = { ok: true } | { ok: false; error: string }
 
 function buildCriticalChangeSet(
@@ -97,6 +106,38 @@ function getIdentityLinkActionError(error: unknown): string {
 function revalidateMatchSurfaces(matchId: string) {
   revalidatePath(`/matches/${matchId}`)
   revalidatePath('/matches')
+}
+
+async function enqueuePublicJoinNotThisTimeSms(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  participantId: string,
+  hostUserId: string,
+): Promise<PublicJoinNotThisTimeSmsStatus | null> {
+  try {
+    const { data, error } = await (supabase.rpc as unknown as (
+      fn: 'notification_enqueue_public_join_not_this_time_if_needed',
+      args: { p_participant_id: string; p_host_user_id: string }
+    ) => Promise<{ data: string | null; error: { message?: string } | null }>)(
+      'notification_enqueue_public_join_not_this_time_if_needed',
+      {
+        p_participant_id: participantId,
+        p_host_user_id: hostUserId,
+      },
+    )
+
+    if (error) throw new Error(error.message ?? 'public_join_not_this_time_enqueue_failed')
+    return data as PublicJoinNotThisTimeSmsStatus | null
+  } catch (error) {
+    console.error('[removeMatchParticipantAction] public join Not This Time SMS enqueue failed:', error)
+    return null
+  }
+}
+
+function shouldSkipGenericRemovedNotificationForPublicJoin(status: PublicJoinNotThisTimeSmsStatus | null) {
+  return status === 'queued'
+    || status === 'already_queued'
+    || status === 'skipped_no_phone'
+    || status === 'skipped_opted_out'
 }
 
 export async function updateMatchDetailsAction(
@@ -356,6 +397,7 @@ export async function removeMatchParticipantAction(
   }
 
   await removeParticipant(supabase, participantId, note ?? null)
+  const publicJoinNotThisTimeSmsStatus = await enqueuePublicJoinNotThisTimeSms(supabase, participantId, user.id)
   let venueName: string | null = null
   if (match.venue_id) {
     const { data: venue } = await supabase
@@ -365,19 +407,21 @@ export async function removeMatchParticipantAction(
       .maybeSingle()
     venueName = venue?.name ?? null
   }
-  sendParticipantRemovedNotification(
-    supabase,
-    participantId,
-    {
-      id: matchId,
-      game_type: match.game_type,
-      match_date: match.match_date,
-      start_time: match.start_time,
-    },
-    venueName,
-  ).catch((error) => {
-    console.error('[removeMatchParticipantAction] async removed participant notification failed:', error)
-  })
+  if (!shouldSkipGenericRemovedNotificationForPublicJoin(publicJoinNotThisTimeSmsStatus)) {
+    sendParticipantRemovedNotification(
+      supabase,
+      participantId,
+      {
+        id: matchId,
+        game_type: match.game_type,
+        match_date: match.match_date,
+        start_time: match.start_time,
+      },
+      venueName,
+    ).catch((error) => {
+      console.error('[removeMatchParticipantAction] async removed participant notification failed:', error)
+    })
+  }
   revalidateMatchSurfaces(matchId)
 }
 

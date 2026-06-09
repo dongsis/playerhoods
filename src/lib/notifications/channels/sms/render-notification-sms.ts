@@ -240,6 +240,11 @@ export function renderPublicJoinRequestSms(data: PublicJoinRequestSmsData): stri
   ].join('\n')
 }
 
+export function renderPublicJoinNotThisTimeSms(hostName = 'The host'): string {
+  const name = hostName.trim() || 'The host'
+  return `${name} couldn't add you to this match this time.`
+}
+
 export function renderConfirmedLineupSms(match: MatchSmsData): string {
   const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
