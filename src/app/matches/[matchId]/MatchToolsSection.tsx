@@ -13,6 +13,7 @@ import {
   type ContactPersonAdmissionTarget,
 } from '@/lib/api/matches'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { buildPublicJoinShareText } from '@/lib/public-join-share'
 import type { Group, MatchCourt, MatchStatus } from '@/lib/types/database'
 import type { MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
@@ -23,33 +24,6 @@ type CurrentRequestTarget = {
 }
 
 const INVITE_TARGET_LOAD_TIMEOUT_MS = 15000
-
-function formatShareMatchKind(sportName: string | null, gameType: string | null): string {
-  const label = (sportName || gameType || '').replace(/_/g, ' ').trim()
-  if (!label) return 'match'
-  const lowerLabel = label.toLowerCase()
-  return /\bmatch\b/i.test(lowerLabel) ? lowerLabel : `${lowerLabel} match`
-}
-
-function buildPublicSignupShareText(input: {
-  sportName: string | null
-  gameType: string | null
-  openSpots: number
-  url: string
-}): string {
-  const matchKind = formatShareMatchKind(input.sportName, input.gameType)
-  const openSpotsLine = input.openSpots > 0
-    ? `Looking for ${input.openSpots} ${input.openSpots === 1 ? 'player' : 'players'}`
-    : null
-
-  return [
-    `Join my ${matchKind} on PlayerHoods`,
-    '',
-    openSpotsLine,
-    'View details and request to join:',
-    input.url,
-  ].filter((line): line is string => line != null).join('\n')
-}
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
@@ -87,6 +61,8 @@ type Props = {
   sportId: number | null
   sportName: string | null
   gameType: string | null
+  venueName: string | null
+  dateTimeLabel: string | null
   finalCourtLabel: string | null
   matchCourts: MatchCourt[]
   isOrganizer: boolean
@@ -116,6 +92,8 @@ export function MatchToolsSection({
   sportId,
   sportName,
   gameType,
+  venueName,
+  dateTimeLabel,
   finalCourtLabel,
   matchCourts,
   isOrganizer,
@@ -242,7 +220,11 @@ export function MatchToolsSection({
     : isLineupFull
       ? 'Lineup is full.'
       : 'Need more players?'
+  const toolsSubcopy = !isFormed && !isLineupFull
+    ? 'Share the public link or invite specific players.'
+    : null
   const addMoreIsPrimary = !isFormed && !isLineupFull
+  const showTopLevelPublicShare = showInviteTools && isOrganizer && matchStatus === 'active' && !isFormed && !isLineupFull
 
   const togglePanel = (nextTab: 'invite' | 'round_robin') => {
     setActiveTab((current) => {
@@ -278,17 +260,19 @@ export function MatchToolsSection({
       }
 
       const url = `${window.location.origin}/join/${link.public_token}`
-      const shareText = buildPublicSignupShareText({
+      const shareText = buildPublicJoinShareText({
         sportName,
         gameType,
-        openSpots: Math.max(requiredCount - confirmedParticipants.length, 0),
+        venueName,
+        dateTimeLabel,
+        firstPerson: true,
         url,
       })
       const copied = await copyTextToClipboard(shareText)
-      setShareLinkStatusMessage(copied ? 'Invite text copied.' : 'Share text ready. Copy the link if your browser asks.')
+      setShareLinkStatusMessage(copied ? 'Share link copied' : 'Share text ready. Copy the link if your browser asks.')
     } catch (error) {
       console.error('[MatchToolsSection] public signup link:', error)
-      setPublicSignupLinkError((error as { message?: string })?.message ?? 'Could not create the public signup link.')
+      setPublicSignupLinkError((error as { message?: string })?.message ?? 'Could not create the public share link.')
     } finally {
       setIsPublicSignupLinkBusy(false)
     }
@@ -303,14 +287,52 @@ export function MatchToolsSection({
       ].join(' ')}
     >
       {showInviteTools && activeTab !== 'invite' ? (
-        <div className="md:hidden">
-          <button
-            type="button"
-            onClick={() => togglePanel('invite')}
-            className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 text-[13px] font-black text-[#0F172A] transition active:scale-95"
-          >
-            Add players
-          </button>
+        <div className="space-y-3 md:hidden">
+          {showTopLevelPublicShare ? (
+            <div className="rounded-[18px] border border-[#DCE9FA] bg-white p-4 shadow-[0_4px_18px_rgba(15,23,42,0.05)]">
+              <p className="m-0 text-[1rem] font-black text-slate-900">{toolsTitle}</p>
+              {toolsSubcopy ? (
+                <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
+                  {toolsSubcopy}
+                </p>
+              ) : null}
+              <div className="mt-3 grid gap-2">
+                <button
+                  type="button"
+                  onClick={copyPublicSignupLink}
+                  disabled={isPublicSignupLinkBusy}
+                  className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#B7D7FF] bg-[#EFF6FF] px-3 text-[13px] font-black text-[#1D4ED8] transition active:scale-95 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Share Link'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => togglePanel('invite')}
+                  className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 text-[13px] font-black text-[#0F172A] transition active:scale-95"
+                >
+                  Add More Players
+                </button>
+              </div>
+              {shareLinkStatusMessage ? (
+                <p className="mt-3 text-body-sub font-semibold text-emerald-700">
+                  {shareLinkStatusMessage}
+                </p>
+              ) : null}
+              {publicSignupLinkError ? (
+                <p className="mt-3 text-body-sub font-semibold text-red-600">
+                  {publicSignupLinkError}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => togglePanel('invite')}
+              className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 text-[13px] font-black text-[#0F172A] transition active:scale-95"
+            >
+              {isFormed ? 'Adjust Lineup' : 'Add More Players'}
+            </button>
+          )}
         </div>
       ) : null}
 
@@ -322,6 +344,10 @@ export function MatchToolsSection({
           {formedActionsCollapsed ? (
             <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
               {confirmedParticipants.length}/{requiredCount} confirmed
+            </p>
+          ) : toolsSubcopy ? (
+            <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
+              {toolsSubcopy}
             </p>
           ) : null}
         </div>
@@ -338,34 +364,46 @@ export function MatchToolsSection({
           ) : null}
 
           {!formedActionsCollapsed && showInviteTools ? (
-            <button
-              type="button"
-              onClick={() => togglePanel('invite')}
-              className={[
-                'inline-flex items-center justify-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-black transition active:scale-95',
-                isFormed
-                  ? activeTab === 'invite'
-                    ? 'border-[#CBD5E1] bg-[#F8FAFC] text-[#1E293B]'
-                    : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]'
-                  : activeTab === 'invite'
-                    ? addMoreIsPrimary
-                      ? 'border-[#B7D7FF] bg-[#EFF6FF] text-[#1D4ED8]'
-                      : 'border-[#BFD1F8] bg-[#F5F8FF] text-[#2554D9]'
-                    : addMoreIsPrimary
-                      ? 'border-[#B7D7FF] bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#DBEAFE]'
-                      : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]',
-              ].join(' ')}
-            >
-              {addMoreIsPrimary ? (
-                <span
-                  aria-hidden="true"
-                  className="flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-base leading-none text-[#1D4ED8]"
+            <>
+              {showTopLevelPublicShare ? (
+                <button
+                  type="button"
+                  onClick={copyPublicSignupLink}
+                  disabled={isPublicSignupLinkBusy}
+                  className="inline-flex items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3.5 py-2 text-[13px] font-black text-[#1D4ED8] transition hover:bg-[#F8FAFC] active:scale-95 disabled:cursor-wait disabled:opacity-60"
                 >
-                  +
-                </span>
+                  {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Share Link'}
+                </button>
               ) : null}
-              <span>{isFormed ? 'Adjust Lineup' : 'Add More Players'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => togglePanel('invite')}
+                className={[
+                  'inline-flex items-center justify-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-black transition active:scale-95',
+                  isFormed
+                    ? activeTab === 'invite'
+                      ? 'border-[#CBD5E1] bg-[#F8FAFC] text-[#1E293B]'
+                      : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]'
+                    : activeTab === 'invite'
+                      ? addMoreIsPrimary
+                        ? 'border-[#B7D7FF] bg-[#EFF6FF] text-[#1D4ED8]'
+                        : 'border-[#BFD1F8] bg-[#F5F8FF] text-[#2554D9]'
+                      : addMoreIsPrimary
+                        ? 'border-[#B7D7FF] bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#DBEAFE]'
+                        : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]',
+                ].join(' ')}
+              >
+                {addMoreIsPrimary ? (
+                  <span
+                    aria-hidden="true"
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-base leading-none text-[#1D4ED8]"
+                  >
+                    +
+                  </span>
+                ) : null}
+                <span>{isFormed ? 'Adjust Lineup' : 'Add More Players'}</span>
+              </button>
+            </>
           ) : null}
         </div>
 
@@ -384,6 +422,12 @@ export function MatchToolsSection({
         {publicSignupLinkError ? (
           <p className="basis-full rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-body-main font-semibold text-red-600">
             {publicSignupLinkError}
+          </p>
+        ) : null}
+
+        {shareLinkStatusMessage ? (
+          <p className="basis-full rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
+            {shareLinkStatusMessage}
           </p>
         ) : null}
       </div>
@@ -424,29 +468,6 @@ export function MatchToolsSection({
             setActiveTab(null)
             setApplySuccessMessage('Changes applied.')
           }}
-          shareLinkRow={isOrganizer && matchStatus === 'active' ? (
-            <div className="space-y-2">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <div className="text-body-main font-black text-slate-900">Share link</div>
-                  <div className="text-body-sub font-semibold text-slate-500">Copy a friendly invite for someone to request a spot.</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={copyPublicSignupLink}
-                  disabled={isPublicSignupLinkBusy}
-                  className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 py-1.5 font-bold text-[#475569] transition hover:bg-[#F8FAFC] disabled:cursor-wait disabled:opacity-60"
-                >
-                  {isPublicSignupLinkBusy ? 'Preparing Link' : 'Copy Link'}
-                </button>
-              </div>
-              {shareLinkStatusMessage ? (
-                <p className="m-0 text-body-sub font-semibold text-emerald-700">
-                  {shareLinkStatusMessage}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
         />
       ) : null}
 

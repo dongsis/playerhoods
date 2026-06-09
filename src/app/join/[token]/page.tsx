@@ -200,7 +200,7 @@ function getRegisteredRequestState(
     return {
       title: 'You are on the waitlist',
       subtext: 'Your spot is on the waitlist for this match.',
-      note: 'The host still needs to add you to the lineup.',
+      note: "If you're added to the lineup, we'll let you know.",
       message: 'Waiting for host.',
       variant: 'success',
     }
@@ -209,8 +209,8 @@ function getRegisteredRequestState(
   if (participant || requestSentNotice) {
     return {
       title: 'Request sent',
-      subtext: 'Waiting for host to add you to the lineup.',
-      note: 'The host still needs to add you to the lineup.',
+      subtext: 'The host will review your request.',
+      note: "If you're added to the lineup, we'll let you know.",
       message: 'Request sent. Waiting for host.',
       variant: 'success',
     }
@@ -337,7 +337,7 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
   return {
     title: 'Join this match',
-    subtext: 'Create or sign in to your free PlayerHoods account to request a spot and track match updates. You can join with mobile number instead.',
+    subtext: 'Create or sign in to your free PlayerHoods account to request a spot and track match updates.',
     badge: 'Open to Join',
     variant: 'neutral',
   }
@@ -481,6 +481,9 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
     : (showPublicSmsPending || showPublicAlreadySubmitted)
       ? 'Back to match details'
       : 'Join with mobile number instead'
+  const showGuestStatusBadge = Boolean(
+    guestStatus && !(guestStatus.badge === 'Open to Join' && guestStatus.variant === 'neutral'),
+  )
 
   return (
     <div className="public-signup-page">
@@ -863,7 +866,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : user ? (
             <>
               <p className="public-signup-subtext">
-                You&apos;re signed in. Use your Player Card to say you&apos;d like to play.
+                You&apos;re signed in. Use your PlayerHoods account to say you&apos;d like to play.
               </p>
               <p className="public-signup-note">
                 The host still needs to add you to the lineup.
@@ -872,7 +875,9 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : guestStatus ? (
             <>
               <p className="public-signup-subtext">{guestStatus.subtext}</p>
-              <p className={`public-signup-message ${guestStatus.variant}`}>{guestStatus.badge}</p>
+              {showGuestStatusBadge ? (
+                <p className={`public-signup-message ${guestStatus.variant}`}>{guestStatus.badge}</p>
+              ) : null}
             </>
           ) : (
             <>
@@ -933,8 +938,9 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : showRequestForm ? (
             <>
               <div className="public-signup-primary-action">
+                <h2 className="public-player-card-title">Join with your PlayerHoods account</h2>
                 <Link href={`/login?next=${encodeURIComponent(`/join/${token}`)}`} className="public-signup-button public-signup-button-secondary">
-                  Create / Sign in to Join
+                  Create account or sign in
                 </Link>
                 <p className="public-signup-helper">
                   Join with mobile number instead
@@ -972,11 +978,13 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
         </section>
 
         {user ? (
-          <aside className="public-signed-in-card" aria-label="Signed-in Player Card">
-            <p className="public-signed-in-kicker">Your Player Card</p>
+          <aside className="public-signed-in-card" aria-label="Signed-in PlayerHoods account">
+            <p className="public-signed-in-kicker">Signed in as</p>
             <h2 className="public-signed-in-title">{playerCardIdentity?.display_name ?? user.email ?? 'Signed-in player'}</h2>
             <p className="public-signed-in-copy">
-              This request uses your registered PlayerHoods identity, not the anonymous guest verification flow.
+              {registeredRequestState
+                ? 'You requested to join using your PlayerHoods account.'
+                : 'Use your PlayerHoods account to request a spot and track match updates.'}
             </p>
             {playerCardIdentity?.level ? (
               <p className="public-signed-in-copy">Level: {playerCardIdentity.level}</p>
