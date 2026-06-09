@@ -44,6 +44,37 @@ type ModelResponse = {
   contacts: ModelCandidate[]
 }
 
+type SmartImportDiagnosticCategory =
+  | 'missing_openai_key'
+  | 'storage_download_error'
+  | 'openai_401'
+  | 'openai_400'
+  | 'openai_429'
+  | 'openai_5xx'
+  | 'openai_network_error'
+  | 'openai_incomplete'
+  | 'openai_refusal'
+  | 'schema_mismatch'
+  | 'json_parse_error'
+  | 'no_contacts_detected'
+  | 'unknown_import_error'
+
+type SmartImportDiagnosticStage =
+  | 'configuration'
+  | 'storage_download'
+  | 'openai_request'
+  | 'openai_response'
+  | 'response_parsing'
+  | 'model_output'
+  | 'import_flow'
+
+type SmartImportDiagnostic = {
+  category: SmartImportDiagnosticCategory
+  stage: SmartImportDiagnosticStage
+  httpStatus?: number
+  errorName?: string
+}
+
 const CONTACT_EXTRACTION_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -68,14 +99,65 @@ const CONTACT_EXTRACTION_SCHEMA = {
 } as const
 
 class ContactScreenshotImportError extends Error {
+  diagnosticLogged = false
+
   constructor(message: string) {
     super(message)
     this.name = 'ContactScreenshotImportError'
   }
 }
 
-function smartImportError(message: string): ContactScreenshotImportError {
-  return new ContactScreenshotImportError(message)
+function safeErrorName(error: unknown): string | undefined {
+  const rawName =
+    error && typeof error === 'object' && 'name' in error && typeof (error as { name?: unknown }).name === 'string'
+      ? (error as { name: string }).name
+      : error && typeof error === 'object' && error.constructor?.name
+        ? error.constructor.name
+        : ''
+  const redactedName = rawName
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, 'EmailRedacted')
+    .replace(/\+?\d[\d\s().-]{6,}\d/g, 'PhoneRedacted')
+  const name = redactedName.replace(/[^a-zA-Z0-9_.:-]/g, '').slice(0, 80)
+  return name || undefined
+}
+
+function logSmartImportDiagnostic(diagnostic: SmartImportDiagnostic) {
+  const metadata: Record<string, string | number> = {
+    category: diagnostic.category,
+    stage: diagnostic.stage,
+  }
+  if (typeof diagnostic.httpStatus === 'number') metadata.httpStatus = diagnostic.httpStatus
+  if (diagnostic.errorName) metadata.errorName = diagnostic.errorName
+  console.info('smart_import_diagnostic', metadata)
+}
+
+function smartImportError(
+  message: string,
+  diagnostic?: SmartImportDiagnostic,
+): ContactScreenshotImportError {
+  const error = new ContactScreenshotImportError(message)
+  if (diagnostic) {
+    logSmartImportDiagnostic(diagnostic)
+    error.diagnosticLogged = true
+  }
+  return error
+}
+
+function logUnknownImportError(error: unknown) {
+  if (error instanceof ContactScreenshotImportError && error.diagnosticLogged) return
+  logSmartImportDiagnostic({
+    category: 'unknown_import_error',
+    stage: 'import_flow',
+    errorName: safeErrorName(error),
+  })
+}
+
+function openAiHttpCategory(status: number): SmartImportDiagnosticCategory {
+  if (status === 400) return 'openai_400'
+  if (status === 401 || status === 403) return 'openai_401'
+  if (status === 429) return 'openai_429'
+  if (status >= 500) return 'openai_5xx'
+  return 'unknown_import_error'
 }
 
 function makeDraftId(seed: string): string {
@@ -285,22 +367,47 @@ function parseStructuredResponse(raw: string): ModelCandidate[] {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
-  } catch {
-    throw smartImportError('Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.')
+  } catch (error) {
+    throw smartImportError(
+      'Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.',
+      {
+        category: 'json_parse_error',
+        stage: 'response_parsing',
+        errorName: safeErrorName(error),
+      },
+    )
   }
 
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw smartImportError('Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.')
+    throw smartImportError(
+      'Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.',
+      {
+        category: 'schema_mismatch',
+        stage: 'response_parsing',
+      },
+    )
   }
 
   const contacts = (parsed as Partial<ModelResponse>).contacts
   if (!Array.isArray(contacts)) {
-    throw smartImportError('Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.')
+    throw smartImportError(
+      'Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.',
+      {
+        category: 'schema_mismatch',
+        stage: 'response_parsing',
+      },
+    )
   }
 
   return contacts.map((contact) => {
     if (!contact || typeof contact !== 'object' || Array.isArray(contact)) {
-      throw smartImportError('Smart Import could not understand one of the detected contacts. Try a clearer crop, paste another screenshot, or add the contact manually.')
+      throw smartImportError(
+        'Smart Import could not understand one of the detected contacts. Try a clearer crop, paste another screenshot, or add the contact manually.',
+        {
+          category: 'schema_mismatch',
+          stage: 'response_parsing',
+        },
+      )
     }
 
     const record = contact as Record<string, unknown>
@@ -311,7 +418,13 @@ function parseStructuredResponse(raw: string): ModelCandidate[] {
       || typeof record.sourceNotes !== 'string'
       || !isConfidence(record.confidence)
     ) {
-      throw smartImportError('Smart Import could not understand one of the detected contacts. Try a clearer crop, paste another screenshot, or add the contact manually.')
+      throw smartImportError(
+        'Smart Import could not understand one of the detected contacts. Try a clearer crop, paste another screenshot, or add the contact manually.',
+        {
+          category: 'schema_mismatch',
+          stage: 'response_parsing',
+        },
+      )
     }
 
     return {
@@ -331,7 +444,10 @@ async function parseImageWithVisionModel(
 ): Promise<ModelCandidate[]> {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) {
-    throw smartImportError('Smart Import is not fully configured yet. Add the contact manually for now.')
+    throw smartImportError('Smart Import is not fully configured yet. Add the contact manually for now.', {
+      category: 'missing_openai_key',
+      stage: 'configuration',
+    })
   }
 
   const prompt = [
@@ -385,16 +501,35 @@ async function parseImageWithVisionModel(
         ],
       }),
     })
-  } catch {
-    throw smartImportError('Smart Import could not reach the screenshot reader. Try again in a moment, or add the contact manually.')
+  } catch (error) {
+    throw smartImportError(
+      'Smart Import could not reach the screenshot reader. Try again in a moment, or add the contact manually.',
+      {
+        category: 'openai_network_error',
+        stage: 'openai_request',
+        errorName: safeErrorName(error),
+      },
+    )
   }
 
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>
   if (!response.ok) {
+    const category = openAiHttpCategory(response.status)
     if (response.status === 401 || response.status === 403) {
-      throw smartImportError('Smart Import is not fully configured yet. Add the contact manually for now.')
+      throw smartImportError('Smart Import is not fully configured yet. Add the contact manually for now.', {
+        category,
+        stage: 'openai_response',
+        httpStatus: response.status,
+      })
     }
-    throw smartImportError('Smart Import could not read that screenshot right now. Try again in a moment, use a clearer crop, or add the contact manually.')
+    throw smartImportError(
+      'Smart Import could not read that screenshot right now. Try again in a moment, use a clearer crop, or add the contact manually.',
+      {
+        category,
+        stage: 'openai_response',
+        httpStatus: response.status,
+      },
+    )
   }
 
   const status = typeof payload.status === 'string' ? payload.status : ''
@@ -403,19 +538,43 @@ async function parseImageWithVisionModel(
       status === 'incomplete'
         ? 'Smart Import could not finish reading that screenshot. Try a clearer crop, paste another screenshot, or add the contact manually.'
         : 'Smart Import could not read that screenshot right now. Try again in a moment, use a clearer crop, or add the contact manually.',
+      {
+        category: status === 'incomplete' ? 'openai_incomplete' : 'unknown_import_error',
+        stage: 'openai_response',
+      },
     )
   }
 
   if (responseHasRefusal(payload)) {
-    throw smartImportError('Smart Import could not process that image. Try a clearer contact screenshot, or add the contact manually.')
+    throw smartImportError(
+      'Smart Import could not process that image. Try a clearer contact screenshot, or add the contact manually.',
+      {
+        category: 'openai_refusal',
+        stage: 'openai_response',
+      },
+    )
   }
 
   const outputText = extractOutputText(payload)
   if (!outputText) {
-    throw smartImportError('Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.')
+    throw smartImportError(
+      'Smart Import could not understand the screenshot response. Try a clearer crop, paste another screenshot, or add the contact manually.',
+      {
+        category: 'schema_mismatch',
+        stage: 'model_output',
+      },
+    )
   }
 
-  return parseStructuredResponse(outputText)
+  const candidates = parseStructuredResponse(outputText)
+  if (candidates.length === 0) {
+    logSmartImportDiagnostic({
+      category: 'no_contacts_detected',
+      stage: 'model_output',
+    })
+  }
+
+  return candidates
 }
 
 export async function parseContactScreenshotUploads(
@@ -428,7 +587,16 @@ export async function parseContactScreenshotUploads(
   try {
     for (const upload of uploads) {
       const { data, error } = await supabase.storage.from('contact-imports').download(upload.storage_path)
-      if (error) throw error
+      if (error) {
+        throw smartImportError(
+          'Smart Import could not open that uploaded image. Try another screenshot, or add the contact manually.',
+          {
+            category: 'storage_download_error',
+            stage: 'storage_download',
+            errorName: safeErrorName(error),
+          },
+        )
+      }
 
       const mimeType = upload.mime_type?.trim() || data.type || 'image/jpeg'
       const buffer = Buffer.from(await data.arrayBuffer())
@@ -468,6 +636,9 @@ export async function parseContactScreenshotUploads(
     }
 
     return mergeByIdentity(drafts)
+  } catch (error) {
+    logUnknownImportError(error)
+    throw error
   } finally {
     if (uploads.length > 0) {
       await supabase.storage.from('contact-imports').remove(uploads.map((upload) => upload.storage_path))
