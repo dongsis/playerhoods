@@ -419,15 +419,62 @@ BEGIN
     VALUES (
       'C01 Organizer-approved Contact Player stays pending until participant confirmation',
       v_mp.status::text = 'pending'
+      AND v_mp.join_method::text = 'invited'
+      AND v_mp.nominated_by IS NULL
       AND v_mp.org_approved_at IS NOT NULL
       AND v_mp.participant_accepted_at IS NULL,
       'status=' || coalesce(v_mp.status::text, 'NULL')
+      || ', join_method=' || coalesce(v_mp.join_method::text, 'NULL')
+      || ', nominated_by=' || coalesce(v_mp.nominated_by::text, 'NULL')
       || ', org_approved_at=' || coalesce(v_mp.org_approved_at::text, 'NULL')
       || ', participant_accepted_at=' || coalesce(v_mp.participant_accepted_at::text, 'NULL'),
       v_mid
     );
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _participant_controls_results VALUES ('C01 Organizer-approved Contact Player stays pending until participant confirmation', false, 'exception: ' || SQLERRM, v_mid);
+  END;
+
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, venue_id, court_ids, match_date, start_time, duration_minutes,
+      game_type, required_count, invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants, created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[], current_date, '10:15'::time, 90,
+      'tr_tpl_C01B_person_host_invite_semantics', 4, ARRAY[SCOPE_GID]::uuid[],
+      true, true, true, now()
+    ) RETURNING id INTO v_mid;
+
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text, true);
+    SELECT * INTO v_guest FROM public.rpc_roster_guest_create('TR template C01B guest', 'tr-c01b@test.local', NULL, 'participant-controls-template');
+
+    PERFORM public.rpc_match_invite_contact_person(v_mid, v_guest.person_id);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants mp
+    WHERE mp.match_id = v_mid
+      AND mp.guest_id = v_guest.id
+      AND mp.removed_at IS NULL
+    ORDER BY mp.created_at DESC
+    LIMIT 1;
+
+    INSERT INTO _participant_controls_results
+    VALUES (
+      'C01B Host Contact Player person invite writes invited semantics',
+      v_mp.status::text = 'pending'
+      AND v_mp.join_method::text = 'invited'
+      AND v_mp.nominated_by IS NULL
+      AND v_mp.org_approved_at IS NOT NULL
+      AND v_mp.participant_accepted_at IS NULL,
+      'status=' || coalesce(v_mp.status::text, 'NULL')
+      || ', join_method=' || coalesce(v_mp.join_method::text, 'NULL')
+      || ', nominated_by=' || coalesce(v_mp.nominated_by::text, 'NULL')
+      || ', org_approved_at=' || coalesce(v_mp.org_approved_at::text, 'NULL')
+      || ', participant_accepted_at=' || coalesce(v_mp.participant_accepted_at::text, 'NULL'),
+      v_mid
+    );
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _participant_controls_results VALUES ('C01B Host Contact Player person invite writes invited semantics', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
   BEGIN
@@ -696,16 +743,98 @@ BEGIN
     VALUES (
       'D02 In-scope non-associated caller can nominate Contact Player when invite-users enabled',
       v_mp.join_method::text = 'nominated'
+      AND v_mp.nominated_by = P_UID
       AND v_mp.status::text = 'pending'
       AND v_mp.guest_id = v_guest.id
       AND v_mp.org_approved_at IS NULL,
       'join_method=' || coalesce(v_mp.join_method::text, 'NULL')
+      || ', nominated_by=' || coalesce(v_mp.nominated_by::text, 'NULL')
       || ', status=' || coalesce(v_mp.status::text, 'NULL')
       || ', org_approved_at=' || coalesce(v_mp.org_approved_at::text, 'NULL'),
       v_mid
     );
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _participant_controls_results VALUES ('D02 In-scope non-associated caller can nominate Contact Player when invite-users enabled', false, 'exception: ' || SQLERRM, v_mid);
+  END;
+
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, venue_id, court_ids, match_date, start_time, duration_minutes,
+      game_type, required_count, invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants, created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[], current_date, '11:20'::time, 90,
+      'tr_tpl_D02B_person_non_host_nomination_semantics', 4, ARRAY[SCOPE_GID]::uuid[],
+      true, false, true, now()
+    ) RETURNING id INTO v_mid;
+
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', P_UID::text, 'role', 'authenticated')::text, true);
+    SELECT * INTO v_guest FROM public.rpc_roster_guest_create('TR template D02B guest', 'tr-d02b@test.local', NULL, 'participant-controls-template');
+
+    PERFORM public.rpc_match_invite_contact_person(v_mid, v_guest.person_id);
+
+    SELECT * INTO v_mp
+    FROM public.match_participants mp
+    WHERE mp.match_id = v_mid
+      AND mp.guest_id = v_guest.id
+      AND mp.removed_at IS NULL
+    ORDER BY mp.created_at DESC
+    LIMIT 1;
+
+    INSERT INTO _participant_controls_results
+    VALUES (
+      'D02B In-scope non-host Contact Player person invite writes nomination semantics',
+      v_mp.join_method::text = 'nominated'
+      AND v_mp.nominated_by = P_UID
+      AND v_mp.status::text = 'pending'
+      AND v_mp.guest_id = v_guest.id
+      AND v_mp.org_approved_at IS NULL,
+      'join_method=' || coalesce(v_mp.join_method::text, 'NULL')
+      || ', nominated_by=' || coalesce(v_mp.nominated_by::text, 'NULL')
+      || ', status=' || coalesce(v_mp.status::text, 'NULL')
+      || ', org_approved_at=' || coalesce(v_mp.org_approved_at::text, 'NULL'),
+      v_mid
+    );
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _participant_controls_results VALUES ('D02B In-scope non-host Contact Player person invite writes nomination semantics', false, 'exception: ' || SQLERRM, v_mid);
+  END;
+
+  BEGIN
+    INSERT INTO public.matches (
+      organizer_id, status, venue_id, court_ids, match_date, start_time, duration_minutes,
+      game_type, required_count, invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants, created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[], current_date, '11:25'::time, 90,
+      'tr_tpl_D02C_host_approval_preserves_nomination_source', 4, ARRAY[SCOPE_GID]::uuid[],
+      true, false, true, now()
+    ) RETURNING id INTO v_mid;
+
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', P_UID::text, 'role', 'authenticated')::text, true);
+    SELECT * INTO v_guest FROM public.rpc_roster_guest_create('TR template D02C guest', NULL, NULL, 'participant-controls-template');
+    SELECT * INTO v_mp FROM public.rpc_match_nominate_guest(v_mid, v_guest.id);
+
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text, true);
+    SELECT * INTO v_mp FROM public.rpc_match_org_approve_participant(v_mp.id);
+
+    INSERT INTO _participant_controls_results
+    VALUES (
+      'D02C Host approval preserves Contact Player nomination source',
+      v_mp.join_method::text = 'nominated'
+      AND v_mp.nominated_by = P_UID
+      AND v_mp.org_approved_at IS NOT NULL
+      AND v_mp.org_approved_by = ORG_UID
+      AND v_mp.participant_accepted_at IS NULL
+      AND v_mp.status::text = 'pending',
+      'join_method=' || coalesce(v_mp.join_method::text, 'NULL')
+      || ', nominated_by=' || coalesce(v_mp.nominated_by::text, 'NULL')
+      || ', org_approved_by=' || coalesce(v_mp.org_approved_by::text, 'NULL')
+      || ', participant_accepted_at=' || coalesce(v_mp.participant_accepted_at::text, 'NULL')
+      || ', status=' || coalesce(v_mp.status::text, 'NULL'),
+      v_mid
+    );
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _participant_controls_results VALUES ('D02C Host approval preserves Contact Player nomination source', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
   BEGIN
