@@ -731,30 +731,39 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants, created_at
     ) VALUES (
       ORG_UID, 'active', CLUB_ID, '{}'::uuid[], current_date, '11:15'::time, 90,
-      'tr_tpl_D02_contact_nominate_ignores_legacy_guest_flag', 4, ARRAY[SCOPE_GID]::uuid[],
+      'tr_tpl_D02_unlinked_contact_non_host_rejected', 4, ARRAY[SCOPE_GID]::uuid[],
       true, false, true, now()
     ) RETURNING id INTO v_mid;
 
     PERFORM set_config('request.jwt.claims', json_build_object('sub', P_UID::text, 'role', 'authenticated')::text, true);
     SELECT * INTO v_guest FROM public.rpc_roster_guest_create('TR template D02 guest', 'tr-d02@test.local', NULL, 'participant-controls-template');
-    SELECT * INTO v_mp FROM public.rpc_match_nominate_guest(v_mid, v_guest.id);
 
-    INSERT INTO _participant_controls_results
-    VALUES (
-      'D02 In-scope non-associated caller can nominate Contact Player when invite-users enabled',
-      v_mp.join_method::text = 'nominated'
-      AND v_mp.nominated_by = P_UID
-      AND v_mp.status::text = 'pending'
-      AND v_mp.guest_id = v_guest.id
-      AND v_mp.org_approved_at IS NULL,
-      'join_method=' || coalesce(v_mp.join_method::text, 'NULL')
-      || ', nominated_by=' || coalesce(v_mp.nominated_by::text, 'NULL')
-      || ', status=' || coalesce(v_mp.status::text, 'NULL')
-      || ', org_approved_at=' || coalesce(v_mp.org_approved_at::text, 'NULL'),
-      v_mid
-    );
+    BEGIN
+      PERFORM public.rpc_match_nominate_guest(v_mid, v_guest.id);
+      INSERT INTO _participant_controls_results VALUES ('D02 Non-host legacy Contact Player nomination is rejected', false, 'expected rejection', v_mid);
+    EXCEPTION WHEN OTHERS THEN
+      SELECT count(*) INTO v_cnt
+      FROM public.match_participants mp
+      WHERE mp.match_id = v_mid
+        AND mp.removed_at IS NULL;
+
+      SELECT count(*) INTO v_cnt_2
+      FROM public.email_invitations ei
+      WHERE ei.related_type = 'match'
+        AND ei.related_id = v_mid;
+
+      INSERT INTO _participant_controls_results
+      VALUES (
+        'D02 Non-host legacy Contact Player nomination is rejected',
+        v_cnt = 0 AND v_cnt_2 = 0,
+        'exception=' || SQLERRM
+        || ', active_rows=' || v_cnt::text
+        || ', invitations=' || v_cnt_2::text,
+        v_mid
+      );
+    END;
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO _participant_controls_results VALUES ('D02 In-scope non-associated caller can nominate Contact Player when invite-users enabled', false, 'exception: ' || SQLERRM, v_mid);
+    INSERT INTO _participant_controls_results VALUES ('D02 Non-host legacy Contact Player nomination is rejected', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
   BEGIN
@@ -764,39 +773,39 @@ BEGIN
       can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants, created_at
     ) VALUES (
       ORG_UID, 'active', CLUB_ID, '{}'::uuid[], current_date, '11:20'::time, 90,
-      'tr_tpl_D02B_person_non_host_nomination_semantics', 4, ARRAY[SCOPE_GID]::uuid[],
+      'tr_tpl_D02B_person_non_host_unlinked_rejected', 4, ARRAY[SCOPE_GID]::uuid[],
       true, false, true, now()
     ) RETURNING id INTO v_mid;
 
     PERFORM set_config('request.jwt.claims', json_build_object('sub', P_UID::text, 'role', 'authenticated')::text, true);
     SELECT * INTO v_guest FROM public.rpc_roster_guest_create('TR template D02B guest', 'tr-d02b@test.local', NULL, 'participant-controls-template');
 
-    PERFORM public.rpc_match_invite_contact_person(v_mid, v_guest.person_id);
+    BEGIN
+      PERFORM public.rpc_match_invite_contact_person(v_mid, v_guest.person_id);
+      INSERT INTO _participant_controls_results VALUES ('D02B Non-host unlinked Contact Player person invite is rejected', false, 'expected rejection', v_mid);
+    EXCEPTION WHEN OTHERS THEN
+      SELECT count(*) INTO v_cnt
+      FROM public.match_participants mp
+      WHERE mp.match_id = v_mid
+        AND mp.removed_at IS NULL;
 
-    SELECT * INTO v_mp
-    FROM public.match_participants mp
-    WHERE mp.match_id = v_mid
-      AND mp.guest_id = v_guest.id
-      AND mp.removed_at IS NULL
-    ORDER BY mp.created_at DESC
-    LIMIT 1;
+      SELECT count(*) INTO v_cnt_2
+      FROM public.email_invitations ei
+      WHERE ei.related_type = 'match'
+        AND ei.related_id = v_mid;
 
-    INSERT INTO _participant_controls_results
-    VALUES (
-      'D02B In-scope non-host Contact Player person invite writes nomination semantics',
-      v_mp.join_method::text = 'nominated'
-      AND v_mp.nominated_by = P_UID
-      AND v_mp.status::text = 'pending'
-      AND v_mp.guest_id = v_guest.id
-      AND v_mp.org_approved_at IS NULL,
-      'join_method=' || coalesce(v_mp.join_method::text, 'NULL')
-      || ', nominated_by=' || coalesce(v_mp.nominated_by::text, 'NULL')
-      || ', status=' || coalesce(v_mp.status::text, 'NULL')
-      || ', org_approved_at=' || coalesce(v_mp.org_approved_at::text, 'NULL'),
-      v_mid
-    );
+      INSERT INTO _participant_controls_results
+      VALUES (
+        'D02B Non-host unlinked Contact Player person invite is rejected',
+        v_cnt = 0 AND v_cnt_2 = 0,
+        'exception=' || SQLERRM
+        || ', active_rows=' || v_cnt::text
+        || ', invitations=' || v_cnt_2::text,
+        v_mid
+      );
+    END;
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO _participant_controls_results VALUES ('D02B In-scope non-host Contact Player person invite writes nomination semantics', false, 'exception: ' || SQLERRM, v_mid);
+    INSERT INTO _participant_controls_results VALUES ('D02B Non-host unlinked Contact Player person invite is rejected', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
   BEGIN
@@ -812,7 +821,18 @@ BEGIN
 
     PERFORM set_config('request.jwt.claims', json_build_object('sub', P_UID::text, 'role', 'authenticated')::text, true);
     SELECT * INTO v_guest FROM public.rpc_roster_guest_create('TR template D02C guest', NULL, NULL, 'participant-controls-template');
-    SELECT * INTO v_mp FROM public.rpc_match_nominate_guest(v_mid, v_guest.id);
+
+    INSERT INTO public.match_participants (
+      match_id, join_method, guest_id, created_by, created_at, nominated_by,
+      participant_accepted_at, participant_accepted_via, org_approved_at, org_approved_by
+    ) VALUES (
+      v_mid, 'nominated', v_guest.id, P_UID, now(), P_UID,
+      NULL, NULL, NULL, NULL
+    )
+    RETURNING * INTO v_mp;
+
+    PERFORM public.match_participant_reconcile_status(v_mp.id);
+    SELECT * INTO v_mp FROM public.match_participants WHERE id = v_mp.id;
 
     PERFORM set_config('request.jwt.claims', json_build_object('sub', ORG_UID::text, 'role', 'authenticated')::text, true);
     SELECT * INTO v_mp FROM public.rpc_match_org_approve_participant(v_mp.id);
@@ -835,6 +855,78 @@ BEGIN
     );
   EXCEPTION WHEN OTHERS THEN
     INSERT INTO _participant_controls_results VALUES ('D02C Host approval preserves Contact Player nomination source', false, 'exception: ' || SQLERRM, v_mid);
+  END;
+
+  BEGIN
+    SELECT lower(trim(email::text)) INTO v_real_email
+    FROM auth.users
+    WHERE id = REAL_UID;
+
+    IF v_real_email IS NULL THEN
+      RAISE EXCEPTION 'real_email_not_found';
+    END IF;
+
+    INSERT INTO public.matches (
+      organizer_id, status, venue_id, court_ids, match_date, start_time, duration_minutes,
+      game_type, required_count, invitation_scope_group_ids,
+      can_participants_invite_users, can_participants_add_guests, can_participants_manage_participants, created_at
+    ) VALUES (
+      ORG_UID, 'active', CLUB_ID, '{}'::uuid[], current_date, '11:27'::time, 90,
+      'tr_tpl_D02D_linked_contact_non_host_registered_path', 4, ARRAY[SCOPE_GID]::uuid[],
+      true, false, true, now()
+    ) RETURNING id INTO v_mid;
+
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', P_UID::text, 'role', 'authenticated')::text, true);
+    SELECT * INTO v_guest FROM public.rpc_roster_guest_create('TR template D02D linked guest', v_real_email, NULL, 'participant-controls-template');
+
+    UPDATE public.people
+    SET linked_user_id = REAL_UID
+    WHERE person_id = v_guest.person_id;
+
+    INSERT INTO public.identity_links (provider, verified_email, user_id, linked_type, linked_id, linked_by_user_id)
+    VALUES ('email', v_real_email, REAL_UID, 'contact', v_guest.id, REAL_UID)
+    ON CONFLICT (user_id, linked_type, linked_id) DO NOTHING;
+
+    PERFORM public.rpc_match_invite_contact_person(v_mid, v_guest.person_id);
+
+    v_mp := NULL;
+    SELECT * INTO v_mp
+    FROM public.match_participants mp
+    WHERE mp.match_id = v_mid
+      AND mp.user_id = REAL_UID
+      AND mp.removed_at IS NULL
+    ORDER BY mp.created_at DESC
+    LIMIT 1;
+
+    SELECT count(*) INTO v_cnt
+    FROM public.match_participants mp
+    WHERE mp.match_id = v_mid
+      AND mp.removed_at IS NULL
+      AND (
+        mp.user_id = REAL_UID
+        OR mp.guest_id = v_guest.id
+      );
+
+    INSERT INTO _participant_controls_results
+    VALUES (
+      'D02D Non-host linked Contact Person uses registered-user path',
+      v_mp.id IS NOT NULL
+      AND v_cnt = 1
+      AND v_mp.user_id = REAL_UID
+      AND v_mp.guest_id IS NULL
+      AND v_mp.join_method::text = 'nominated'
+      AND v_mp.nominated_by = P_UID
+      AND v_mp.org_approved_at IS NULL,
+      'active_rows=' || v_cnt::text
+      || ', user_id=' || coalesce(v_mp.user_id::text, 'NULL')
+      || ', guest_id=' || coalesce(v_mp.guest_id::text, 'NULL')
+      || ', join_method=' || coalesce(v_mp.join_method::text, 'NULL')
+      || ', nominated_by=' || coalesce(v_mp.nominated_by::text, 'NULL')
+      || ', org_approved_at=' || coalesce(v_mp.org_approved_at::text, 'NULL'),
+      v_mid
+    );
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _participant_controls_results VALUES ('D02D Non-host linked Contact Person uses registered-user path', false, 'exception: ' || SQLERRM, v_mid);
   END;
 
   BEGIN
