@@ -34,11 +34,28 @@ type PublicJoinSmsContext = {
 }
 
 function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
 
 function getTokenFingerprint(token: string): string {
   return createHash('sha256').update(token).digest('hex').slice(0, 12)
+}
+
+function getSupabaseRuntimeInfo(): { supabaseHost: string; supabaseProjectRef: string | null } {
+  const configuredUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!configuredUrl) {
+    return { supabaseHost: 'missing', supabaseProjectRef: null }
+  }
+
+  try {
+    const host = new URL(configuredUrl).host
+    return {
+      supabaseHost: host,
+      supabaseProjectRef: host.endsWith('.supabase.co') ? host.split('.')[0] ?? null : null,
+    }
+  } catch {
+    return { supabaseHost: 'invalid-url', supabaseProjectRef: null }
+  }
 }
 
 function formatGameType(value: string | null | undefined): string {
@@ -110,7 +127,18 @@ async function getPublicJoinSmsContext(token: string): Promise<PublicJoinSmsCont
     throw new Error('public_join_sms_context_rpc_failed')
   }
 
-  return ((data ?? []) as PublicJoinSmsContext[])[0] ?? null
+  const rows = (data ?? []) as PublicJoinSmsContext[]
+  const context = rows[0] ?? null
+  if (!context) {
+    console.warn('[j-sms-context] rpc_public_match_signup_sms_context returned no rows', {
+      rpc: 'rpc_public_match_signup_sms_context',
+      tokenFingerprint: getTokenFingerprint(token),
+      rowCount: rows.length,
+      ...getSupabaseRuntimeInfo(),
+    })
+  }
+
+  return context
 }
 
 export default async function PublicJoinSmsPage({ params, searchParams }: Props) {
