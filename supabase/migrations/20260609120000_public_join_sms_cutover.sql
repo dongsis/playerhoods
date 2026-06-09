@@ -175,12 +175,12 @@ begin
   from public.profiles p
   where p.id = v_match.organizer_id;
 
-  update public.public_match_signup_sms_intents
+  update public.public_match_signup_sms_intents i
   set status = 'expired'
-  where match_id = v_match.id
-    and phone_normalized = v_phone
-    and status = 'pending_sms_response'
-    and expires_at < now();
+  where i.match_id = v_match.id
+    and i.phone_normalized = v_phone
+    and i.status = 'pending_sms_response'
+    and i.expires_at < now();
 
   select i.* into v_existing_request
   from public.public_match_signup_sms_intents i
@@ -214,18 +214,18 @@ begin
 
   select * into v_intent
   from public.public_match_signup_sms_intents
-  where match_id = v_match.id
-    and phone_normalized = v_phone
-    and status = 'pending_sms_response'
-    and expires_at > now()
+  where public_match_signup_sms_intents.match_id = v_match.id
+    and public_match_signup_sms_intents.phone_normalized = v_phone
+    and public_match_signup_sms_intents.status = 'pending_sms_response'
+    and public_match_signup_sms_intents.expires_at > now()
   order by created_at desc
   limit 1
   for update;
 
   if found and v_intent.sms_sent_at is not null and v_intent.sms_sent_at > now() - v_sms_cooldown then
-    update public.public_match_signup_sms_intents
+    update public.public_match_signup_sms_intents i
     set display_name = v_display_name
-    where id = v_intent.id
+    where i.id = v_intent.id
     returning * into v_intent;
 
     return query
@@ -260,9 +260,9 @@ begin
 
   if v_link_recent_count >= v_link_cooldown_limit or v_phone_recent_count >= v_phone_cooldown_limit then
     if v_intent.id is not null then
-      update public.public_match_signup_sms_intents
+      update public.public_match_signup_sms_intents i
       set sms_delivery_status = 'throttled'
-      where id = v_intent.id
+      where i.id = v_intent.id
       returning * into v_intent;
     end if;
 
@@ -287,7 +287,7 @@ begin
   v_token_hash := encode(extensions.digest(v_token::text, 'sha256'), 'hex');
 
   if v_intent.id is not null then
-    update public.public_match_signup_sms_intents
+    update public.public_match_signup_sms_intents i
     set
       display_name = v_display_name,
       sms_token = v_token,
@@ -297,7 +297,7 @@ begin
       sms_delivery_error = null,
       expires_at = now() + interval '24 hours',
       status = 'pending_sms_response'
-    where id = v_intent.id
+    where i.id = v_intent.id
     returning * into v_intent;
   else
     insert into public.public_match_signup_sms_intents (
@@ -356,7 +356,7 @@ begin
     raise exception 'invalid_sms_delivery_status';
   end if;
 
-  update public.public_match_signup_sms_intents
+  update public.public_match_signup_sms_intents i
   set
     sms_delivery_status = p_delivery_status,
     sms_delivery_attempt_count = sms_delivery_attempt_count + 1,
@@ -366,7 +366,7 @@ begin
       else sms_delivery_sent_at
     end,
     sms_delivery_error = nullif(btrim(coalesce(p_error, '')), '')
-  where id = p_sms_intent_id;
+  where i.id = p_sms_intent_id;
 end;
 $$;
 
@@ -454,8 +454,8 @@ declare
   v_mp public.match_participants%rowtype;
 begin
   select * into v_intent
-  from public.public_match_signup_sms_intents
-  where id = p_sms_intent_id
+  from public.public_match_signup_sms_intents i
+  where i.id = p_sms_intent_id
   for update;
 
   if not found then
@@ -463,9 +463,9 @@ begin
   end if;
 
   select * into v_match
-  from public.matches
-  where id = v_intent.match_id
-    and status = 'active';
+  from public.matches m
+  where m.id = v_intent.match_id
+    and m.status = 'active';
 
   if not found then
     raise exception 'match_not_active';
@@ -499,9 +499,9 @@ begin
   end if;
 
   if v_intent.expires_at < now() then
-    update public.public_match_signup_sms_intents
+    update public.public_match_signup_sms_intents i
     set status = 'expired'
-    where id = v_intent.id
+    where i.id = v_intent.id
     returning * into v_intent;
 
     return query
@@ -560,7 +560,7 @@ begin
   from public.match_participants
   where id = v_mp.id;
 
-  update public.public_match_signup_sms_intents
+  update public.public_match_signup_sms_intents i
   set
     person_id = v_person_id,
     guest_id = v_guest_id,
@@ -568,7 +568,7 @@ begin
     sms_response_at = coalesce(sms_response_at, now()),
     phone_confirmed_at = coalesce(phone_confirmed_at, now()),
     status = 'request_created'
-  where id = v_intent.id
+  where i.id = v_intent.id
   returning * into v_intent;
 
   return query
@@ -601,8 +601,8 @@ begin
   end;
 
   select id into v_intent_id
-  from public.public_match_signup_sms_intents
-  where sms_token = v_token;
+  from public.public_match_signup_sms_intents i
+  where i.sms_token = v_token;
 
   if v_intent_id is null then
     raise exception 'sms_intent_not_found';
@@ -639,8 +639,8 @@ begin
   end;
 
   select * into v_intent
-  from public.public_match_signup_sms_intents
-  where sms_token = v_token
+  from public.public_match_signup_sms_intents i
+  where i.sms_token = v_token
   for update;
 
   if not found then
@@ -648,11 +648,11 @@ begin
   end if;
 
   if v_intent.status = 'pending_sms_response' then
-    update public.public_match_signup_sms_intents
+    update public.public_match_signup_sms_intents i
     set
       sms_response_at = coalesce(sms_response_at, now()),
       status = case when expires_at < now() then 'expired' else 'declined_by_guest' end
-    where id = v_intent.id
+    where i.id = v_intent.id
     returning * into v_intent;
   end if;
 
@@ -681,11 +681,11 @@ begin
     return 'We could not find a pending public join text for this number. Open the latest PlayerHoods link or ask the host for a fresh share link.';
   end if;
 
-  update public.public_match_signup_sms_intents
+  update public.public_match_signup_sms_intents i
   set status = 'expired'
-  where phone_normalized = v_phone
-    and status = 'pending_sms_response'
-    and expires_at < now();
+  where i.phone_normalized = v_phone
+    and i.status = 'pending_sms_response'
+    and i.expires_at < now();
 
   select count(*)::integer into v_count
   from public.public_match_signup_sms_intents i
@@ -1356,16 +1356,22 @@ comment on function public.rpc_public_match_signup_decline_sms(text) is
 
 revoke all on function public.rpc_public_match_signup_start_sms(uuid, text, text) from public, anon, authenticated;
 revoke all on function public.rpc_public_match_signup_record_sms_delivery_result(uuid, text, text) from public, anon, authenticated;
+revoke all on function public.rpc_public_match_signup_sms_context(text) from public;
 revoke all on function public.rpc_public_match_signup_confirm_sms(text) from public, anon, authenticated;
 revoke all on function public.rpc_public_match_signup_decline_sms(text) from public, anon, authenticated;
 revoke all on function public.public_match_signup_sms_confirm_intent(uuid) from public, anon, authenticated;
+revoke all on function public.rpc_public_match_signup_sms_reply_handle(text, text) from public, anon, authenticated;
+revoke all on function public.rpc_sms_reply_handle(text, text) from public;
+revoke all on function public.rpc_public_match_signup_participant_metadata(uuid) from public, anon;
+revoke all on function public.notification_host_offline_confirmation_payload(uuid, uuid) from public, anon;
+revoke all on function public.rpc_match_org_approve_participant(uuid) from public, anon;
 grant execute on function public.rpc_public_match_signup_start_sms(uuid, text, text) to service_role;
 grant execute on function public.rpc_public_match_signup_record_sms_delivery_result(uuid, text, text) to service_role;
 grant execute on function public.rpc_public_match_signup_confirm_sms(text) to service_role;
 grant execute on function public.rpc_public_match_signup_decline_sms(text) to service_role;
 grant execute on function public.public_match_signup_sms_confirm_intent(uuid) to service_role;
 grant execute on function public.rpc_public_match_signup_sms_context(text) to anon, authenticated, service_role;
-grant execute on function public.rpc_public_match_signup_sms_reply_handle(text, text) to anon, authenticated, service_role;
+grant execute on function public.rpc_public_match_signup_sms_reply_handle(text, text) to service_role;
 grant execute on function public.rpc_sms_reply_handle(text, text) to anon, authenticated, service_role;
 grant execute on function public.rpc_public_match_signup_participant_metadata(uuid) to authenticated, service_role;
 grant execute on function public.notification_host_offline_confirmation_payload(uuid, uuid) to authenticated, service_role;

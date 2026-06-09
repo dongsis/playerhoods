@@ -42,6 +42,25 @@ DECLARE
   v_metadata record;
   v_delivery_count integer;
   v_magic_path text;
+  v_anon_sms_intent_select_allowed boolean;
+  v_auth_sms_intent_select_allowed boolean;
+  v_anon_start_sms_allowed boolean;
+  v_auth_start_sms_allowed boolean;
+  v_service_start_sms_allowed boolean;
+  v_anon_sms_context_allowed boolean;
+  v_auth_sms_context_allowed boolean;
+  v_service_sms_context_allowed boolean;
+  v_anon_confirm_sms_allowed boolean;
+  v_auth_confirm_sms_allowed boolean;
+  v_service_confirm_sms_allowed boolean;
+  v_anon_decline_sms_allowed boolean;
+  v_auth_decline_sms_allowed boolean;
+  v_service_decline_sms_allowed boolean;
+  v_anon_sms_reply_allowed boolean;
+  v_auth_sms_reply_allowed boolean;
+  v_service_sms_reply_allowed boolean;
+  v_anon_sms_reply_helper_allowed boolean;
+  v_service_sms_reply_helper_allowed boolean;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _public_join_sms_results(
     test_name text,
@@ -128,6 +147,96 @@ BEGIN
   SELECT * INTO v_expired_link FROM public.rpc_public_match_signup_link_get_or_create(v_match_expired) LIMIT 1;
   SELECT * INTO v_yes_link FROM public.rpc_public_match_signup_link_get_or_create(v_match_yes) LIMIT 1;
   SELECT * INTO v_registered_link FROM public.rpc_public_match_signup_link_get_or_create(v_match_registered) LIMIT 1;
+
+  SELECT has_table_privilege('anon', 'public.public_match_signup_sms_intents', 'select')
+  INTO v_anon_sms_intent_select_allowed;
+
+  SELECT has_table_privilege('authenticated', 'public.public_match_signup_sms_intents', 'select')
+  INTO v_auth_sms_intent_select_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_start_sms(uuid,text,text)', 'execute')
+  INTO v_anon_start_sms_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_start_sms(uuid,text,text)', 'execute')
+  INTO v_auth_start_sms_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_start_sms(uuid,text,text)', 'execute')
+  INTO v_service_start_sms_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_sms_context(text)', 'execute')
+  INTO v_anon_sms_context_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_sms_context(text)', 'execute')
+  INTO v_auth_sms_context_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_sms_context(text)', 'execute')
+  INTO v_service_sms_context_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_confirm_sms(text)', 'execute')
+  INTO v_anon_confirm_sms_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_confirm_sms(text)', 'execute')
+  INTO v_auth_confirm_sms_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_confirm_sms(text)', 'execute')
+  INTO v_service_confirm_sms_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_decline_sms(text)', 'execute')
+  INTO v_anon_decline_sms_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_public_match_signup_decline_sms(text)', 'execute')
+  INTO v_auth_decline_sms_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_decline_sms(text)', 'execute')
+  INTO v_service_decline_sms_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_sms_reply_handle(text,text)', 'execute')
+  INTO v_anon_sms_reply_allowed;
+
+  SELECT has_function_privilege('authenticated', 'public.rpc_sms_reply_handle(text,text)', 'execute')
+  INTO v_auth_sms_reply_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_sms_reply_handle(text,text)', 'execute')
+  INTO v_service_sms_reply_allowed;
+
+  SELECT has_function_privilege('anon', 'public.rpc_public_match_signup_sms_reply_handle(text,text)', 'execute')
+  INTO v_anon_sms_reply_helper_allowed;
+
+  SELECT has_function_privilege('service_role', 'public.rpc_public_match_signup_sms_reply_handle(text,text)', 'execute')
+  INTO v_service_sms_reply_helper_allowed;
+
+  INSERT INTO _public_join_sms_results VALUES (
+    'public join SMS grants match app calling model',
+    v_anon_sms_intent_select_allowed = false
+      AND v_auth_sms_intent_select_allowed = false
+      AND v_anon_start_sms_allowed = false
+      AND v_auth_start_sms_allowed = false
+      AND v_service_start_sms_allowed = true
+      AND v_anon_sms_context_allowed = true
+      AND v_auth_sms_context_allowed = true
+      AND v_service_sms_context_allowed = true
+      AND v_anon_confirm_sms_allowed = false
+      AND v_auth_confirm_sms_allowed = false
+      AND v_service_confirm_sms_allowed = true
+      AND v_anon_decline_sms_allowed = false
+      AND v_auth_decline_sms_allowed = false
+      AND v_service_decline_sms_allowed = true
+      AND v_anon_sms_reply_allowed = true
+      AND v_auth_sms_reply_allowed = true
+      AND v_service_sms_reply_allowed = true
+      AND v_anon_sms_reply_helper_allowed = false
+      AND v_service_sms_reply_helper_allowed = true,
+    'intent_select_anon=' || coalesce(v_anon_sms_intent_select_allowed::text, 'null')
+      || ', intent_select_auth=' || coalesce(v_auth_sms_intent_select_allowed::text, 'null')
+      || ', start_anon=' || coalesce(v_anon_start_sms_allowed::text, 'null')
+      || ', start_auth=' || coalesce(v_auth_start_sms_allowed::text, 'null')
+      || ', start_service=' || coalesce(v_service_start_sms_allowed::text, 'null')
+      || ', context_anon=' || coalesce(v_anon_sms_context_allowed::text, 'null')
+      || ', confirm_anon=' || coalesce(v_anon_confirm_sms_allowed::text, 'null')
+      || ', decline_anon=' || coalesce(v_anon_decline_sms_allowed::text, 'null')
+      || ', reply_anon=' || coalesce(v_anon_sms_reply_allowed::text, 'null')
+      || ', helper_anon=' || coalesce(v_anon_sms_reply_helper_allowed::text, 'null')
+  );
 
   SELECT * INTO v_start
   FROM public.rpc_public_match_signup_start_sms(v_link.public_token, 'Annie Chen', '+1 (416) 555-0199')
