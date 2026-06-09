@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { createSupabasePublicServerClient } from '@/lib/supabase/server'
 import { declinePublicJoinSmsSpotAction, requestPublicJoinSmsSpotAction } from './actions'
@@ -144,32 +143,36 @@ async function getPublicJoinSmsContext(token: string): Promise<PublicJoinSmsCont
 export default async function PublicJoinSmsPage({ params, searchParams }: Props) {
   const { token } = await params
   const pageParams = await searchParams
-  if (!isUuid(token)) notFound()
+  const hasValidTokenShape = isUuid(token)
 
-  const context = await getPublicJoinSmsContext(token)
-  if (!context) notFound()
+  const context = hasValidTokenShape ? await getPublicJoinSmsContext(token) : null
+  const linkUnavailable = !hasValidTokenShape || !context
 
-  const requestAction = requestPublicJoinSmsSpotAction.bind(null, token)
-  const declineAction = declinePublicJoinSmsSpotAction.bind(null, token)
-  const matchType = formatGameType(context.game_type ?? context.sport_name)
-  const matchDate = formatDate(context.match_date)
-  const matchTime = formatTime(context.start_time)
+  const requestAction = context ? requestPublicJoinSmsSpotAction.bind(null, token) : null
+  const declineAction = context ? declinePublicJoinSmsSpotAction.bind(null, token) : null
+  const matchType = context ? formatGameType(context.game_type ?? context.sport_name) : null
+  const matchDate = context ? formatDate(context.match_date) : null
+  const matchTime = context ? formatTime(context.start_time) : null
   const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' · ') || 'Time to be confirmed'
-  const venueName = context.venue_name ?? 'Venue to be confirmed'
-  const hostName = context.host_display_name ?? 'Host'
+  const venueName = context?.venue_name ?? 'Venue to be confirmed'
+  const hostName = context?.host_display_name ?? 'Host'
   const pageError = getErrorMessage(pageParams.error)
-  const requestSent = pageParams.notice === 'request-sent' || context.status === 'request_created'
-  const declined = pageParams.notice === 'declined' || context.status === 'declined_by_guest'
-  const expired = pageParams.error === 'expired' || context.status === 'expired' || context.match_status !== 'active'
-  const canRespond = context.status === 'pending_sms_response' && !expired && !requestSent && !declined
-  const title = requestSent
+  const requestSent = Boolean(context && (pageParams.notice === 'request-sent' || context.status === 'request_created'))
+  const declined = Boolean(context && (pageParams.notice === 'declined' || context.status === 'declined_by_guest'))
+  const expired = Boolean(context && (pageParams.error === 'expired' || context.status === 'expired' || context.match_status !== 'active'))
+  const canRespond = Boolean(context && context.status === 'pending_sms_response' && !expired && !requestSent && !declined)
+  const title = linkUnavailable
+    ? 'This link is no longer available'
+    : requestSent
     ? 'Request sent'
     : declined
       ? 'No problem'
       : expired
         ? 'This text link expired'
         : 'Request to join this match'
-  const subtext = requestSent
+  const subtext = linkUnavailable
+    ? 'This match request link may have expired or already been used. Open the match link again if you still want to request a spot.'
+    : requestSent
     ? "The host can now review your request. If you're added to the lineup, we'll text you."
     : declined
       ? "We won't send this request to the host."
@@ -323,24 +326,26 @@ export default async function PublicJoinSmsPage({ params, searchParams }: Props)
           <h1 className="public-sms-title">{title}</h1>
           <p className="public-sms-subtext">{subtext}</p>
 
-          <div className="public-sms-summary" aria-label="Match summary">
-            <div className="public-sms-summary-heading">Match details</div>
-            <div className="public-sms-summary-type">{matchType}</div>
-            <div className="public-sms-summary-line">{venueName}</div>
-            <div className="public-sms-summary-line">{matchDateTime}</div>
-            <div className="public-sms-summary-line">Hosted by {hostName}</div>
-          </div>
+          {context ? (
+            <div className="public-sms-summary" aria-label="Match summary">
+              <div className="public-sms-summary-heading">Match details</div>
+              <div className="public-sms-summary-type">{matchType}</div>
+              <div className="public-sms-summary-line">{venueName}</div>
+              <div className="public-sms-summary-line">{matchDateTime}</div>
+              <div className="public-sms-summary-line">Hosted by {hostName}</div>
+            </div>
+          ) : null}
 
           {pageError ? <p className="public-sms-message error">{pageError}</p> : null}
 
           {canRespond ? (
             <div className="public-sms-actions">
-              <form action={requestAction}>
+              <form action={requestAction!}>
                 <button type="submit" className="public-sms-button">
                   Request a spot
                 </button>
               </form>
-              <form action={declineAction}>
+              <form action={declineAction!}>
                 <button type="submit" className="public-sms-button public-sms-button-secondary">
                   Not This Time
                 </button>
