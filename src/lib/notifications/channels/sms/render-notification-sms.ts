@@ -29,6 +29,17 @@ type MatchSmsData = MatchInfo & {
   venueTimezone?: string | null
 }
 
+type PublicJoinRequestSmsData = {
+  hostDisplayName: string
+  gameType?: string | null
+  sportName?: string | null
+  matchDate?: string | null
+  startTime?: string | null
+  venueName?: string | null
+  smsJoinPath: string
+  siteUrl: string
+}
+
 function normalizeBaseUrl(siteUrl: string | null | undefined): string {
   if (!siteUrl || siteUrl === 'undefined') return getSiteOrigin()
 
@@ -210,6 +221,23 @@ export function renderMatchInviteSms(match: MatchSmsData, organizerName = 'Someo
     replyText,
     `Details: ${matchLink(match)}`,
   ].filter((line): line is string => line != null).join('\n')
+}
+
+export function renderPublicJoinRequestSms(data: PublicJoinRequestSmsData): string {
+  const baseUrl = normalizeBaseUrl(data.siteUrl)
+  const path = data.smsJoinPath.startsWith('/') ? data.smsJoinPath : `/${data.smsJoinPath}`
+  const detailsUrl = `${baseUrl}${path}`
+  const activity = formatActivityLabel(data.sportName, data.gameType)
+  const venue = data.venueName?.trim() || 'TBD'
+  const dateTime = formatSmsDateTime(data.matchDate, data.startTime)
+  const hostName = data.hostDisplayName?.trim() || 'Someone'
+
+  return [
+    `PlayerHoods: ${hostName} has a ${activity} at ${venue}, ${dateTime}.`,
+    '',
+    'Reply JOIN to request a spot, or NO if not this time.',
+    `Details: ${detailsUrl}`,
+  ].join('\n')
 }
 
 export function renderConfirmedLineupSms(match: MatchSmsData): string {

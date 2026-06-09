@@ -1,17 +1,16 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
-import type { Database } from '@/lib/types/database'
-import { sendPublicMatchSignupVerificationEmail } from '@/lib/notifications/workers/process-queued-notification-deliveries'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from '@/lib/supabase/server'
+import { renderPublicJoinRequestSms } from '@/lib/notifications/channels/sms/render-notification-sms'
+import { sendSms } from '@/lib/sms/send'
 
-type PublicSignupStartRow = {
-  signup_id: string | null
+type PublicSignupSmsStartRow = {
+  sms_intent_id: string | null
   status: string | null
-  verification_required: boolean | null
-  verification_token: string | null
-  email_normalized: string | null
+  sms_send_required: boolean | null
+  sms_token: string | null
+  phone_normalized: string | null
   recipient_name: string | null
   match_id: string
   game_type: string | null
@@ -19,48 +18,21 @@ type PublicSignupStartRow = {
   match_date: string | null
   start_time: string | null
   venue_name: string | null
+  host_display_name: string | null
 }
 
-type PublicSignupLogStage =
-  | 'service_client_not_configured'
-  | 'rpc_start_failed'
-  | 'email_delivery_disabled'
-  | 'email_template_failed'
-  | 'email_send_failed'
-  | 'delivery_result_record_failed'
-  | 'unexpected_runtime_error'
-
-type PublicSignupSafeErrorCode =
-  | 'service_client_not_configured'
-  | 'rpc_start_failed'
-  | 'display_name_required'
-  | 'email_required'
-  | 'email_invalid'
-  | 'signup_link_not_found'
-  | 'match_not_active'
-  | 'verification_email_unavailable'
-  | 'email_send_failed'
-  | 'email_template_render_failed'
-  | 'delivery_result_record_failed'
-  | 'unexpected_public_signup_start_error'
-
-type PublicSignupActionError = Error & {
-  safeCode?: PublicSignupSafeErrorCode
+function redirectToSignup(token: string, params: Record<string, string>): never {
+  const query = new URLSearchParams(params)
+  redirect(`/join/${encodeURIComponent(token)}?${query.toString()}`)
 }
 
-function createPublicSignupMutationClient() {
-  const serverUrl = process.env.SUPABASE_SERVER_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serverUrl || !serviceKey) {
-    throw new Error('public_signup_service_client_not_configured')
-  }
-  return createClient<Database>(serverUrl, serviceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  })
+function redirectToVerify(token: string, params: Record<string, string>): never {
+  const query = new URLSearchParams(params)
+  redirect(`/join/${encodeURIComponent(token)}/verify?${query.toString()}`)
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
 
 function getSignupErrorCode(error: unknown): string {
@@ -72,13 +44,14 @@ function getSignupErrorCode(error: unknown): string {
       ? (error as { message: string }).message
       : ''
 
-  if (message.includes('public_signup_email_delivery_unavailable')) return 'email-delivery-unavailable'
-  if (message.includes('public_signup_email_delivery_failed')) return 'email-delivery-unavailable'
   if (message.includes('display_name_required')) return 'name-required'
-  if (message.includes('email_required')) return 'contact-required'
-  if (message.includes('email_invalid')) return 'email-invalid'
+  if (message.includes('phone_required')) return 'phone-required'
+  if (message.includes('phone_invalid')) return 'phone-invalid'
+  if (message.includes('sms_opted_out')) return 'sms-opted-out'
+  if (message.includes('sms_throttled')) return 'request-throttled'
   if (message.includes('signup_link_not_found')) return 'link-not-found'
   if (message.includes('match_not_active')) return 'match-not-active'
+  if (message.includes('supabase_service_role_client_not_configured')) return 'sms-delivery-unavailable'
   return 'failed'
 }
 
@@ -98,97 +71,6 @@ function getRegisteredRequestErrorCode(error: unknown): string {
   return 'failed'
 }
 
-function createPublicSignupActionError(message: string, safeCode: PublicSignupSafeErrorCode): PublicSignupActionError {
-  const error = new Error(message) as PublicSignupActionError
-  error.safeCode = safeCode
-  return error
-}
-
-function getPublicSignupSafeErrorCode(error: unknown): PublicSignupSafeErrorCode | null {
-  if (
-    error &&
-    typeof error === 'object' &&
-    'safeCode' in error &&
-    typeof (error as { safeCode?: unknown }).safeCode === 'string'
-  ) {
-    const safeCode = (error as { safeCode: string }).safeCode
-    switch (safeCode) {
-      case 'service_client_not_configured':
-      case 'rpc_start_failed':
-      case 'display_name_required':
-      case 'email_required':
-      case 'email_invalid':
-      case 'signup_link_not_found':
-      case 'match_not_active':
-      case 'verification_email_unavailable':
-      case 'email_send_failed':
-      case 'email_template_render_failed':
-      case 'delivery_result_record_failed':
-      case 'unexpected_public_signup_start_error':
-        return safeCode
-      default:
-        return null
-    }
-  }
-
-  if (
-    error &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof (error as { message?: unknown }).message === 'string'
-  ) {
-    const message = (error as { message: string }).message
-    if (message.includes('public_signup_service_client_not_configured')) return 'service_client_not_configured'
-    if (message.includes('public_signup_email_delivery_unavailable')) return 'verification_email_unavailable'
-    if (message.includes('public_signup_email_delivery_failed')) return 'email_send_failed'
-    if (message.includes('display_name_required')) return 'display_name_required'
-    if (message.includes('email_required')) return 'email_required'
-    if (message.includes('email_invalid')) return 'email_invalid'
-    if (message.includes('signup_link_not_found')) return 'signup_link_not_found'
-    if (message.includes('match_not_active')) return 'match_not_active'
-  }
-
-  return null
-}
-
-function logPublicSignupActionFailure(
-  stage: PublicSignupLogStage,
-  context?: {
-    safeErrorCode?: PublicSignupSafeErrorCode | null
-    matchId?: string | null
-    signupId?: string | null
-    status?: string | null
-    hasError?: boolean
-    isProviderError?: boolean
-  },
-) {
-  console.error('[public-signup] action failed', {
-    stage,
-    operation: 'public_match_signup_start',
-    action: 'startPublicMatchSignupAction',
-    ...(context?.safeErrorCode ? { safe_error_code: context.safeErrorCode } : {}),
-    ...(context?.hasError ? { has_error: true } : {}),
-    ...(context?.isProviderError ? { is_provider_error: true } : {}),
-    ...(context?.matchId ? { match_id: context.matchId } : {}),
-    ...(context?.signupId ? { signup_id: context.signupId } : {}),
-    ...(context?.status ? { status: context.status } : {}),
-  })
-}
-
-function redirectToSignup(token: string, params: Record<string, string>): never {
-  const query = new URLSearchParams(params)
-  redirect(`/join/${encodeURIComponent(token)}?${query.toString()}`)
-}
-
-function redirectToVerify(token: string, params: Record<string, string>): never {
-  const query = new URLSearchParams(params)
-  redirect(`/join/${encodeURIComponent(token)}/verify?${query.toString()}`)
-}
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-}
-
 function getVerifyErrorCode(error: unknown): string {
   const message =
     error &&
@@ -205,219 +87,101 @@ function getVerifyErrorCode(error: unknown): string {
   return 'failed'
 }
 
-function publicSignupVerificationEmailDeliveryEnabled(): boolean {
-  const configured = process.env.PUBLIC_MATCH_SIGNUP_VERIFICATION_EMAIL_DELIVERY?.trim().toLowerCase()
-  if (configured) {
-    return ['1', 'true', 'enabled', 'on'].includes(configured)
+async function recordSmsDeliveryResult(
+  smsIntentId: string,
+  deliveryStatus: 'sent' | 'failed' | 'skipped',
+  error: string | null,
+) {
+  try {
+    const supabase = createSupabaseServiceRoleClient()
+    const { error: auditError } = await supabase.rpc('rpc_public_match_signup_record_sms_delivery_result', {
+      p_sms_intent_id: smsIntentId,
+      p_delivery_status: deliveryStatus,
+      p_error: error,
+    })
+    if (auditError) throw auditError
+  } catch (auditError) {
+    console.error('[public-signup-sms] delivery result audit failed', {
+      sms_intent_id: smsIntentId,
+      delivery_status: deliveryStatus,
+      has_error: true,
+      error: auditError instanceof Error ? auditError.message : String(auditError),
+    })
   }
-  if (process.env.VERCEL_ENV) {
-    return process.env.VERCEL_ENV === 'production'
-  }
-  return false
 }
 
 export async function startPublicMatchSignupAction(token: string, formData: FormData): Promise<void> {
   const displayName = String(formData.get('display_name') ?? '').trim()
-  const email = String(formData.get('email') ?? '').trim()
   const phone = String(formData.get('phone') ?? '').trim()
-  const marketingOptIn = formData.get('marketing_email_opt_in') === 'on'
-  let notice = 'request-visible'
-  let supabase: ReturnType<typeof createPublicSignupMutationClient>
 
-  if (!email && !phone) {
-    redirectToSignup(token, { error: 'contact-required' })
+  if (!phone) {
+    redirectToSignup(token, { error: 'phone-required' })
   }
 
-  if (!email && phone) {
-    redirectToSignup(token, { error: 'sms-coming-next' })
-  }
+  let signup: PublicSignupSmsStartRow | null = null
 
   try {
-    supabase = createPublicSignupMutationClient()
-  } catch (error) {
-    logPublicSignupActionFailure('service_client_not_configured', {
-      safeErrorCode: getPublicSignupSafeErrorCode(error) ?? 'service_client_not_configured',
-      hasError: true,
-    })
-    redirectToSignup(token, { error: getSignupErrorCode(error) })
-  }
-
-  let data: unknown
-  try {
-    const result = await supabase.rpc('rpc_public_match_signup_start', {
+    const supabase = createSupabaseServiceRoleClient()
+    const { data, error } = await supabase.rpc('rpc_public_match_signup_start_sms', {
       p_public_token: token,
       p_display_name: displayName,
-      p_email: email,
-      p_phone: phone || null,
-      p_marketing_email_opt_in: marketingOptIn,
+      p_phone: phone,
     })
-
-    if (result.error) {
-      throw result.error
-    }
-    data = result.data
+    if (error) throw error
+    signup = Array.isArray(data) ? (data[0] as PublicSignupSmsStartRow | undefined) ?? null : null
   } catch (error) {
-    logPublicSignupActionFailure('rpc_start_failed', {
-      safeErrorCode: getPublicSignupSafeErrorCode(error) ?? 'rpc_start_failed',
-      hasError: true,
+    console.error('[public-signup-sms] start failed', {
+      safe_error_code: getSignupErrorCode(error),
+      has_error: true,
     })
     redirectToSignup(token, { error: getSignupErrorCode(error) })
   }
 
-  const signup = Array.isArray(data) ? data[0] as PublicSignupStartRow | undefined : null
-  const status = signup?.status ?? null
-  const verificationRequired = signup?.verification_required === true
-  const isSoftThrottled =
-    status === 'verification_sent' &&
-    !verificationRequired &&
-    !signup?.signup_id &&
-    !signup?.email_normalized
-
-  if (status === 'already_verified') {
-    notice = 'already-submitted'
+  if (!signup) {
+    redirectToSignup(token, { error: 'failed' })
   }
 
-  if (isSoftThrottled) {
+  if (signup.status === 'already_requested') {
+    redirectToSignup(token, { notice: 'request-sent' })
+  }
+
+  if (signup.status === 'sms_throttled') {
     redirectToSignup(token, { error: 'request-throttled' })
   }
 
-  if (
-    verificationRequired &&
-    signup?.signup_id &&
-    signup?.email_normalized &&
-    signup?.verification_token
-  ) {
-    let deliveryStatus: 'sent' | 'failed' | 'skipped' = 'skipped'
-    let deliveryError: string | null = 'delivery_disabled'
-
-    if (!publicSignupVerificationEmailDeliveryEnabled()) {
-      logPublicSignupActionFailure('email_delivery_disabled', {
-        safeErrorCode: 'verification_email_unavailable',
-        matchId: signup.match_id,
-        signupId: signup.signup_id,
-        status,
-      })
-      try {
-        const { error: deliveryAuditError } = await supabase.rpc('rpc_public_match_signup_record_delivery_result', {
-          p_signup_id: signup.signup_id,
-          p_delivery_status: deliveryStatus,
-          p_error: deliveryError,
-        })
-        if (deliveryAuditError) {
-          throw deliveryAuditError
-        }
-      } catch (auditError) {
-        logPublicSignupActionFailure('delivery_result_record_failed', {
-          safeErrorCode: getPublicSignupSafeErrorCode(auditError) ?? 'delivery_result_record_failed',
-          hasError: true,
-          matchId: signup.match_id,
-          signupId: signup.signup_id,
-          status,
-        })
-      }
-      redirectToSignup(token, { error: getSignupErrorCode(new Error('public_signup_email_delivery_unavailable')) })
+  if (signup.sms_send_required) {
+    if (!signup.sms_intent_id || !signup.sms_token || !signup.phone_normalized) {
+      redirectToSignup(token, { error: 'sms-delivery-unavailable' })
     }
 
-    try {
-      const deliveryResult = await sendPublicMatchSignupVerificationEmail({
-        destination: signup.email_normalized,
-        recipientName: signup.recipient_name ?? displayName,
-        publicToken: token,
-        signupId: signup.signup_id,
-        verificationToken: signup.verification_token,
-        matchInfo: {
-          matchId: signup.match_id,
-          gameType: signup.game_type ?? signup.sport_name ?? 'Match',
-          matchDate: signup.match_date ?? null,
-          startTime: signup.start_time ?? null,
-          venueName: signup.venue_name ?? null,
-          siteUrl: '',
-        },
-      })
-      deliveryStatus = deliveryResult.ok ? 'sent' : 'failed'
-      deliveryError = deliveryResult.ok ? null : 'email_send_failed'
-      if (!deliveryResult.ok) {
-        logPublicSignupActionFailure('email_send_failed', {
-          safeErrorCode: 'email_send_failed',
-          hasError: true,
-          isProviderError: true,
-          matchId: signup.match_id,
-          signupId: signup.signup_id,
-          status,
-        })
-        throw createPublicSignupActionError('public_signup_email_delivery_failed', 'email_send_failed')
-      }
-    } catch (error) {
-      const safeErrorCode = getPublicSignupSafeErrorCode(error) ?? 'email_template_render_failed'
-      deliveryStatus = 'failed'
-      deliveryError = safeErrorCode === 'email_send_failed' ? 'email_send_failed' : 'email_template_render_failed'
-
-      if (safeErrorCode !== 'email_send_failed') {
-        logPublicSignupActionFailure('email_template_failed', {
-          safeErrorCode,
-          hasError: true,
-          matchId: signup.match_id,
-          signupId: signup.signup_id,
-          status,
-        })
-      }
-
-      try {
-        const { error: deliveryAuditError } = await supabase.rpc('rpc_public_match_signup_record_delivery_result', {
-          p_signup_id: signup.signup_id,
-          p_delivery_status: deliveryStatus,
-          p_error: deliveryError,
-        })
-        if (deliveryAuditError) {
-          throw deliveryAuditError
-        }
-      } catch (auditError) {
-        logPublicSignupActionFailure('delivery_result_record_failed', {
-          safeErrorCode: getPublicSignupSafeErrorCode(auditError) ?? 'delivery_result_record_failed',
-          hasError: true,
-          matchId: signup.match_id,
-          signupId: signup.signup_id,
-          status,
-        })
-      }
-
-      redirectToSignup(token, { error: 'email-delivery-unavailable' })
-    }
-
-    try {
-      const { error: deliveryAuditError } = await supabase.rpc('rpc_public_match_signup_record_delivery_result', {
-        p_signup_id: signup.signup_id,
-        p_delivery_status: deliveryStatus,
-        p_error: deliveryError,
-      })
-      if (deliveryAuditError) {
-        throw deliveryAuditError
-      }
-    } catch (auditError) {
-      logPublicSignupActionFailure('delivery_result_record_failed', {
-        safeErrorCode: getPublicSignupSafeErrorCode(auditError) ?? 'delivery_result_record_failed',
-        hasError: true,
-        matchId: signup.match_id,
-        signupId: signup.signup_id,
-        status,
-      })
-    }
-  } else if (verificationRequired) {
-    const payloadError = createPublicSignupActionError(
-      'public_signup_email_delivery_failed',
-      'unexpected_public_signup_start_error',
-    )
-    logPublicSignupActionFailure('unexpected_runtime_error', {
-      safeErrorCode: getPublicSignupSafeErrorCode(payloadError) ?? 'unexpected_public_signup_start_error',
-      hasError: true,
-      matchId: signup?.match_id,
-      signupId: signup?.signup_id,
-      status,
+    const smsBody = renderPublicJoinRequestSms({
+      hostDisplayName: signup.host_display_name ?? 'Someone',
+      gameType: signup.game_type ?? signup.sport_name ?? 'match',
+      sportName: signup.sport_name,
+      matchDate: signup.match_date,
+      startTime: signup.start_time,
+      venueName: signup.venue_name,
+      smsJoinPath: `/j/${signup.sms_token}`,
+      siteUrl: '',
     })
-    redirectToSignup(token, { error: getSignupErrorCode(payloadError) })
+    const smsResult = await sendSms(signup.phone_normalized, smsBody)
+    await recordSmsDeliveryResult(
+      signup.sms_intent_id,
+      smsResult.ok ? 'sent' : 'failed',
+      smsResult.ok ? null : smsResult.error,
+    )
+
+    if (!smsResult.ok) {
+      console.error('[public-signup-sms] send failed', {
+        sms_intent_id: signup.sms_intent_id,
+        match_id: signup.match_id,
+        has_error: true,
+      })
+      redirectToSignup(token, { error: 'sms-delivery-unavailable' })
+    }
   }
 
-  redirectToSignup(token, { notice })
+  redirectToSignup(token, { notice: 'sms-pending' })
 }
 
 export async function requestRegisteredPublicMatchSpotAction(token: string): Promise<void> {
@@ -450,7 +214,7 @@ export async function verifyPublicMatchSignupByLink(
   verificationToken: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const supabase = createPublicSignupMutationClient()
+    const supabase = createSupabaseServiceRoleClient()
     const { data, error } = await supabase.rpc('rpc_public_match_signup_verify', {
       p_public_token: publicToken,
       p_signup_id: signupId,

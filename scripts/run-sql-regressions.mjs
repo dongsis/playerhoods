@@ -124,6 +124,10 @@ const suites = [
     functionName: 'test_runner_issue76_public_match_signup',
   },
   {
+    file: 'tests/test_runner_public_join_sms_cutover.sql',
+    functionName: 'test_runner_public_join_sms_cutover',
+  },
+  {
     file: 'tests/test_runner_issue87_exposed_auth_users_view.sql',
     functionName: 'test_runner_issue87_exposed_auth_users_view',
   },
