@@ -30,6 +30,9 @@ type Props = {
   onClose: () => void
   onCancel: () => void
   onClearError?: () => void
+  showImportSection?: boolean
+  manualSubmitLabel?: string
+  manualSavingLabel?: string
 }
 
 const BENEFITS = [
@@ -119,6 +122,8 @@ function ManualEntryForm({
   onNotesChange,
   onManualSubmit,
   onCancel,
+  manualSubmitLabel = 'Save Contact',
+  manualSavingLabel = 'Saving...',
 }: Pick<Props,
   | 'displayName'
   | 'email'
@@ -132,6 +137,8 @@ function ManualEntryForm({
   | 'onNotesChange'
   | 'onManualSubmit'
   | 'onCancel'
+  | 'manualSubmitLabel'
+  | 'manualSavingLabel'
 >) {
   return (
     <form onSubmit={onManualSubmit} className="grid gap-4">
@@ -182,7 +189,7 @@ function ManualEntryForm({
           disabled={creatingContact}
           className="text-body-main inline-flex min-h-12 flex-1 items-center justify-center rounded-2xl bg-[#0d6efd] px-5 py-3 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7] disabled:cursor-wait disabled:bg-[#94A3B8] sm:flex-none"
         >
-          {creatingContact ? 'Saving...' : 'Save Contact'}
+          {creatingContact ? manualSavingLabel : manualSubmitLabel}
         </button>
         <button
           type="button"
@@ -215,9 +222,12 @@ export function AddMyContactPanel({
   onManualSubmit,
   onClose,
   onCancel,
+  showImportSection = true,
+  manualSubmitLabel = 'Save Contact',
+  manualSavingLabel = 'Saving...',
 }: Props) {
   const titleId = useId()
-  const smartImportAvailable = Boolean(onImportScreenshotContacts)
+  const smartImportAvailable = showImportSection && Boolean(onImportScreenshotContacts)
 
   return (
     <section
@@ -272,43 +282,48 @@ export function AddMyContactPanel({
         ))}
       </div>
 
-      <div className="mt-4 grid gap-4 lg:mt-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-start lg:gap-5">
-        <div>
-          <div className="rounded-[20px] border border-[#D7E2F0] bg-white p-4 sm:p-5">
-            <div>
-              <h4 className="text-lg font-black text-[#0B1F44]">Import from text</h4>
-              <p className="mt-1 text-sm leading-5 text-[#64748B]">
-                Paste names, phones, or emails from chats, contacts, spreadsheets, or notes. Review each draft before saving.
-              </p>
-            </div>
+      <div className={showImportSection ? 'mt-4 grid gap-4 lg:mt-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-start lg:gap-5' : 'mt-4 lg:mt-6'}>
+        {showImportSection ? (
+          <div>
+            <div className="rounded-[20px] border border-[#D7E2F0] bg-white p-4 sm:p-5">
+              <div>
+                <h4 className="text-lg font-black text-[#0B1F44]">Import from text</h4>
+                <p className="mt-1 text-sm leading-5 text-[#64748B]">
+                  Paste names, phones, or emails from chats, contacts, spreadsheets, or notes. Review each draft before saving.
+                </p>
+              </div>
 
-            <div className="mt-3">
-              {smartImportAvailable && onImportScreenshotContacts ? (
-                <ContactScreenshotImportSection
-                  userId={userId}
-                  existingContacts={existingContacts}
-                  onParseScreenshots={onParseScreenshots}
-                  onImportScreenshotContacts={onImportScreenshotContacts}
-                  onImported={onImported}
-                />
-              ) : (
-                <div className="rounded-2xl border border-[#D7E2F0] bg-white p-4">
-                  <p className="text-body-main font-semibold text-[#475569]">
-                    Text import is not available right now.
-                  </p>
-                </div>
-              )}
+              <div className="mt-3">
+                {smartImportAvailable && onImportScreenshotContacts ? (
+                  <ContactScreenshotImportSection
+                    userId={userId}
+                    existingContacts={existingContacts}
+                    onParseScreenshots={onParseScreenshots}
+                    onImportScreenshotContacts={onImportScreenshotContacts}
+                    onImported={onImported}
+                  />
+                ) : (
+                  <div className="rounded-2xl border border-[#D7E2F0] bg-white p-4">
+                    <p className="text-body-main font-semibold text-[#475569]">
+                      Text import is not available right now.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3 py-1 text-[#94A3B8] lg:min-h-[360px] lg:flex-col lg:justify-center lg:py-0">
-          <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-0.5 lg:flex-none" aria-hidden="true" />
-          <span className="inline-flex min-h-7 min-w-7 items-center justify-center rounded-full border border-[#E2E8F0] bg-[#F1F5F9] px-2 text-[10px] font-black tracking-[0.12em] text-[#0B1F44]">
-            OR
-          </span>
-          <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-0.5 lg:flex-none" aria-hidden="true" />
-        </div>
+        ) : null}
+
+        {showImportSection ? (
+          <div className="flex items-center gap-3 py-1 text-[#94A3B8] lg:min-h-[360px] lg:flex-col lg:justify-center lg:py-0">
+            <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-0.5 lg:flex-none" aria-hidden="true" />
+            <span className="inline-flex min-h-7 min-w-7 items-center justify-center rounded-full border border-[#E2E8F0] bg-[#F1F5F9] px-2 text-[10px] font-black tracking-[0.12em] text-[#0B1F44]">
+              OR
+            </span>
+            <span className="h-px flex-1 bg-[#E2E8F0] lg:h-20 lg:w-0.5 lg:flex-none" aria-hidden="true" />
+          </div>
+        ) : null}
 
         <div>
           <div className="rounded-[20px] border border-[#E2E8F0] bg-white p-4 sm:p-5">
@@ -325,6 +340,8 @@ export function AddMyContactPanel({
               onNotesChange={onNotesChange}
               onManualSubmit={onManualSubmit}
               onCancel={onCancel}
+              manualSubmitLabel={manualSubmitLabel}
+              manualSavingLabel={manualSavingLabel}
             />
           </div>
         </div>

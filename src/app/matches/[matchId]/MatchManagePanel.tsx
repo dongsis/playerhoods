@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Avatar } from '@/app/components/Avatar'
 import { ParticipantDetailPanel, type DetailSportProfile } from '@/app/components/ParticipantDetailPanel'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
 import { PlayerProfileDrawer } from '@/app/components/PlayerProfileDrawer'
+import { AddMyContactPanel } from '@/app/dashboard/AddMyContactPanel'
 import { AddPlayersPickerPanel, type AddPlayersCandidate, type AddPlayersMode } from '@/app/matches/AddPlayersPickerPanel'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
@@ -1479,6 +1480,16 @@ export function MatchManagePanel({
     }
   }
 
+  const closeContactComposer = () => {
+    setContactComposerOpen(false)
+    setContactCreateError(null)
+  }
+
+  const handleCreateContactSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void handleCreateContactForMatch()
+  }
+
   const removeCandidates = useMemo<RemoveRowItem[]>(() => {
     if (removeMode === 'confirmed') {
       return confirmedParticipants
@@ -2182,81 +2193,27 @@ export function MatchManagePanel({
       </div>
 
       {contactComposerOpen ? (
-        <form
-          className="space-y-3 rounded-xl border border-[#E2E8F0] bg-white p-3"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleCreateContactForMatch()
-          }}
-        >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="text-label text-slate-500">
-              Name
-              <input
-                type="text"
-                value={contactDisplayName}
-                onChange={(event) => setContactDisplayName(event.target.value)}
-                placeholder="Player's full name"
-                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-            <label className="text-label text-slate-500">
-              Email
-              <input
-                type="email"
-                value={contactEmail}
-                onChange={(event) => setContactEmail(event.target.value)}
-                placeholder="email@example.com"
-                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-            <label className="text-label text-slate-500">
-              Phone
-              <input
-                type="tel"
-                value={contactPhone}
-                onChange={(event) => setContactPhone(event.target.value)}
-                placeholder="+1 234 567 890"
-                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-            <label className="text-label text-slate-500">
-              Notes
-              <input
-                type="text"
-                value={contactNotes}
-                onChange={(event) => setContactNotes(event.target.value)}
-                placeholder="Optional"
-                className="text-body-main mt-1 w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-          </div>
-          {contactCreateError ? (
-            <p className="text-body-sub rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-red-600">
-              {contactCreateError}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setContactComposerOpen(false)
-                setContactCreateError(null)
-              }}
-              disabled={isCreatingContact}
-              className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isCreatingContact}
-              className="text-body-main rounded-xl bg-blue-600 px-4 py-2 font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isCreatingContact ? 'Saving...' : 'Save & Add'}
-            </button>
-          </div>
-        </form>
+        <AddMyContactPanel
+          userId={organizerUserId}
+          existingContacts={[]}
+          onImported={() => undefined}
+          displayName={contactDisplayName}
+          email={contactEmail}
+          phone={contactPhone}
+          notes={contactNotes}
+          creatingContact={isCreatingContact}
+          error={contactCreateError}
+          onDisplayNameChange={setContactDisplayName}
+          onEmailChange={setContactEmail}
+          onPhoneChange={setContactPhone}
+          onNotesChange={setContactNotes}
+          onManualSubmit={handleCreateContactSubmit}
+          onClose={closeContactComposer}
+          onCancel={closeContactComposer}
+          onClearError={() => setContactCreateError(null)}
+          showImportSection={false}
+          manualSubmitLabel="Save & Add"
+        />
       ) : null}
     </div>
   )
