@@ -257,22 +257,24 @@ BEGIN
   v_reply := public.rpc_sms_reply_handle(v_phone, 'HELP');
 
   INSERT INTO _issue61_results VALUES (
-    'HELP copy includes YES NO OUT and DETAILS',
-    position('YES {code}' in v_reply) > 0
-      AND position('NO {code}' in v_reply) > 0
-      AND position('OUT {code}' in v_reply) > 0
-      AND position('DETAILS {code}' in v_reply) > 0,
+    'HELP copy includes YES NO OUT and DETAILS without placeholder',
+    position('YES with your invite code' in v_reply) > 0
+      AND position('NO with your invite code' in v_reply) > 0
+      AND position('OUT with your code' in v_reply) > 0
+      AND position('DETAILS with your code' in v_reply) > 0
+      AND position('{code}' in v_reply) = 0,
     'reply=' || coalesce(v_reply, 'NULL')
   );
 
   v_reply := public.rpc_sms_reply_handle(v_phone, 'WHAT');
 
   INSERT INTO _issue61_results VALUES (
-    'unknown command copy includes YES NO OUT and DETAILS',
-    position('YES {code}' in v_reply) > 0
-      AND position('NO {code}' in v_reply) > 0
-      AND position('OUT {code}' in v_reply) > 0
-      AND position('DETAILS {code}' in v_reply) > 0,
+    'unknown command copy includes YES NO OUT and DETAILS without placeholder',
+    position('YES with your invite code' in v_reply) > 0
+      AND position('NO with your invite code' in v_reply) > 0
+      AND position('OUT with your code' in v_reply) > 0
+      AND position('DETAILS with your code' in v_reply) > 0
+      AND position('{code}' in v_reply) = 0,
     'reply=' || coalesce(v_reply, 'NULL')
   );
 

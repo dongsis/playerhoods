@@ -18,15 +18,21 @@ DECLARE
   v_match_expired uuid := '91000000-0000-0000-0000-000000000005'::uuid;
   v_match_yes uuid := '91000000-0000-0000-0000-000000000006'::uuid;
   v_match_registered uuid := '91000000-0000-0000-0000-000000000007'::uuid;
+  v_match_overlap_public uuid := '91000000-0000-0000-0000-000000000009'::uuid;
+  v_match_overlap_invite uuid := '91000000-0000-0000-0000-000000000010'::uuid;
+  v_overlap_direct_participant uuid := '91000000-0000-0000-0000-000000000011'::uuid;
+  v_overlap_direct_guest uuid := '91000000-0000-0000-0000-000000000012'::uuid;
   v_phone text := '4165550199';
   v_decline_phone text := '4165550200';
   v_expired_phone text := '4165550201';
   v_yes_phone text := '4165550202';
+  v_overlap_phone text := '4165550203';
   v_link record;
   v_decline_link record;
   v_expired_link record;
   v_yes_link record;
   v_registered_link record;
+  v_overlap_link record;
   v_start record;
   v_start_repeat record;
   v_confirm record;
@@ -37,6 +43,9 @@ DECLARE
   v_expired_result record;
   v_yes_start record;
   v_yes_reply text;
+  v_overlap_start record;
+  v_overlap_reply text;
+  v_overlap_direct_accepted_at timestamptz;
   v_registered_mp public.match_participants%rowtype;
   v_participant_count integer;
   v_metadata record;
@@ -70,32 +79,35 @@ BEGIN
   DELETE FROM _public_join_sms_results;
 
   DELETE FROM public.notification_deliveries
-  WHERE destination IN (v_phone, v_decline_phone, v_expired_phone, v_yes_phone)
+  WHERE destination IN (v_phone, v_decline_phone, v_expired_phone, v_yes_phone, v_overlap_phone)
      OR payload->>'match_id' IN (
        v_match::text,
        v_match_decline::text,
        v_match_expired::text,
        v_match_yes::text,
-       v_match_registered::text
+       v_match_registered::text,
+       v_match_overlap_public::text,
+       v_match_overlap_invite::text
      );
   DELETE FROM public.match_participant_sms_reply_codes
-  WHERE phone_e164 IN (v_phone, v_decline_phone, v_expired_phone, v_yes_phone);
+  WHERE phone_e164 IN (v_phone, v_decline_phone, v_expired_phone, v_yes_phone, v_overlap_phone);
   DELETE FROM public.public_match_signup_sms_intents
-  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered)
-     OR phone_normalized IN (v_phone, v_decline_phone, v_expired_phone, v_yes_phone);
+  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered, v_match_overlap_public, v_match_overlap_invite)
+     OR phone_normalized IN (v_phone, v_decline_phone, v_expired_phone, v_yes_phone, v_overlap_phone);
   DELETE FROM public.public_match_signups
-  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered);
+  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered, v_match_overlap_public, v_match_overlap_invite);
   DELETE FROM public.public_match_signup_links
-  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered);
+  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered, v_match_overlap_public, v_match_overlap_invite);
   DELETE FROM public.public_match_signup_config;
   DELETE FROM public.match_participant_actions
-  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered);
+  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered, v_match_overlap_public, v_match_overlap_invite);
   DELETE FROM public.match_participants
-  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered);
+  WHERE match_id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered, v_match_overlap_public, v_match_overlap_invite);
   DELETE FROM public.matches
-  WHERE id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered);
+  WHERE id IN (v_match, v_match_decline, v_match_expired, v_match_yes, v_match_registered, v_match_overlap_public, v_match_overlap_invite);
   DELETE FROM public.guests
-  WHERE phone IN (v_phone, v_decline_phone, v_expired_phone, v_yes_phone);
+  WHERE phone IN (v_phone, v_decline_phone, v_expired_phone, v_yes_phone, v_overlap_phone)
+     OR id = v_overlap_direct_guest;
   DELETE FROM public.venues WHERE id = v_venue;
   DELETE FROM public.profiles WHERE id IN (v_host, v_registered_player, v_system);
   DELETE FROM auth.users WHERE id IN (v_host, v_registered_player, v_system);
@@ -134,7 +146,48 @@ BEGIN
     (v_match_decline, v_host, 'active', v_venue, 1, 'sms_cutover_decline', 2, current_date + 8, '19:00'::time, 90),
     (v_match_expired, v_host, 'active', v_venue, 1, 'sms_cutover_expired', 2, current_date + 9, '20:00'::time, 90),
     (v_match_yes, v_host, 'active', v_venue, 1, 'sms_cutover_yes', 2, current_date + 10, '21:00'::time, 90),
-    (v_match_registered, v_host, 'active', v_venue, 1, 'sms_cutover_registered', 2, current_date + 11, '22:00'::time, 90);
+    (v_match_registered, v_host, 'active', v_venue, 1, 'sms_cutover_registered', 2, current_date + 11, '22:00'::time, 90),
+    (v_match_overlap_public, v_host, 'active', v_venue, 1, 'sms_cutover_overlap_public', 2, current_date + 12, '18:30'::time, 90),
+    (v_match_overlap_invite, v_host, 'active', v_venue, 1, 'sms_cutover_overlap_invite', 2, current_date + 13, '19:30'::time, 90);
+
+  INSERT INTO public.guests (id, display_name, phone, status, created_by)
+  VALUES (v_overlap_direct_guest, 'Direct Invite Same Phone', v_overlap_phone, 'active', v_host);
+
+  INSERT INTO public.match_participants (
+    id,
+    match_id,
+    join_method,
+    guest_id,
+    created_by,
+    nominated_by,
+    org_approved_at,
+    org_approved_by
+  ) VALUES (
+    v_overlap_direct_participant,
+    v_match_overlap_invite,
+    'nominated',
+    v_overlap_direct_guest,
+    v_host,
+    v_host,
+    now(),
+    v_host
+  );
+
+  INSERT INTO public.match_participant_sms_reply_codes (
+    match_id,
+    participant_id,
+    phone_e164,
+    code,
+    purpose,
+    expires_at
+  ) VALUES (
+    v_match_overlap_invite,
+    v_overlap_direct_participant,
+    public.normalize_discovery_phone(v_overlap_phone),
+    'OJ',
+    'invite',
+    now() + interval '30 days'
+  );
 
   PERFORM set_config(
     'request.jwt.claims',
@@ -147,6 +200,7 @@ BEGIN
   SELECT * INTO v_expired_link FROM public.rpc_public_match_signup_link_get_or_create(v_match_expired) LIMIT 1;
   SELECT * INTO v_yes_link FROM public.rpc_public_match_signup_link_get_or_create(v_match_yes) LIMIT 1;
   SELECT * INTO v_registered_link FROM public.rpc_public_match_signup_link_get_or_create(v_match_registered) LIMIT 1;
+  SELECT * INTO v_overlap_link FROM public.rpc_public_match_signup_link_get_or_create(v_match_overlap_public) LIMIT 1;
 
   SELECT has_table_privilege('anon', 'public.public_match_signup_sms_intents', 'select')
   INTO v_anon_sms_intent_select_allowed;
@@ -394,8 +448,40 @@ BEGIN
   INSERT INTO _public_join_sms_results VALUES (
     'public join requires JOIN and does not treat YES as public request',
     v_participant_count = 0
-      AND v_yes_reply LIKE '%active invite%',
+      AND v_yes_reply LIKE '%active invite%'
+      AND position('{code}' in v_yes_reply) = 0,
     'reply=' || coalesce(v_yes_reply, 'null') || ', participants=' || v_participant_count::text
+  );
+
+  SELECT * INTO v_overlap_start
+  FROM public.rpc_public_match_signup_start_sms(v_overlap_link.public_token, 'Overlap Join', v_overlap_phone)
+  LIMIT 1;
+
+  v_overlap_reply := public.rpc_sms_reply_handle(v_overlap_phone, 'Join');
+
+  SELECT count(*)::integer INTO v_participant_count
+  FROM public.match_participants
+  WHERE match_id = v_match_overlap_public
+    AND join_method = 'requested'
+    AND participant_accepted_at IS NOT NULL
+    AND org_approved_at IS NULL
+    AND removed_at IS NULL;
+
+  SELECT participant_accepted_at INTO v_overlap_direct_accepted_at
+  FROM public.match_participants
+  WHERE id = v_overlap_direct_participant;
+
+  INSERT INTO _public_join_sms_results VALUES (
+    'JOIN confirms public intent before active direct invite',
+    v_overlap_start.sms_intent_id IS NOT NULL
+      AND v_participant_count = 1
+      AND v_overlap_direct_accepted_at IS NULL
+      AND v_overlap_reply LIKE 'Request sent.%'
+      AND position('active invite' in lower(v_overlap_reply)) = 0
+      AND position('{code}' in v_overlap_reply) = 0,
+    'reply=' || coalesce(v_overlap_reply, 'null')
+      || ', public_participants=' || v_participant_count::text
+      || ', direct_accepted_at=' || coalesce(v_overlap_direct_accepted_at::text, 'null')
   );
 
   PERFORM set_config(
