@@ -88,7 +88,9 @@ export type MatchParticipantEnriched = MatchParticipant & {
   linked_user_id?: string | null
   public_signup_source?: 'public_match_signup' | null
   public_signup_email_verified?: boolean
+  public_signup_phone_confirmed?: boolean
   public_signup_status?: string | null
+  public_signup_contact_state?: string | null
 }
 
 type PublicSignupParticipantMetadata = {
@@ -97,6 +99,8 @@ type PublicSignupParticipantMetadata = {
   source: 'public_match_signup'
   email_verified: boolean
   signup_status: string
+  phone_confirmed?: boolean
+  contact_state?: string | null
 }
 
 /** Host-facing summary for formed matches that became short after a lineup exit. */
@@ -1937,7 +1941,9 @@ export async function getMatchDetailData(
       linked_user_id: linkedUserId,
       public_signup_source: publicSignupMetadata?.source ?? null,
       public_signup_email_verified: publicSignupMetadata?.email_verified ?? false,
+      public_signup_phone_confirmed: publicSignupMetadata?.phone_confirmed ?? false,
       public_signup_status: publicSignupMetadata?.signup_status ?? null,
+      public_signup_contact_state: publicSignupMetadata?.contact_state ?? null,
     }
   })
 

@@ -210,7 +210,7 @@ function getRegisteredRequestState(
     return {
       title: 'Request sent',
       subtext: 'Waiting for host to add you to the lineup.',
-      note: 'You do not need to verify your email again for this match.',
+      note: 'The host still needs to add you to the lineup.',
       message: 'Request sent. Waiting for host.',
       variant: 'success',
     }
@@ -290,12 +290,12 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
     }
   }
 
-  if (notice === 'request-visible' || notice === 'check-email') {
+  if (notice === 'sms-pending') {
     return {
-      title: "You're on the list",
-      subtext: 'The host can now review your request. We also sent you an email to verify your address for match updates.',
-      badge: 'Request sent',
-      variant: 'success',
+      title: 'Check your texts',
+      subtext: 'We texted you the match. Reply JOIN or tap the link in the text to send your request to the host.',
+      badge: 'Waiting for SMS response',
+      variant: 'neutral',
     }
   }
 
@@ -337,7 +337,7 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
   return {
     title: 'Join this match',
-    subtext: 'Create or sign in to your free PlayerHoods account to request a spot and track match updates. You can join with email verification instead.',
+    subtext: 'Create or sign in to your free PlayerHoods account to request a spot and track match updates. You can join with mobile number instead.',
     badge: 'Open to Join',
     variant: 'neutral',
   }
@@ -345,7 +345,7 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
 function PlayerCardNudge({
   guestHref = '#guest-request',
-  guestLabel = 'Join with email verification',
+  guestLabel = 'Join with mobile number instead',
 }: {
   guestHref?: string
   guestLabel?: string
@@ -373,12 +373,12 @@ function getErrorMessage(code: string | undefined): string | null {
     case 'name-required':
       return 'Name is required.'
     case 'contact-required':
-    case 'email-required':
-      return 'Enter an email to request a spot.'
-    case 'sms-coming-next':
-      return 'SMS verification is coming next. Please use email for this request.'
-    case 'email-invalid':
-      return 'Enter a valid email address.'
+    case 'phone-required':
+      return 'Enter a mobile number so we can text you this match.'
+    case 'phone-invalid':
+      return 'Enter a valid 10-digit US or Canadian mobile number.'
+    case 'sms-opted-out':
+      return 'This number is opted out of PlayerHoods match texts. Reply START to a previous PlayerHoods text to opt back in, or use a free account.'
     case 'match-not-active':
       return 'This match is no longer taking spot requests.'
     case 'link-not-found':
@@ -387,8 +387,8 @@ function getErrorMessage(code: string | undefined): string | null {
       return 'Sign in before requesting a spot.'
     case 'organizer-cannot-request':
       return "Hosts can't request a spot in their own match."
-    case 'email-delivery-unavailable':
-      return 'Could not send the verification email. Please try again.'
+    case 'sms-delivery-unavailable':
+      return 'Could not text you this match. Please try again shortly.'
     case 'request-throttled':
       return "We couldn't process this request right now. Please try again shortly."
     case 'failed':
@@ -445,8 +445,8 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
     : 'Ask the host for a fresh share link'
   const venueName = context?.venue_name ?? 'Match details unavailable'
   const pageError = getErrorMessage(pageParams.error)
-  const isCheckEmail = pageParams.notice === 'check-email'
   const isAlreadySubmitted = pageParams.notice === 'already-submitted' || pageParams.notice === 'request-sent'
+  const isSmsPending = pageParams.notice === 'sms-pending'
   const isRegisteredRequestSent = pageParams.notice === 'registered-requested'
   const isRegisteredRequestBlocked = pageParams.error === 'organizer-cannot-request'
   const registeredRequestState = user && context
@@ -462,25 +462,25 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           variant: 'error' as const,
         }
     : null
-  const showPublicCheckEmail = !user && (isCheckEmail || pageParams.notice === 'request-visible')
+  const showPublicSmsPending = !user && isSmsPending
   const showPublicAlreadySubmitted = !user && isAlreadySubmitted
   const showRegisteredRequestButton = Boolean(
     user && context?.signup_open && !registeredRequestState && !isRegisteredRequestBlocked,
   )
-  const showRequestForm = Boolean(!user && context?.signup_open && !isCheckEmail && !isAlreadySubmitted)
+  const showRequestForm = Boolean(!user && context?.signup_open && !isSmsPending && !isAlreadySubmitted)
   const pageTitle = registeredRequestState?.title
     ?? guestStatus?.title
-    ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicCheckEmail ? "You're on the list" : 'Join this match')
+    ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicSmsPending ? 'Check your texts' : 'Join this match')
   const guestNudgeHref = linkUnavailable
     ? '/'
-    : (showPublicCheckEmail || showPublicAlreadySubmitted)
+    : (showPublicSmsPending || showPublicAlreadySubmitted)
       ? `/join/${token}`
       : '#guest-request'
   const guestNudgeLabel = linkUnavailable
     ? 'Maybe later'
-    : (showPublicCheckEmail || showPublicAlreadySubmitted)
+    : (showPublicSmsPending || showPublicAlreadySubmitted)
       ? 'Back to match details'
-      : 'Join with email verification'
+      : 'Join with mobile number instead'
 
   return (
     <div className="public-signup-page">
@@ -846,18 +846,18 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             </>
           ) : showPublicAlreadySubmitted ? (
             <p className="public-signup-subtext">
-              Your request is already waiting for the host. We&apos;ll email you when the host responds.
+              Your request is already waiting for the host. We&apos;ll text you if you&apos;re added to the lineup.
             </p>
-          ) : showPublicCheckEmail ? (
+          ) : showPublicSmsPending ? (
             <>
               <p className="public-signup-subtext">
-                Thanks. The host can now review your request.
+                We texted you the match. Reply JOIN or tap the link in the text to send your request to the host.
               </p>
               <p className="public-signup-note">
-                We also sent you an email to verify your address for match updates. Your name is shown to the host with your request, but your email is not shared.
+                Your request is not sent until you respond from your phone.
               </p>
               <p className="public-signup-note">
-                If you&apos;re added to the lineup, we&apos;ll let you know. After verifying your email, you can create a free account to track matches and join future games faster.
+                Status: Waiting for SMS response
               </p>
             </>
           ) : user ? (
@@ -877,7 +877,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : (
             <>
               <p className="public-signup-subtext">
-                Add your name and email. Your request will be sent to the host, and we&apos;ll ask you to verify your email for match updates.
+                Add your name and mobile number. We&apos;ll text you this match so you can request a spot from your phone.
               </p>
               <p className="public-signup-note">
                 The host still needs to add you to the lineup.
@@ -899,11 +899,10 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             <p className={`public-signup-message ${registeredRequestState.variant}`}>{registeredRequestState.message}</p>
           ) : null}
 
-          {showPublicCheckEmail ? (
+          {showPublicSmsPending ? (
             <>
               <p className="public-signup-help">
-                Can&apos;t find the email? Check your inbox first, then your spam or junk folder. To help future PlayerHoods emails arrive, add{' '}
-                <a href="mailto:noreply@playerhoods.com">noreply@playerhoods.com</a> to your safe sender list.
+                Can&apos;t find the text? Check that your mobile number was entered correctly, then try again in a few minutes.
               </p>
               <Link href={`/join/${token}`} className="public-signup-link">
                 Back to match details
@@ -938,30 +937,30 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
                   Create / Sign in to Join
                 </Link>
                 <p className="public-signup-helper">
-                  Join with email verification instead
+                  Join with mobile number instead
                 </p>
               </div>
               <form id="guest-request" action={signupAction} className="public-signup-form">
+                <h2 className="public-player-card-title">Tell the host who you are</h2>
                 <label className="public-signup-field">
                   <span className="public-signup-label">Name</span>
                   <input className="public-signup-input" name="display_name" autoComplete="name" required maxLength={120} />
                 </label>
 
                 <label className="public-signup-field">
-                  <span className="public-signup-label">Email</span>
-                  <input className="public-signup-input" name="email" type="email" autoComplete="email" required />
+                  <span className="public-signup-label">Mobile number</span>
+                  <input className="public-signup-input" name="phone" type="tel" inputMode="tel" autoComplete="tel" required />
                 </label>
 
-                <label className="public-signup-check">
-                  <input name="marketing_email_opt_in" type="checkbox" />
-                  <span className="public-signup-check-copy">
-                    <span>Send me occasional PlayerHoods updates.</span>
-                    <span className="public-signup-check-note">Match verification and status emails are separate.</span>
-                  </span>
-                </label>
+                <p className="public-signup-helper">
+                  We&apos;ll text you this match. Reply or tap the link to send your request to the host.
+                </p>
+                <p className="public-signup-helper">
+                  We&apos;ll use this number for this match request, match updates, and future invitations from this host. Message rates may apply. Reply STOP to opt out.
+                </p>
 
                 <button type="submit" className="public-signup-button">
-                  Send verification email
+                  Text me the match
                 </button>
               </form>
             </>

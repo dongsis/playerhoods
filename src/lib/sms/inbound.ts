@@ -13,7 +13,7 @@ export async function handleInboundSms(
   const body = input.body?.trim()
 
   if (!from || !body) {
-    return 'Reply YES to join, NO to decline, or DETAILS for the match link.'
+    return 'Reply JOIN for a public join text, YES for an invite, NO to decline, or DETAILS for the match link.'
   }
 
   const { data, error } = await (supabase as unknown as RpcClient).rpc('rpc_sms_reply_handle', {
@@ -23,8 +23,10 @@ export async function handleInboundSms(
 
   if (error) {
     console.error('[sms] inbound handler failed:', error)
-    return 'We could not process that reply. Reply YES to join, NO to decline, or DETAILS for the match link.'
+    return 'We could not process that reply. Reply JOIN for a public join text, YES for an invite, NO to decline, or DETAILS for the match link.'
   }
 
-  return typeof data === 'string' ? data : 'Reply YES to join, NO to decline, or DETAILS for the match link.'
+  return typeof data === 'string'
+    ? data
+    : 'Reply JOIN for a public join text, YES for an invite, NO to decline, or DETAILS for the match link.'
 }

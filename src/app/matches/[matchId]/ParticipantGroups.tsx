@@ -305,7 +305,12 @@ function ParticipantRow({
   const isPendingParticipant = p.status === 'pending'
   const isWaitingListParticipant = p.status === 'waiting_list'
   const isPublicSignup = p.public_signup_source === 'public_match_signup'
-  const publicSignupEmailLabel = p.public_signup_email_verified ? 'Email confirmed' : 'Email pending verification'
+  const publicSignupContactLabel =
+    p.public_signup_phone_confirmed || p.public_signup_contact_state === 'phone_confirmed'
+      ? 'Phone confirmed'
+      : p.public_signup_email_verified
+        ? 'Email confirmed'
+        : 'Email pending verification'
   const isHostManagedConfirmation =
     p.confirmation_source === 'host_managed_offline'
     || p.confirmation_source === 'contact_owner_managed'
@@ -432,7 +437,7 @@ function ParticipantRow({
   }
 
   if (p.participant_accepted_at) {
-    if (isPublicSignup && p.public_signup_email_verified) {
+    if (isPublicSignup && (p.public_signup_email_verified || p.public_signup_phone_confirmed)) {
       // Keep public signup internals out of the host-facing status timeline.
     } else if (isOrganizer && isHostManagedConfirmation) {
       timelineEvents.push({
@@ -703,7 +708,7 @@ function ParticipantRow({
               >
                 Guest player
                 {' · '}
-                {publicSignupEmailLabel}
+                {publicSignupContactLabel}
                 {' · '}
                 Joined from share link
               </span>

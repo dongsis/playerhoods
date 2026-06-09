@@ -773,6 +773,32 @@ export type PublicMatchSignup = {
   updated_at: string
 }
 
+export type PublicMatchSignupSmsIntent = {
+  id: string
+  link_id: string
+  match_id: string
+  display_name: string
+  phone_normalized: string
+  sms_token: string
+  sms_token_hash: string
+  match_notification_consent_at: string
+  sms_sent_at: string | null
+  sms_delivery_status: 'not_requested' | 'queued' | 'sent' | 'failed' | 'skipped' | 'throttled'
+  sms_delivery_attempt_count: number
+  sms_delivery_last_attempt_at: string | null
+  sms_delivery_sent_at: string | null
+  sms_delivery_error: string | null
+  sms_response_at: string | null
+  phone_confirmed_at: string | null
+  status: 'pending_sms_response' | 'request_created' | 'declined_by_guest' | 'expired' | 'cancelled'
+  person_id: string | null
+  guest_id: string | null
+  match_participant_id: string | null
+  created_at: string
+  updated_at: string
+  expires_at: string
+}
+
 export type PublicMatchSignupConfig = {
   singleton_key: boolean
   system_actor_user_id: string
@@ -1155,6 +1181,12 @@ export interface Database {
         Row: PublicMatchSignup
         Insert: Partial<PublicMatchSignup> & { link_id: string; match_id: string; display_name: string; email_normalized: string; email_sha256: string; verification_token_hash: string; verification_expires_at: string }
         Update: Partial<PublicMatchSignup>
+        Relationships: []
+      }
+      public_match_signup_sms_intents: {
+        Row: PublicMatchSignupSmsIntent
+        Insert: Partial<PublicMatchSignupSmsIntent> & { link_id: string; match_id: string; display_name: string; phone_normalized: string; sms_token_hash: string }
+        Update: Partial<PublicMatchSignupSmsIntent>
         Relationships: []
       }
       match_messages: {
@@ -1786,6 +1818,75 @@ export interface Database {
           venue_name: string | null
         }[]
       }
+      rpc_public_match_signup_start_sms: {
+        Args: {
+          p_public_token: string
+          p_display_name: string
+          p_phone: string
+        }
+        Returns: {
+          sms_intent_id: string | null
+          status: string
+          sms_send_required: boolean
+          sms_token: string | null
+          phone_normalized: string | null
+          recipient_name: string | null
+          match_id: string
+          game_type: string | null
+          sport_name: string | null
+          match_date: string | null
+          start_time: string | null
+          venue_name: string | null
+          host_display_name: string | null
+        }[]
+      }
+      rpc_public_match_signup_record_sms_delivery_result: {
+        Args: {
+          p_sms_intent_id: string
+          p_delivery_status: 'sent' | 'failed' | 'skipped'
+          p_error?: string | null
+        }
+        Returns: void
+      }
+      rpc_public_match_signup_sms_context: {
+        Args: { p_sms_token: string }
+        Returns: {
+          sms_intent_id: string
+          status: 'pending_sms_response' | 'request_created' | 'declined_by_guest' | 'expired' | 'cancelled'
+          display_name: string
+          match_id: string
+          match_status: string
+          game_type: string | null
+          sport_name: string | null
+          match_date: string | null
+          start_time: string | null
+          venue_name: string | null
+          venue_timezone: string | null
+          host_display_name: string | null
+          expires_at: string
+          match_participant_id: string | null
+        }[]
+      }
+      rpc_public_match_signup_confirm_sms: {
+        Args: { p_sms_token: string }
+        Returns: {
+          status: string
+          match_id: string
+          match_participant_id: string | null
+          participant_status: string | null
+          display_name: string
+        }[]
+      }
+      rpc_public_match_signup_decline_sms: {
+        Args: { p_sms_token: string }
+        Returns: {
+          status: string
+          match_id: string
+          match_participant_id: string | null
+          participant_status: string | null
+          display_name: string
+        }[]
+      }
       rpc_public_match_signup_record_delivery_result: {
         Args: {
           p_signup_id: string
@@ -1816,6 +1917,8 @@ export interface Database {
           source: 'public_match_signup'
           email_verified: boolean
           signup_status: string
+          phone_confirmed?: boolean
+          contact_state?: string | null
         }[]
       }
       // v1.7: Guest / Contact Player flows
