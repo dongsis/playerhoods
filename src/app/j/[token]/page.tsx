@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
@@ -5,6 +6,7 @@ import { createSupabasePublicServerClient } from '@/lib/supabase/server'
 import { declinePublicJoinSmsSpotAction, requestPublicJoinSmsSpotAction } from './actions'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 type Props = {
   params: Promise<{ token: string }>
@@ -33,6 +35,10 @@ type PublicJoinSmsContext = {
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+function getTokenFingerprint(token: string): string {
+  return createHash('sha256').update(token).digest('hex').slice(0, 12)
 }
 
 function formatGameType(value: string | null | undefined): string {
@@ -92,7 +98,18 @@ async function getPublicJoinSmsContext(token: string): Promise<PublicJoinSmsCont
     p_sms_token: token,
   })
 
-  if (error) return null
+  if (error) {
+    console.error('[j-sms-context] rpc_public_match_signup_sms_context failed', {
+      rpc: 'rpc_public_match_signup_sms_context',
+      tokenFingerprint: getTokenFingerprint(token),
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorDetails: error.details,
+      errorHint: error.hint,
+    })
+    throw new Error('public_join_sms_context_rpc_failed')
+  }
+
   return ((data ?? []) as PublicJoinSmsContext[])[0] ?? null
 }
 
