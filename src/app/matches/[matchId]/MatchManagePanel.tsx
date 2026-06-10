@@ -245,6 +245,10 @@ function dedupeCandidateItems(candidates: CandidateItem[]) {
   return deduped
 }
 
+function isRegisteredUserContactTarget(target: ContactPersonAdmissionTarget) {
+  return target.eligible_via === 'registered_user_path'
+}
+
 function getAvailabilityLookupKey(kind: 'user' | 'contact', id: string) {
   return `${kind}:${id}`
 }
@@ -1281,19 +1285,21 @@ export function MatchManagePanel({
               cityNames: sharedCityLookup[user.id] ?? [],
               matchSportLevel: matchSportLevelLookup[user.id] ?? null,
             })),
-            ...contactTargets.filter((target) => target.can_invite).map((target) => ({
-              key: `contact-person:${target.person_id}`,
-              id: target.person_id,
-              name: target.display_name ?? 'Contact Player',
-              kind: 'contact' as const,
-              availabilityStatus: null,
-              source: target.source,
-              sourceLabel: target.sourceLabel,
-              avatarUrl: target.avatar_url ?? null,
-              personId: target.person_id,
-              isLinkedContact: target.eligible_via === 'registered_user_path',
-            })),
-            ...localContactCandidates,
+            ...contactTargets
+              .filter((target) => target.can_invite && (isOrganizer || isRegisteredUserContactTarget(target)))
+              .map((target) => ({
+                key: `contact-person:${target.person_id}`,
+                id: target.person_id,
+                name: target.display_name ?? 'Contact Player',
+                kind: 'contact' as const,
+                availabilityStatus: null,
+                source: target.source,
+                sourceLabel: target.sourceLabel,
+                avatarUrl: target.avatar_url ?? null,
+                personId: target.person_id,
+                isLinkedContact: isRegisteredUserContactTarget(target),
+              })),
+            ...(isOrganizer ? localContactCandidates : []),
             ...(isOrganizer
               ? candidateGroups.map((group) => ({
                   key: `group:${group.id}`,
@@ -2176,7 +2182,7 @@ export function MatchManagePanel({
     </div>
   )
 
-  const addContactSlot = (
+  const addContactSlot = isOrganizer ? (
     <div className="space-y-3">
       <div className="flex justify-end">
         <button
@@ -2215,6 +2221,11 @@ export function MatchManagePanel({
           manualSubmitLabel="Save & Add"
         />
       ) : null}
+    </div>
+  ) : (
+    <div className="text-body-sub rounded-2xl border border-[#D7E3F4] bg-[#F8FBFF] px-4 py-3 text-[#475569]">
+      <p className="font-bold text-[#0B1F44]">Want to invite someone new?</p>
+      <p className="mt-1">Share the match link to invite someone new.</p>
     </div>
   )
 
@@ -2378,6 +2389,7 @@ export function MatchManagePanel({
                 inviteSummary={inviteSummarySlot}
                 addContactSlot={addContactSlot}
                 footerSlot={inviteFooterSlot}
+                inviteEmptyLabel={isOrganizer ? undefined : 'No matching players. Share the match link to invite someone new.'}
                 playerCallEmptyLabel="Choose who can see this on their Match Board."
               />
 

@@ -1092,10 +1092,12 @@ export function MatchDetailPageView({
   onAcceptIdentityLink,
   onKeepSeparateIdentityLink,
 }: MatchDetailPageViewProps) {
-  const showManagePanel =
-    viewModel.showOrganizerAdminSection ||
-    viewModel.showParticipantInviteSection ||
-    viewModel.showParticipantInviteContactSection
+  const showConfirmedParticipantInviteTools = Boolean(
+    !viewModel.isOrganizer &&
+    (viewModel.showParticipantInviteSection || viewModel.showParticipantInviteContactSection) &&
+    viewModel.myParticipant?.removed_at === null &&
+    viewModel.myParticipant.status === 'confirmed',
+  )
   const confirmedParticipants = viewModel.participants.filter((participant) =>
     participant.status === 'confirmed' &&
     participant.removed_at === null)
@@ -1114,7 +1116,7 @@ export function MatchDetailPageView({
     id,
     name: currentRequestUserMap.get(id) ?? 'Player',
   }))
-  const showInviteTools = viewModel.isOrganizer && showManagePanel
+  const showInviteTools = viewModel.showOrganizerAdminSection || showConfirmedParticipantInviteTools
   const showRoundRobinTools = viewModel.match.status === 'active' && viewModel.isOrganizer
   const showToolsSection = showInviteTools || showRoundRobinTools
   const pageMaxWidth = showToolsSection ? '920px' : '720px'
