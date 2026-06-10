@@ -15,24 +15,29 @@ function formatShareMatchKind(sportName: string | null | undefined, gameType: st
   return /\bmatch\b/i.test(lowerLabel) ? lowerLabel : `${lowerLabel} match`
 }
 
-function formatPossessiveName(name: string): string {
-  return /s$/i.test(name) ? `${name}'` : `${name}'s`
+function formatShareActivity(sportName: string | null | undefined, gameType: string | null | undefined): string {
+  const label = (sportName || gameType || '').replace(/_/g, ' ').trim()
+  if (!label) return 'this match'
+  return label.toLowerCase().replace(/\s+match$/i, '')
+}
+
+function formatTitleCase(value: string): string {
+  return value.replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 function formatPublicShareOpening(input: PublicJoinShareTextInput): string {
-  const matchKind = formatShareMatchKind(input.sportName, input.gameType)
-  const emoji = /\btennis\b/i.test(matchKind) ? ' 🎾' : ''
+  const activity = formatShareActivity(input.sportName, input.gameType)
 
   if (input.firstPerson) {
-    return `Join my ${matchKind} on PlayerHoods${emoji}`
+    return `Hey - I'm seeing who's free for ${activity}.`
   }
 
   const hostName = input.hostName?.trim()
   if (hostName) {
-    return `Join ${formatPossessiveName(hostName)} ${matchKind} on PlayerHoods${emoji}`
+    return `${hostName} is seeing who's free for ${activity}.`
   }
 
-  return `Join this ${matchKind} on PlayerHoods${emoji}`
+  return `${formatTitleCase(formatShareMatchKind(input.sportName, input.gameType))} details`
 }
 
 export function buildPublicJoinShareText(input: PublicJoinShareTextInput): string {
@@ -40,23 +45,23 @@ export function buildPublicJoinShareText(input: PublicJoinShareTextInput): strin
   const detailLine = [input.venueName?.trim(), input.dateTimeLabel?.trim()]
     .filter((value): value is string => Boolean(value))
     .join(' · ')
-
-  if (!url || !detailLine) {
-    return [
-      'Join this match on PlayerHoods',
-      '',
-      'Request a spot here:',
-      url,
-    ].join('\n')
-  }
-
-  return [
+  const hostName = input.hostName?.trim()
+  const shareLines = [
     formatPublicShareOpening(input),
     '',
-    detailLine,
-    'Looking for players',
-    '',
-    'Request a spot here:',
-    url,
-  ].join('\n')
+  ]
+
+  if (detailLine) {
+    shareLines.push(detailLine)
+  }
+
+  if (hostName) {
+    shareLines.push(`Hosted by ${hostName}`)
+  }
+
+  if (url) {
+    shareLines.push('', 'Details here if you might want to play:', url)
+  }
+
+  return shareLines.join('\n')
 }

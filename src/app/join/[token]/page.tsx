@@ -50,6 +50,7 @@ type RegisteredRequestState = {
   subtext: string
   note: string | null
   message: string
+  statusLabel: string
   variant: 'success' | 'error'
 }
 
@@ -64,6 +65,11 @@ type PublicJoinStatus = {
   subtext: string
   badge: string
   variant: 'success' | 'warning' | 'error' | 'neutral'
+}
+
+type MatchDetailStatus = {
+  label: string
+  variant: PublicJoinStatus['variant']
 }
 
 function isUuid(value: string): boolean {
@@ -127,7 +133,7 @@ function getPublicJoinMetadataCopy(context: PublicSignupContext) {
   const description = [
     matchLabel,
     matchDateTime ? `on ${matchDateTime}` : null,
-    'is open to join on PlayerHoods. Use this public link to say you would like to play.',
+    "View match details and let the host know if you're interested.",
   ].filter(Boolean).join(' ')
 
   return { title, description }
@@ -140,7 +146,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!isUuid(token)) {
     return {
       title: 'Join a match | PlayerHoods',
-      description: 'Use PlayerHoods public match links to request a spot and wait for the host to add you to the lineup.',
+      description: "View match details and let the host know if you're interested.",
       robots: {
         index: false,
         follow: false,
@@ -150,7 +156,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const { context } = await getPublicSignupContextResult(token)
   const fallbackTitle = 'Join a match | PlayerHoods'
-  const fallbackDescription = 'Use this public match link to request a spot and wait for the host to add you to the lineup.'
+  const fallbackDescription = "View match details and let the host know if you're interested."
   const { title, description } = context
     ? getPublicJoinMetadataCopy(context)
     : { title: fallbackTitle, description: fallbackDescription }
@@ -189,9 +195,10 @@ function getRegisteredRequestState(
   if (participant?.status === 'confirmed') {
     return {
       title: "You're in for this match",
-      subtext: 'You are already in the Confirmed Lineup for this match.',
+      subtext: "You're in for this match.",
       note: null,
-      message: 'Host-confirmed. You are in the lineup.',
+      message: "You're in.",
+      statusLabel: "You're in",
       variant: 'success',
     }
   }
@@ -200,18 +207,20 @@ function getRegisteredRequestState(
     return {
       title: 'You are on the waitlist',
       subtext: 'Your spot is on the waitlist for this match.',
-      note: "If you're added to the lineup, we'll let you know.",
-      message: 'Waiting for host.',
+      note: "We'll let you know if there's a spot for you.",
+      message: 'Waitlisted.',
+      statusLabel: 'Waitlisted',
       variant: 'success',
     }
   }
 
   if (participant || requestSentNotice) {
     return {
-      title: 'Request sent',
-      subtext: 'The host will review your request.',
-      note: "If you're added to the lineup, we'll let you know.",
-      message: 'Request sent. Waiting for host.',
+      title: 'The host has your response',
+      subtext: "You're marked interested for this match.",
+      note: "We'll let you know if there's a spot for you.",
+      message: "You're marked interested. The host is checking availability.",
+      statusLabel: 'Host is checking availability',
       variant: 'success',
     }
   }
@@ -223,9 +232,10 @@ function getRegisteredUnavailableState(context: PublicSignupContext): Registered
   if (context.match_status === 'cancelled') {
     return {
       title: 'This match is cancelled',
-      subtext: 'This match is no longer taking spot requests.',
+      subtext: 'This match is no longer taking responses.',
       note: null,
-      message: 'Closed for requests.',
+      message: 'Cancelled.',
+      statusLabel: 'Cancelled',
       variant: 'error',
     }
   }
@@ -233,9 +243,10 @@ function getRegisteredUnavailableState(context: PublicSignupContext): Registered
   if (context.match_status === 'formed') {
     return {
       title: 'This match has already been formed',
-      subtext: 'The host has already formed the lineup for this match.',
+      subtext: 'The group for this match is already set.',
       note: null,
-      message: 'Lineup formed.',
+      message: 'Group is set.',
+      statusLabel: 'Group is set',
       variant: 'success',
     }
   }
@@ -243,9 +254,10 @@ function getRegisteredUnavailableState(context: PublicSignupContext): Registered
   if (!context.signup_open || context.match_status !== 'active') {
     return {
       title: 'This match is closed',
-      subtext: 'This match is not taking spot requests right now.',
+      subtext: 'This match is not taking responses right now.',
       note: null,
-      message: 'Closed for requests.',
+      message: 'Closed.',
+      statusLabel: 'Closed',
       variant: 'error',
     }
   }
@@ -275,16 +287,16 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
   if (context.match_status === 'formed') {
     return {
       title: 'This match has been formed',
-      subtext: 'The host has already formed the lineup. You can still review the details here.',
-      badge: 'Formed',
+      subtext: 'The group for this match is already set. You can still review the details here.',
+      badge: 'Group is set',
       variant: 'success',
     }
   }
 
   if (!context.signup_open || context.match_status !== 'active') {
     return {
-      title: 'This match is not taking requests',
-      subtext: 'The host is not accepting new spot requests from this link right now.',
+      title: 'This match is not taking responses',
+      subtext: 'The host is not taking new responses from this link right now.',
       badge: 'Closed',
       variant: 'error',
     }
@@ -293,24 +305,24 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
   if (notice === 'sms-pending') {
     return {
       title: 'Check your texts',
-      subtext: 'We texted you the match. Reply JOIN or tap the link in the text to send your request to the host.',
-      badge: 'Waiting for SMS response',
+      subtext: "We texted you a link for this match. Reply JOIN or tap the link to let the host know you're interested.",
+      badge: 'Waiting for your text',
       variant: 'neutral',
     }
   }
 
   if (notice === 'already-submitted' || notice === 'request-sent') {
     return {
-      title: 'Your request has been sent to the host',
-      subtext: 'You do not need to submit again. The host still needs to add you to the lineup.',
-      badge: 'Requested',
+      title: 'The host has your response',
+      subtext: "You're marked interested for this match.",
+      badge: 'Host is checking availability',
       variant: 'success',
     }
   }
 
   if (intent === 'withdraw') {
     return {
-      title: 'Review your request',
+      title: 'Review your response',
       subtext: 'Guest withdraw is not available safely from this link yet. If you need to change plans, contact the host.',
       badge: 'Action unavailable',
       variant: 'warning',
@@ -329,23 +341,92 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
   if (intent === 'review-changes') {
     return {
       title: 'Review match details',
-      subtext: 'Check the latest safe match details below before deciding whether to request a spot.',
+      subtext: "Check the latest safe match details below before deciding whether to let the host know you're interested.",
       badge: 'Review details',
       variant: 'neutral',
     }
   }
 
   return {
-    title: 'Join this match',
-    subtext: 'Create or sign in to your free PlayerHoods account to request a spot and track match updates.',
-    badge: 'Open to Join',
+    title: 'Want to play?',
+    subtext: "Choose how you'd like to let the host know you're interested.",
+    badge: "Seeing who's free",
+    variant: 'neutral',
+  }
+}
+
+function getMatchDetailStatus(
+  context: PublicSignupContext | null,
+  registeredRequestState: RegisteredRequestState | null,
+  guestStatus: PublicJoinStatus | null,
+  isSmsPending: boolean,
+  isAlreadySubmitted: boolean,
+): MatchDetailStatus {
+  if (registeredRequestState) {
+    return {
+      label: registeredRequestState.statusLabel,
+      variant: registeredRequestState.variant,
+    }
+  }
+
+  if (!context) {
+    return {
+      label: 'Link unavailable',
+      variant: 'error',
+    }
+  }
+
+  if (isSmsPending) {
+    return {
+      label: 'Waiting for your text',
+      variant: 'neutral',
+    }
+  }
+
+  if (isAlreadySubmitted) {
+    return {
+      label: 'Host is checking availability',
+      variant: 'success',
+    }
+  }
+
+  if (guestStatus) {
+    return {
+      label: guestStatus.badge,
+      variant: guestStatus.variant,
+    }
+  }
+
+  if (context.match_status === 'cancelled') {
+    return {
+      label: 'Cancelled',
+      variant: 'error',
+    }
+  }
+
+  if (context.match_status === 'formed') {
+    return {
+      label: 'Group is set',
+      variant: 'success',
+    }
+  }
+
+  if (!context.signup_open || context.match_status !== 'active') {
+    return {
+      label: 'Closed',
+      variant: 'error',
+    }
+  }
+
+  return {
+    label: "Seeing who's free",
     variant: 'neutral',
   }
 }
 
 function PlayerCardNudge({
   guestHref = '#guest-request',
-  guestLabel = 'Join with mobile number instead',
+  guestLabel = 'Join with mobile number',
 }: {
   guestHref?: string
   guestLabel?: string
@@ -380,19 +461,19 @@ function getErrorMessage(code: string | undefined): string | null {
     case 'sms-opted-out':
       return 'This number is opted out of PlayerHoods match texts. Reply START to a previous PlayerHoods text to opt back in, or use a free account.'
     case 'match-not-active':
-      return 'This match is no longer taking spot requests.'
+      return 'This match is no longer taking responses.'
     case 'link-not-found':
       return 'This join link is no longer available.'
     case 'sign-in-required':
-      return 'Sign in before requesting a spot.'
+      return "Sign in before letting the host know you're interested."
     case 'organizer-cannot-request':
-      return "Hosts can't request a spot in their own match."
+      return "Hosts can't respond to their own match link."
     case 'sms-delivery-unavailable':
       return 'Could not text you this match. Please try again shortly.'
     case 'request-throttled':
-      return "We couldn't process this request right now. Please try again shortly."
+      return "We couldn't process your response right now. Please try again shortly."
     case 'failed':
-      return 'Could not request a spot. Please try again.'
+      return 'Could not send your response. Please try again.'
     default:
       return null
   }
@@ -470,7 +551,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const showRequestForm = Boolean(!user && context?.signup_open && !isSmsPending && !isAlreadySubmitted)
   const pageTitle = registeredRequestState?.title
     ?? guestStatus?.title
-    ?? (showPublicAlreadySubmitted ? 'Request already sent' : showPublicSmsPending ? 'Check your texts' : 'Join this match')
+    ?? (showPublicAlreadySubmitted ? 'The host has your response' : showPublicSmsPending ? 'Check your texts' : 'Want to play?')
   const guestNudgeHref = linkUnavailable
     ? '/'
     : (showPublicSmsPending || showPublicAlreadySubmitted)
@@ -480,9 +561,16 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
     ? 'Maybe later'
     : (showPublicSmsPending || showPublicAlreadySubmitted)
       ? 'Back to match details'
-      : 'Join with mobile number instead'
+      : 'Join with mobile number'
   const showGuestStatusBadge = Boolean(
-    guestStatus && !(guestStatus.badge === 'Open to Join' && guestStatus.variant === 'neutral'),
+    guestStatus && guestStatus.variant !== 'neutral',
+  )
+  const matchDetailStatus = getMatchDetailStatus(
+    context,
+    registeredRequestState,
+    guestStatus,
+    showPublicSmsPending,
+    showPublicAlreadySubmitted,
   )
 
   return (
@@ -593,16 +681,70 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           font-weight: 700;
         }
 
+        .public-signup-status-row {
+          align-items: center;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          justify-content: space-between;
+          margin-top: 4px;
+        }
+
+        .public-signup-status-label {
+          color: #526784;
+          font-size: 0.9rem;
+          font-weight: 800;
+        }
+
+        .public-signup-status-pill {
+          border-radius: 999px;
+          display: inline-flex;
+          font-size: 0.82rem;
+          font-weight: 900;
+          line-height: 1;
+          padding: 8px 11px;
+        }
+
+        .public-signup-status-pill.success {
+          background: #ecfdf5;
+          border: 1px solid #a7f3d0;
+          color: #047857;
+        }
+
+        .public-signup-status-pill.error {
+          background: #fff5f5;
+          border: 1px solid #fecaca;
+          color: #b42318;
+        }
+
+        .public-signup-status-pill.warning {
+          background: #fffbeb;
+          border: 1px solid #fde68a;
+          color: #92400e;
+        }
+
+        .public-signup-status-pill.neutral {
+          background: #eef6ff;
+          border: 1px solid #c9def6;
+          color: #2554d9;
+        }
+
+        .public-response-options {
+          display: grid;
+          gap: 18px;
+          max-width: 560px;
+        }
+
+        .public-response-section {
+          border-top: 1px solid #d9e6f4;
+          display: grid;
+          gap: 12px;
+          padding-top: 18px;
+        }
+
         .public-signup-form {
           display: grid;
           gap: 14px;
-          max-width: 520px;
-        }
-
-        .public-signup-primary-action {
-          display: grid;
-          gap: 8px;
-          margin: 0 0 18px;
           max-width: 520px;
         }
 
@@ -849,27 +991,24 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             </>
           ) : showPublicAlreadySubmitted ? (
             <p className="public-signup-subtext">
-              Your request is already waiting for the host. We&apos;ll text you if you&apos;re added to the lineup.
+              You&apos;re marked interested for this match. We&apos;ll text you if there&apos;s a spot for you.
             </p>
           ) : showPublicSmsPending ? (
             <>
               <p className="public-signup-subtext">
-                We texted you the match. Reply JOIN or tap the link in the text to send your request to the host.
+                We texted you a link for this match. Reply JOIN or tap the link to let the host know you&apos;re interested.
               </p>
               <p className="public-signup-note">
-                Your request is not sent until you respond from your phone.
-              </p>
-              <p className="public-signup-note">
-                Status: Waiting for SMS response
+                Your response is not sent until you respond from your phone.
               </p>
             </>
           ) : user ? (
             <>
               <p className="public-signup-subtext">
-                You&apos;re signed in. Use your PlayerHoods account to say you&apos;d like to play.
+                You&apos;re signed in. Let the host know you&apos;re interested using your PlayerHoods account.
               </p>
               <p className="public-signup-note">
-                The host still needs to add you to the lineup.
+                The host is seeing who&apos;s free for this match.
               </p>
             </>
           ) : guestStatus ? (
@@ -882,10 +1021,10 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           ) : (
             <>
               <p className="public-signup-subtext">
-                Add your name and mobile number. We&apos;ll text you this match so you can request a spot from your phone.
+                Add your name and mobile number. We&apos;ll text you a link for this match.
               </p>
               <p className="public-signup-note">
-                The host still needs to add you to the lineup.
+                Reply or tap the link to let the host know you&apos;re interested.
               </p>
             </>
           )}
@@ -896,7 +1035,10 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             <div className="public-signup-summary-venue">{venueName}</div>
             <div className="public-signup-summary-time">{matchDateTime}</div>
             <div className="public-signup-summary-host">Host: {context?.host_display_name || 'Unavailable'}</div>
-            <div className="public-signup-summary-host">Status: {guestStatus?.badge ?? registeredRequestState?.message ?? (context?.signup_open ? 'Open to Join' : 'Closed')}</div>
+            <div className="public-signup-status-row">
+              <span className="public-signup-status-label">Status</span>
+              <span className={`public-signup-status-pill ${matchDetailStatus.variant}`}>{matchDetailStatus.label}</span>
+            </div>
           </div>
 
           {pageError ? <p className="public-signup-message error">{pageError}</p> : null}
@@ -936,18 +1078,21 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
               Back to PlayerHoods
             </Link>
           ) : showRequestForm ? (
-            <>
-              <div className="public-signup-primary-action">
+            <div className="public-response-options" aria-label="Ways to respond">
+              <section className="public-response-section">
                 <h2 className="public-player-card-title">Join with your PlayerHoods account</h2>
+                <p className="public-signup-helper">
+                  Sign in or create an account to let the host know you&apos;re interested and keep track of match updates.
+                </p>
                 <Link href={`/login?next=${encodeURIComponent(`/join/${token}`)}`} className="public-signup-button public-signup-button-secondary">
                   Create account or sign in
                 </Link>
+              </section>
+              <form id="guest-request" action={signupAction} className="public-response-section public-signup-form">
+                <h2 className="public-player-card-title">Join with your mobile number</h2>
                 <p className="public-signup-helper">
-                  Join with mobile number instead
+                  No account needed. Tell the host who you are and we&apos;ll text you a link for this match.
                 </p>
-              </div>
-              <form id="guest-request" action={signupAction} className="public-signup-form">
-                <h2 className="public-player-card-title">Tell the host who you are</h2>
                 <label className="public-signup-field">
                   <span className="public-signup-label">Name</span>
                   <input className="public-signup-input" name="display_name" autoComplete="name" required maxLength={120} />
@@ -959,20 +1104,20 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
                 </label>
 
                 <p className="public-signup-helper">
-                  We&apos;ll text you this match. Reply or tap the link to send your request to the host.
+                  We&apos;ll text you a link for this match. Reply or tap the link to let the host know you&apos;re interested.
                 </p>
                 <p className="public-signup-helper">
-                  We&apos;ll use this number for this match request, match updates, and future invitations from this host. Message rates may apply. Reply STOP to opt out.
+                  We&apos;ll use this number for this match, match updates, and future invitations from this host. Message rates may apply. Reply STOP to opt out.
                 </p>
 
                 <button type="submit" className="public-signup-button">
-                  Text me the match
+                  Text me a join link
                 </button>
               </form>
-            </>
+            </div>
           ) : (
             <p className="public-signup-message error">
-              This match is not taking spot requests right now.
+              This match is not taking responses right now.
             </p>
           )}
         </section>
@@ -983,8 +1128,8 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             <h2 className="public-signed-in-title">{playerCardIdentity?.display_name ?? user.email ?? 'Signed-in player'}</h2>
             <p className="public-signed-in-copy">
               {registeredRequestState
-                ? 'You requested to join using your PlayerHoods account.'
-                : 'Use your PlayerHoods account to request a spot and track match updates.'}
+                ? 'The host has your response through your PlayerHoods account.'
+                : "Use your PlayerHoods account to let the host know you're interested and track match updates."}
             </p>
             {playerCardIdentity?.level ? (
               <p className="public-signed-in-copy">Level: {playerCardIdentity.level}</p>
