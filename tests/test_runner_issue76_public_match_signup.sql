@@ -18,12 +18,23 @@ DECLARE
   v_match_unavailable uuid := '76000000-0000-0000-0000-000000000005'::uuid;
   v_match_disabled_after_start uuid := '76000000-0000-0000-0000-000000000006'::uuid;
   v_match_registered uuid := '76000000-0000-0000-0000-000000000007'::uuid;
+  v_match_participant_links uuid := '76000000-0000-0000-0000-000000000013'::uuid;
   v_registered_player uuid := '76000000-0000-0000-0000-000000000008'::uuid;
+  v_confirmed_player uuid := '76000000-0000-0000-0000-000000000009'::uuid;
+  v_pending_player uuid := '76000000-0000-0000-0000-000000000010'::uuid;
+  v_waiting_player uuid := '76000000-0000-0000-0000-000000000011'::uuid;
+  v_removed_player uuid := '76000000-0000-0000-0000-000000000012'::uuid;
   v_link record;
   v_link_two record;
   v_unavailable_link record;
   v_disabled_after_start_link record;
   v_registered_link record;
+  v_participant_host_link record;
+  v_confirmed_link record;
+  v_confirmed_link_repeat record;
+  v_intent_link_created_by uuid;
+  v_active_link_index_def text;
+  v_sms_start record;
   v_context record;
   v_disabled_token uuid;
   v_signup record;
@@ -39,6 +50,7 @@ DECLARE
   v_token_two text;
   v_email text := 'issue76-public@example.test';
   v_hash text := encode(extensions.digest('issue76-public@example.test', 'sha256'), 'hex');
+  v_attribution_phone text := '4165557609';
   v_mp public.match_participants%rowtype;
   v_removed_original_mp public.match_participants%rowtype;
   v_dirty_removed_mp_id uuid;
@@ -105,25 +117,28 @@ BEGIN
   DELETE FROM _issue76_results;
 
   DELETE FROM public.notification_deliveries
-  WHERE payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text, v_match_registered::text)
+  WHERE payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text, v_match_registered::text, v_match_participant_links::text)
      OR destination = v_email;
   DELETE FROM public.domain_events
   WHERE aggregate_type = 'public_match_signup'
-     OR payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text, v_match_registered::text);
+     OR payload->>'match_id' IN (v_match::text, v_match_two::text, v_match_unavailable::text, v_match_disabled_after_start::text, v_match_registered::text, v_match_participant_links::text);
   DELETE FROM public.public_match_signups
-  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered)
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered, v_match_participant_links)
      OR email_sha256 = v_hash;
+  DELETE FROM public.public_match_signup_sms_intents
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered, v_match_participant_links)
+     OR phone_normalized = v_attribution_phone;
   DELETE FROM public.public_match_signup_links
-  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered, v_match_participant_links);
   DELETE FROM public.public_match_signup_identities
   WHERE email_sha256 = v_hash;
   DELETE FROM public.public_match_signup_config;
   DELETE FROM public.match_participant_actions
-  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered, v_match_participant_links);
   DELETE FROM public.match_participants
-  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered);
+  WHERE match_id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered, v_match_participant_links);
   DELETE FROM public.matches
-  WHERE id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered);
+  WHERE id IN (v_match, v_match_two, v_match_unavailable, v_match_disabled_after_start, v_match_registered, v_match_participant_links);
   DELETE FROM public.guests
   WHERE email = v_email
      OR id IN (
@@ -132,8 +147,8 @@ BEGIN
        WHERE email_sha256 = v_hash
      );
   DELETE FROM public.venues WHERE id = v_venue;
-  DELETE FROM public.profiles WHERE id = v_registered_player;
-  DELETE FROM auth.users WHERE id = v_registered_player;
+  DELETE FROM public.profiles WHERE id IN (v_registered_player, v_confirmed_player, v_pending_player, v_waiting_player, v_removed_player);
+  DELETE FROM auth.users WHERE id IN (v_registered_player, v_confirmed_player, v_pending_player, v_waiting_player, v_removed_player);
   DELETE FROM public.profiles WHERE id = v_host;
   DELETE FROM auth.users WHERE id = v_host;
   DELETE FROM public.profiles WHERE id = v_invalid_system;
@@ -154,10 +169,20 @@ BEGIN
   VALUES (v_host, 'Issue 76 Host');
 
   INSERT INTO auth.users (id, email, email_confirmed_at)
-  VALUES (v_registered_player, 'issue76-registered-player@example.test', now());
+  VALUES
+    (v_registered_player, 'issue76-registered-player@example.test', now()),
+    (v_confirmed_player, 'issue76-confirmed-player@example.test', now()),
+    (v_pending_player, 'issue76-pending-player@example.test', now()),
+    (v_waiting_player, 'issue76-waiting-player@example.test', now()),
+    (v_removed_player, 'issue76-removed-player@example.test', now());
 
   INSERT INTO public.profiles (id, display_name)
-  VALUES (v_registered_player, 'Issue 76 Registered Player');
+  VALUES
+    (v_registered_player, 'Issue 76 Registered Player'),
+    (v_confirmed_player, 'Issue 76 Confirmed Player'),
+    (v_pending_player, 'Issue 76 Pending Player'),
+    (v_waiting_player, 'Issue 76 Waiting Player'),
+    (v_removed_player, 'Issue 76 Removed Player');
 
   INSERT INTO public.venues (id, name, timezone)
   VALUES (v_venue, 'Issue 76 Courts', 'America/Toronto');
@@ -178,7 +203,26 @@ BEGIN
     (v_match_two, v_host, 'active', v_venue, 1, 'issue76_public_signup_two', 2, current_date + 8, '19:00'::time, 90),
     (v_match_unavailable, v_host, 'active', v_venue, 1, 'issue76_public_signup_inactive', 2, current_date + 9, '20:00'::time, 90),
     (v_match_disabled_after_start, v_host, 'active', v_venue, 1, 'issue76_public_signup_disabled_after_start', 2, current_date + 10, '21:00'::time, 90),
-    (v_match_registered, v_host, 'active', v_venue, 1, 'issue76_public_signup_registered', 2, current_date + 11, '22:00'::time, 90);
+    (v_match_registered, v_host, 'active', v_venue, 1, 'issue76_public_signup_registered', 2, current_date + 11, '22:00'::time, 90),
+    (v_match_participant_links, v_host, 'active', v_venue, 1, 'issue76_public_signup_participant_links', 2, current_date + 12, '23:00'::time, 90);
+
+  INSERT INTO public.match_participants (
+    match_id,
+    user_id,
+    status,
+    join_method,
+    created_by,
+    org_approved_at,
+    org_approved_by,
+    participant_accepted_at,
+    participant_accepted_via,
+    removed_at,
+    removed_by
+  ) VALUES
+    (v_match_participant_links, v_confirmed_player, 'confirmed', 'invited', v_host, now(), v_host, now(), 'in_app', null, null),
+    (v_match_participant_links, v_pending_player, 'pending', 'invited', v_host, now(), v_host, null, null, null, null),
+    (v_match_participant_links, v_waiting_player, 'waiting_list', 'invited', v_host, now(), v_host, now(), 'in_app', null, null),
+    (v_match_participant_links, v_removed_player, 'removed', 'invited', v_host, now(), v_host, now(), 'in_app', now(), v_removed_player);
 
   SELECT pg_get_constraintdef(c.oid)
   INTO v_constraint_def
@@ -291,7 +335,7 @@ BEGIN
   INTO v_auth_config_select_allowed;
 
   INSERT INTO _issue76_results VALUES (
-    'public signup RPC grants match public, host-only, and service-only boundaries',
+    'public signup RPC grants match public, authenticated link, and service-only boundaries',
     v_anon_context_allowed = true
       AND v_auth_context_allowed = true
       AND v_service_context_allowed = true
@@ -366,15 +410,156 @@ BEGIN
   FROM public.rpc_public_match_signup_link_get_or_create(v_match_registered)
   LIMIT 1;
 
+  SELECT * INTO v_participant_host_link
+  FROM public.rpc_public_match_signup_link_get_or_create(v_match_participant_links)
+  LIMIT 1;
+
   INSERT INTO _issue76_results VALUES (
     'organizer can create public signup link',
     v_link.public_token IS NOT NULL
       AND v_link_two.public_token IS NOT NULL
       AND v_unavailable_link.public_token IS NOT NULL
       AND v_disabled_after_start_link.public_token IS NOT NULL
-      AND v_registered_link.public_token IS NOT NULL,
+      AND v_registered_link.public_token IS NOT NULL
+      AND v_participant_host_link.public_token IS NOT NULL,
     coalesce(v_link.public_token::text, 'missing_link')
   );
+
+  SELECT indexdef
+  INTO v_active_link_index_def
+  FROM pg_indexes
+  WHERE schemaname = 'public'
+    AND tablename = 'public_match_signup_links'
+    AND indexname = 'uq_public_match_signup_links_active_match_created_by';
+
+  INSERT INTO _issue76_results VALUES (
+    'active public signup links are unique per match and creator',
+    v_active_link_index_def LIKE '%match_id%'
+      AND v_active_link_index_def LIKE '%created_by%'
+      AND v_active_link_index_def LIKE '%disabled_at IS NULL%',
+    coalesce(v_active_link_index_def, 'missing_index')
+  );
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_confirmed_player::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  SELECT * INTO v_confirmed_link
+  FROM public.rpc_public_match_signup_link_get_or_create(v_match_participant_links)
+  LIMIT 1;
+
+  SELECT * INTO v_confirmed_link_repeat
+  FROM public.rpc_public_match_signup_link_get_or_create(v_match_participant_links)
+  LIMIT 1;
+
+  INSERT INTO _issue76_results VALUES (
+    'confirmed participant can create an attributed public signup link',
+    v_confirmed_link.public_token IS NOT NULL
+      AND v_confirmed_link.public_token <> v_participant_host_link.public_token
+      AND v_confirmed_link.match_id = v_participant_host_link.match_id
+      AND v_confirmed_link_repeat.public_token = v_confirmed_link.public_token
+      AND EXISTS (
+        SELECT 1
+        FROM public.public_match_signup_links l
+        WHERE l.id = v_confirmed_link.link_id
+          AND l.created_by = v_confirmed_player
+      ),
+    'host_token=' || coalesce(v_participant_host_link.public_token::text, 'null')
+      || ', participant_token=' || coalesce(v_confirmed_link.public_token::text, 'null')
+      || ', repeat_token=' || coalesce(v_confirmed_link_repeat.public_token::text, 'null')
+  );
+
+  SELECT * INTO v_sms_start
+  FROM public.rpc_public_match_signup_start_sms(v_confirmed_link.public_token, 'Issue 76 Referral', v_attribution_phone)
+  LIMIT 1;
+
+  SELECT l.created_by
+  INTO v_intent_link_created_by
+  FROM public.public_match_signup_sms_intents i
+  JOIN public.public_match_signup_links l
+    ON l.id = i.link_id
+  WHERE i.match_id = v_match_participant_links
+    AND i.phone_normalized = v_attribution_phone
+  ORDER BY i.created_at DESC
+  LIMIT 1;
+
+  INSERT INTO _issue76_results VALUES (
+    'public signup SMS intent attributes back to the sharing participant link',
+    v_sms_start.status = 'sms_queued'
+      AND v_intent_link_created_by = v_confirmed_player,
+    'sms_status=' || coalesce(v_sms_start.status, 'null')
+      || ', link_created_by=' || coalesce(v_intent_link_created_by::text, 'null')
+  );
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_pending_player::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_link_get_or_create(v_match_participant_links);
+    INSERT INTO _issue76_results VALUES ('pending participant cannot create public signup link', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'pending participant cannot create public signup link',
+      SQLERRM LIKE '%not_match_organizer_or_confirmed_participant%',
+      SQLERRM
+    );
+  END;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_waiting_player::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_link_get_or_create(v_match_participant_links);
+    INSERT INTO _issue76_results VALUES ('waiting-list participant cannot create public signup link', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'waiting-list participant cannot create public signup link',
+      SQLERRM LIKE '%not_match_organizer_or_confirmed_participant%',
+      SQLERRM
+    );
+  END;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_removed_player::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_link_get_or_create(v_match_participant_links);
+    INSERT INTO _issue76_results VALUES ('removed participant cannot create public signup link', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'removed participant cannot create public signup link',
+      SQLERRM LIKE '%not_match_organizer_or_confirmed_participant%',
+      SQLERRM
+    );
+  END;
+
+  PERFORM set_config('request.jwt.claims', '{}'::text, true);
+
+  BEGIN
+    PERFORM *
+    FROM public.rpc_public_match_signup_link_get_or_create(v_match_participant_links);
+    INSERT INTO _issue76_results VALUES ('anonymous user cannot create public signup link', false, 'no exception');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO _issue76_results VALUES (
+      'anonymous user cannot create public signup link',
+      SQLERRM LIKE '%not_authenticated%',
+      SQLERRM
+    );
+  END;
 
   PERFORM set_config('request.jwt.claims', '{}'::text, true);
 

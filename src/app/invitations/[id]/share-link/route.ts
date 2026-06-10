@@ -64,11 +64,13 @@ function invitationCanSharePublicLink(invitation: InvitationDisplay): boolean {
 async function getExistingPublicToken(
   supabase: SupabaseClient<Database>,
   matchId: string,
+  createdBy: string,
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from('public_match_signup_links')
     .select('public_token')
     .eq('match_id', matchId)
+    .eq('created_by', createdBy)
     .is('disabled_at', null)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -83,7 +85,7 @@ async function getOrCreatePublicToken(
   matchId: string,
   createdBy: string,
 ): Promise<string> {
-  const existingToken = await getExistingPublicToken(supabase, matchId)
+  const existingToken = await getExistingPublicToken(supabase, matchId, createdBy)
   if (existingToken) return existingToken
 
   const { data, error } = await supabase
@@ -97,7 +99,7 @@ async function getOrCreatePublicToken(
 
   if (!error && data?.public_token) return data.public_token
 
-  const racedToken = await getExistingPublicToken(supabase, matchId)
+  const racedToken = await getExistingPublicToken(supabase, matchId, createdBy)
   if (racedToken) return racedToken
   throw error ?? new Error('Could not create public share link.')
 }
