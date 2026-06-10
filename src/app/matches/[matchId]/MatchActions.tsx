@@ -531,12 +531,6 @@ export function MatchActions({
   }
 
   if (isConfirmedDerived) {
-    const isHostManagedConfirmation =
-      mp.confirmation_source === 'host_managed_offline'
-      || mp.confirmation_source === 'contact_owner_managed'
-      || mp.participant_accepted_via === 'host_offline_confirmation'
-    const cancelParticipationLabel = 'Cancel Participation'
-    const lineupReady = confirmedCount >= requiredCount
     const confirmedTitle: ReactNode = isFormed ? (
       <>You&rsquo;re all set</>
     ) : (
@@ -544,84 +538,27 @@ export function MatchActions({
     )
     const confirmedMessage: ReactNode = isFormed ? (
       <>This match is formed. You&rsquo;ll only get updates if key details change.</>
-    ) : lineupReady ? (
-      <>The lineup is ready. You&rsquo;ll get an update once the host forms the match.</>
-    ) : isHostManagedConfirmation ? (
-      <>The host added you to the lineup. You&rsquo;ll get an update once the match is formed.</>
     ) : (
-      <>The match is still being formed. You&rsquo;ll get an update once the lineup is ready.</>
+      <>You&rsquo;ll get an update once the match is formed.</>
     )
 
     return (
       <div>
         <div
           style={{
-            border: '1px solid #dbeafe',
-            borderRadius: '18px',
-            background: '#eff6ff',
-            padding: '0.9rem 1rem',
+            border: '1px solid #bfdbfe',
+            borderRadius: '22px',
+            background: '#f3f8ff',
+            padding: '1.75rem',
+            boxShadow: '0 12px 26px rgba(15, 23, 42, 0.06)',
           }}
         >
-          <p style={{ margin: 0, color: '#0f172a', fontWeight: 900, fontSize: '1rem' }}>{confirmedTitle}</p>
-          <p style={{ margin: '0.35rem 0 0', color: '#475569', fontSize: '0.9rem', lineHeight: 1.45 }}>
+          <p style={{ margin: 0, color: '#0f172a', fontWeight: 900, fontSize: '1.25rem', lineHeight: 1.2 }}>{confirmedTitle}</p>
+          <p style={{ margin: '0.9rem 0 0', color: '#475569', fontSize: '1.05rem', lineHeight: 1.45 }}>
             {confirmedMessage}
           </p>
-          <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <a href="#match-communication" style={messageHostButtonStyle}>
-              Message Host
-            </a>
-            <button
-              type="button"
-              onClick={() => {
-                setError(null)
-                setDeclineOpen(true)
-              }}
-              disabled={loading}
-              style={quietCancelButtonStyle}
-            >
-              {cancelParticipationLabel}
-            </button>
-          </div>
         </div>
         {error && <p style={{ color: 'red' }}>{error}</p>}
-        {declineOpen && (
-          <div style={dialogOverlayStyle}>
-            <div style={dialogCardStyle}>
-              <h4 style={dialogTitleStyle}>{cancelParticipationLabel}</h4>
-              <p style={dialogBodyStyle}>
-                The host will see that you can no longer join this match.
-              </p>
-              <MatchExitNoteComposer
-                mode="withdraw"
-                note={declineReason}
-                onNoteChange={setDeclineReason}
-              />
-              <div style={dialogActionsStyle}>
-                <button type="button" onClick={closeDeclineDialog} style={secondaryDialogButtonStyle}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => {
-                    const note = declineReason.trim()
-                    closeDeclineDialog()
-                    handleAction(() => userWithdraw(supabase, matchId, note), {
-                      optimistic: markDeclinedOptimistic,
-                    })
-                  }}
-                  style={{
-                    ...dangerDialogButtonStyle,
-                    opacity: loading ? 0.6 : 1,
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {loading ? 'Updating...' : cancelParticipationLabel}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     )
   }
