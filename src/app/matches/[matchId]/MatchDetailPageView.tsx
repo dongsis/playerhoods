@@ -1092,10 +1092,13 @@ export function MatchDetailPageView({
   onAcceptIdentityLink,
   onKeepSeparateIdentityLink,
 }: MatchDetailPageViewProps) {
-  const showManagePanel =
-    viewModel.showOrganizerAdminSection ||
-    viewModel.showParticipantInviteSection ||
-    viewModel.showParticipantInviteContactSection
+  const showConfirmedParticipantInviteTools = Boolean(
+    !viewModel.isOrganizer &&
+    viewModel.match.status === 'active' &&
+    !viewModel.isFormed &&
+    viewModel.myParticipant?.removed_at === null &&
+    viewModel.myParticipant.status === 'confirmed',
+  )
   const confirmedParticipants = viewModel.participants.filter((participant) =>
     participant.status === 'confirmed' &&
     participant.removed_at === null)
@@ -1114,7 +1117,7 @@ export function MatchDetailPageView({
     id,
     name: currentRequestUserMap.get(id) ?? 'Player',
   }))
-  const showInviteTools = viewModel.isOrganizer && showManagePanel
+  const showInviteTools = viewModel.showOrganizerAdminSection || showConfirmedParticipantInviteTools
   const showRoundRobinTools = viewModel.match.status === 'active' && viewModel.isOrganizer
   const showToolsSection = showInviteTools || showRoundRobinTools
   const pageMaxWidth = showToolsSection ? '920px' : '720px'
@@ -1140,8 +1143,14 @@ export function MatchDetailPageView({
       activeGroupInvites={viewModel.groupInvitations}
       activeRequestUsers={viewModel.isOrganizer ? activeRequestUsers : []}
       activeRequestGroups={viewModel.isOrganizer ? viewModel.scopeGroups : []}
-      candidateUsers={viewModel.isOrganizer ? viewModel.scopeUsersForInvite : viewModel.scopeUsersForParticipantInvite}
-      contactTargets={viewModel.contactTargets}
+      candidateUsers={
+        viewModel.isOrganizer
+          ? viewModel.scopeUsersForInvite
+          : viewModel.showParticipantInviteSection
+            ? viewModel.scopeUsersForParticipantInvite
+            : []
+      }
+      contactTargets={viewModel.isOrganizer || viewModel.showParticipantInviteContactSection ? viewModel.contactTargets : []}
       candidateGroups={viewModel.allGroups.filter((group) =>
         group.primary_sport_id == null || group.primary_sport_id === viewModel.match.sport_id,
       )}

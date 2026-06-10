@@ -354,6 +354,10 @@ function getCandidateFilterTags(candidate: CandidateItem): PickerFilter[] {
   return tags
 }
 
+function isRegisteredUserContactTarget(target: ContactPersonAdmissionTarget) {
+  return target.eligible_via === 'registered_user_path'
+}
+
 function getParticipantEffectiveUserId(participant: MatchParticipantEnriched): string | null {
   return participant.user_id ?? participant.linked_user_id ?? null
 }
@@ -1281,19 +1285,21 @@ export function MatchManagePanel({
               cityNames: sharedCityLookup[user.id] ?? [],
               matchSportLevel: matchSportLevelLookup[user.id] ?? null,
             })),
-            ...contactTargets.filter((target) => target.can_invite).map((target) => ({
-              key: `contact-person:${target.person_id}`,
-              id: target.person_id,
-              name: target.display_name ?? 'Contact Player',
-              kind: 'contact' as const,
-              availabilityStatus: null,
-              source: target.source,
-              sourceLabel: target.sourceLabel,
-              avatarUrl: target.avatar_url ?? null,
-              personId: target.person_id,
-              isLinkedContact: target.eligible_via === 'registered_user_path',
-            })),
-            ...localContactCandidates,
+            ...contactTargets
+              .filter((target) => target.can_invite && (isOrganizer || isRegisteredUserContactTarget(target)))
+              .map((target) => ({
+                key: `contact-person:${target.person_id}`,
+                id: target.person_id,
+                name: target.display_name ?? 'Contact Player',
+                kind: 'contact' as const,
+                availabilityStatus: null,
+                source: target.source,
+                sourceLabel: target.sourceLabel,
+                avatarUrl: target.avatar_url ?? null,
+                personId: target.person_id,
+                isLinkedContact: target.eligible_via === 'registered_user_path',
+              })),
+            ...(isOrganizer ? localContactCandidates : []),
             ...(isOrganizer
               ? candidateGroups.map((group) => ({
                   key: `group:${group.id}`,
@@ -2176,7 +2182,7 @@ export function MatchManagePanel({
     </div>
   )
 
-  const addContactSlot = (
+  const addContactSlot = isOrganizer ? (
     <div className="space-y-3">
       <div className="flex justify-end">
         <button
@@ -2216,7 +2222,7 @@ export function MatchManagePanel({
         />
       ) : null}
     </div>
-  )
+  ) : null
 
   const inviteFooterSlot = (
     <div className="flex flex-wrap items-center justify-end gap-3">
@@ -2353,6 +2359,7 @@ export function MatchManagePanel({
                 filterOptions={pickerFilterOptions}
                 candidates={sharedPickerCandidates}
                 onToggleCandidate={toggleSharedPickerCandidate}
+                availableModes={isOrganizer ? undefined : ['invite', 'shareLink']}
                 expandModeButtonsOnMobile
                 compactPreviewRows
                 renderPreview={(candidate, actions) => {
@@ -2378,6 +2385,7 @@ export function MatchManagePanel({
                 inviteSummary={inviteSummarySlot}
                 addContactSlot={addContactSlot}
                 footerSlot={inviteFooterSlot}
+                inviteEmptyLabel={isOrganizer ? undefined : 'No matching players. Use Share Link to invite someone new.'}
                 playerCallEmptyLabel="Choose who can see this on their Match Board."
               />
 

@@ -224,7 +224,8 @@ export function MatchToolsSection({
     ? 'Share the public link or invite specific players.'
     : null
   const addMoreIsPrimary = !isFormed && !isLineupFull
-  const showTopLevelPublicShare = showInviteTools && isOrganizer && matchStatus === 'active' && !isFormed && !isLineupFull
+  const canUsePublicSignupLink = showInviteTools && matchStatus === 'active' && !isFormed && !isLineupFull
+  const showTopLevelPublicShare = canUsePublicSignupLink
 
   const togglePanel = (nextTab: 'invite' | 'round_robin') => {
     setActiveTab((current) => {
@@ -241,7 +242,7 @@ export function MatchToolsSection({
   }
 
   const copyPublicSignupLink = async () => {
-    if (!isOrganizer || matchStatus !== 'active') return
+    if (!canUsePublicSignupLink) return
 
     setIsPublicSignupLinkBusy(true)
     setPublicSignupLinkError(null)
@@ -277,6 +278,37 @@ export function MatchToolsSection({
       setIsPublicSignupLinkBusy(false)
     }
   }
+
+  const shareLinkRow = canUsePublicSignupLink ? (
+    <div className="space-y-3">
+      <div>
+        <p className="m-0 text-body-main font-black text-[#0F172A]">
+          Share this match link
+        </p>
+        <p className="mt-1 text-body-sub font-semibold leading-relaxed text-[#64748B]">
+          Anyone with the link can ask to join this match.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={copyPublicSignupLink}
+        disabled={isPublicSignupLinkBusy}
+        className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#B7D7FF] bg-[#EFF6FF] px-3 text-[13px] font-black text-[#1D4ED8] transition active:scale-95 disabled:cursor-wait disabled:opacity-60"
+      >
+        {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Share Link'}
+      </button>
+      {shareLinkStatusMessage ? (
+        <p className="text-body-sub font-semibold text-emerald-700">
+          {shareLinkStatusMessage}
+        </p>
+      ) : null}
+      {publicSignupLinkError ? (
+        <p className="text-body-sub font-semibold text-red-600">
+          {publicSignupLinkError}
+        </p>
+      ) : null}
+    </div>
+  ) : null
 
   return (
     <section
@@ -463,6 +495,7 @@ export function MatchToolsSection({
           candidateGroups={candidateGroups}
           onUpdateMatchDetails={onUpdateMatchDetails}
           onRemoveParticipant={onRemoveParticipant}
+          shareLinkRow={shareLinkRow}
           onApplied={() => {
             setLoadedInviteMatchId(null)
             setActiveTab(null)
