@@ -95,14 +95,14 @@ function getErrorMessage(code: string | undefined): string | null {
     case 'expired':
       return 'This text link expired. Use the public join link to text yourself the match again.'
     case 'match-not-active':
-      return 'This match is no longer taking spot requests.'
+      return 'This match is no longer taking responses.'
     case 'not-found':
     case 'invalid':
       return 'This text link is no longer available.'
     case 'not-available':
-      return 'This request is no longer available.'
+      return 'This response link is no longer available.'
     case 'failed':
-      return 'Could not update this request. Please try again.'
+      return 'Could not update your response. Please try again.'
     default:
       return null
   }
@@ -164,21 +164,21 @@ export default async function PublicJoinSmsPage({ params, searchParams }: Props)
   const title = linkUnavailable
     ? 'This link is no longer available'
     : requestSent
-    ? 'Request sent'
+    ? 'The host has your response'
     : declined
       ? 'No problem'
       : expired
         ? 'This text link expired'
-        : 'Request to join this match'
+        : 'Want to play?'
   const subtext = linkUnavailable
-    ? 'This match request link may have expired or already been used. Open the match link again if you still want to request a spot.'
+    ? 'This match text link may have expired or already been used. Open the match link again if you still want to play.'
     : requestSent
-    ? "The host can now review your request. If you're added to the lineup, we'll text you."
+    ? "We'll text you if there's a spot for you."
     : declined
-      ? "We won't send this request to the host."
+      ? "We won't let the host know you're interested for this one."
       : expired
         ? 'Use the public join link to text yourself the match again.'
-        : 'Tap below to send your request to the host.'
+        : "Tap below to let the host know you're interested."
 
   return (
     <div className="public-sms-page">
@@ -342,12 +342,12 @@ export default async function PublicJoinSmsPage({ params, searchParams }: Props)
             <div className="public-sms-actions">
               <form action={requestAction!}>
                 <button type="submit" className="public-sms-button">
-                  Request a spot
+                  I&apos;m interested
                 </button>
               </form>
               <form action={declineAction!}>
                 <button type="submit" className="public-sms-button public-sms-button-secondary">
-                  Not This Time
+                  Not this time
                 </button>
               </form>
             </div>
