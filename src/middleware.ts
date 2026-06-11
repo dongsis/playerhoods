@@ -21,6 +21,7 @@ export async function middleware(request: NextRequest) {
   const isShortInvitationRoute = pathname.startsWith('/i/')
   const isPublicMatchSignupRoute = pathname.startsWith('/join/')
   const isPublicJoinSmsRoute = pathname.startsWith('/j/')
+  const isPublicParticipantStatusRoute = pathname.startsWith('/status/')
   const isShortStopRoute = pathname.startsWith('/stop/')
   const isSeoFileRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   const isDevHelperRoute = pathname.startsWith('/dev/')
@@ -76,6 +77,7 @@ export async function middleware(request: NextRequest) {
     || isShortInvitationRoute
     || isPublicMatchSignupRoute
     || isPublicJoinSmsRoute
+    || isPublicParticipantStatusRoute
     || isShortStopRoute
     || isSeoFileRoute
     || isInvitationPage

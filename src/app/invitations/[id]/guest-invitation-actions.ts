@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { acceptInvitationAsGuest } from '@/lib/invitations/accept-invitation-as-guest'
 import { declineInvitationAsGuest } from '@/lib/invitations/decline-invitation-as-guest'
+import { getStatusPath, issuePublicParticipantStatusTokenForInvitation } from '@/lib/public-participant-status'
 
 const FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -25,19 +26,39 @@ function getGuestInvitationActionErrorCode(error: unknown): string {
   return 'failed'
 }
 
-function redirectToInvitation(invitationId: string, params: Record<string, string>) {
+function redirectToInvitation(invitationId: string, params: Record<string, string>): never {
   const query = new URLSearchParams(params)
   redirect(`/invitations/${invitationId}?${query.toString()}`)
 }
 
 export async function acceptInvitationAsGuestAction(invitationId: string): Promise<void> {
   const supabase = await createSupabaseServerClient()
+  const systemActorId =
+    process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
+    || FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID
+  let statusPath: string | null = null
+
   try {
     await acceptInvitationAsGuest(supabase, invitationId)
+    try {
+      const statusToken = await issuePublicParticipantStatusTokenForInvitation(invitationId, systemActorId)
+      if (statusToken?.status_token) {
+        statusPath = getStatusPath(statusToken.status_token, { notice: 'accepted' })
+      }
+    } catch (statusTokenError) {
+      console.error('[invitation:accept-guest] status token issue failed', {
+        safe_error_code: getGuestInvitationActionErrorCode(statusTokenError),
+        has_error: true,
+      })
+    }
     revalidatePath(`/invitations/${invitationId}`)
   } catch (error) {
     console.error('[invitation:accept-guest]', error)
     redirectToInvitation(invitationId, { error: getGuestInvitationActionErrorCode(error) })
+  }
+
+  if (statusPath) {
+    redirect(statusPath)
   }
 
   redirectToInvitation(invitationId, { notice: 'accepted' })

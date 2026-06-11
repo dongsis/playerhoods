@@ -13,6 +13,7 @@ import {
   acceptInvitationIdentityLinkAndContinueAction,
   declineInvitationAuthenticatedAction,
   keepSeparateInvitationIdentityLinkAction,
+  openInvitationStatusAction,
 } from './invitation-actions'
 
 interface Props {
@@ -41,6 +42,8 @@ function getInvitationPageErrorMessage(code: string | undefined): string | null 
       return 'This invitation could not be found.'
     case 'unsupported':
       return 'This invitation type is not supported here.'
+    case 'status-unavailable':
+      return 'Could not open your private match status. Please try again.'
     case 'failed':
       return 'Could not update this invitation. Please try again.'
     default:
@@ -142,6 +145,7 @@ export default async function InvitationPage({ params, searchParams }: Props) {
   const declineAction = declineInvitationAsGuestAction.bind(null, id)
   const acceptAuthenticatedAction = acceptInvitationAuthenticatedAction.bind(null, id, inv.related_id, inv.related_type)
   const declineAuthenticatedAction = declineInvitationAuthenticatedAction.bind(null, id, inv.related_id, inv.related_type)
+  const openStatusAction = openInvitationStatusAction.bind(null, id)
 
   const normalizedTargetEmail = inv.target_email?.trim().toLowerCase() ?? null
   const identityLinkCandidates = user ? await getIdentityLinkCandidates(supabase).catch(() => []) : []
@@ -408,9 +412,15 @@ export default async function InvitationPage({ params, searchParams }: Props) {
           align-items: center;
         }
 
+        .invitation-action-form {
+          margin: 0;
+        }
+
         .invitation-button {
           align-items: center;
+          border: 0;
           border-radius: 999px;
+          cursor: pointer;
           display: inline-flex;
           font-size: 0.92rem;
           font-weight: 850;
@@ -712,15 +722,17 @@ export default async function InvitationPage({ params, searchParams }: Props) {
               <>
                 {inv.related_type === 'match' && (
                   <div className="invitation-actions">
-                    <Link href={matchHref} className="invitation-button invitation-button-primary">
-                      View Match
-                    </Link>
+                    <form action={openStatusAction} className="invitation-action-form">
+                      <button type="submit" className="invitation-button invitation-button-primary">
+                        View Match
+                      </button>
+                    </form>
                   </div>
                 )}
                 <section className="invitation-account-card invitation-account-card-soft">
                   <h2>Need to change your response?</h2>
                   <p>
-                    Open the match page if you can&apos;t make it or need to let the host know something changed.
+                    Open your private match status if you can&apos;t make it or need to let the host know something changed.
                   </p>
                 </section>
                 {!user && (
@@ -750,9 +762,11 @@ export default async function InvitationPage({ params, searchParams }: Props) {
                     <Link href={createAccountHref} className="invitation-button invitation-button-primary">
                       Create account
                     </Link>
-                    <Link href={matchHref} className="invitation-button invitation-button-secondary">
-                      Maybe later
-                    </Link>
+                    <form action={openStatusAction} className="invitation-action-form">
+                      <button type="submit" className="invitation-button invitation-button-secondary">
+                        View status
+                      </button>
+                    </form>
                   </div>
                 </section>
               </>
