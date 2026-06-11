@@ -806,6 +806,44 @@ export type PublicMatchSignupConfig = {
   updated_at: string
 }
 
+export type PublicParticipantStatusToken = {
+  id: string
+  match_participant_id: string
+  token_hash: string
+  source: 'invitation' | 'public_join_sms' | 'authenticated_self' | 'system'
+  out_actor_id: string
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+  expires_at: string | null
+}
+
+export type PublicParticipantStatusPayload = {
+  match_participant_id: string
+  match_id: string
+  participant_status: string
+  participant_join_method: string
+  participant_display_name: string
+  participant_avatar_url: string | null
+  participant_removed_at: string | null
+  participant_accepted_at: string | null
+  participant_org_approved_at: string | null
+  participant_confirmation_source: string | null
+  player_visible_note: string | null
+  match_status: string
+  game_type: string | null
+  sport_name: string | null
+  match_date: string | null
+  start_time: string | null
+  venue_name: string | null
+  venue_timezone: string | null
+  host_display_name: string
+  is_formed: boolean
+  formed_at: string | null
+  confirmed_players: Json
+  can_out: boolean
+}
+
 export type MatchMessage = {
   id: string
   match_id: string
@@ -1187,6 +1225,12 @@ export interface Database {
         Row: PublicMatchSignupSmsIntent
         Insert: Partial<PublicMatchSignupSmsIntent> & { link_id: string; match_id: string; display_name: string; phone_normalized: string; sms_token_hash: string }
         Update: Partial<PublicMatchSignupSmsIntent>
+        Relationships: []
+      }
+      public_participant_status_tokens: {
+        Row: PublicParticipantStatusToken
+        Insert: Partial<PublicParticipantStatusToken> & { match_participant_id: string; token_hash: string; out_actor_id: string }
+        Update: Partial<PublicParticipantStatusToken>
         Relationships: []
       }
       match_messages: {
@@ -1762,9 +1806,46 @@ export interface Database {
         Args: { p_match_id: string }
         Returns: MatchParticipant
       }
+      rpc_match_self_participant_status: {
+        Args: { p_match_id: string }
+        Returns: PublicParticipantStatusPayload[]
+      }
       rpc_match_remove_participant: {
         Args: { p_match_participant_id: string; p_note?: string | null }
         Returns: MatchParticipant
+      }
+      rpc_public_participant_status_token_issue: {
+        Args: {
+          p_match_participant_id: string
+          p_source?: 'invitation' | 'public_join_sms' | 'authenticated_self' | 'system' | null
+          p_actor_id?: string | null
+        }
+        Returns: {
+          status_token: string
+          token_id: string
+          match_participant_id: string
+          expires_at: string | null
+        }[]
+      }
+      rpc_public_participant_status_token_issue_for_invitation: {
+        Args: {
+          p_invitation_id: string
+          p_actor_id?: string | null
+        }
+        Returns: {
+          status_token: string
+          token_id: string
+          match_participant_id: string
+          expires_at: string | null
+        }[]
+      }
+      rpc_public_participant_status: {
+        Args: { p_status_token: string }
+        Returns: PublicParticipantStatusPayload[]
+      }
+      rpc_public_participant_out: {
+        Args: { p_status_token: string }
+        Returns: PublicParticipantStatusPayload[]
       }
       rpc_public_match_signup_link_get_or_create: {
         Args: { p_match_id: string }
