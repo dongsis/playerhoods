@@ -497,7 +497,9 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
               <li className="guest-invitation-value-item">
                 <span className="guest-invitation-value-dot" aria-hidden="true" />
                 <strong>Private by default</strong>
-                <span>Your phone, email, and player contacts are not shown to others.</span>
+                <span>
+                  Your phone and email stay private on PlayerHoods. Invitations are limited to match-connected players.
+                </span>
               </li>
               <li className="guest-invitation-value-item">
                 <span className="guest-invitation-value-dot" aria-hidden="true" />
