@@ -4,6 +4,7 @@ import { BrandLogo } from '@/app/components/BrandLogo'
 import { getInvitationById } from '@/lib/invitations/get-invitation-by-id'
 import { resolveInvitationToken } from '@/lib/invitations/invitation-token'
 import { createSupabasePublicServerClient } from '@/lib/supabase/server'
+import { openInvitationStatusAction } from '@/app/invitations/[id]/invitation-actions'
 
 type Props = {
   params: Promise<{ id: string }>
@@ -58,7 +59,7 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
   const invitationId = await resolveInvitationToken(supabase, id)
   const invitation = invitationId ? await getInvitationById(supabase, invitationId) : null
 
-  if (!invitation || invitation.related_type !== 'match') {
+  if (!invitationId || !invitation || invitation.related_type !== 'match') {
     notFound()
   }
 
@@ -71,6 +72,7 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
   const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' · ') || 'Time to be confirmed'
   const invitationHref = `/invitations/${invitationId}`
   const createAccountHref = `/login?mode=register&next=${encodeURIComponent(`/i/${id}/match`)}`
+  const openStatusAction = openInvitationStatusAction.bind(null, invitationId)
   const hasResponded = invitation.status === 'accepted' || invitation.status === 'declined'
   const isInactive =
     !hasResponded
@@ -290,9 +292,15 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
           align-items: center;
         }
 
+        .guest-invitation-action-form {
+          margin: 0;
+        }
+
         .guest-invitation-button {
           align-items: center;
+          border: 0;
           border-radius: 999px;
+          cursor: pointer;
           display: inline-flex;
           font-size: 0.92rem;
           font-weight: 850;
@@ -462,9 +470,17 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
                   <Link href={createAccountHref} className={`guest-invitation-button ${pageState.softPrompt ? 'guest-invitation-button-secondary' : 'guest-invitation-button-primary'}`}>
                     Create account
                   </Link>
-                  <Link href={invitationHref} className="guest-invitation-button guest-invitation-button-secondary">
-                    Maybe later
-                  </Link>
+                  {invitation.status === 'accepted' ? (
+                    <form action={openStatusAction} className="guest-invitation-action-form">
+                      <button type="submit" className="guest-invitation-button guest-invitation-button-secondary">
+                        View status
+                      </button>
+                    </form>
+                  ) : (
+                    <Link href={invitationHref} className="guest-invitation-button guest-invitation-button-secondary">
+                      Maybe later
+                    </Link>
+                  )}
                 </div>
               </section>
             ) : null}

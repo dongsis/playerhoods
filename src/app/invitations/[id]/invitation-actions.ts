@@ -4,8 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { acceptIdentityLinkCandidate, keepSeparateIdentityLinkCandidate } from '@/lib/api/identity-links'
 import { createSupabaseServerClient, getUser } from '@/lib/supabase/server'
+import { getStatusPath, issuePublicParticipantStatusTokenForInvitation } from '@/lib/public-participant-status'
 
 type IdentityLinkActionResult = { ok: true } | { ok: false; error: string }
+
+const FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000001'
 
 function getIdentityLinkActionError(error: unknown): string {
   const message =
@@ -50,9 +53,27 @@ function getInvitationActionErrorCode(error: unknown): string {
   return 'failed'
 }
 
-function redirectToInvitation(invitationId: string, params: Record<string, string>) {
+function redirectToInvitation(invitationId: string, params: Record<string, string>): never {
   const query = new URLSearchParams(params)
   redirect(`/invitations/${invitationId}?${query.toString()}`)
+}
+
+async function createInvitationStatusPath(
+  invitationId: string,
+  actorId: string | null | undefined,
+  notice?: string,
+): Promise<string | null> {
+  try {
+    const statusToken = await issuePublicParticipantStatusTokenForInvitation(invitationId, actorId)
+    if (!statusToken?.status_token) return null
+    return getStatusPath(statusToken.status_token, notice ? { notice } : undefined)
+  } catch (error) {
+    console.error('[invitation:status-token]', {
+      safe_error_code: getInvitationActionErrorCode(error),
+      has_error: true,
+    })
+    return null
+  }
 }
 
 async function callInvitationRpc(
@@ -80,12 +101,19 @@ export async function acceptInvitationAuthenticatedAction(
     redirectToInvitation(invitationId, { error: 'not-authenticated' })
   }
 
+  let statusPath: string | null = null
+
   try {
     await callInvitationRpc(supabase, 'rpc_email_invitation_accept', invitationId)
+    statusPath = await createInvitationStatusPath(invitationId, user.id, 'accepted')
     revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
   } catch (error) {
     console.error('[invitation:accept-authenticated]', error)
     redirectToInvitation(invitationId, { error: getInvitationActionErrorCode(error) })
+  }
+
+  if (statusPath) {
+    redirect(statusPath)
   }
 
   redirectToInvitation(invitationId, { notice: 'accepted' })
@@ -125,16 +153,24 @@ export async function acceptInvitationIdentityLinkAndContinueAction(
     return { ok: false, error: 'Please log in again.' }
   }
 
+  let statusPath: string | null = null
+
   try {
     await acceptIdentityLinkCandidate(supabase, guestId)
 
     await callInvitationRpc(supabase, 'rpc_email_invitation_accept', invitationId)
 
+    statusPath = await createInvitationStatusPath(invitationId, user.id, 'accepted')
     revalidateInvitationSurfaces(invitationId, relatedId, relatedType)
-    return { ok: true }
   } catch (error) {
     return { ok: false, error: getIdentityLinkActionError(error) }
   }
+
+  if (statusPath) {
+    redirect(statusPath)
+  }
+
+  return { ok: true }
 }
 
 export async function keepSeparateInvitationIdentityLinkAction(
@@ -156,4 +192,18 @@ export async function keepSeparateInvitationIdentityLinkAction(
   } catch (error) {
     return { ok: false, error: getIdentityLinkActionError(error) }
   }
+}
+
+export async function openInvitationStatusAction(invitationId: string): Promise<void> {
+  const user = await getUser().catch(() => null)
+  const systemActorId =
+    process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
+    || FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID
+  const statusPath = await createInvitationStatusPath(invitationId, user?.id ?? systemActorId)
+
+  if (statusPath) {
+    redirect(statusPath)
+  }
+
+  redirectToInvitation(invitationId, { error: 'status-unavailable' })
 }
