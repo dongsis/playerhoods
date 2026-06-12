@@ -8,7 +8,7 @@ import { getStatusPath, issuePublicParticipantStatusTokenForInvitation } from '@
 
 type IdentityLinkActionResult = { ok: true } | { ok: false; error: string }
 
-const FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000001'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function getIdentityLinkActionError(error: unknown): string {
   const message =
@@ -56,6 +56,21 @@ function getInvitationActionErrorCode(error: unknown): string {
 function redirectToInvitation(invitationId: string, params: Record<string, string>): never {
   const query = new URLSearchParams(params)
   redirect(`/invitations/${invitationId}?${query.toString()}`)
+}
+
+function getGuestInvitationStatusTokenActorId(): string | null {
+  const rawActorId = process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
+  if (!rawActorId) return null
+
+  if (!UUID_PATTERN.test(rawActorId)) {
+    console.error('[invitation:status-token-actor]', {
+      safe_error_code: 'invalid-guest-invitation-system-actor-id',
+      has_error: true,
+    })
+    return null
+  }
+
+  return rawActorId
 }
 
 async function createInvitationStatusPath(
@@ -196,10 +211,8 @@ export async function keepSeparateInvitationIdentityLinkAction(
 
 export async function openInvitationStatusAction(invitationId: string): Promise<void> {
   const user = await getUser().catch(() => null)
-  const systemActorId =
-    process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
-    || FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID
-  const statusPath = await createInvitationStatusPath(invitationId, user?.id ?? systemActorId)
+  const statusTokenActorId = getGuestInvitationStatusTokenActorId()
+  const statusPath = await createInvitationStatusPath(invitationId, user?.id ?? statusTokenActorId)
 
   if (statusPath) {
     redirect(statusPath)
