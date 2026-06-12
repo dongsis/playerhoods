@@ -375,8 +375,13 @@ export default async function PublicParticipantStatusPage({ params, searchParams
             <section className="status-card status-privacy-card">
               <h2>Private status link</h2>
               <p>
-                This page only shows your own status and a safe Confirmed Lineup. Contact details and internal notes stay private.
+                This page only shows your own status and a safe Confirmed Lineup.
               </p>
+              <ul className="status-privacy-list">
+                <li>Your phone and email stay private on PlayerHoods.</li>
+                <li>PlayerHoods limits invitations to match-connected players.</li>
+                <li>Internal notes stay private.</li>
+              </ul>
             </section>
           </aside>
         </div>
@@ -686,6 +691,17 @@ const statusPageStyles = `
     list-style: none;
     margin: 18px 0 0;
     padding: 0;
+  }
+
+  .status-privacy-list {
+    color: #526784;
+    display: grid;
+    font-size: 0.88rem;
+    font-weight: 680;
+    gap: 7px;
+    line-height: 1.45;
+    margin: 12px 0 0;
+    padding-left: 18px;
   }
 
   .status-player-row {
