@@ -2983,9 +2983,9 @@ export function CreateMatchInline({
     >
       <section className={`overflow-hidden ${DS_CARD}`}>
         {createExpanded ? (
-          <div className="flex items-start justify-between gap-4 px-4 py-3 md:px-7 md:py-6">
+          <div className="flex items-start justify-between gap-4 px-4 py-3 md:px-7 md:py-4">
             <div>
-              <h2 className="text-[21px] font-black leading-tight text-[#0B1F44] md:text-[28px]">Create Match</h2>
+              <h2 className="text-[20px] font-black leading-tight text-[#0B1F44] md:text-[24px]">Create Match</h2>
             </div>
             <button
               type="button"
@@ -3030,7 +3030,7 @@ export function CreateMatchInline({
         </button>
 
         {createExpanded ? (
-          <div className="space-y-3 px-4 pb-4 pt-3 md:space-y-6 md:px-7 md:pb-7 md:pt-7">
+          <div className="space-y-3 px-4 pb-4 pt-2 md:space-y-5 md:px-7 md:pb-7 md:pt-3">
       <div className="md:hidden">
         <p className="mb-1 text-[11px] font-bold text-[#7282A0]">Step {createStep} of 3</p>
         <div className="h-1 overflow-hidden rounded-full bg-[#EEF3F9]">
@@ -3043,8 +3043,6 @@ export function CreateMatchInline({
       {createStep === 1 ? (
         <>
       <section className="rounded-2xl bg-white">
-        <h3 className="mb-2 text-[16px] font-black text-[#0B1F44] md:mb-5 md:text-[18px]">Match Details</h3>
-
         <div className="space-y-2.5 md:space-y-5">
           <div className="grid grid-cols-2 gap-2.5 md:grid-cols-[minmax(0,1fr)_154px_140px] md:gap-4">
             <div className="col-span-2 md:col-span-1">

@@ -8,15 +8,30 @@ type PublicJoinShareTextInput = {
   firstPerson?: boolean
 }
 
+function formatShareLabel(sportName: string | null | undefined, gameType: string | null | undefined): string {
+  const sportLabel = (sportName || '').replace(/_/g, ' ').trim()
+  const gameTypeLabel = (gameType || '').replace(/_/g, ' ').trim()
+  const sportLower = sportLabel.toLowerCase()
+  const gameTypeLower = gameTypeLabel.toLowerCase()
+
+  if (sportLabel && gameTypeLabel) {
+    if (gameTypeLower.includes(sportLower)) return gameTypeLabel
+    if (sportLower.includes(gameTypeLower)) return sportLabel
+    return `${sportLabel} ${gameTypeLabel}`
+  }
+
+  return sportLabel || gameTypeLabel
+}
+
 function formatShareMatchKind(sportName: string | null | undefined, gameType: string | null | undefined): string {
-  const label = (sportName || gameType || '').replace(/_/g, ' ').trim()
+  const label = formatShareLabel(sportName, gameType)
   if (!label) return 'match'
   const lowerLabel = label.toLowerCase()
   return /\bmatch\b/i.test(lowerLabel) ? lowerLabel : `${lowerLabel} match`
 }
 
 function formatShareActivity(sportName: string | null | undefined, gameType: string | null | undefined): string {
-  const label = (sportName || gameType || '').replace(/_/g, ' ').trim()
+  const label = formatShareLabel(sportName, gameType)
   if (!label) return 'this match'
   return label.toLowerCase().replace(/\s+match$/i, '')
 }
@@ -27,12 +42,14 @@ function formatTitleCase(value: string): string {
 
 function formatPublicShareOpening(input: PublicJoinShareTextInput): string {
   const activity = formatShareActivity(input.sportName, input.gameType)
+  const hostName = input.hostName?.trim()
 
   if (input.firstPerson) {
-    return `Hey - I'm seeing who's free for ${activity}.`
+    return hostName
+      ? `Hey - this is ${hostName}. I'm seeing who's free for ${activity}.`
+      : `Hey - I'm seeing who's free for ${activity}.`
   }
 
-  const hostName = input.hostName?.trim()
   if (hostName) {
     return `${hostName} is seeing who's free for ${activity}.`
   }

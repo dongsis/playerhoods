@@ -45,6 +45,8 @@ type Props = {
   shareLinkRow?: ReactNode
   availableModes?: AddPlayersMode[]
   footerSlot?: ReactNode
+  beforeSearchSlot?: ReactNode
+  hideSearchRow?: boolean
   inviteEmptyLabel?: ReactNode
   playerCallEmptyLabel?: ReactNode
   searchPlaceholder?: string
@@ -169,6 +171,8 @@ export function AddPlayersPickerPanel({
   shareLinkRow,
   availableModes = DEFAULT_AVAILABLE_MODES,
   footerSlot,
+  beforeSearchSlot,
+  hideSearchRow = false,
   inviteEmptyLabel = 'No matching players, contacts, or groups.',
   playerCallEmptyLabel = 'Choose who can see this on their Match Board.',
   searchPlaceholder = 'Search player or group...',
@@ -184,7 +188,8 @@ export function AddPlayersPickerPanel({
   const lastTapRef = useRef<{ key: string; at: number } | null>(null)
   const suppressNextClickRef = useRef(false)
   const longPressOpenedRef = useRef(false)
-  const filteredCandidates = candidates.filter((candidate) => candidateMatches(candidate, searchValue, filterValue))
+  const effectiveSearchValue = hideSearchRow ? '' : searchValue
+  const filteredCandidates = candidates.filter((candidate) => candidateMatches(candidate, effectiveSearchValue, filterValue))
   const configuredModes = availableModes.length > 0 ? availableModes : DEFAULT_AVAILABLE_MODES
   const enabledModes = configuredModes.filter((nextMode) => (
     nextMode !== 'playerCall' || ENABLE_POST_TO_BOARD_INVITE_METHOD
@@ -334,27 +339,30 @@ export function AddPlayersPickerPanel({
 
       {mode !== 'shareLink' ? (
         <div className="w-full space-y-3">
-          <div className="flex flex-row gap-2">
-            <input
-              type="search"
-              value={searchValue}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder={searchPlaceholder}
-              className="w-0 min-w-0 flex-[1_1_70%] rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-semibold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-            />
-            <select
-              value={filterValue}
-              onChange={(event) => onFilterChange(event.target.value)}
-              className="min-w-[104px] flex-[0_0_30%] rounded-lg border border-[#E2E8F0] bg-white px-2 py-2.5 text-[12px] font-bold text-[#334155] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 sm:min-w-[140px] sm:flex-none sm:px-3 sm:text-body-main"
-              aria-label="Filter players"
-            >
-              {filterOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {beforeSearchSlot}
+          {!hideSearchRow ? (
+            <div className="flex flex-row gap-2">
+              <input
+                type="search"
+                value={searchValue}
+                onChange={(event) => onSearchChange(event.target.value)}
+                placeholder={searchPlaceholder}
+                className="w-0 min-w-0 flex-[1_1_70%] rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-body-main font-semibold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+              />
+              <select
+                value={filterValue}
+                onChange={(event) => onFilterChange(event.target.value)}
+                className="min-w-[104px] flex-[0_0_30%] rounded-lg border border-[#E2E8F0] bg-white px-2 py-2.5 text-[12px] font-bold text-[#334155] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 sm:min-w-[140px] sm:flex-none sm:px-3 sm:text-body-main"
+                aria-label="Filter players"
+              >
+                {filterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           <div className="flex max-h-[390px] flex-wrap content-start gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
             {filteredCandidates.length === 0 ? (
@@ -390,7 +398,7 @@ export function AddPlayersPickerPanel({
                       </span>
                     ) : null}
                   </span>
-                  {compactPreviewRows ? (
+                  {compactPreviewRows && candidate.kind !== 'contact' ? (
                     <span className="shrink-0 text-[14px] font-black text-slate-300" aria-hidden="true">
                       &rsaquo;
                     </span>
