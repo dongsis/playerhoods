@@ -26,6 +26,8 @@ import { saveContactPlayer } from '@/lib/api/play-network'
 import { createRosterGuest } from '@/lib/api/roster'
 import { getSharedCityNamesByUserIds } from '@/lib/api/discovery'
 import { getPublicPlayerProfile, type PublicPlayerProfile, type PublicSportProfile } from '@/lib/api/player-profiles'
+import { getGroupMembers } from '@/lib/api/groups'
+import { getVenueDisplayName } from '@/lib/venues/display'
 import {
   inviteGroupToMatch,
   inviteContactPersonToMatch,
@@ -50,7 +52,7 @@ type PanelMode = 'invite' | 'remove'
 type InviteSelectionMode = 'invite' | 'request' | 'share'
 type AdditionMode = Exclude<InviteSelectionMode, 'share'>
 type RemoveSelectionMode = 'confirmed' | 'invites' | 'requests'
-type PickerFilter = 'all' | 'saved' | 'contacts' | 'groups' | 'venues'
+type PickerFilter = string
 
 const ADD_PLAYERS_SECTION_LABEL = 'text-[9px] font-extrabold leading-[1.2] tracking-normal normal-case'
 const INVITE_FILTER_OPTIONS: Array<{ value: PickerFilter; label: string }> = [
@@ -58,13 +60,11 @@ const INVITE_FILTER_OPTIONS: Array<{ value: PickerFilter; label: string }> = [
   { value: 'saved', label: 'Saved' },
   { value: 'contacts', label: 'Contacts' },
   { value: 'groups', label: 'Groups' },
-  { value: 'venues', label: 'Venues' },
 ]
 const PLAYER_CALL_FILTER_OPTIONS: Array<{ value: PickerFilter; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'saved', label: 'Saved' },
   { value: 'groups', label: 'Groups' },
-  { value: 'venues', label: 'Venues' },
 ]
 const DIRECT_INVITE_AVAILABLE_MODES: AddPlayersMode[] = ENABLE_POST_TO_BOARD_INVITE_METHOD
   ? ['invite', 'playerCall']
@@ -84,7 +84,24 @@ type CandidateItem = {
   personId?: string | null
   isLinkedContact?: boolean
   cityNames?: string[]
+  venueIds?: string[]
+  venueNames?: string[]
   matchSportLevel?: string | null
+  groupMemberCount?: number
+  groupMembers?: GroupMemberPreviewRow[]
+  groupMembersLoadError?: boolean
+}
+
+type GroupMemberPreviewRow = {
+  id: string
+  name: string
+  avatarUrl?: string | null
+}
+
+type GroupMemberPreviewData = {
+  count: number
+  members: GroupMemberPreviewRow[]
+  loadError?: boolean
 }
 
 type PendingAddition = CandidateItem & {
@@ -209,6 +226,26 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join('') || '?'
+}
+
+function GroupCandidateIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="7.2" cy="7" r="2.6" />
+      <circle cx="13.4" cy="7.8" r="2.2" />
+      <path d="M3.2 16c.7-2.8 2.1-4.2 4-4.2s3.3 1.4 4 4.2" />
+      <path d="M10.8 15.6c.5-2.1 1.6-3.1 3.1-3.1 1.4 0 2.5 1 3 3.1" />
+    </svg>
+  )
 }
 
 function looksLikeInternalUserLabel(label: string) {
@@ -345,13 +382,17 @@ function getAvailabilityDisplay(
   }
 }
 
+function getVenueFilterValue(venueId: string) {
+  return `venue:${venueId}`
+}
+
 function getCandidateFilterTags(candidate: CandidateItem): PickerFilter[] {
-  if (candidate.kind === 'group') return ['groups']
-  if (candidate.kind === 'contact') return ['contacts']
+  const tags: PickerFilter[] = []
+  if (candidate.kind === 'group') tags.push('groups')
+  if (candidate.kind === 'contact') tags.push('contacts')
 
   const source = candidate.source?.toLowerCase() ?? ''
   const sourceLabel = candidate.sourceLabel?.toLowerCase() ?? ''
-  const tags: PickerFilter[] = []
 
   if (source.includes('saved') || sourceLabel.includes('saved')) {
     tags.push('saved')
@@ -359,6 +400,10 @@ function getCandidateFilterTags(candidate: CandidateItem): PickerFilter[] {
   if (source === 'club_members' || source.includes('venue') || sourceLabel.includes('venue')) {
     tags.push('venues')
   }
+  candidate.venueIds?.forEach((venueId) => {
+    const normalized = venueId.trim()
+    if (normalized) tags.push(getVenueFilterValue(normalized))
+  })
 
   return tags
 }
@@ -817,6 +862,73 @@ function AddPlayerCandidatePreviewCard({
       ? 'Open to Join'
       : 'Add'
 
+  if (item.kind === 'group') {
+    const groupMembers = item.groupMembers ?? []
+    const groupMemberCount = item.groupMemberCount ?? groupMembers.length
+    const memberCountLabel = item.groupMembersLoadError
+      ? 'Shared group'
+      : `Shared group · ${groupMemberCount} player${groupMemberCount === 1 ? '' : 's'}`
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-blue-100 bg-[#eff6ff] text-[#0d6efd] shadow-sm">
+            <GroupCandidateIcon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="m-0 truncate text-title-main text-slate-900">{item.name}</p>
+            <p className="mt-1 text-[11px] font-bold text-slate-500">{memberCountLabel}</p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+          <p className="m-0 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">Members</p>
+          {item.groupMembersLoadError ? (
+            <p className="mt-2 text-body-sub font-semibold text-slate-500">Members unavailable.</p>
+          ) : groupMembers.length > 0 ? (
+            <div className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+              {groupMembers.map((member) => (
+                <div key={member.id} className="flex min-w-0 items-center gap-2 text-body-sub font-semibold text-slate-700">
+                  <Avatar
+                    src={member.avatarUrl ?? null}
+                    displayName={member.name}
+                    size="sm"
+                    fallback="initial"
+                    className="h-6 w-6 shrink-0 border border-white"
+                  />
+                  <span className="min-w-0 truncate">{member.name}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-body-sub font-semibold text-slate-500">No active members yet.</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <p className="m-0 min-w-0 truncate text-[11px] font-semibold text-slate-400">Shared group</p>
+          <button
+            type="button"
+            onClick={() => {
+              onToggle()
+              onClose()
+            }}
+            className={[
+              'shrink-0 rounded-full px-3 py-1 text-[11px] font-black transition',
+              selected
+                ? 'border border-slate-200 bg-slate-100 text-slate-500'
+                : mode === 'request'
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-[#0d6efd] text-white hover:bg-[#0b5ed7]',
+            ].join(' ')}
+          >
+            {toggleLabel}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex items-start gap-3">
@@ -840,15 +952,13 @@ function AddPlayerCandidatePreviewCard({
               Contact
             </span>
           ) : null}
-          {item.kind !== 'group' ? (
-            <button
-              type="button"
-              onClick={() => setDetailOpen(true)}
-              className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-600 transition hover:bg-slate-50"
-            >
-              Detail
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => setDetailOpen(true)}
+            className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-600 transition hover:bg-slate-50"
+          >
+            Detail
+          </button>
         </div>
       </div>
 
@@ -1047,7 +1157,11 @@ export function MatchManagePanel({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [availabilityLookup, setAvailabilityLookup] = useState<Record<string, AvailabilityStatus | null>>({})
   const [sharedCityLookup, setSharedCityLookup] = useState<Record<string, string[]>>({})
+  const [sharedVenueIdsLookup, setSharedVenueIdsLookup] = useState<Record<string, string[]>>({})
+  const [sharedVenueLookup, setSharedVenueLookup] = useState<Record<string, string[]>>({})
+  const [organizerVenueFilterOptions, setOrganizerVenueFilterOptions] = useState<Array<{ value: PickerFilter; label: string }>>([])
   const [matchSportLevelLookup, setMatchSportLevelLookup] = useState<Record<string, string | null>>({})
+  const [groupMembersById, setGroupMembersById] = useState<Record<string, GroupMemberPreviewData>>({})
   const [localContactCandidates, setLocalContactCandidates] = useState<CandidateItem[]>([])
   const [contactComposerOpen, setContactComposerOpen] = useState(false)
   const [contactDisplayName, setContactDisplayName] = useState('')
@@ -1056,6 +1170,10 @@ export function MatchManagePanel({
   const [contactNotes, setContactNotes] = useState('')
   const [contactCreateError, setContactCreateError] = useState<string | null>(null)
   const [isCreatingContact, setIsCreatingContact] = useState(false)
+  const candidateGroupIdsKey = useMemo(
+    () => sortStrings(candidateGroups.map((group) => group.id).filter(Boolean)).join('|'),
+    [candidateGroups],
+  )
 
   useEffect(() => {
     const userIds = Array.from(
@@ -1152,33 +1270,223 @@ export function MatchManagePanel({
   }, [candidateUsers])
 
   useEffect(() => {
-    const userIds = Array.from(new Set(candidateUsers.map((user) => user.id).filter(Boolean)))
-    if (userIds.length === 0 || (matchSportId == null && !matchSportName)) {
-      setMatchSportLevelLookup({})
+    const groupIds = candidateGroupIdsKey ? candidateGroupIdsKey.split('|') : []
+    if (groupIds.length === 0) {
+      setGroupMembersById({})
       return
     }
 
     let cancelled = false
+    const supabase = createSupabaseBrowserClient()
 
-    async function loadMatchSportLevels() {
-      const supabase = createSupabaseBrowserClient()
+    async function loadGroupMemberPreviews() {
       const entries = await Promise.all(
-        userIds.map(async (userId) => {
+        groupIds.map(async (groupId) => {
           try {
-            const profile = await getPublicPlayerProfile(supabase, userId)
-            return [userId, getMatchSportLevelLabel(profile, matchSportId, matchSportName)] as const
-          } catch {
-            return [userId, null] as const
+            const members = await getGroupMembers(supabase, groupId)
+            const normalizedMembers = members.map((member) => ({
+              id: member.user_id,
+              name: getSafePlayerDisplayName(member.profile?.display_name ?? member.group_display_name ?? 'Player'),
+              avatarUrl: member.profile?.avatar_url ?? null,
+            }))
+
+            return [groupId, { count: normalizedMembers.length, members: normalizedMembers }] as const
+          } catch (groupError) {
+            console.error(`[MatchManagePanel] group members ${groupId}:`, groupError)
+            return [groupId, { count: 0, members: [], loadError: true }] as const
           }
         }),
       )
 
       if (!cancelled) {
-        setMatchSportLevelLookup(Object.fromEntries(entries))
+        setGroupMembersById(Object.fromEntries(entries))
       }
     }
 
-    loadMatchSportLevels()
+    loadGroupMemberPreviews()
+
+    return () => {
+      cancelled = true
+    }
+  }, [candidateGroupIdsKey])
+
+  useEffect(() => {
+    if (!organizerUserId) {
+      setOrganizerVenueFilterOptions([])
+      return
+    }
+    const organizerId = organizerUserId
+
+    let cancelled = false
+
+    async function loadOrganizerVenueFilters() {
+      const supabase = createSupabaseBrowserClient()
+
+      try {
+        const { data: relationshipRows, error: relationshipError } = await supabase
+          .from('venue_user_relationships')
+          .select('venue_id')
+          .eq('user_id', organizerId)
+          .eq('relationship_type', 'member')
+          .order('created_at', { ascending: true })
+
+        if (relationshipError) throw relationshipError
+
+        const venueIds = Array.from(
+          new Set(((relationshipRows ?? []) as Array<{ venue_id: string }>).map((row) => row.venue_id).filter(Boolean)),
+        )
+
+        if (venueIds.length === 0) {
+          if (!cancelled) setOrganizerVenueFilterOptions([])
+          return
+        }
+
+        const { data: venueRows, error: venueError } = await supabase
+          .from('venues')
+          .select('id, name, abbreviation')
+          .in('id', venueIds)
+
+        if (venueError) throw venueError
+
+        const venuesById = new Map(
+          ((venueRows ?? []) as Array<{ id: string; name: string; abbreviation: string | null }>).map((venue) => [
+            venue.id,
+            venue,
+          ]),
+        )
+        const options = venueIds
+          .map((venueId) => {
+            const label = getVenueDisplayName(venuesById.get(venueId)).trim()
+            return label ? { value: getVenueFilterValue(venueId), label } : null
+          })
+          .filter((option): option is { value: PickerFilter; label: string } => option !== null)
+
+        if (!cancelled) setOrganizerVenueFilterOptions(options)
+      } catch (error) {
+        console.error('[MatchManagePanel] load organizer venue filters:', error)
+        if (!cancelled) setOrganizerVenueFilterOptions([])
+      }
+    }
+
+    loadOrganizerVenueFilters()
+
+    return () => {
+      cancelled = true
+    }
+  }, [organizerUserId])
+
+  useEffect(() => {
+    const userIds = Array.from(new Set(candidateUsers.map((user) => user.id).filter(Boolean)))
+    if (userIds.length === 0) {
+      setMatchSportLevelLookup({})
+      setSharedVenueIdsLookup({})
+      setSharedVenueLookup({})
+      return
+    }
+
+    let cancelled = false
+
+    async function loadMatchSportProfileDetails() {
+      const supabase = createSupabaseBrowserClient()
+      const entries = await Promise.all(
+        userIds.map(async (userId) => {
+          try {
+            const profile = await getPublicPlayerProfile(supabase, userId)
+            const venueNames: string[] = profile?.shared_venue_names ?? []
+            return [
+              userId,
+              profile ? getMatchSportLevelLabel(profile, matchSportId, matchSportName) : null,
+              venueNames,
+            ] as const
+          } catch {
+            return [userId, null, [] as string[]] as const
+          }
+        }),
+      )
+      const venueNamesByUserId = new Map<string, string[]>(
+        entries.map(([userId, , venueNames]) => [userId, venueNames]),
+      )
+      const venueIdsByUserId = new Map<string, string[]>(userIds.map((userId) => [userId, []]))
+
+      try {
+        const { data: relationshipRows, error: relationshipError } = await supabase
+          .from('venue_user_relationships')
+          .select('user_id, venue_id')
+          .eq('relationship_type', 'member')
+          .in('user_id', userIds)
+
+        if (relationshipError) throw relationshipError
+
+        const rows = [...((relationshipRows ?? []) as Array<{ user_id: string; venue_id: string }>)]
+
+        const { data: profileVenueRows, error: profileVenueError } = await supabase
+          .from('profiles')
+          .select('id, primary_venue_id, secondary_venue_ids')
+          .in('id', userIds)
+
+        if (profileVenueError) {
+          console.error('[MatchManagePanel] load candidate profile venues:', profileVenueError)
+        } else {
+          ;((profileVenueRows ?? []) as Array<{
+            id: string
+            primary_venue_id: string | null
+            secondary_venue_ids: string[] | null
+          }>).forEach((profile) => {
+            const venueIds = [
+              profile.primary_venue_id,
+              ...(profile.secondary_venue_ids ?? []),
+            ].filter((venueId): venueId is string => Boolean(venueId))
+
+            venueIds.forEach((venueId) => {
+              rows.push({ user_id: profile.id, venue_id: venueId })
+            })
+          })
+        }
+
+        const venueIds = Array.from(new Set(rows.map((row) => row.venue_id).filter(Boolean)))
+
+        if (venueIds.length > 0) {
+          const { data: venueRows, error: venueError } = await supabase
+            .from('venues')
+            .select('id, name, abbreviation')
+            .in('id', venueIds)
+
+          if (venueError) throw venueError
+
+          const venueNameById = new Map(
+            ((venueRows ?? []) as Array<{ id: string; name: string; abbreviation: string | null }>).map((venue) => [
+              venue.id,
+              getVenueDisplayName(venue),
+            ]),
+          )
+
+          rows.forEach((row) => {
+            const venueName = venueNameById.get(row.venue_id)?.trim()
+            if (!venueName) return
+
+            const existingVenueIds = venueIdsByUserId.get(row.user_id) ?? []
+            if (!existingVenueIds.includes(row.venue_id)) {
+              venueIdsByUserId.set(row.user_id, [...existingVenueIds, row.venue_id])
+            }
+
+            const existing = venueNamesByUserId.get(row.user_id) ?? []
+            if (!existing.some((name) => name.toLowerCase() === venueName.toLowerCase())) {
+              venueNamesByUserId.set(row.user_id, [...existing, venueName])
+            }
+          })
+        }
+      } catch (error) {
+        console.error('[MatchManagePanel] load candidate venues:', error)
+      }
+
+      if (!cancelled) {
+        setMatchSportLevelLookup(Object.fromEntries(entries.map(([userId, level]) => [userId, level])))
+        setSharedVenueIdsLookup(Object.fromEntries(userIds.map((userId) => [userId, venueIdsByUserId.get(userId) ?? []])))
+        setSharedVenueLookup(Object.fromEntries(userIds.map((userId) => [userId, venueNamesByUserId.get(userId) ?? []])))
+      }
+    }
+
+    loadMatchSportProfileDetails()
 
     return () => {
       cancelled = true
@@ -1293,6 +1601,8 @@ export function MatchManagePanel({
               sourceLabel: user.sourceLabel,
               userId: user.id,
               cityNames: sharedCityLookup[user.id] ?? [],
+              venueIds: sharedVenueIdsLookup[user.id] ?? [],
+              venueNames: sharedVenueLookup[user.id] ?? [],
               matchSportLevel: matchSportLevelLookup[user.id] ?? null,
             })),
             ...contactTargets
@@ -1311,13 +1621,21 @@ export function MatchManagePanel({
               })),
             ...(isOrganizer ? localContactCandidates : []),
             ...(isOrganizer
-              ? candidateGroups.map((group) => ({
-                  key: `group:${group.id}`,
-                  id: group.id,
-                  name: group.name,
-                  kind: 'group' as const,
-                  sourceLabel: 'Shared group',
-                }))
+              ? candidateGroups.map((group) => {
+                  const memberPreview = groupMembersById[group.id]
+
+                  return {
+                    key: `group:${group.id}`,
+                    id: group.id,
+                    name: group.name,
+                    kind: 'group' as const,
+                    sourceLabel: 'Shared group',
+                    venueIds: group.venue_id ? [group.venue_id] : [],
+                    groupMemberCount: memberPreview?.count,
+                    groupMembers: memberPreview?.members,
+                    groupMembersLoadError: memberPreview?.loadError,
+                  }
+                })
               : []),
           ]
         : [
@@ -1334,16 +1652,26 @@ export function MatchManagePanel({
               sourceLabel: user.sourceLabel,
               userId: user.id,
               cityNames: sharedCityLookup[user.id] ?? [],
+              venueIds: sharedVenueIdsLookup[user.id] ?? [],
+              venueNames: sharedVenueLookup[user.id] ?? [],
               matchSportLevel: matchSportLevelLookup[user.id] ?? null,
             })),
             ...(isOrganizer
-              ? candidateGroups.map((group) => ({
-                  key: `group:${group.id}`,
-                  id: group.id,
-                  name: group.name,
-                  kind: 'group' as const,
-                  sourceLabel: 'Shared group',
-                }))
+              ? candidateGroups.map((group) => {
+                  const memberPreview = groupMembersById[group.id]
+
+                  return {
+                    key: `group:${group.id}`,
+                    id: group.id,
+                    name: group.name,
+                    kind: 'group' as const,
+                    sourceLabel: 'Shared group',
+                    venueIds: group.venue_id ? [group.venue_id] : [],
+                    groupMemberCount: memberPreview?.count,
+                    groupMembers: memberPreview?.members,
+                    groupMembersLoadError: memberPreview?.loadError,
+                  }
+                })
               : []),
           ]
 
@@ -1372,7 +1700,10 @@ export function MatchManagePanel({
     activeAdditionMode,
     isOrganizer,
     availabilityLookup,
+    groupMembersById,
     sharedCityLookup,
+    sharedVenueIdsLookup,
+    sharedVenueLookup,
     matchSportLevelLookup,
     pendingAddKeys,
     revokedRequestGroupIds,
@@ -1385,11 +1716,33 @@ export function MatchManagePanel({
       : inviteMode === 'share'
         ? 'shareLink'
         : 'invite'
-  const pickerFilterOptions = inviteMode === 'request' ? PLAYER_CALL_FILTER_OPTIONS : INVITE_FILTER_OPTIONS
+  const pickerFilterOptions = useMemo(() => {
+    const baseOptions = inviteMode === 'request' ? PLAYER_CALL_FILTER_OPTIONS : INVITE_FILTER_OPTIONS
+    const venueOptionsByValue = new Map<string, { value: PickerFilter; label: string }>()
+
+    organizerVenueFilterOptions.forEach((option) => {
+      venueOptionsByValue.set(option.value, option)
+    })
+
+    return [
+      ...baseOptions,
+      ...Array.from(venueOptionsByValue.values()).sort((a, b) => a.label.localeCompare(b.label)),
+    ]
+  }, [inviteCandidates, inviteMode, organizerVenueFilterOptions])
+  const venuePickerFilterOptions = useMemo(
+    () => pickerFilterOptions.filter((option) => option.value.startsWith('venue:')),
+    [pickerFilterOptions],
+  )
+
+  useEffect(() => {
+    if (pickerFilterOptions.some((option) => option.value === pickerFilter)) return
+    setPickerFilter('all')
+  }, [pickerFilter, pickerFilterOptions])
+
   const sharedPickerCandidates = useMemo<AddPlayersCandidate[]>(() => (
     inviteCandidates.map((candidate) => {
       const isSelected = pendingAddKeys.has(`${activeAdditionMode}:${candidate.key}`)
-      const availabilityDotClass = candidate.kind === 'group'
+      const availabilityDotClass = candidate.kind === 'group' || candidate.kind === 'contact'
         ? null
         : getAvailabilityStatusDotClass(candidate.availabilityStatus) ?? 'bg-slate-300'
       const filterTags = getCandidateFilterTags(candidate)
@@ -1404,7 +1757,7 @@ export function MatchManagePanel({
         title: candidate.sourceLabel ? `${candidate.name}: ${candidate.sourceLabel}` : candidate.name,
         previewTitle: candidate.name,
         previewSubtitle: candidate.kind === 'group'
-          ? 'Group'
+          ? 'Shared group'
           : candidate.kind === 'contact'
             ? 'Contact player'
             : candidate.sourceLabel ?? 'Player',
@@ -1414,9 +1767,11 @@ export function MatchManagePanel({
           </p>
         ),
         supportingNode: candidate.kind === 'group' ? null : candidate.matchSportLevel,
-        leadingNode: availabilityDotClass ? (
-          <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${availabilityDotClass}`} aria-hidden="true" />
-        ) : null,
+        leadingNode: candidate.kind === 'group'
+          ? <GroupCandidateIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+          : availabilityDotClass ? (
+            <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${availabilityDotClass}`} aria-hidden="true" />
+          ) : null,
         labelNode: candidate.kind === 'group' ? (
           <span>{candidate.name}</span>
         ) : (
@@ -2032,11 +2387,21 @@ export function MatchManagePanel({
 
   const hasExistingPlayerCall = activeRequestUsers.length > 0 || activeRequestGroups.length > 0
   const hasPlayerCallChanges = pendingRequestAdds.length > 0 || pendingRequestRemovals.length > 0
+  const inviteRecipientCountKnown = pendingInviteAdds.every((item) => (
+    item.kind !== 'group' || (groupMembersById[item.id] != null && !groupMembersById[item.id].loadError)
+  ))
+  const inviteRecipientCount = pendingInviteAdds.reduce((count, item) => {
+    if (item.kind !== 'group') return count + 1
+    const memberPreview = groupMembersById[item.id]
+    return count + (memberPreview && !memberPreview.loadError ? memberPreview.count : 0)
+  }, 0)
   const invitePrimaryLabel =
     inviteMode === 'request'
       ? hasExistingPlayerCall ? 'Update Board' : 'Post to Board'
       : pendingInviteAdds.length > 0
-        ? `Send ${pendingInviteAdds.length} Invite${pendingInviteAdds.length === 1 ? '' : 's'}`
+        ? inviteRecipientCountKnown && inviteRecipientCount > 0
+          ? `Send ${inviteRecipientCount} Invite${inviteRecipientCount === 1 ? '' : 's'}`
+          : 'Send Invites'
         : 'Send Invites'
   const inviteActionDisabled =
     isApplying ||
@@ -2129,6 +2494,33 @@ export function MatchManagePanel({
     </div>
   )
 
+  const inviteContextSlot = activeAdditionMode === 'invite' ? (
+    venuePickerFilterOptions.length > 0 ? (
+      <div className="flex flex-wrap gap-1.5">
+        {venuePickerFilterOptions.map((option) => {
+          const isSelected = pickerFilter === option.value
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setPickerFilter(isSelected ? 'all' : option.value)}
+              aria-pressed={isSelected}
+              className={[
+                'rounded-full border px-2.5 py-1 text-[12px] font-bold transition',
+                isSelected
+                  ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
+                  : 'border-[#CBD5E1] bg-[#F1F5F9] text-[#475569] hover:border-[#94A3B8] hover:bg-[#E2E8F0]',
+              ].join(' ')}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+    ) : null
+  ) : null
+
   const playerCallTargetCount = requestSummaryItems.length + pendingRequestAdds.length
   const playerCallSummarySlot = playerCallTargetCount === 0 ? (
     <p className="text-body-sub font-semibold text-[#94A3B8]">No one yet</p>
@@ -2194,23 +2586,9 @@ export function MatchManagePanel({
     </div>
   )
 
-  const addContactSlot = isOrganizer ? (
+  const addContactSlot = isOrganizer && contactComposerOpen ? (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => {
-            setContactCreateError(null)
-            setContactComposerOpen((open) => !open)
-          }}
-          className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#D7E3F4] bg-[#F8FBFF] px-3 py-1.5 font-bold text-slate-900 transition hover:border-blue-200 hover:bg-white"
-        >
-          <span className="mr-1.5 text-base leading-none">+</span>
-          Add My Contact
-        </button>
-      </div>
-
-      {contactComposerOpen ? (
+      <div>
         <AddMyContactPanel
           userId={organizerUserId}
           existingContacts={[]}
@@ -2232,47 +2610,64 @@ export function MatchManagePanel({
           showImportSection={false}
           manualSubmitLabel="Save & Add"
         />
-      ) : null}
+      </div>
     </div>
   ) : null
 
   const inviteFooterSlot = (
-    <div className="flex flex-wrap items-center justify-end gap-3">
-      <button
-        type="button"
-        onClick={() => {
-          setError(null)
-          setSuccess(null)
-          if (activeAdditionMode === 'invite') {
-            setPendingAdds((prev) => prev.filter((item) => item.mode !== 'invite'))
-            setLocalContactCandidates([])
-          } else {
-            setPendingAdds((prev) => prev.filter((item) => item.mode !== 'request'))
-            setPendingRemovals((prev) => prev.filter((item) => item.category !== 'requests'))
-          }
-          if (embedded) {
-            onEmbeddedCancel?.()
-          }
-        }}
-        disabled={embedded ? isApplying : inviteActionDisabled}
-        className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Cancel
-      </button>
-      <button
-        type="button"
-        onClick={() => void handleApply(activeAdditionMode)}
-        disabled={inviteActionDisabled}
-        className={`text-label rounded-2xl px-5 py-4 text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-50 ${
-          activeAdditionMode === 'request'
-            ? 'bg-green-600 hover:bg-green-700'
-            : 'bg-[#0d6efd] hover:bg-[#0b5ed7]'
-        }`}
-      >
-        {isApplying
-          ? activeAdditionMode === 'request' ? 'Updating...' : 'Sending...'
-          : invitePrimaryLabel}
-      </button>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 flex-1 justify-start">
+        {isOrganizer && activeAdditionMode === 'invite' ? (
+          <button
+            type="button"
+            onClick={() => {
+              setContactCreateError(null)
+              setContactComposerOpen((open) => !open)
+            }}
+            className="text-body-sub inline-flex shrink-0 items-center justify-center rounded-full border border-[#D7E3F4] bg-[#F8FBFF] px-3 py-1.5 font-bold text-slate-900 transition hover:border-blue-200 hover:bg-white"
+          >
+            <span className="mr-1.5 text-base leading-none">+</span>
+            Save contact player
+          </button>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            setError(null)
+            setSuccess(null)
+            if (activeAdditionMode === 'invite') {
+              setPendingAdds((prev) => prev.filter((item) => item.mode !== 'invite'))
+              setLocalContactCandidates([])
+            } else {
+              setPendingAdds((prev) => prev.filter((item) => item.mode !== 'request'))
+              setPendingRemovals((prev) => prev.filter((item) => item.category !== 'requests'))
+            }
+            if (embedded) {
+              onEmbeddedCancel?.()
+            }
+          }}
+          disabled={embedded ? isApplying : inviteActionDisabled}
+          className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleApply(activeAdditionMode)}
+          disabled={inviteActionDisabled}
+          className={`text-label rounded-2xl px-5 py-4 text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            activeAdditionMode === 'request'
+              ? 'bg-green-600 hover:bg-green-700'
+              : 'bg-[#0d6efd] hover:bg-[#0b5ed7]'
+          }`}
+        >
+          {isApplying
+            ? activeAdditionMode === 'request' ? 'Updating...' : 'Sending...'
+            : invitePrimaryLabel}
+        </button>
+      </div>
     </div>
   )
 
@@ -2310,7 +2705,7 @@ export function MatchManagePanel({
               {panelMode === 'remove' ? '-' : '+'}
             </span>
             <h2 className="text-h2 text-slate-800">
-              {panelMode === 'remove' ? 'Remove Players' : 'Invite Players'}
+              {panelMode === 'remove' ? 'Remove Players' : 'Manage'}
             </h2>
           </div>
           <div className="flex items-center gap-4">
@@ -2326,7 +2721,7 @@ export function MatchManagePanel({
       ) : null}
 
       {(embedded || isExpanded) ? (
-        <div className={embedded ? 'px-0 pb-0 pt-0' : 'px-6 pb-6 pt-5'}>
+        <div className={embedded ? 'px-2 pb-2 pt-2 md:px-3 md:pb-3 md:pt-3' : 'px-6 pb-6 pt-5'}>
           {panelMode === 'remove' ? (
             <div className="mb-5 rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3">
               <div className="text-title-main text-orange-700">Remove mode</div>
@@ -2364,46 +2759,50 @@ export function MatchManagePanel({
 
           {panelMode === 'invite' ? (
             <div className="space-y-4">
-              <AddPlayersPickerPanel
-                mode={addPlayersMode}
-                onModeChange={resetSharedPickerMode}
-                searchValue={pickerSearch}
-                onSearchChange={setPickerSearch}
-                filterValue={pickerFilter}
-                onFilterChange={(value) => setPickerFilter(value as PickerFilter)}
-                filterOptions={pickerFilterOptions}
-                candidates={sharedPickerCandidates}
-                onToggleCandidate={toggleSharedPickerCandidate}
-                availableModes={DIRECT_INVITE_AVAILABLE_MODES}
-                expandModeButtonsOnMobile
-                compactPreviewRows
-                renderPreview={(candidate, actions) => {
-                  const item = candidate.payload as CandidateItem | undefined
-                  if (!item) return null
+              <div className={embedded ? 'mx-auto w-full max-w-[680px]' : ''}>
+                <AddPlayersPickerPanel
+                  mode={addPlayersMode}
+                  onModeChange={resetSharedPickerMode}
+                  searchValue={pickerSearch}
+                  onSearchChange={setPickerSearch}
+                  filterValue={pickerFilter}
+                  onFilterChange={(value) => setPickerFilter(value as PickerFilter)}
+                  filterOptions={pickerFilterOptions}
+                  candidates={sharedPickerCandidates}
+                  onToggleCandidate={toggleSharedPickerCandidate}
+                  availableModes={DIRECT_INVITE_AVAILABLE_MODES}
+                  expandModeButtonsOnMobile
+                  compactPreviewRows
+                  renderPreview={(candidate, actions) => {
+                    const item = candidate.payload as CandidateItem | undefined
+                    if (!item) return null
 
-                  return (
-                    <AddPlayerCandidatePreviewCard
-                      item={item}
-                      selected={candidate.selected}
-                      mode={activeAdditionMode}
-                      onToggle={actions.toggleCandidate}
-                      onClose={actions.closePreview}
-                      matchSportId={matchSportId}
-                      matchSportName={matchSportName}
-                    />
-                  )
-                }}
-                shareLinkRow={shareLinkRow}
-                playerCallSummaryLabel="Visible to"
-                playerCallHelperText="Only selected players and groups will see this on their Match Board."
-                playerCallSummary={playerCallSummarySlot}
-                inviteSummary={inviteSummarySlot}
-                addContactSlot={addContactSlot}
-                footerSlot={inviteFooterSlot}
-                inviteEmptyLabel={isOrganizer ? undefined : 'No matching players.'}
-                searchPlaceholder="Search saved players..."
-                playerCallEmptyLabel="Choose who can see this on their Match Board."
-              />
+                    return (
+                      <AddPlayerCandidatePreviewCard
+                        item={item}
+                        selected={candidate.selected}
+                        mode={activeAdditionMode}
+                        onToggle={actions.toggleCandidate}
+                        onClose={actions.closePreview}
+                        matchSportId={matchSportId}
+                        matchSportName={matchSportName}
+                      />
+                    )
+                  }}
+                  shareLinkRow={shareLinkRow}
+                  playerCallSummaryLabel="Visible to"
+                  playerCallHelperText="Only selected players and groups will see this on their Match Board."
+                  playerCallSummary={playerCallSummarySlot}
+                  inviteSummary={inviteSummarySlot}
+                  addContactSlot={addContactSlot}
+                  footerSlot={inviteFooterSlot}
+                  beforeSearchSlot={inviteContextSlot}
+                  hideSearchRow={activeAdditionMode === 'invite'}
+                  inviteEmptyLabel={isOrganizer ? undefined : 'No matching players.'}
+                  searchPlaceholder="Search saved players..."
+                  playerCallEmptyLabel="Choose who can see this on their Match Board."
+                />
+              </div>
 
               {(error || success) ? (
                 <div className="text-body-main rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">

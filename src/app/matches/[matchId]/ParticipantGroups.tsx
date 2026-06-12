@@ -305,12 +305,12 @@ function ParticipantRow({
   const isPendingParticipant = p.status === 'pending'
   const isWaitingListParticipant = p.status === 'waiting_list'
   const isPublicSignup = p.public_signup_source === 'public_match_signup'
-  const publicSignupContactLabel =
+  const publicSignupSourceLabel =
     p.public_signup_phone_confirmed || p.public_signup_contact_state === 'phone_confirmed'
-      ? 'Phone confirmed'
+      ? 'Joined from confirmed phone'
       : p.public_signup_email_verified
-        ? 'Email confirmed'
-        : 'Email pending verification'
+        ? 'Joined from confirmed email'
+        : 'Joined from invite link'
   const isHostManagedConfirmation =
     p.confirmation_source === 'host_managed_offline'
     || p.confirmation_source === 'contact_owner_managed'
@@ -706,17 +706,13 @@ function ParticipantRow({
                   lineHeight: 1.35,
                 }}
               >
-                Guest player
-                {' · '}
-                {publicSignupContactLabel}
-                {' · '}
-                Joined from share link
+                {publicSignupSourceLabel}
               </span>
             ) : null}
           </div>
         </div>
 
-        {!isHostRow && pendingState && p.status !== 'confirmed' && !isPublicSignup && (
+        {!isHostRow && pendingState && p.status !== 'confirmed' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginTop: '0.18rem' }}>
             <ConfirmationBadge
               label="Host"
@@ -1247,6 +1243,84 @@ function Section({
   )
 }
 
+function getParticipantNameMap(
+  participants: MatchParticipantEnriched[],
+  organizerUserId: string | null,
+  organizerName: string,
+) {
+  const nameMap = new Map(
+    participants
+      .filter(p => p.user_id !== null)
+      .map(p => [p.user_id!, p.display_name])
+  )
+
+  if (organizerUserId && !nameMap.has(organizerUserId)) {
+    nameMap.set(organizerUserId, organizerName)
+  }
+
+  return nameMap
+}
+
+function isCurrentLineupParticipant(participant: MatchParticipantEnriched) {
+  return participant.removed_at === null && (
+    participant.status === 'confirmed' ||
+    (participant.status === 'pending' && participant.org_approved_at !== null)
+  )
+}
+
+function hasImmediateOverviewAction({
+  participant,
+  isOrganizer,
+  matchStatus,
+  organizerUserId,
+}: {
+  participant: MatchParticipantEnriched
+  isOrganizer: boolean
+  matchStatus: MatchStatus
+  organizerUserId: string | null
+}) {
+  if (matchStatus !== 'active') return false
+  if (participant.status === 'removed' || participant.removed_at !== null) return false
+
+  const isHostRow = organizerUserId !== null && participant.user_id === organizerUserId
+  const canAddToLineup =
+    isOrganizer &&
+    participant.status === 'pending' &&
+    participant.org_approved_at === null
+  const canMarkHostConfirmed =
+    isOrganizer &&
+    (participant.status === 'pending' || participant.status === 'waiting_list') &&
+    participant.participant_accepted_at === null &&
+    !isHostRow
+  const canProxyConfirm =
+    participant.proxy_manageable_by_viewer === true &&
+    participant.status === 'pending' &&
+    participant.participant_accepted_at === null
+
+  return canAddToLineup || canMarkHostConfirmed || canProxyConfirm
+}
+
+function getOverviewActivityLabel(participant: MatchParticipantEnriched) {
+  const removalNote = participant.removal_note?.toLowerCase() ?? ''
+
+  if (participant.status === 'removed' || participant.removed_at !== null) {
+    if (removalNote.includes('withdraw') || removalNote.includes('withdrew')) return 'Withdrawn'
+    if (removalNote.includes('declin')) return 'Declined'
+    return 'Removed'
+  }
+
+  if (participant.status === 'waiting_list') return 'Waiting list'
+
+  if (participant.status === 'pending') {
+    if (participant.join_method === 'requested') return 'Open to Join'
+    if (participant.join_method === 'invited') return 'Invited'
+    if (participant.join_method === 'nominated') return 'Suggested'
+    return 'Pending'
+  }
+
+  return 'Activity'
+}
+
 export function ParticipantGroups({
   matchId,
   matchStatus,
@@ -1383,6 +1457,144 @@ export function ParticipantGroups({
           )}
         </Section>
       )}
+    </div>
+  )
+}
+
+export function ParticipantOverviewRows({
+  matchId,
+  matchStatus,
+  participants,
+  isOrganizer,
+  myUserId,
+  organizerUserId,
+  organizerName,
+  savedPlayerIds,
+  onRemoveParticipant,
+}: Pick<Props,
+  | 'matchId'
+  | 'matchStatus'
+  | 'participants'
+  | 'isOrganizer'
+  | 'myUserId'
+  | 'organizerUserId'
+  | 'organizerName'
+  | 'savedPlayerIds'
+  | 'onRemoveParticipant'
+>) {
+  const [showMoreActivity, setShowMoreActivity] = useState(false)
+  const nameMap = getParticipantNameMap(participants, organizerUserId, organizerName)
+  const savedPlayerIdSet = new Set(savedPlayerIds)
+  const visibleParticipants = participants.filter((participant) =>
+    isCurrentLineupParticipant(participant) ||
+    hasImmediateOverviewAction({
+      participant,
+      isOrganizer,
+      matchStatus,
+      organizerUserId,
+    }),
+  )
+  const visibleParticipantIds = new Set(visibleParticipants.map((participant) => participant.id))
+  const collapsedParticipants = participants.filter((participant) => !visibleParticipantIds.has(participant.id))
+
+  const renderParticipantRow = (p: MatchParticipantEnriched) => (
+    <ParticipantRow
+      key={p.id}
+      p={p}
+      matchId={matchId}
+      matchStatus={matchStatus}
+      isOrganizer={isOrganizer}
+      isMe={p.user_id === myUserId}
+      myUserId={myUserId}
+      organizerUserId={organizerUserId}
+      organizerName={organizerName}
+      initiallySaved={!!(p.user_id && savedPlayerIdSet.has(p.user_id))}
+      actorNames={nameMap}
+      onRemoveParticipant={onRemoveParticipant}
+    />
+  )
+
+  return (
+    <div>
+      {visibleParticipants.length === 0 ? (
+        <p className="m-0 rounded-[14px] border border-dashed border-[#D7E1EE] bg-[#F8FBFF] px-3 py-3 text-[13px] font-semibold text-[#64748B]">
+          No players confirmed yet.
+        </p>
+      ) : (
+        <div style={participantGridStyle}>
+          {visibleParticipants.map(renderParticipantRow)}
+        </div>
+      )}
+
+      {collapsedParticipants.length > 0 ? (
+        <div style={{ marginTop: visibleParticipants.length > 0 ? '0.35rem' : '0.5rem' }}>
+          <button
+            type="button"
+            onClick={() => setShowMoreActivity((open) => !open)}
+            aria-expanded={showMoreActivity}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+              border: '0',
+              borderTop: '1px solid #E2E8F0',
+              background: 'transparent',
+              color: '#64748B',
+              cursor: 'pointer',
+              fontSize: '0.74rem',
+              fontWeight: 800,
+              padding: '0.55rem 0 0.2rem',
+              textAlign: 'left',
+            }}
+          >
+            <span>More player activity ({collapsedParticipants.length})</span>
+            <span
+              aria-hidden="true"
+              style={{
+                color: '#94A3B8',
+                fontSize: '1rem',
+                lineHeight: 1,
+                transform: showMoreActivity ? 'rotate(90deg)' : 'rotate(0deg)',
+                transition: 'transform 160ms ease',
+              }}
+            >
+              {'>'}
+            </span>
+          </button>
+
+          {showMoreActivity ? (
+            <div style={participantGridStyle}>
+              {collapsedParticipants.map((p) => {
+                const isInactive = p.status === 'removed' || p.removed_at !== null
+                return (
+                  <div
+                    key={p.id}
+                    style={{
+                      opacity: isInactive ? 0.72 : 1,
+                    }}
+                  >
+                    <div
+                      style={{
+                        margin: '0.2rem 0 -0.1rem',
+                        color: '#94A3B8',
+                        fontSize: '0.58rem',
+                        fontWeight: 900,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {getOverviewActivityLabel(p)}
+                    </div>
+                    {renderParticipantRow(p)}
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

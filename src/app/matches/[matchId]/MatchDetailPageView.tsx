@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { MatchActions } from './MatchActions'
-import { ParticipantGroups } from './ParticipantGroups'
+import { ParticipantGroups, ParticipantOverviewRows } from './ParticipantGroups'
 import { ActivityFeed } from './ActivityFeed'
 import { MatchEditForm } from './MatchEditForm'
 import { MatchToolsSection } from './MatchToolsSection'
@@ -128,64 +128,22 @@ type MatchDetailPageViewProps = {
   onKeepSeparateIdentityLink: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
 }
 
-function getOverviewPlayers(viewModel: MatchDetailPageViewModel) {
-  const hasProxyManagedParticipants = viewModel.participantsForDisplay.some(
-    (participant) => participant.proxy_manageable_by_viewer === true,
-  )
-  const showManagedRows = viewModel.isOrganizer || hasProxyManagedParticipants
-  return viewModel.participantsForDisplay.filter((participant) =>
-    participant.removed_at === null &&
-    (showManagedRows || participant.status === 'confirmed' || participant.status === 'waiting_list'),
-  )
-}
-
 function MatchOverviewPlayerRows({
   viewModel,
   onRemoveParticipant,
 }: Pick<MatchDetailPageViewProps, 'viewModel' | 'onRemoveParticipant'>) {
-  const players = getOverviewPlayers(viewModel)
-
-  if (players.length === 0) {
-    return (
-      <p className="m-0 rounded-[14px] border border-dashed border-[#D7E1EE] bg-[#F8FBFF] px-3 py-3 text-[13px] font-semibold text-[#64748B]">
-        No players confirmed yet.
-      </p>
-    )
-  }
-
   return (
-    <div className="divide-y divide-[#E2E8F0]">
-      {players.map((participant) => {
-        const isHost = participant.user_id === viewModel.match.organizer_id || participant.display_name === viewModel.organizerName
-        const isCurrentUser = participant.user_id === viewModel.userId
-        return (
-          <div key={participant.id} className="flex min-h-9 items-center justify-between gap-3 py-2">
-            <ParticipantDetailTrigger
-              participant={participant}
-              className="min-w-0 flex-1 text-left transition hover:text-[#0d6efd]"
-              label={`View details for ${participant.display_name}`}
-            >
-              <span className="block truncate text-[14px] font-bold text-[#0F172A]">
-                {participant.display_name}
-              </span>
-            </ParticipantDetailTrigger>
-            <div className="flex shrink-0 items-center gap-1.5">
-              {isHost ? <span className="rounded-full bg-[#fff7ed] px-2 py-0.5 text-[11px] font-black text-[#9a3412] ring-1 ring-[#fed7aa]">Host</span> : null}
-              {isCurrentUser ? <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-black text-[#64748B]">You</span> : null}
-              <MobileRosterActionMenu
-                matchId={viewModel.matchId}
-                matchStatus={viewModel.match.status}
-                participant={participant}
-                isOrganizer={viewModel.isOrganizer}
-                myUserId={viewModel.userId}
-                organizerUserId={viewModel.match.organizer_id}
-                onRemoveParticipant={onRemoveParticipant}
-              />
-            </div>
-          </div>
-        )
-      })}
-    </div>
+    <ParticipantOverviewRows
+      matchId={viewModel.matchId}
+      matchStatus={viewModel.match.status}
+      participants={viewModel.participantsForDisplay}
+      isOrganizer={viewModel.isOrganizer}
+      myUserId={viewModel.userId}
+      organizerUserId={viewModel.match.organizer_id}
+      organizerName={viewModel.organizerName}
+      savedPlayerIds={viewModel.savedPlayerIds}
+      onRemoveParticipant={onRemoveParticipant}
+    />
   )
 }
 
@@ -330,27 +288,30 @@ function MobileMatchDetailHeaderSection({
             <MatchOverviewPlayerRows viewModel={viewModel} onRemoveParticipant={onRemoveParticipant} />
           </div>
 
-          <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-[#E2E8F0] pt-3 text-[13px] font-black text-[#0F172A]">
-            <span>{confirmedCount}/{match.required_count} players confirmed</span>
-            <span className="text-[#64748B]">
-              {remainingSpots > 0
-                ? `${remainingSpots} more ${remainingSpots === 1 ? 'player' : 'players'} needed.`
-                : match.formed_at
-                  ? 'Lineup confirmed.'
-                  : 'No more players needed.'}
-            </span>
+          <div className="border-t border-[#E2E8F0] pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-1 flex-wrap gap-x-6 gap-y-1 text-[13px] font-black text-[#0F172A]">
+                <span>{confirmedCount}/{match.required_count} players confirmed</span>
+                <span className="text-[#64748B]">
+                  {remainingSpots > 0
+                    ? `${remainingSpots} more ${remainingSpots === 1 ? 'player' : 'players'} needed.`
+                    : match.formed_at
+                      ? 'Lineup confirmed.'
+                      : 'Lineup is full'}
+                </span>
+              </div>
+              {showReadyToConfirm ? (
+                <form action={onConfirmMatch} className="shrink-0">
+                  <button
+                    type="submit"
+                    className="inline-flex h-9 items-center justify-center rounded-full bg-[#0B1F47] px-4 text-[12px] font-black text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
+                  >
+                    Form Match
+                  </button>
+                </form>
+              ) : null}
+            </div>
           </div>
-
-          {showReadyToConfirm ? (
-            <form action={onConfirmMatch}>
-              <button
-                type="submit"
-                className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-black text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
-              >
-                Form Match
-              </button>
-            </form>
-          ) : null}
 
           {lineupShortWarning ? (
             <div className="rounded-[14px] border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-[#92400E]">
@@ -592,27 +553,30 @@ function MatchHeaderSection({
               <MatchOverviewPlayerRows viewModel={viewModel} onRemoveParticipant={onRemoveParticipant} />
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-x-8 gap-y-1 border-t border-[#E2E8F0] pt-3 text-[14px] font-black text-[#0F172A]">
-              <span>{confirmedCount}/{match.required_count} players confirmed</span>
-              <span className="text-[#64748B]">
-                {remainingSpots > 0
-                  ? `${remainingSpots} more ${remainingSpots === 1 ? 'player' : 'players'} needed.`
-                  : match.formed_at
-                    ? 'Lineup confirmed.'
-                    : 'No more players needed.'}
-              </span>
+            <div className="mt-4 border-t border-[#E2E8F0] pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap gap-x-8 gap-y-1 text-[14px] font-black text-[#0F172A]">
+                  <span>{confirmedCount}/{match.required_count} players confirmed</span>
+                  <span className="text-[#64748B]">
+                    {remainingSpots > 0
+                      ? `${remainingSpots} more ${remainingSpots === 1 ? 'player' : 'players'} needed.`
+                      : match.formed_at
+                        ? 'Lineup confirmed.'
+                        : 'Lineup is full'}
+                  </span>
+                </div>
+                {showReadyToConfirm ? (
+                  <form action={onConfirmMatch} className="shrink-0">
+                    <button
+                      type="submit"
+                      className="inline-flex h-10 items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
+                    >
+                      Form Match
+                    </button>
+                  </form>
+                ) : null}
+              </div>
             </div>
-
-            {showReadyToConfirm ? (
-              <form action={onConfirmMatch} className="mt-4">
-                <button
-                  type="submit"
-                  className="inline-flex h-10 items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
-                >
-                  Form Match
-                </button>
-              </form>
-            ) : null}
 
             {hasTimeConflict ? (
               <div className="mt-3 rounded-[14px] border border-[#FCA5A5] bg-[#FFF1F2] px-3 py-2 text-[12px] font-bold text-[#B91C1C]">
@@ -631,6 +595,13 @@ function MatchSelfActionsSection({
   viewModel,
 }: Pick<MatchDetailPageViewProps, 'viewModel'>) {
   if (!viewModel.showSelfActionsSection) {
+    return null
+  }
+  if (
+    viewModel.myParticipant?.removed_at === null &&
+    viewModel.myParticipant.status === 'confirmed' &&
+    !viewModel.myParticipantNeedsReconfirm
+  ) {
     return null
   }
 
@@ -1144,6 +1115,7 @@ export function MatchDetailPageView({
       matchCourts={viewModel.matchCourts}
       isOrganizer={viewModel.isOrganizer}
       organizerUserId={viewModel.match.organizer_id}
+      organizerName={viewModel.organizerName}
       requiredCount={viewModel.match.required_count}
       confirmedParticipants={confirmedParticipants}
       activeInviteParticipants={activeInviteParticipants}
