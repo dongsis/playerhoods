@@ -5,8 +5,9 @@ import type { ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
-import { AddMyContactPanel } from '@/app/dashboard/AddMyContactPanel'
-import { AddPlayersPickerPanel, type AddPlayersCandidate, type AddPlayersMode } from '@/app/matches/AddPlayersPickerPanel'
+import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
+import { SportSectionIcon } from '@/app/components/SportBallIcon'
+import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
 import type { CreateRecurringMatchSeriesInput, RecurringDirectInviteInput } from '@/lib/api/recurring-matches'
@@ -30,7 +31,8 @@ import { listSports, setGuestSports } from '@/lib/api/sports'
 import { getInviteCircleList, getInviteCircleSourceLabel, saveContactPlayer } from '@/lib/api/play-network'
 import { createRosterGuest, getContactPlayerResolution, type ContactPlayerResolved } from '@/lib/api/roster'
 import { getContactInvitationDeliveryStatus } from '@/lib/contact-communication'
-import { getAvailabilityStatusLabel } from '@/lib/profile-options'
+import { LEVEL_OPTIONS, getAvailabilityStatusLabel } from '@/lib/profile-options'
+import { getVenueDisplayName } from '@/lib/venues/display'
 import type { AvailabilityStatus, Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat, UserPlayCity, VenueSport } from '@/lib/types/database'
 
 type TooltipState = { kind: 'group-members'; groupId: string } | null
@@ -63,22 +65,6 @@ type InviteCandidate = {
   hasReachableChannel?: boolean
 }
 
-type PlayerPickerFilter = 'all' | 'saved' | 'contacts' | 'groups'
-type PlayerPickerMode = 'invite' | 'request' | 'share'
-type PlayerPickerItem =
-  | {
-      key: string
-      kind: 'candidate'
-      name: string
-      candidate: InviteCandidate
-    }
-  | {
-      key: string
-      kind: 'group'
-      name: string
-      group: Group
-    }
-
 type UserInviteCandidateSeed = {
   userId: string
   name: string
@@ -105,14 +91,6 @@ type CourtOption = {
   label: string
 }
 
-type CreateFlowStep = 'details' | 'players' | 'review'
-
-const CREATE_FLOW_STEPS: { key: CreateFlowStep; label: string }[] = [
-  { key: 'details', label: 'Details' },
-  { key: 'players', label: 'Players' },
-  { key: 'review', label: 'Review' },
-]
-
 const DEFAULT_COURT_OPTIONS: CourtOption[] = Array.from({ length: 20 }, (_, index) => ({
   id: `fallback-crt-${index + 1}`,
   label: `crt ${index + 1}`,
@@ -130,39 +108,11 @@ const INVITE_SOURCE_PRIORITY = new Map<InviteCandidateSource, number>(
   INVITE_SOURCE_CONFIG.map((entry, index) => [entry.source, index]),
 )
 
-function getPickerFilterOptions(mode: PlayerPickerMode): Array<{ value: PlayerPickerFilter; label: string }> {
-  if (mode === 'request') {
-    return [
-      { value: 'all', label: 'All' },
-      { value: 'saved', label: 'Saved' },
-      { value: 'groups', label: 'Groups' },
-    ]
-  }
-
-  return [
-    { value: 'all', label: 'All' },
-    { value: 'saved', label: 'Saved' },
-    { value: 'contacts', label: 'Contacts' },
-    { value: 'groups', label: 'Groups' },
-  ]
-}
-
-function pickerItemMatches(item: PlayerPickerItem, query: string, filter: PlayerPickerFilter) {
-  const normalizedQuery = query.trim().toLowerCase()
-
-  if (filter === 'groups' && item.kind !== 'group') return false
-  if (filter === 'contacts' && !(item.kind === 'candidate' && item.candidate.kind === 'contact')) return false
-  if (filter === 'saved' && !(item.kind === 'candidate' && item.candidate.source === 'saved_players')) return false
-
-  if (!normalizedQuery) return true
-  return item.name.toLowerCase().includes(normalizedQuery)
-}
-
 function buildTimeSlots(): { label: string; value: string }[] {
   const slots: { label: string; value: string }[] = []
-  for (let h = 9; h <= 21; h++) {
-    for (let m = 0; m < 60; m += 15) {
-      if (h === 21 && m > 0) break
+  for (let h = 6; h <= 23; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      if (h === 23 && m > 30) break
       const hh = h.toString().padStart(2, '0')
       const mm = m.toString().padStart(2, '0')
       const value = `${hh}:${mm}`
@@ -176,31 +126,63 @@ function buildTimeSlots(): { label: string; value: string }[] {
 }
 
 const TIME_SLOTS = buildTimeSlots()
-// Product decision: Match Create no longer exposes reminder choices.
-// New matches keep the existing day-before player reminder behavior.
-const DEFAULT_PLAYER_REMINDER_MINUTES = 1440
+const PLAYER_COUNT_PRESETS = [2, 4, 8] as const
+const COURT_COUNT_PRESETS = [1, 2] as const
+
+function getPlayersPerCourt(gameType: string) {
+  return gameType === 'singles' ? 2 : 4
+}
+
+function getDefaultCourtCount(playersNeeded: number, gameType: string) {
+  return Math.min(6, Math.max(1, Math.ceil(Math.max(1, playersNeeded) / getPlayersPerCourt(gameType))))
+}
+
+function getDefaultDurationMinutes(gameType: string) {
+  return gameType === 'singles' ? 60 : 90
+}
 
 const DS_CARD = 'rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]'
 const DS_SECTION_TITLE = 'text-h2 text-[#1E293B]'
 const DS_LABEL = 'text-label mb-1 block'
-const ADD_PLAYERS_SECTION_LABEL = 'text-[9px] font-extrabold leading-[1.2] tracking-normal normal-case'
 const DS_FIELD =
   'text-body-main w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10'
-const DS_COMPACT_FIELD =
-  'h-9 w-full rounded-xl border border-[#D7E2F0] bg-white px-3 text-[13px] font-bold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 md:h-12 md:px-4 md:text-[15px]'
-const DS_COMPACT_CHIP =
-  'inline-flex h-8 min-w-8 items-center justify-center rounded-xl border px-2.5 text-[13px] font-black transition'
 const DS_OPTION_BUTTON =
-  'text-body-main inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-center font-semibold transition focus:outline-none focus:ring-4 focus:ring-[#0d6efd]/10'
+  'text-body-main rounded-xl border px-4 py-2.5 font-semibold transition focus:outline-none focus:ring-4 focus:ring-[#0d6efd]/10'
 const DS_OPTION_SELECTED = 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] shadow-[0_10px_22px_-20px_rgba(13,110,253,0.8)]'
 const DS_OPTION_UNSELECTED = 'border-[#E2E8F0] bg-white text-[#52647E] hover:border-[#BFD4EA] hover:bg-[#F8FBFF]'
+const STEP_PANEL_LABEL = 'mb-1 block text-[10px] font-black uppercase leading-none tracking-[0.08em] text-[#7788A8] md:mb-2 md:text-[11px]'
+const STEP_FIELD =
+  'text-body-main min-h-10 w-full rounded-xl border border-[#DCE5F2] bg-white px-3 py-1.5 font-bold text-[#0B1F44] shadow-[0_6px_18px_-16px_rgba(15,23,42,0.35)] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 md:min-h-12 md:px-4 md:py-3'
+const STEP_FIELD_MUTED =
+  'text-body-main min-h-10 w-full rounded-xl border border-[#DCE5F2] bg-white px-3 py-1.5 font-bold text-[#7A8AA6] shadow-[0_6px_18px_-16px_rgba(15,23,42,0.35)] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 md:min-h-12 md:px-4 md:py-3'
+const STEP_SELECT = `${STEP_FIELD} pr-10`
+const STEP_SELECT_MUTED = `${STEP_FIELD_MUTED} pr-10`
+const STEP_BUTTON_SELECTED = 'border-[#0d6efd] bg-[#F4F8FF] text-[#0d6efd] shadow-[0_0_0_1px_rgba(13,110,253,0.05)]'
+const STEP_BUTTON_UNSELECTED = 'border-[#DCE5F2] bg-white text-[#7A8AA6] hover:border-[#BFD4EA] hover:bg-[#F8FBFF]'
 
 const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
-  { value: 'secured', label: 'Court secured' },
-  { value: 'self_book_later', label: 'Host books later' },
-  { value: 'needs_help_booking', label: 'Players help book' },
-  { value: 'walk_in', label: 'Walk-in / no booking' },
+  { value: 'secured', label: 'Court already secured' },
+  { value: 'walk_in', label: 'Walk-in court' },
+  { value: 'self_book_later', label: 'Host will book court' },
+  { value: 'needs_help_booking', label: 'Players can help secure a court' },
 ]
+
+const COURT_PLAN_SHORT_LABELS: Record<MatchCourtPlanMode, string> = {
+  secured: 'Court secured',
+  walk_in: 'Walk-in court',
+  self_book_later: 'Host will book court',
+  needs_help_booking: 'Need help booking',
+}
+
+const PLAYER_REMINDER_OPTIONS: { value: number | null; label: string }[] = [
+  { value: 1440, label: '1 day before' },
+  { value: 120, label: '2 hours before' },
+  { value: null, label: 'No reminder' },
+]
+const PLAYER_REMINDER_COPY = [
+  'Send a reminder the day before at 5:00 PM.',
+  'Same-day matches skipped',
+] as const
 
 function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | null | undefined): MatchCourtPlanMode | null {
   if (!venueKind) return null
@@ -211,38 +193,83 @@ function getDefaultCourtPlanModeForVenueKind(venueKind: Venue['venue_kind'] | nu
   return null
 }
 
-function ContactAddIcon() {
+function ContactAddIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' | 'shield' | 'spark' | 'close' | 'people' }) {
+  if (kind === 'card') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <rect x="4.2" y="3.2" width="11.6" height="13.6" rx="2" stroke="currentColor" strokeWidth="1.7" />
+        <circle cx="10" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M6.9 13.4c.9-1.4 2-2 3.1-2s2.2.6 3.1 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (kind === 'invite') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M7.7 12.3 12.3 7.7M8.2 6.1l.8-.8a3.4 3.4 0 0 1 4.8 4.8l-.8.8M11.8 13.9l-.8.8a3.4 3.4 0 0 1-4.8-4.8l.8-.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'reply') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M4.5 5.2h11a1.7 1.7 0 0 1 1.7 1.7v5.8a1.7 1.7 0 0 1-1.7 1.7H8.6L5 16.6v-2.2h-.5a1.7 1.7 0 0 1-1.7-1.7V6.9a1.7 1.7 0 0 1 1.7-1.7Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'bell') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M7.2 15.4h5.6M8.5 16.5a1.7 1.7 0 0 0 3 0M5.8 13.7c.8-.7 1.1-1.5 1.1-2.7V8.8a3.1 3.1 0 0 1 6.2 0V11c0 1.2.3 2 1.1 2.7H5.8Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'shield') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M10 2.8 15.2 5v4.1c0 3.3-1.8 5.8-5.2 7.9-3.4-2.1-5.2-4.6-5.2-7.9V5L10 2.8Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+        <path d="m7.8 9.8 1.4 1.4 3.1-3.3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'spark') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <path d="M10 2.4 11.4 7l4.3 1.5-4.3 1.6L10 14.6l-1.4-4.5-4.3-1.6L8.6 7 10 2.4Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'people') {
+    return (
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+        <circle cx="7.7" cy="7.2" r="2.4" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M3.8 15c.7-2 2-3 3.9-3s3.2 1 3.9 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="13.6" cy="8.2" r="1.8" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M12.7 12.3c1.5.2 2.6 1 3.2 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    )
+  }
   return (
     <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
-      <circle cx="7.7" cy="7.2" r="2.4" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M3.8 15c.7-2 2-3 3.9-3s3.2 1 3.9 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <circle cx="13.6" cy="8.2" r="1.8" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M12.7 12.3c1.5.2 2.6 1 3.2 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   )
 }
 
-function AddContactSecondaryAction({ onAdd, className = '' }: { onAdd: () => void; className?: string }) {
+function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className={`flex ${className}`}>
-      <button
-        type="button"
-        onClick={onAdd}
-        className="text-body-sub inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#D7E3F4] bg-white px-3 py-1.5 font-bold text-[#0B1F44] transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
-      >
-        <ContactAddIcon />
-        <span className="text-base leading-none">+</span>
-        Add My Contact
-      </button>
-    </div>
-  )
-}
-
-function ReviewLine({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-[#E2E8F0] py-2.5 last:border-b-0">
-      <span className="text-body-sub font-semibold text-[#64748B]">{label}</span>
-      <span className="max-w-[62%] text-right text-body-main font-bold text-[#1E293B]">{value}</span>
+    <div className="w-full rounded-xl border border-dashed border-[#7FB2FF] bg-[#F8FBFF] px-4 py-3">
+      <div className="flex flex-col items-start gap-2">
+        <h4 className="text-title-main text-[#0B1F44]">Need someone not listed?</h4>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="text-body-main inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
+        >
+          <span className="text-lg leading-none">+</span>
+          Add My Contact
+        </button>
+      </div>
     </div>
   )
 }
@@ -395,41 +422,6 @@ function formatReviewTimeRange(timeValue: string, durationMinutes: number) {
   })
 
   return `${formatter.format(start)} - ${formatter.format(end)}`
-}
-
-function toDateInputValue(date: Date) {
-  const year = date.getFullYear()
-  const month = `${date.getMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getDate()}`.padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function parseDateInputValue(dateStr: string) {
-  const [yearPart, monthPart, dayPart] = dateStr.split('-')
-  const year = Number.parseInt(yearPart ?? '', 10)
-  const month = Number.parseInt(monthPart ?? '', 10)
-  const day = Number.parseInt(dayPart ?? '', 10)
-  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return null
-  const value = new Date(year, month - 1, day)
-  return Number.isNaN(value.getTime()) ? null : value
-}
-
-function formatDateChipDay(dateStr: string) {
-  const value = parseDateInputValue(dateStr)
-  if (!value) return ''
-  return new Intl.DateTimeFormat('en-CA', { weekday: 'short' }).format(value)
-}
-
-function formatDateChipDate(dateStr: string) {
-  const value = parseDateInputValue(dateStr)
-  if (!value) return dateStr
-  return new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' }).format(value)
-}
-
-function formatCompactDateChip(dateStr: string) {
-  const value = parseDateInputValue(dateStr)
-  if (!value) return dateStr
-  return `${new Intl.DateTimeFormat('en-CA', { weekday: 'short' }).format(value)} ${value.getDate()}`
 }
 
 function capitalizeLabel(value: string) {
@@ -668,12 +660,12 @@ function ReviewMatchModal({
           ) : null}
 
           <div className="space-y-4">
-            <p className="text-label">Player Plan</p>
+            <p className="text-label">Invitations Summary</p>
 
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
-                <span className="text-label text-[#64748B]">Invited</span>
+                <span className="text-label text-[#64748B]">Directly Invited</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {directInviteItems.length > 0 ? directInviteItems.map((item) => (
@@ -697,7 +689,7 @@ function ReviewMatchModal({
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
-                <span className="text-label text-[#64748B]">Post to Board</span>
+                <span className="text-label text-[#64748B]">Open to Join</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {requestItems.length > 0 ? requestItems.map((item) => (
@@ -888,7 +880,7 @@ function CandidatePreviewModal({
             </>
           ) : (
             <p style={{ margin: 0, fontSize: '0.88rem', color: '#4b5563', lineHeight: 1.5 }}>
-              Saved registered players can be added through Invite here. Open the full profile for more details.
+              Saved registered players can be added through Invite People here. Open the full profile for more details.
             </p>
           )}
         </div>
@@ -959,15 +951,35 @@ function MiniCalendar({
     return normalized
   }, [anchorDate])
 
-  const visibleDates = useMemo(
+  const currentWeekDates = useMemo(
     () =>
-      Array.from({ length: 14 }, (_, index) => {
+      Array.from({ length: 7 }, (_, index) => {
         const value = new Date(startOfVisibleRange)
         value.setDate(startOfVisibleRange.getDate() + index)
         return value
       }),
     [startOfVisibleRange],
   )
+
+  const nextWeekDates = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, index) => {
+        const value = new Date(startOfVisibleRange)
+        value.setDate(startOfVisibleRange.getDate() + 7 + index)
+        return value
+      }),
+    [startOfVisibleRange],
+  )
+
+  const formatAriaDate = (date: Date) =>
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(date)
+
+  const calendarHeaderLabel = `${monthNames[startOfVisibleRange.getMonth()]} ${startOfVisibleRange.getFullYear()}`
 
   useEffect(() => {
     if (!selected) return
@@ -990,33 +1002,83 @@ function MiniCalendar({
     })
   }
 
-  return (
-    <div className="max-w-[300px] select-none">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-title-main text-[#0B2136]">
-          {monthNames[startOfVisibleRange.getMonth()]} {startOfVisibleRange.getFullYear()}
+  const renderDateButton = (date: Date) => {
+    const dateStr = toDateStr(date)
+    const isSelected = dateStr === selected
+    const isToday = dateStr === todayStr
+    const isPast = dateStr < todayStr
+    const indicators = dateIndicators[dateStr] ?? []
+
+    return (
+      <button
+        key={dateStr}
+        type="button"
+        onClick={() => !isPast && onSelect(dateStr)}
+        disabled={isPast}
+        aria-label={formatAriaDate(date)}
+        className={[
+          'flex h-6 flex-col items-center justify-start md:h-8',
+          isPast ? 'cursor-not-allowed' : 'cursor-pointer',
+        ].join(' ')}
+      >
+        <span
+          className={[
+            'flex h-5 w-5 items-center justify-center rounded-full text-[12px] font-medium transition-all md:h-6 md:w-6 md:text-[13px]',
+            isSelected
+              ? 'border border-[#FDBA74] bg-[#FFF7ED] text-[#F97316]'
+              : isPast
+                ? 'text-[#CBD5E1]'
+                : isToday
+                  ? 'border border-[#FED7AA] bg-white text-[#EA580C]'
+                  : 'text-[#0B2136] hover:bg-[#F8FAFC]',
+          ].join(' ')}
+        >
+          {date.getDate()}
         </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => moveWindow(-14)}
-            className="flex h-5 w-5 items-center justify-center rounded text-[10px] text-[#94A3B8] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
-            aria-label="Previous dates"
-          >
-            &lt;
-          </button>
-          <button
-            type="button"
-            onClick={() => moveWindow(14)}
-            className="flex h-5 w-5 items-center justify-center rounded text-[10px] text-[#94A3B8] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
-            aria-label="Next dates"
-          >
-            &gt;
-          </button>
-        </div>
+        <span className="mt-0.5 flex items-center gap-0.5">
+          {indicators.length > 0 && indicators.length <= 3 ? (
+            indicators.map((indicator, index) => (
+              <span
+                key={`${dateStr}-indicator-${index}`}
+                className={[
+                  'inline-block h-[3px] w-[3px] rounded-full',
+                  indicator === 'confirmed' ? 'bg-[#22C55E]' : 'bg-[#CBD5E1]',
+                ].join(' ')}
+              />
+            ))
+          ) : (
+            <span className="inline-block h-[3px] w-[3px] opacity-0" />
+          )}
+        </span>
+      </button>
+    )
+  }
+
+  return (
+    <div className="w-full max-w-[360px] select-none rounded-xl border border-[#DCE5F2] bg-white px-3 py-2.5 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.4)] md:py-4">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => moveWindow(-7)}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-[#E2E8F0] text-[10px] font-black text-[#94A3B8] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
+          aria-label="Previous week"
+        >
+          &lt;
+        </button>
+        <span className="text-title-main min-w-0 truncate text-center text-[#0B2136]">
+          {calendarHeaderLabel}
+        </span>
+        <button
+          type="button"
+          onClick={() => moveWindow(7)}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-[#E2E8F0] text-[10px] font-black text-[#94A3B8] transition hover:bg-[#F8FAFC] hover:text-[#1E293B]"
+          aria-label="Next week"
+        >
+          &gt;
+        </button>
       </div>
 
-      <div className="mb-1.5 grid grid-cols-7">
+      <div className="mb-1 grid grid-cols-7">
         {weekLabels.map((label) => (
           <div key={label} className="text-label text-center tracking-tight text-[#94A3B8]">
             {label}
@@ -1024,56 +1086,13 @@ function MiniCalendar({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-y-2">
-        {visibleDates.map((date) => {
-          const dateStr = toDateStr(date)
-          const isSelected = dateStr === selected
-          const isToday = dateStr === todayStr
-          const isPast = dateStr < todayStr
-          const indicators = dateIndicators[dateStr] ?? []
-          return (
-            <button
-              key={dateStr}
-              type="button"
-              onClick={() => !isPast && onSelect(dateStr)}
-              disabled={isPast}
-              className={[
-                'flex h-8 flex-col items-center justify-start',
-                isPast ? 'cursor-not-allowed' : 'cursor-pointer',
-              ].join(' ')}
-            >
-              <span
-                className={[
-                  'flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-medium transition-all',
-                  isSelected
-                    ? 'border border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
-                    : isPast
-                      ? 'text-[#CBD5E1]'
-                      : isToday
-                        ? 'border border-[#FED7AA] bg-[#eff6ff] text-[#EA580C]'
-                        : 'text-[#0B2136] hover:bg-[#F8FAFC]',
-                ].join(' ')}
-              >
-                {date.getDate()}
-              </span>
-              <span className="mt-0.5 flex items-center gap-0.5">
-                {indicators.length > 0 && indicators.length <= 3 ? (
-                  indicators.map((indicator, index) => (
-                    <span
-                      key={`${dateStr}-indicator-${index}`}
-                      className={[
-                        'inline-block h-[3px] w-[3px] rounded-full',
-                        indicator === 'confirmed' ? 'bg-[#22C55E]' : 'bg-[#CBD5E1]',
-                      ].join(' ')}
-                    />
-                  ))
-                ) : (
-                  <span className="inline-block h-[3px] w-[3px] opacity-0" />
-                )}
-              </span>
-            </button>
-          )
-        })}
+      <div className="space-y-1.5">
+        <div className="grid grid-cols-7 gap-y-1.5">
+          {currentWeekDates.map(renderDateButton)}
+        </div>
+        <div className="grid grid-cols-7 gap-y-1.5">
+          {nextWeekDates.map(renderDateButton)}
+        </div>
       </div>
     </div>
   )
@@ -1083,6 +1102,7 @@ export function CreateMatchInline({
   defaultVenueId,
   expandSignal,
   onExpandedChange,
+  hideCollapsedTrigger = false,
   myPlayCities = [],
   venueSports = [],
   onParseScreenshots,
@@ -1091,6 +1111,7 @@ export function CreateMatchInline({
   defaultVenueId?: string
   expandSignal?: number
   onExpandedChange?: (expanded: boolean) => void
+  hideCollapsedTrigger?: boolean
   myPlayCities?: UserPlayCity[]
   venueSports?: VenueSport[]
   onParseScreenshots?: (uploads: ContactScreenshotUpload[]) => Promise<ContactImportDraft[]>
@@ -1103,18 +1124,16 @@ export function CreateMatchInline({
 }) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
-  const [createStep, setCreateStep] = useState<CreateFlowStep>('details')
-  const createFormRef = useRef<HTMLFormElement | null>(null)
-  const createFlowContentRef = useRef<HTMLDivElement | null>(null)
+  const [createStep, setCreateStep] = useState<1 | 2 | 3>(1)
   const [matchMode] = useState<'one-time' | 'recurring'>('one-time')
   const [requiredCount, setRequiredCount] = useState(4)
   const [matchDate, setMatchDate] = useState('')
-  const [customDateOpen, setCustomDateOpen] = useState(false)
-  const [startTime, setStartTime] = useState('')
-  const [durationMinutes, setDurationMinutes] = useState(60)
-  const playerReminderMinutes = DEFAULT_PLAYER_REMINDER_MINUTES
-  const [gameType, setGameType] = useState('doubles')
+  const [startTime, setStartTime] = useState('06:00')
+  const [durationMinutes, setDurationMinutes] = useState(90)
+  const [playerReminderMinutes, setPlayerReminderMinutes] = useState<number | null>(1440)
+  const [gameType, setGameType] = useState<'singles' | 'doubles'>('doubles')
   const [doublesFormat, setDoublesFormat] = useState<MatchDoublesFormat>('open')
+  const [gameLevel, setGameLevel] = useState('')
   const [venueId, setVenueId] = useState(defaultVenueId || '')
   const [scopeGroupIds, setScopeGroupIds] = useState<string[]>([])
   const [scopeUserIds, setScopeUserIds] = useState<string[]>([])
@@ -1122,11 +1141,14 @@ export function CreateMatchInline({
   const [courtPlanMode, setCourtPlanMode] = useState<MatchCourtPlanMode>('secured')
   const [courtPlanNote, setCourtPlanNote] = useState('')
   const [courtCount, setCourtCount] = useState(1)
+  const [courtsManuallyChanged, setCourtsManuallyChanged] = useState(false)
   const [customPlayersOpen, setCustomPlayersOpen] = useState(false)
+  const [customCourtsOpen, setCustomCourtsOpen] = useState(false)
   const [courtPlanMenuOpen, setCourtPlanMenuOpen] = useState(false)
   const [courtLabelEditorOpen, setCourtLabelEditorOpen] = useState(false)
   const [organizerNote, setOrganizerNote] = useState('')
   const [organizerNoteExpanded, setOrganizerNoteExpanded] = useState(false)
+  const [venueOptionsExpanded, setVenueOptionsExpanded] = useState(false)
   const [courtSlots, setCourtSlots] = useState<CourtSlotSelection[]>([
     { enabled: true, courtId: '', manualLabel: '' },
   ])
@@ -1150,12 +1172,13 @@ export function CreateMatchInline({
   const [inviteNotice, setInviteNotice] = useState<string | null>(null)
   const [inviteLoading, setInviteLoading] = useState(false)
   const [openMatchLoading, setOpenMatchLoading] = useState(false)
+  const [submitMode, setSubmitMode] = useState<'create' | 'invite' | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [selectionMode, setSelectionMode] = useState<PlayerPickerMode>('invite')
-  const [playerPickerSearch, setPlayerPickerSearch] = useState('')
-  const [playerPickerFilter, setPlayerPickerFilter] = useState<PlayerPickerFilter>('all')
+  const [selectionMode, setSelectionMode] = useState<'invite' | 'request' | null>(null)
   const [contactAddPanelOpen, setContactAddPanelOpen] = useState(false)
+  const [contactComposerMode, setContactComposerMode] = useState<'screenshot' | null>(null)
   const [contactDisplayName, setContactDisplayName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
@@ -1248,10 +1271,40 @@ export function CreateMatchInline({
     return groups.filter((group) => !scopeGroupIds.includes(group.id) && !invitedGroupIds.includes(group.id))
   }, [groups, invitedGroupIds, scopeGroupIds])
 
+  const visibleInviteCandidates = useMemo(
+    () => filteredInviteOptions.slice(0, 8),
+    [filteredInviteOptions],
+  )
+
+  const hiddenInviteCandidates = useMemo(
+    () => filteredInviteOptions.slice(8),
+    [filteredInviteOptions],
+  )
+
   const selectedInvitePlayers = useMemo(() => {
     const selected = new Set(selectedDirectInviteKeys)
     return availableInviteOptions.filter((member) => selected.has(member.key) && !(member.kind === 'contact' && member.hasReachableChannel === false))
   }, [availableInviteOptions, selectedDirectInviteKeys])
+
+  const selectedInviteWarnings = useMemo(
+    () =>
+      selectedInvitePlayers
+        .map((candidate) => ({
+          candidate,
+          warning: getAvailabilityWarning(candidate),
+        }))
+        .filter((item): item is { candidate: InviteCandidate; warning: NonNullable<ReturnType<typeof getAvailabilityWarning>> } => Boolean(item.warning)),
+    [selectedInvitePlayers],
+  )
+
+  const inviteCandidatesBySource = useMemo(
+    () =>
+      INVITE_SOURCE_CONFIG.map((section) => ({
+        ...section,
+        candidates: filteredInviteOptions.filter((candidate) => candidate.source === section.source),
+      })).filter((section) => section.candidates.length > 0),
+    [filteredInviteOptions],
+  )
 
   const filteredRequestGroups = useMemo(() => {
     return groups.filter((group) => !invitedGroupIds.includes(group.id))
@@ -1261,148 +1314,15 @@ export function CreateMatchInline({
     return requestScopeUserCandidates
   }, [requestScopeUserCandidates])
 
-  const invitePickerItems = useMemo<PlayerPickerItem[]>(
-    () =>
-      [
-        ...filteredInviteOptions.map((candidate) => ({
-          key: `candidate:${candidate.key}`,
-          kind: 'candidate' as const,
-          name: candidate.name,
-          candidate,
-        })),
-        ...filteredInviteGroups.map((group) => ({
-          key: `group:${group.id}`,
-          kind: 'group' as const,
-          name: group.name,
-          group,
-        })),
-      ].sort((left, right) => left.name.localeCompare(right.name)),
-    [filteredInviteGroups, filteredInviteOptions],
-  )
-
-  const requestPickerItems = useMemo<PlayerPickerItem[]>(
-    () =>
-      [
-        ...filteredRequestUsers.map((candidate) => ({
-          key: `candidate:${candidate.key}`,
-          kind: 'candidate' as const,
-          name: candidate.name,
-          candidate,
-        })),
-        ...filteredRequestGroups.map((group) => ({
-          key: `group:${group.id}`,
-          kind: 'group' as const,
-          name: group.name,
-          group,
-        })),
-      ].sort((left, right) => left.name.localeCompare(right.name)),
-    [filteredRequestGroups, filteredRequestUsers],
-  )
-
-  const pickerFilterOptions = useMemo(
-    () => getPickerFilterOptions(selectionMode),
-    [selectionMode],
-  )
-
-  const pickerItems = selectionMode === 'request' ? requestPickerItems : invitePickerItems
-  const addPlayersMode: AddPlayersMode =
-    selectionMode === 'request'
-      ? 'playerCall'
-      : selectionMode === 'share'
-        ? 'shareLink'
-        : 'invite'
-  const sharedPickerCandidates = useMemo<AddPlayersCandidate[]>(() => (
-    pickerItems.map((item) => {
-      if (item.kind === 'group') {
-        const selected = selectionMode === 'invite'
-          ? invitedGroupIds.includes(item.group.id)
-          : scopeGroupIds.includes(item.group.id)
-
-        return {
-          key: item.key,
-          name: item.group.name,
-          kind: 'group',
-          filterTags: ['groups'],
-          selected,
-          title: item.group.name,
-          previewTitle: item.group.name,
-          previewSubtitle: 'Group',
-          previewDetails: (
-            <p className="m-0">
-              Group target for this match.
-            </p>
-          ),
-          payload: item,
-        }
-      }
-
-      const candidate = item.candidate
-      const isContact = candidate.kind === 'contact'
-      const isSelected = selectionMode === 'invite'
-        ? selectedDirectInviteKeys.has(candidate.key)
-        : Boolean(candidate.userId && scopeUserIds.includes(candidate.userId))
-      const contactUnavailable = selectionMode === 'invite'
-        && isContact
-        && candidate.hasReachableChannel === false
-      const contactStatusLabel = contactUnavailable
-        ? candidate.emailOptedOut || candidate.smsOptedOut
-          ? 'Unsubscribed'
-          : 'No email or phone'
-        : null
-      const availabilityWarning = !isContact ? getAvailabilityWarning(candidate) : null
-      const availabilityLabel = !isContact ? getAvailabilityStatusLabel(candidate.availabilityStatus) : null
-      const filterTags = isContact
-        ? ['contacts']
-        : [candidate.source === 'saved_players' ? 'saved' : null].filter((tag): tag is string => Boolean(tag))
-
-      return {
-        key: item.key,
-        name: candidate.name,
-        kind: isContact ? 'contact' : 'person',
-        filterTags,
-        selected: isSelected,
-        disabled: contactUnavailable,
-        searchText: `${candidate.name} ${candidate.sourceLabels.join(' ')}`,
-        title: contactStatusLabel
-          ? `${candidate.name}: ${contactStatusLabel}`
-          : availabilityWarning
-            ? `${candidate.name}: ${candidate.sourceLabels.join(', ')}. ${availabilityWarning.label}. ${availabilityWarning.message}`
-            : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`,
-        previewTitle: candidate.name,
-        previewSubtitle: isContact ? 'Contact player' : candidate.sourceLabels.join(', '),
-        previewDetails: (
-          <div className="space-y-1">
-            {availabilityLabel ? <p className="m-0">{availabilityLabel}</p> : null}
-            {contactStatusLabel ? <p className="m-0">{contactStatusLabel}</p> : null}
-            {availabilityWarning ? <p className="m-0">{availabilityWarning.message}</p> : null}
-          </div>
-        ),
-        leadingNode: !isContact ? (
-          <span
-            className={`inline-block h-2 w-2 shrink-0 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
-            aria-label={availabilityLabel ?? 'Available'}
-            title={availabilityLabel ?? 'Available'}
-          />
-        ) : null,
-        labelNode: (
-          <span>{candidate.name}</span>
-        ),
-        trailingNode: contactStatusLabel ? (
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">
-            {contactStatusLabel}
-          </span>
-        ) : null,
-        payload: item,
-      }
-    })
-  ), [
-    invitedGroupIds,
-    pickerItems,
-    scopeGroupIds,
-    scopeUserIds,
-    selectedDirectInviteKeys,
-    selectionMode,
-  ])
+  const shouldShowHoodPanelButton = useMemo(() => {
+    if (selectionMode === 'invite') {
+      return filteredInviteOptions.length > 20
+    }
+    if (selectionMode === 'request') {
+      return filteredRequestUsers.length > 20
+    }
+    return false
+  }, [filteredInviteOptions.length, filteredRequestUsers.length, selectionMode])
 
   const selectedInvitedGroups = useMemo(
     () => groups.filter((group) => invitedGroupIds.includes(group.id)),
@@ -1630,6 +1550,7 @@ export function CreateMatchInline({
   )
 
   useEffect(() => {
+    setVenueOptionsExpanded(false)
     setVenueId((currentVenueId) => {
       if (currentVenueId && venuesForSelectedSport.some((venue) => venue.id === currentVenueId)) {
         return currentVenueId
@@ -1648,6 +1569,16 @@ export function CreateMatchInline({
     const rest = venuesForSelectedSport.filter((venue) => venue.id !== selectedVenue?.id)
     return [...selected, ...rest]
   }, [selectedVenue, venuesForSelectedSport])
+
+  const primaryVenueOptions = useMemo(
+    () => visibleVenueOptions.slice(0, 3),
+    [visibleVenueOptions],
+  )
+
+  const additionalVenueOptions = useMemo(
+    () => visibleVenueOptions.slice(3),
+    [visibleVenueOptions],
+  )
 
   const handleCreateContactPlayer = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1730,11 +1661,6 @@ export function CreateMatchInline({
     onExpandedChange?.(createExpanded)
   }, [createExpanded, onExpandedChange])
 
-  useEffect(() => {
-    if (!createExpanded) return
-    createFormRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
-  }, [createExpanded, createStep])
-
   const selectedFormatLabel = useMemo(() => {
     const source = gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS
     return source.find((option) => option.value === doublesFormat)?.label ?? 'Not selected'
@@ -1770,47 +1696,58 @@ export function CreateMatchInline({
     [groupMembersById, selectedScopeGroups, selectedScopeUsers],
   )
 
-  const todayDateValue = useMemo(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    return toDateInputValue(today)
-  }, [])
-
-  const dateChoices = useMemo(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    return Array.from({ length: 14 }, (_, index) => {
-      const value = new Date(today)
-      value.setDate(today.getDate() + index)
-      return toDateInputValue(value)
-    })
-  }, [])
-
-  const activeStepIndex = CREATE_FLOW_STEPS.findIndex((step) => step.key === createStep)
-  const selectedVenueLabel = selectedVenue?.name?.trim() || 'Not selected'
-  const selectedCourtPlanLabel = COURT_PLAN_OPTIONS.find((option) => option.value === courtPlanMode)?.label ?? 'Not selected'
-  const selectedDateIsOutsideStrip = Boolean(matchDate && !dateChoices.includes(matchDate))
-
   const summaryIsEmpty = selectedInvitePlayers.length === 0
     && selectedInvitedGroups.length === 0
     && selectedScopeUsers.length === 0
     && selectedScopeGroups.length === 0
-  const inviteSelectionCount = selectedInvitePlayers.length + selectedInvitedGroups.length
-  const playerCallTargetCount = selectedScopeUsers.length + selectedScopeGroups.length
-  const reviewPlayersCopy = summaryIsEmpty
-    ? 'No players selected yet'
-    : [
-        reviewDirectInviteLabels.length > 0 ? `${reviewDirectInviteLabels.length} invited` : null,
-        reviewRequestItems.length > 0 ? `${reviewRequestItems.length} Player Call` : null,
-      ].filter(Boolean).join(' / ')
+  const selectedPlayerCount = selectedInvitePlayers.length + selectedScopeUsers.length
+  const remainingPlayersNeeded = Math.max(requiredCount - selectedPlayerCount, 0)
+  const playersNeededCopy = selectedPlayerCount > 0
+    ? remainingPlayersNeeded > 0
+      ? `${remainingPlayersNeeded} more needed`
+      : `${Math.min(selectedPlayerCount, requiredCount)} of ${requiredCount} selected`
+    : `Players needed: ${requiredCount}`
+  const hasSavedOrContactInvitePlayers = availableInviteOptions.length > 0
+
   const organizerNoteSentences = useMemo(
     () => new Set(parseOrganizerNoteSentences(organizerNote)),
     [organizerNote],
   )
 
+  const isUsingCustomPlayers = customPlayersOpen || !PLAYER_COUNT_PRESETS.some((count) => count === requiredCount)
+  const isUsingCustomCourts = customCourtsOpen || !COURT_COUNT_PRESETS.some((count) => count === courtCount)
+
+  const applyGameTypeDefaults = useCallback((type: 'singles' | 'doubles') => {
+    const nextRequiredCount = type === 'singles' ? 2 : 4
+    setGameType(type)
+    setRequiredCount(nextRequiredCount)
+    setDurationMinutes(getDefaultDurationMinutes(type))
+    if (!courtsManuallyChanged) {
+      setCourtCount(getDefaultCourtCount(nextRequiredCount, type))
+      setCustomCourtsOpen(false)
+    }
+    setCustomPlayersOpen(false)
+    setDoublesFormat((current) => (type === 'singles' && current === 'mixed_doubles' ? 'open' : current))
+  }, [courtsManuallyChanged])
+
+  const updatePlayersNeeded = (value: number, options?: { custom?: boolean }) => {
+    const nextValue = Math.max(1, value)
+    setRequiredCount(nextValue)
+    setCustomPlayersOpen(Boolean(options?.custom))
+  }
+
+  const updateCourtsNeeded = (value: number, options?: { custom?: boolean }) => {
+    const nextValue = Math.min(6, Math.max(1, value))
+    setCourtsManuallyChanged(true)
+    setCourtCount(nextValue)
+    setCustomCourtsOpen(Boolean(options?.custom))
+  }
+
   useEffect(() => {
-    setRequiredCount(gameType === 'singles' ? 2 : 4)
-  }, [gameType])
+    if (courtsManuallyChanged) return
+    const nextCourtCount = getDefaultCourtCount(requiredCount, gameType)
+    setCourtCount((current) => (current === nextCourtCount ? current : nextCourtCount))
+  }, [courtsManuallyChanged, gameType, requiredCount])
 
   useEffect(() => {
     if (gameType === 'singles' && doublesFormat === 'mixed_doubles') {
@@ -2044,10 +1981,7 @@ export function CreateMatchInline({
     }
 
     if (prefillCreateFormat === 'singles' || prefillCreateFormat === 'doubles') {
-      setGameType(prefillCreateFormat)
-      if (prefillCreateFormat === 'singles' && doublesFormat === 'mixed_doubles') {
-        setDoublesFormat('open')
-      }
+      applyGameTypeDefaults(prefillCreateFormat)
     }
 
     if (prefillSportId || prefillCreateFormat || starterHint) {
@@ -2087,14 +2021,15 @@ export function CreateMatchInline({
     prefillSportId,
     starterHint,
     sportId,
-    doublesFormat,
+    applyGameTypeDefaults,
   ])
 
-  const createMatchFlow = async (mode: 'create' | 'invite' = 'create') => {
+  const createMatchFlow = async (mode: 'create' | 'invite') => {
     setError(null)
     setCourtPlanMenuOpen(false)
     setCourtLabelEditorOpen(false)
     setLoading(true)
+    setSubmitMode(mode)
 
     const supabase = createSupabaseBrowserClient()
     const selectedCourtLabels = visibleCourtSlots
@@ -2231,69 +2166,72 @@ export function CreateMatchInline({
       setError(normalizeCreateError(err))
     } finally {
       setLoading(false)
+      setSubmitMode(null)
     }
   }
 
-  const validateDetailsStep = () => {
+  const handleDetailsNext = () => {
     setCourtPlanMenuOpen(false)
     setCourtLabelEditorOpen(false)
     setError(null)
 
     if (!venueId) {
       setError('Please choose a venue.')
-      return false
+      return
     }
 
     if (!matchDate) {
       setError(matchMode === 'recurring'
         ? 'Please choose the first match date for the recurring series.'
         : 'Please choose a match date.')
-      return false
-    }
-
-    if (matchDate < todayDateValue) {
-      setError('Please choose today or a future date.')
-      return false
-    }
-
-    if (!startTime) {
-      setError('Please choose a start time.')
-      return false
+      return
     }
 
     if (courtPlanMode === 'secured' && selectedCourtLabels.length === 0) {
       setError('Please choose at least one court.')
-      return false
+      return
     }
 
     if (new Set(selectedCourtLabels).size !== selectedCourtLabels.length) {
       setError('Please choose different courts for each selected slot.')
-      return false
+      return
     }
 
-    return true
+    setCreateStep(2)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setCourtPlanMenuOpen(false)
+    setCourtLabelEditorOpen(false)
+    setError(null)
 
-    if (createStep === 'details') {
-      if (!validateDetailsStep()) return
-      setCreateStep('players')
+    if (!venueId) {
+      setError('Please choose a venue.')
       return
     }
 
-    if (createStep === 'players') {
-      setError(null)
-      setCreateStep('review')
+    if (!matchDate) {
+      setError(matchMode === 'recurring'
+        ? 'Please choose the first match date for the recurring series.'
+        : 'Please choose a match date.')
       return
     }
 
-    if (!validateDetailsStep()) {
-      setCreateStep('details')
+    if (courtPlanMode === 'secured' && selectedCourtLabels.length === 0) {
+      setError('Please choose at least one court.')
       return
     }
 
+    if (new Set(selectedCourtLabels).size !== selectedCourtLabels.length) {
+      setError('Please choose different courts for each selected slot.')
+      return
+    }
+
+    setReviewOpen(true)
+  }
+
+  const handleConfirmCreate = async () => {
     await createMatchFlow('create')
   }
 
@@ -2430,16 +2368,6 @@ export function CreateMatchInline({
     }
   }
 
-  const switchPlayerPickerMode = (mode: PlayerPickerMode) => {
-    setSelectionMode(mode)
-    setPlayerPickerSearch('')
-    setPlayerPickerFilter('all')
-  }
-
-  const switchSharedPlayerPickerMode = (mode: AddPlayersMode) => {
-    switchPlayerPickerMode(mode === 'playerCall' ? 'request' : mode === 'shareLink' ? 'share' : 'invite')
-  }
-
   const toggleDirectInviteCandidate = (candidate: InviteCandidate) => {
     if (candidate.kind === 'contact' && candidate.hasReachableChannel === false) return
 
@@ -2449,52 +2377,6 @@ export function CreateMatchInline({
       else next.add(candidate.key)
       return next
     })
-  }
-
-  const toggleRequestScopeCandidate = (candidate: InviteCandidate) => {
-    if (candidate.kind !== 'user' || !candidate.userId) return
-
-    setScopeUserIds((prev) =>
-      prev.includes(candidate.userId as string)
-        ? prev.filter((id) => id !== candidate.userId)
-        : [...prev, candidate.userId as string],
-    )
-  }
-
-  const toggleInviteGroup = (group: Group) => {
-    setInvitedGroupIds((prev) =>
-      prev.includes(group.id)
-        ? prev.filter((id) => id !== group.id)
-        : [...prev, group.id],
-    )
-  }
-
-  const toggleRequestScopeGroup = (group: Group) => {
-    setScopeGroupIds((prev) =>
-      prev.includes(group.id)
-        ? prev.filter((id) => id !== group.id)
-        : [...prev, group.id],
-    )
-  }
-
-  const toggleSharedPlayerCandidate = (candidate: AddPlayersCandidate) => {
-    const item = candidate.payload as PlayerPickerItem | undefined
-    if (!item) return
-
-    if (item.kind === 'candidate') {
-      if (selectionMode === 'request') {
-        toggleRequestScopeCandidate(item.candidate)
-      } else if (selectionMode === 'invite') {
-        toggleDirectInviteCandidate(item.candidate)
-      }
-      return
-    }
-
-    if (selectionMode === 'request') {
-      toggleRequestScopeGroup(item.group)
-    } else if (selectionMode === 'invite') {
-      toggleInviteGroup(item.group)
-    }
   }
 
   const renderInviteCandidateButton = (candidate: InviteCandidate, compact = false) => {
@@ -2515,10 +2397,10 @@ export function CreateMatchInline({
           ? 'border-orange-200 bg-orange-50 text-orange-700'
           : availabilityWarning?.level === 'inactive'
             ? 'border-rose-200 bg-rose-50 text-rose-700'
-            : 'border-[#E2E8F0] bg-white text-[#334155]'
+            : 'border-[#E2E8F0] bg-white text-[#475569]'
     const stateClasses = isSelected
       ? availabilityWarning
-        ? `${availabilityClasses} border-[#0d6efd] bg-[#eff6ff]`
+        ? `${availabilityClasses} border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]`
         : 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
       : contactUnavailable
         ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-75'
@@ -2539,31 +2421,34 @@ export function CreateMatchInline({
             : `${candidate.name}: ${candidate.sourceLabels.join(', ')}`
         }
         className={[
-          'text-body-main flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]',
-          contactUnavailable ? 'cursor-not-allowed hover:translate-y-0 hover:border-gray-200 hover:bg-gray-50 hover:text-gray-400' : '',
-          compact ? 'text-[12px]' : '',
+          'relative flex w-full min-w-0 items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-body-main font-semibold shadow-sm transition hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]',
+          contactUnavailable ? 'cursor-not-allowed hover:border-gray-200 hover:bg-gray-50 hover:text-gray-400' : '',
+          compact ? 'text-[11px]' : '',
           stateClasses,
         ].join(' ')}
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          {showAvailability ? (
-            <span
-              className={`inline-block h-2 w-2 shrink-0 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
-              aria-label={availabilityLabel ?? 'Available'}
-              title={availabilityLabel ?? 'Available'}
-            />
-          ) : null}
-          <ParticipantQuickPreviewTrigger
-            target={{
-              userId: candidate.userId ?? null,
-              guestId: candidate.guestId ?? null,
-              displayName: candidate.name,
-              gender: candidate.gender,
-            }}
-          >
-            <span className="truncate font-semibold">{candidate.name}</span>
-          </ParticipantQuickPreviewTrigger>
-        </span>
+        <ParticipantQuickPreviewTrigger
+          target={{
+            userId: candidate.userId ?? null,
+            guestId: candidate.guestId ?? null,
+            displayName: candidate.name,
+            gender: candidate.gender,
+          }}
+        >
+          <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
+        </ParticipantQuickPreviewTrigger>
+        {candidate.kind === 'contact' ? (
+          <span className="shrink-0 rounded-full border border-slate-200 bg-white/75 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+            Contact
+          </span>
+        ) : null}
+        {showAvailability ? (
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+            aria-label={availabilityLabel ?? 'Available'}
+            title={availabilityLabel ?? 'Available'}
+          />
+        ) : null}
         {availabilityWarning ? (
           <span
             className="sr-only"
@@ -2578,8 +2463,10 @@ export function CreateMatchInline({
         ) : null}
         <span
           className={[
-            'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
-            isSelected ? 'border-[#0d6efd] bg-[#0d6efd] text-white' : 'border-[#E2E8F0] bg-white text-transparent',
+            'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold',
+            isSelected
+              ? 'border-[#0d6efd] bg-[#0d6efd] text-white'
+              : 'border-[#E2E8F0] bg-white text-transparent',
           ].join(' ')}
           aria-hidden="true"
         >
@@ -2628,7 +2515,7 @@ export function CreateMatchInline({
   const renderGroupHoverShell = (group: Group, children: ReactNode, align: 'left' | 'right' = 'left') => (
     <div
       key={group.id}
-      className="relative inline-flex"
+      className="relative flex w-full"
       onMouseEnter={() => setTooltip({ kind: 'group-members', groupId: group.id })}
       onMouseLeave={() => hideGroupTooltip(group.id)}
     >
@@ -2646,11 +2533,11 @@ export function CreateMatchInline({
     const toneClasses =
       tone === 'green'
         ? selected
-          ? 'border-green-300 bg-green-50 text-green-700'
-          : 'border-[#E2E8F0] bg-white text-[#334155] hover:border-green-200 hover:bg-green-50 hover:text-green-700'
+          ? 'border-green-200 bg-green-50 text-green-700'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-green-200 hover:bg-green-50 hover:text-green-700'
         : selected
-          ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
-          : 'border-[#E2E8F0] bg-white text-[#334155] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]'
+          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700'
 
     return (
       renderGroupHoverShell(group, (
@@ -2658,18 +2545,21 @@ export function CreateMatchInline({
           type="button"
           onClick={onToggle}
           className={[
-            'text-body-main flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left font-semibold transition',
+            'text-body-main flex w-full min-w-0 items-center gap-2 rounded-xl border px-3 py-2.5 text-left font-semibold shadow-sm transition',
             toneClasses,
           ].join(' ')}
           aria-pressed={selected}
         >
           <span className="min-w-0 flex-1 truncate">{group.name}</span>
+          <span className="shrink-0 rounded-full border border-slate-200 bg-white/75 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-green-800">
+            Group
+          </span>
           <span
             className={[
-              'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
+              'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold',
               selected
                 ? tone === 'green'
-                  ? 'border-green-600 bg-green-600 text-white'
+                  ? 'border-green-500 bg-green-500 text-white'
                   : 'border-[#0d6efd] bg-[#0d6efd] text-white'
                 : 'border-[#E2E8F0] bg-white text-transparent',
             ].join(' ')}
@@ -2732,15 +2622,10 @@ export function CreateMatchInline({
         aria-pressed={isSelected}
         title={`${candidate.name}: ${candidate.sourceLabels.join(', ')}`}
         className={[
-          'text-body-main flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-green-300 hover:bg-green-50 hover:text-green-600',
-          isSelected ? 'border-green-300 bg-green-50 text-green-700' : 'border-[#E2E8F0] bg-white text-[#334155]',
+          'text-body-main flex w-full min-w-0 items-center gap-2 rounded-xl border bg-white px-3 py-2.5 text-left font-semibold text-gray-600 shadow-sm transition hover:border-green-300 hover:bg-green-50 hover:text-green-600',
+          isSelected ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200',
         ].join(' ')}
       >
-        <span
-          className={`inline-block h-2 w-2 shrink-0 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
-          aria-label={availabilityLabel ?? 'Available'}
-          title={availabilityLabel ?? 'Available'}
-        />
         <ParticipantQuickPreviewTrigger
           target={{
             userId: candidate.userId ?? null,
@@ -2749,12 +2634,19 @@ export function CreateMatchInline({
             gender: candidate.gender,
           }}
         >
-          <span className="min-w-0 flex-1 truncate font-semibold">{candidate.name}</span>
+          <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
         </ParticipantQuickPreviewTrigger>
         <span
+          className={`inline-block h-2 w-2 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+          aria-label={availabilityLabel ?? 'Available'}
+          title={availabilityLabel ?? 'Available'}
+        />
+        <span
           className={[
-            'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition',
-            isSelected ? 'border-green-600 bg-green-600 text-white' : 'border-[#E2E8F0] bg-white text-transparent',
+            'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold',
+            isSelected
+              ? 'border-green-500 bg-green-500 text-white'
+              : 'border-[#E2E8F0] bg-white text-transparent',
           ].join(' ')}
           aria-hidden="true"
         >
@@ -2770,13 +2662,13 @@ export function CreateMatchInline({
         <div>
           <h4 className="text-h2 m-0 text-gray-900">Invite Player</h4>
           <p className="text-body-main mt-1 text-gray-500">
-            Match created. Pick Invite from your saved registered players, then open the match once they are recorded as pending.
+            Match created. Pick Invite People from your saved registered players, then open the match once they are recorded as pending.
           </p>
         </div>
 
         {inviteTargets.length === 0 ? (
           <div className="text-body-main rounded-2xl border border-gray-200 bg-white px-4 py-4 text-gray-500">
-            No saved registered players are available for Invite right now.
+            No saved registered players are available for Invite People right now.
           </div>
         ) : (
           <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4">
@@ -2836,112 +2728,14 @@ export function CreateMatchInline({
     )
   }
 
-  const stepCtaLabel = createStep === 'details'
-    ? 'Next: Players'
-    : createStep === 'players'
-      ? 'Next: Review'
-      : loading
-        ? 'Creating...'
-        : 'Create Match'
-
-  const selectedPlayersFooter = selectionMode === 'share' ? null : (
-    <div className="space-y-2 px-1">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[9px] font-extrabold leading-[1.2] tracking-normal text-[#64748B]">
-          {selectionMode === 'request' ? 'Selected audience' : 'Selected invitees'}
-        </p>
-        {selectionMode === 'invite' ? (
-          <AddContactSecondaryAction
-            onAdd={() => {
-              setError(null)
-              setContactAddPanelOpen(true)
-            }}
-          />
-        ) : null}
-      </div>
-
-      {selectionMode === 'request' ? (
-        playerCallTargetCount === 0 ? (
-          <p className="text-body-sub font-semibold text-[#94A3B8]">No one yet</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {selectedScopeUsers.map((candidate) => (
-              <button
-                key={`call-target-${candidate.key}`}
-                type="button"
-                onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
-                className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
-              >
-                <ParticipantQuickPreviewTrigger
-                  target={{
-                    userId: candidate.userId ?? null,
-                    guestId: candidate.guestId ?? null,
-                    displayName: candidate.name,
-                    gender: candidate.gender,
-                  }}
-                >
-                  <span>{candidate.name}</span>
-                </ParticipantQuickPreviewTrigger>
-                <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-              </button>
-            ))}
-            {selectedScopeGroups.map((group) =>
-              renderSelectedGroupChip(
-                group,
-                'green',
-                () => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id)),
-                `call-target-group-${group.id}`,
-              ),
-            )}
-          </div>
-        )
-      ) : inviteSelectionCount === 0 ? (
-        <p className="text-body-sub font-semibold text-[#94A3B8]">No people or groups selected yet.</p>
-      ) : (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-body-sub mr-1 font-semibold text-[#64748B]">
-            {inviteSelectionCount} selected
-          </span>
-          {selectedInvitePlayers.map((member) => (
-            <button
-              key={`invite-selected-${member.key}`}
-              type="button"
-              onClick={() => setSelectedDirectInviteKeys((prev) => {
-                const next = new Set(prev)
-                next.delete(member.key)
-                return next
-              })}
-              className="text-body-sub flex items-center rounded-lg border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-1 font-semibold text-[#0d6efd]"
-            >
-              <ParticipantQuickPreviewTrigger
-                target={{
-                  userId: member.userId ?? null,
-                  guestId: member.guestId ?? null,
-                  displayName: member.name,
-                  gender: member.gender,
-                }}
-              >
-                <span>{member.name}</span>
-              </ParticipantQuickPreviewTrigger>
-              <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-            </button>
-          ))}
-          {selectedInvitedGroups.map((group) =>
-            renderSelectedGroupChip(
-              group,
-              'orange',
-              () => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
-            ),
-          )}
-        </div>
-      )}
-    </div>
-  )
+  if (hideCollapsedTrigger && !createExpanded) {
+    return null
+  }
 
   return (
     <>
     {contactAddPanelOpen ? (
-      <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <button
           type="button"
           aria-label="Close add contact"
@@ -2951,8 +2745,219 @@ export function CreateMatchInline({
             setError(null)
           }}
         />
-        <div className="relative max-h-[100dvh] w-full overflow-y-auto p-4 sm:max-h-[90vh] sm:max-w-5xl sm:p-0">
-          <AddMyContactPanel
+        <div className="relative max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-[36px] border border-[#D7E2F0] bg-white px-5 py-7 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)] sm:px-8 lg:px-10">
+          <div className="flex items-start justify-between gap-4">
+            <h3 className="text-[28px] font-black tracking-[-0.02em] text-[#0B1F44]">Add My Contact</h3>
+            <button
+              type="button"
+              onClick={() => {
+                setContactAddPanelOpen(false)
+                setError(null)
+              }}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
+              aria-label="Close add contact panel"
+            >
+              <ContactAddIcon kind="close" />
+            </button>
+          </div>
+
+          <div className="mt-8 grid gap-5 border-b border-[#E2E8F0] pb-9 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              {
+                key: 'card' as const,
+                title: 'Save as player card',
+                body: 'Add someone not on PlayerHoods yet.',
+                tone: 'bg-[#eff6ff] text-[#0d6efd]',
+              },
+              {
+                key: 'invite' as const,
+                title: 'Invite by link',
+                body: 'Send a private invite link anytime.',
+                tone: 'bg-[#F1ECFF] text-[#6D5DF7]',
+              },
+              {
+                key: 'reply' as const,
+                title: 'Email or SMS reply',
+                body: 'They can accept without an account.',
+                tone: 'bg-[#EAFBF0] text-[#07823F]',
+              },
+              {
+                key: 'bell' as const,
+                title: 'Register notification',
+                body: 'Get notified when they join PlayerHoods.',
+                tone: 'bg-[#FFF7E6] text-[#C46B00]',
+              },
+              {
+                key: 'shield' as const,
+                title: 'Private by default',
+                body: 'Contact details stay hidden.',
+                tone: 'bg-[#EAF7FF] text-[#0877B8]',
+              },
+            ].map((item, index) => (
+              <div
+                key={item.title}
+                className={[
+                  'flex items-start gap-3 lg:flex-col lg:items-center lg:justify-start lg:text-center',
+                  index > 0 ? 'lg:border-l-2 lg:border-[#CBD5E1]' : '',
+                ].join(' ')}
+              >
+                <span className={['flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/70 shadow-sm', item.tone].join(' ')}>
+                  <ContactAddIcon kind={item.key} />
+                </span>
+                <span className="grid gap-1">
+                  <span className="text-[11px] font-black leading-tight text-[#0B1F44]">{item.title}</span>
+                  <span className="text-[10px] leading-tight text-[#94A3B8]">{item.body}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-9 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.82fr)] lg:gap-14">
+            <form onSubmit={handleCreateContactPlayer} className="grid gap-5 lg:border-r-2 lg:border-[#CBD5E1] lg:pr-10">
+              <label className="text-label text-[#536179]">
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Name</span>
+                <input
+                  type="text"
+                  value={contactDisplayName}
+                  onChange={(event) => setContactDisplayName(event.target.value)}
+                  placeholder="Player's full name"
+                  className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+                />
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-label text-[#536179]">
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Email</span>
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                    placeholder="email@example.com"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+                  />
+                </label>
+                <label className="text-label text-[#536179]">
+                  <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Phone</span>
+                  <input
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(event) => setContactPhone(event.target.value)}
+                    placeholder="+1 234 567 890"
+                    className="text-body-main h-14 w-full rounded-2xl border border-[#A8B7CC] bg-white px-4 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+                  />
+                </label>
+              </div>
+
+              <label className="text-label text-[#536179]">
+                <span className="mb-2 ml-1 block uppercase tracking-[0.12em] text-[#64748B]">Notes</span>
+                <textarea
+                  value={contactNotes}
+                  onChange={(event) => setContactNotes(event.target.value)}
+                  placeholder="Add details like skill level or preferred times..."
+                  rows={3}
+                  className="text-body-main w-full resize-none rounded-2xl border border-[#A8B7CC] bg-white px-4 py-3 text-[#0F172A] shadow-sm outline-none transition placeholder:text-[#64748B] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+                />
+              </label>
+
+              {error ? (
+                <p className="text-body-main rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
+                  {error}
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={creatingContact}
+                  className="text-body-main inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-[#0d6efd] px-5 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7] disabled:cursor-wait disabled:bg-[#94A3B8]"
+                >
+                  <span className="text-lg leading-none">+</span>
+                  {creatingContact ? 'Saving...' : 'Save Contact'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContactAddPanelOpen(false)
+                    setError(null)
+                  }}
+                  className="text-body-main rounded-xl border border-[#E2E8F0] bg-white px-5 py-3 font-medium text-[#475569] transition hover:bg-[#F8FBFF]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+
+            <div className="flex flex-col items-center justify-center gap-5 px-2 py-6 text-center lg:pl-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!onParseScreenshots || !onImportScreenshotContacts || !currentUserId) {
+                    setError('Smart Import is not available right now. Please refresh and try again.')
+                    return
+                  }
+                  setContactComposerMode('screenshot')
+                  setError(null)
+                }}
+                className="text-body-main inline-flex items-center gap-2 rounded-2xl bg-[#0d6efd] px-10 py-4 font-bold text-white shadow-[0_18px_34px_-20px_rgba(7,91,215,0.95)] transition hover:bg-[#0b5ed7]"
+              >
+                <ContactAddIcon kind="spark" />
+                Smart Import
+              </button>
+              <p className="text-body-main max-w-sm text-[#94A3B8]">
+                We'll extract names, emails, and phones for you.
+              </p>
+              <div className="grid w-full max-w-md grid-cols-3 gap-4 pt-4">
+                {[
+                  ['Chat group', 'Tennis Group', 'Roger Federer'],
+                  ['Email header', 'From', 'email@example.com'],
+                  ['Sheet/list', 'Name', 'Sara Novak'],
+                ].map(([label, heading, body]) => (
+                  <div key={label} className="flex aspect-[3/4] flex-col rounded-2xl border border-[#D7E2F0] bg-[#F8FBFF] p-3 opacity-70 shadow-sm">
+                    <div className="h-2 w-10 rounded-full bg-[#DCE8F8]" />
+                    <div className="mt-3 rounded-lg bg-[#F1F5F9] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
+                      {heading}
+                    </div>
+                    <div className="mt-2 truncate rounded-md bg-[#eff6ff] px-2 py-1 text-[10px] font-semibold text-[#0d6efd]">
+                      {body}
+                    </div>
+                    <p className="mt-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#64748B]">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    {contactComposerMode === 'screenshot' && onParseScreenshots && onImportScreenshotContacts && currentUserId ? (
+      <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4">
+        <button
+          type="button"
+          aria-label="Close screenshot import"
+          className="absolute inset-0 bg-[#0B1F44]/40 backdrop-blur-sm"
+          onClick={() => setContactComposerMode(null)}
+        />
+        <div className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-[28px] bg-white p-4 shadow-[0_32px_80px_-32px_rgba(11,31,68,0.5)] sm:max-h-[88vh] sm:rounded-[32px]">
+          <div className="mb-4 flex items-start justify-between gap-4 px-1 pt-1 sm:px-2 sm:pt-2">
+            <div>
+              <h3 className="text-xl font-black text-[#1E293B] sm:text-h2">Smart Import</h3>
+              <p className="text-body-sub mt-1 max-w-xl text-[#64748B]">
+                Upload or paste a screenshot from a chat group, email header, or contact list. We&apos;ll extract possible names, emails, and phone numbers for you to review before saving them as Contact Players.
+              </p>
+              <p className="text-body-sub mt-2 max-w-xl font-semibold text-[#475569]">
+                Nothing is sent or invited automatically. You choose which contacts to save.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setContactComposerMode(null)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0B1F44]"
+              aria-label="Close import modal"
+            >
+              <ContactAddIcon kind="close" />
+            </button>
+          </div>
+          <ContactScreenshotImportSection
             userId={currentUserId}
             existingContacts={existingImportContacts}
             onParseScreenshots={onParseScreenshots}
@@ -2960,115 +2965,91 @@ export function CreateMatchInline({
             onImported={async () => {
               await loadContactInviteCandidates()
               setSelectionMode('invite')
+              setContactComposerMode(null)
               setContactAddPanelOpen(false)
               setInviteNotice('Imported contacts were saved. You can invite them from your saved contact players.')
             }}
-            displayName={contactDisplayName}
-            email={contactEmail}
-            phone={contactPhone}
-            notes={contactNotes}
-            creatingContact={creatingContact}
-            error={error}
-            onDisplayNameChange={setContactDisplayName}
-            onEmailChange={setContactEmail}
-            onPhoneChange={setContactPhone}
-            onNotesChange={setContactNotes}
-            onManualSubmit={handleCreateContactPlayer}
-            onClose={() => {
-              setContactAddPanelOpen(false)
-              setError(null)
-            }}
-            onCancel={() => {
-              setContactAddPanelOpen(false)
-              setError(null)
-            }}
-            onClearError={() => setError(null)}
           />
         </div>
       </div>
     ) : null}
     <form
-      ref={createFormRef}
       id="create-match-inline"
       onSubmit={handleSubmit}
-      className="transition duration-200 md:mx-auto md:w-full md:max-w-[900px]"
+      className={[
+        'space-y-6 transition duration-200',
+        reviewOpen ? 'pointer-events-none select-none opacity-60 grayscale-[0.55] saturate-[0.45]' : '',
+      ].join(' ')}
     >
-      <section className={`${createExpanded ? 'overflow-visible' : 'overflow-hidden'} ${DS_CARD}`}>
+      <section className={`overflow-hidden ${DS_CARD}`}>
+        {createExpanded ? (
+          <div className="flex items-start justify-between gap-4 px-4 py-3 md:px-7 md:py-6">
+            <div>
+              <h2 className="text-[21px] font-black leading-tight text-[#0B1F44] md:text-[28px]">Create Match</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCreateExpanded(false)
+                setCreateStep(1)
+              }}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#DCE5F2] bg-white text-[21px] leading-none text-[#0d6efd] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.45)] transition hover:border-[#BFD4EA] hover:bg-[#F8FBFF] md:h-11 md:w-11"
+              aria-label="Close Create Match"
+            >
+              x
+            </button>
+          </div>
+        ) : null}
         <button
           type="button"
-          onClick={() => {
-            setCreateExpanded((expanded) => !expanded)
-            setError(null)
-          }}
-          className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left transition hover:bg-[#F8FBFF] sm:px-5 md:gap-4 md:px-7 md:py-5"
+          onClick={() => setCreateExpanded((expanded) => !expanded)}
+          className={[
+            createExpanded ? 'hidden' : 'flex',
+            'w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[#eff6ff] md:px-7 md:py-6',
+          ].join(' ')}
         >
-          <div className="min-w-0">
-            <p className="text-[15px] font-black leading-5 text-[#0B1F47] sm:text-[16px] md:text-[22px] md:leading-7">Create Match</p>
-            <p className="truncate text-[12px] font-semibold leading-4 text-[#64748B] md:mt-1 md:text-[15px] md:leading-5">
-              {createExpanded ? `${CREATE_FLOW_STEPS[activeStepIndex]?.label} - Step ${activeStepIndex + 1} of 3` : 'Choose venue and time'}
-            </p>
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0d6efd] text-[30px] font-medium leading-none text-white shadow-[0_14px_28px_rgba(13,110,253,0.24)] md:h-14 md:w-14 md:text-[34px]">
+              +
+            </span>
+            <div className="min-w-0">
+              <p className="text-[18px] font-black uppercase tracking-[0.04em] text-[#0B1F47] md:text-[22px]">
+                {createExpanded ? 'Hide Create Match' : 'Create a Match'}
+              </p>
+              <p className="mt-1 text-[13px] font-semibold text-[#536783] md:text-[15px]">
+                More Games for Players. Less Work for Hosts.
+              </p>
+            </div>
           </div>
           <span
-            className={[
-              'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[18px] font-bold text-[#0d6efd] transition-transform md:h-10 md:w-10 md:text-[20px]',
-              createExpanded ? 'rotate-45' : '',
-            ].join(' ')}
+            className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F8FAFC] text-[20px] font-bold text-[#94A3B8] transition-transform ${createExpanded ? 'rotate-180' : ''}`}
             aria-hidden="true"
           >
-            +
+            ›
           </span>
         </button>
 
         {createExpanded ? (
-          <div ref={createFlowContentRef} className="border-t border-[#F1F5F9] px-4 pb-0 pt-3 sm:px-5 md:space-y-6 md:px-6 md:pb-6 md:pt-6">
-      {starterHint ? (
-        <div className="mb-3 rounded-xl border border-[#bfdbfe] bg-[#eff6ff] px-3 py-2 text-body-sub font-semibold text-[#0b5ed7] md:mb-0 md:rounded-2xl md:px-4 md:py-3 md:text-body-main">
-          Start now and add more players later.
+          <div className="space-y-3 px-4 pb-4 pt-3 md:space-y-6 md:px-7 md:pb-7 md:pt-7">
+      <div className="md:hidden">
+        <p className="mb-1 text-[11px] font-bold text-[#7282A0]">Step {createStep} of 3</p>
+        <div className="h-1 overflow-hidden rounded-full bg-[#EEF3F9]">
+          <div
+            className="h-full rounded-full bg-[#0d6efd] transition-all"
+            style={{ width: `${(createStep / 3) * 100}%` }}
+          />
         </div>
-      ) : null}
-      {createStep !== 'details' ? (
-      <div className="mb-2.5 grid grid-cols-3 gap-1 rounded-full bg-[#F8FAFC] p-0.5 md:mb-0 md:gap-2 md:p-1">
-        {CREATE_FLOW_STEPS.map((step, index) => {
-          const isActive = createStep === step.key
-          const isComplete = index < activeStepIndex
-          const canOpen = index <= activeStepIndex
-          return (
-            <button
-              key={step.key}
-              type="button"
-              onClick={() => {
-                if (!canOpen) return
-                setCreateStep(step.key)
-                setError(null)
-              }}
-              disabled={!canOpen}
-              className={[
-                'h-7 rounded-full px-2 text-center text-[11px] font-black transition md:h-10 md:text-[13px]',
-                isActive
-                  ? 'bg-white text-[#0d6efd] shadow-sm ring-1 ring-[#0d6efd]/25'
-                  : isComplete
-                    ? 'text-[#1E293B]'
-                    : 'text-[#94A3B8]',
-                !canOpen ? 'cursor-not-allowed opacity-70' : 'hover:bg-white hover:text-[#0d6efd]',
-              ].join(' ')}
-            >
-              {index + 1} {step.label}
-            </button>
-          )
-        })}
       </div>
-      ) : null}
-      {createStep === 'details' ? (
-      <>
-      <section className="bg-white md:rounded-2xl md:px-1">
-        <div className="mb-5 hidden md:block">
-          <h3 className={DS_SECTION_TITLE}>Details</h3>
-        </div>
-        <div className="space-y-2.5 md:space-y-6">
-          <div className="grid grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.72fr)] md:gap-5">
-            <div className="min-w-0">
-              <label className={DS_LABEL}>Sport</label>
-              <div className="grid grid-cols-2 gap-1 md:flex md:flex-wrap md:gap-2">
+      {createStep === 1 ? (
+        <>
+      <section className="rounded-2xl bg-white">
+        <h3 className="mb-2 text-[16px] font-black text-[#0B1F44] md:mb-5 md:text-[18px]">Match Details</h3>
+
+        <div className="space-y-2.5 md:space-y-5">
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-[minmax(0,1fr)_154px_140px] md:gap-4">
+            <div className="col-span-2 md:col-span-1">
+              <label className={STEP_PANEL_LABEL}>Sport</label>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
                 {sports.map((sport) => {
                   const selected = sport.id === sportId
                   return (
@@ -3077,84 +3058,78 @@ export function CreateMatchInline({
                       type="button"
                       onClick={() => setSportId(sport.id)}
                       className={[
-                        'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[11px] font-black transition md:h-10 md:px-4 md:text-body-main',
-                        selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
+                        'min-h-10 rounded-xl border px-3 text-center text-body-main font-black transition focus:outline-none focus:ring-4 focus:ring-[#0d6efd]/10 md:min-h-12 md:px-5',
+                        selected ? STEP_BUTTON_SELECTED : STEP_BUTTON_UNSELECTED,
                       ].join(' ')}
                     >
-                      <span className="truncate">{sport.display_name}</span>
+                      {sport.display_name}
                     </button>
                   )
                 })}
               </div>
             </div>
 
-            <div className="min-w-0">
-              <label className={DS_LABEL}>Players needed</label>
-              <div className="grid grid-cols-4 gap-1 md:flex md:flex-wrap md:items-center md:gap-3">
-                {[2, 4, 8].map((count) => (
-                  <button
-                    key={count}
-                    type="button"
-                    onClick={() => {
-                      setCustomPlayersOpen(false)
-                      setRequiredCount(count)
-                    }}
-                    className={[
-                      'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[13px] font-black transition md:h-10 md:min-w-10 md:px-3 md:text-title-main',
-                      !customPlayersOpen && requiredCount === count ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                    ].join(' ')}
-                  >
-                    {count}
-                  </button>
-                ))}
+            <div>
+              <label className={STEP_PANEL_LABEL}>People Needed</label>
+              <div className="grid h-10 grid-cols-[38px_minmax(0,1fr)_38px] overflow-hidden rounded-xl border border-[#DCE5F2] bg-white shadow-[0_6px_18px_-16px_rgba(15,23,42,0.35)] md:h-12 md:grid-cols-[44px_minmax(0,1fr)_44px]">
                 <button
                   type="button"
-                  onClick={() => setCustomPlayersOpen((open) => !open)}
-                  className={[
-                    'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[13px] font-black transition md:h-10 md:min-w-10 md:px-3 md:text-title-main',
-                    customPlayersOpen || ![2, 4, 8].includes(requiredCount) ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                  ].join(' ')}
-                  aria-label="Set custom player count"
+                  onClick={() => updatePlayersNeeded(Math.max(1, requiredCount - 1), { custom: !PLAYER_COUNT_PRESETS.some((count) => count === Math.max(1, requiredCount - 1)) })}
+                  className="flex items-center justify-center border-r border-[#DCE5F2] text-[18px] font-black text-[#0d6efd] transition hover:bg-[#F8FBFF]"
+                  aria-label="Decrease people needed"
+                >
+                  -
+                </button>
+                <div className="flex items-center justify-center text-title-main font-black text-[#0B1F44]">
+                  {requiredCount}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updatePlayersNeeded(requiredCount + 1, { custom: !PLAYER_COUNT_PRESETS.some((count) => count === requiredCount + 1) })}
+                  className="flex items-center justify-center border-l border-[#DCE5F2] text-[20px] font-black text-[#0d6efd] transition hover:bg-[#F8FBFF]"
+                  aria-label="Increase people needed"
                 >
                   +
                 </button>
-                {customPlayersOpen || ![2, 4, 8].includes(requiredCount) ? (
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={requiredCount}
-                    onChange={(e) => {
-                      const fallbackValue = gameType === 'singles' ? 2 : 4
-                      const nextValue = Number.parseInt(e.target.value, 10)
-                      setRequiredCount(Number.isNaN(nextValue) ? fallbackValue : Math.max(1, nextValue))
-                    }}
-                    className="h-9 w-20 rounded-xl border border-[#E2E8F0] bg-white px-3 text-center text-sm font-bold text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10 md:h-10"
-                  />
-                ) : null}
               </div>
+            </div>
+
+            <div>
+              <label className={STEP_PANEL_LABEL}>Courts Needed</label>
+              <input
+                type="number"
+                min={1}
+                max={6}
+                step={1}
+                value={courtCount}
+                onChange={(e) => {
+                  const nextValue = Number.parseInt(e.target.value, 10)
+                  updateCourtsNeeded(Number.isNaN(nextValue) ? 1 : nextValue, { custom: true })
+                }}
+                className={`${STEP_FIELD} text-center`}
+              />
             </div>
           </div>
 
-          <div>
-            <label className={DS_LABEL}>Game Type</label>
-            <div className="grid grid-cols-[0.86fr_1.14fr] gap-2 md:grid-cols-2 md:gap-3">
+          <div className="grid grid-cols-2 gap-2.5 md:gap-4">
+            <div>
+              <label className={STEP_PANEL_LABEL}>Game Type</label>
               <select
                 value={gameType}
-                onChange={(event) => {
-                  const nextType = event.target.value
-                  setGameType(nextType)
-                  if (nextType === 'singles' && doublesFormat === 'mixed_doubles') setDoublesFormat('open')
-                }}
-                className={DS_COMPACT_FIELD}
+                onChange={(event) => applyGameTypeDefaults(event.target.value as 'singles' | 'doubles')}
+                className={STEP_SELECT}
               >
                 <option value="singles">Singles</option>
                 <option value="doubles">Doubles</option>
               </select>
+            </div>
+
+            <div>
+              <label className={STEP_PANEL_LABEL}>Format</label>
               <select
                 value={doublesFormat}
                 onChange={(event) => setDoublesFormat(event.target.value as MatchDoublesFormat)}
-                className={DS_COMPACT_FIELD}
+                className={STEP_SELECT}
               >
                 {(gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS).map((option) => (
                   <option key={option.value} value={option.value}>
@@ -3166,358 +3141,538 @@ export function CreateMatchInline({
           </div>
 
           <div>
-            <label className={DS_LABEL}>Venue</label>
+            <label className={STEP_PANEL_LABEL}>Venue</label>
             {visibleVenueOptions.length > 0 ? (
               <select
                 value={venueId}
-                onChange={(event) => setVenueId(event.target.value)}
-                className={DS_COMPACT_FIELD}
+                onChange={(event) => {
+                  setVenueId(event.target.value)
+                  setVenueOptionsExpanded(false)
+                }}
+                className={STEP_SELECT}
               >
+                <option value="" disabled>Select venue</option>
                 {visibleVenueOptions.map((venue) => (
                   <option key={venue.id} value={venue.id}>
-                    {venue.name?.trim() || venue.abbreviation || 'Unnamed venue'}
+                    {getVenueDisplayName(venue)}
                   </option>
                 ))}
               </select>
             ) : (
-              <p className="text-body-sub rounded-xl border border-dashed border-[#D7E2F0] bg-[#F8FBFF] px-3 py-2 text-[#64748B]">
+              <p className="text-body-sub rounded-xl border border-dashed border-[#D7E2F0] bg-[#F8FBFF] px-4 py-3 text-[#64748B]">
                 {venues.length > 0
-                  ? `No ${selectedSport?.display_name ?? 'selected sport'} venues match your profile city range.`
+                  ? `No ${selectedSport?.display_name ?? 'selected sport'} venues match your profile city range. Add one to your profile before creating this match.`
                   : 'Add a venue to your profile before creating a match.'}
               </p>
             )}
           </div>
 
-          <div>
-            <label className={DS_LABEL}>Court Plan</label>
-            <select
-              value={courtPlanMode}
-              onChange={(event) => setCourtPlanMode(event.target.value as MatchCourtPlanMode)}
-              className={DS_COMPACT_FIELD}
-            >
-              {COURT_PLAN_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {courtPlanMode === 'secured' ? (
+          <div className="grid grid-cols-2 gap-2.5 md:gap-4">
             <div>
-              <label className={DS_LABEL}>Court Booked</label>
-              <div ref={courtPlanMenuRef} className="space-y-2 md:space-y-3">
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCourtPlanMenuOpen((open) => !open)
-                      if (selectedCourtLabels.length > 0) setCourtLabelEditorOpen(true)
-                    }}
-                    className={[
-                      'flex w-full items-center justify-between rounded-md border bg-white px-3 py-1.5 text-xs outline-none transition md:rounded-xl md:px-4 md:py-3 md:text-sm',
-                      courtPlanMenuOpen
-                        ? 'border-[#0d6efd] ring-2 ring-[#0d6efd]/10'
-                        : 'border-[#E2E8F0] hover:border-[#F4C7B8]',
-                    ].join(' ')}
-                  >
-                    <span className={selectedCourtLabels.length > 0 ? 'truncate text-[#1E293B]' : 'text-[#94A3B8]'}>
-                      {selectedCourtLabels.length > 0 ? selectedCourtLabels.join(', ') : 'Select your booked court'}
-                    </span>
-                    <svg
-                      className={`h-3.5 w-3.5 text-[#94A3B8] transition ${courtPlanMenuOpen ? 'rotate-180' : ''}`}
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      aria-hidden="true"
+              <label className={STEP_PANEL_LABEL}>Court Plan</label>
+              <select
+                value={courtPlanMode}
+                onChange={(event) => setCourtPlanMode(event.target.value as MatchCourtPlanMode)}
+                className={STEP_SELECT}
+              >
+                {COURT_PLAN_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {COURT_PLAN_SHORT_LABELS[option.value]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {courtPlanMode === 'secured' ? (
+              <div>
+                <label className={STEP_PANEL_LABEL}>Court Booked</label>
+                <div ref={courtPlanMenuRef} className="space-y-2">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCourtPlanMenuOpen((open) => !open)
+                        if (selectedCourtLabels.length > 0) setCourtLabelEditorOpen(true)
+                      }}
+                      className={[
+                        'flex min-h-10 w-full items-center justify-between rounded-xl border bg-white px-3 py-1.5 text-left text-body-main font-bold shadow-[0_6px_18px_-16px_rgba(15,23,42,0.35)] outline-none transition md:min-h-12 md:px-4 md:py-3',
+                        courtPlanMenuOpen
+                          ? 'border-[#0d6efd] ring-2 ring-[#0d6efd]/10'
+                          : 'border-[#DCE5F2] hover:border-[#BFD4EA]',
+                      ].join(' ')}
                     >
-                      <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                  {courtPlanMenuOpen ? (
-                    <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-md border border-[#E2E8F0] bg-white shadow-lg">
-                      <div className="grid max-h-52 grid-cols-2 gap-x-1 gap-y-0 overflow-y-auto p-1.5">
-                        {courtOptions.map((court) => {
-                          const checked = selectedCourtIds.includes(court.id)
-                          return (
-                            <label
-                              key={court.id}
-                              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[11px] font-semibold text-[#475569] transition hover:bg-[#F8FAFC]"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleCourtSelection(court.id)}
-                                className="h-3.5 w-3.5 rounded border-[#94A3B8] text-[#0d6efd] focus:ring-[#0d6efd]"
-                              />
-                              <span className="whitespace-nowrap">{court.label}</span>
-                            </label>
-                          )
-                        })}
+                      <span className={selectedCourtLabels.length > 0 ? 'truncate text-[#0B1F44]' : 'truncate text-[#7A8AA6]'}>
+                        {selectedCourtLabels.length > 0 ? selectedCourtLabels.join(', ') : 'Select court'}
+                      </span>
+                      <svg
+                        className={`h-3.5 w-3.5 text-[#94A3B8] transition ${courtPlanMenuOpen ? 'rotate-180' : ''}`}
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    {courtPlanMenuOpen ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-md border border-[#E2E8F0] bg-white shadow-lg">
+                        <div className="grid max-h-52 grid-cols-2 gap-x-1 gap-y-0 overflow-y-auto p-1.5">
+                          {courtOptions.map((court) => {
+                            const checked = selectedCourtIds.includes(court.id)
+                            return (
+                              <label
+                                key={court.id}
+                                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[11px] font-semibold text-[#475569] transition hover:bg-[#F8FAFC]"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleCourtSelection(court.id)}
+                                  className="h-3.5 w-3.5 rounded border-[#94A3B8] text-[#0d6efd] focus:ring-[#0d6efd]"
+                                />
+                                <span className="whitespace-nowrap">{court.label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
                       </div>
+                    ) : null}
+                  </div>
+                  {courtLabelEditorOpen && visibleCourtSlots.some((slot) => slot.enabled && slot.courtId) ? (
+                    <div className="space-y-2 rounded-md border border-[#E2E8F0] bg-white p-2.5">
+                      {visibleCourtSlots.map((slot, index) => {
+                        if (!slot.enabled || !slot.courtId) return null
+                        const optionLabel = courtOptions.find((option) => option.id === slot.courtId)?.label ?? ''
+                        return (
+                          <input
+                            key={`court-slot-${index}`}
+                            type="text"
+                            value={slot.manualLabel || optionLabel}
+                            onFocus={() => setCourtLabelEditorOpen(true)}
+                            onChange={(e) => {
+                              updateCourtSlot(index, { manualLabel: e.target.value })
+                              setError((currentError) =>
+                                currentError === 'Please choose at least one court.' ? null : currentError,
+                              )
+                            }}
+                            placeholder={`crt ${index + 1}`}
+                            className="w-full rounded-md border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-2 focus:ring-[#0d6efd]/10"
+                          />
+                        )
+                      })}
                     </div>
                   ) : null}
                 </div>
-                {courtLabelEditorOpen && visibleCourtSlots.some((slot) => slot.enabled && slot.courtId) ? (
-                  <div className="space-y-2 rounded-md border border-[#E2E8F0] bg-white p-2.5">
-                    {visibleCourtSlots.map((slot, index) => {
-                      if (!slot.enabled || !slot.courtId) return null
-                      const optionLabel = courtOptions.find((option) => option.id === slot.courtId)?.label ?? ''
-                      return (
-                        <input
-                          key={`court-slot-${index}`}
-                          type="text"
-                          value={slot.manualLabel || optionLabel}
-                          onFocus={() => setCourtLabelEditorOpen(true)}
-                          onChange={(e) => {
-                            updateCourtSlot(index, { manualLabel: e.target.value })
-                            setError((currentError) =>
-                              currentError === 'Please choose at least one court.' ? null : currentError,
-                            )
-                          }}
-                          placeholder={`crt ${index + 1}`}
-                          className="w-full rounded-md border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#1E293B] outline-none transition focus:border-[#0d6efd] focus:ring-2 focus:ring-[#0d6efd]/10"
-                        />
-                      )
-                    })}
-                  </div>
-                ) : null}
               </div>
-            </div>
-          ) : null}
-
-          <details className="rounded-xl border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-2 md:px-4 md:py-3">
-            <summary className="cursor-pointer text-[12px] font-black text-[#52647E] md:text-[13px]">
-              More options
-            </summary>
-            <label className="mt-2 grid grid-cols-[1fr_9.5rem] items-center gap-2 md:grid-cols-[minmax(0,1fr)_12rem] md:gap-3">
-              <span className={DS_LABEL}>Courts needed</span>
-              <select
-                value={courtCount}
-                onChange={(event) => setCourtCount(Number.parseInt(event.target.value, 10))}
-                className={DS_COMPACT_FIELD}
-              >
-                {[1, 2, 3, 4, 5, 6].map((count) => (
-                  <option key={count} value={count}>
-                    {count} court{count === 1 ? '' : 's'}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </details>
+            ) : null}
+          </div>
 
         </div>
 
       </section>
 
-      <section className="space-y-2 md:space-y-4 md:px-1 md:py-1">
-        <div className="hidden md:block">
-          <h3 className={DS_SECTION_TITLE}>Schedule</h3>
-        </div>
+      <section className="rounded-2xl bg-white pt-1">
+        <h3 className="mb-2 text-[16px] font-black text-[#0B1F44] md:mb-5 md:text-[18px]">Schedule</h3>
 
-        <div className="md:hidden">
-          <span className={DS_LABEL}>Date</span>
-          <div className="grid grid-cols-4 gap-1">
-            {dateChoices.slice(1, 4).map((dateStr) => {
-              const selected = matchDate === dateStr && !customDateOpen
-              return (
-                <button
-                  key={dateStr}
-                  type="button"
-                  onClick={() => {
-                    setCustomDateOpen(false)
-                    setMatchDate(dateStr)
-                  }}
-                  className={[
-                    'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[12px] font-black transition',
-                    selected ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-                  ].join(' ')}
-                >
-                  {formatCompactDateChip(dateStr)}
-                </button>
-              )
-            })}
-            <button
-              type="button"
-              onClick={() => setCustomDateOpen((open) => !open)}
-              className={[
-                'inline-flex h-8 min-w-0 items-center justify-center rounded-xl border px-1 text-[12px] font-black transition',
-                customDateOpen || selectedDateIsOutsideStrip ? DS_OPTION_SELECTED : DS_OPTION_UNSELECTED,
-              ].join(' ')}
-            >
-              More
-            </button>
-          </div>
-          {customDateOpen || selectedDateIsOutsideStrip ? (
-            <input
-              type="date"
-              value={matchDate}
-              min={todayDateValue}
-              onChange={(event) => {
-                const nextDate = event.target.value
-                setMatchDate(nextDate)
-                if (nextDate && nextDate < todayDateValue) {
-                  setError('Please choose today or a future date.')
-                  return
-                }
-                setError((currentError) => currentError === 'Please choose today or a future date.' ? null : currentError)
-              }}
-              className={`${DS_COMPACT_FIELD} mt-1.5`}
-            />
-          ) : null}
-        </div>
-
-        <div className="grid grid-cols-2 gap-1.5 md:hidden">
-          <label>
-            <span className={DS_LABEL}>Time</span>
-            <select
-              value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
-              className={DS_COMPACT_FIELD}
-            >
-              <option value="">Select time</option>
-              {TIME_SLOTS.map((slot) => (
-                <option key={slot.value} value={slot.value}>
-                  {slot.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className={DS_LABEL}>Duration</span>
-            <select
-              value={durationMinutes}
-              onChange={(event) => setDurationMinutes(parseInt(event.target.value, 10))}
-              className={DS_COMPACT_FIELD}
-            >
-              {[30, 45, 60, 90, 120].map((minutes) => (
-                <option key={minutes} value={minutes}>
-                  {minutes} min
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="hidden grid-cols-12 items-start gap-5 md:grid">
-          <div className="col-span-5">
+        <div className="grid gap-2.5 md:grid-cols-[minmax(280px,0.95fr)_minmax(260px,0.9fr)] md:items-start md:gap-5">
+          <div>
             <MiniCalendar selected={matchDate} onSelect={setMatchDate} dateIndicators={calendarIndicators} />
           </div>
 
-          <div className="col-span-7 flex flex-col gap-4">
+          <div className="grid gap-2.5 md:gap-5 md:pt-7">
+            <div className="grid grid-cols-2 gap-2.5 md:gap-4">
+              <div className="min-w-0">
+                <label className={STEP_PANEL_LABEL}>Starting Time</label>
+                <select
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className={startTime ? STEP_SELECT : STEP_SELECT_MUTED}
+                >
+                  <option value="">Select starting time</option>
+                  {TIME_SLOTS.map((slot) => (
+                    <option key={slot.value} value={slot.value}>
+                      {slot.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="min-w-0">
+                <label className={STEP_PANEL_LABEL}>Duration</label>
+                <select
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10))}
+                  className={STEP_SELECT}
+                >
+                  {[30, 45, 60, 90, 120].map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {minutes} min
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div>
-              <label className="text-label mb-1 block">Start Time</label>
+              <label className={STEP_PANEL_LABEL}>Level</label>
               <select
-                value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
-                className={DS_COMPACT_FIELD}
+                value={gameLevel}
+                onChange={(event) => setGameLevel(event.target.value)}
+                className={gameLevel ? STEP_SELECT : STEP_SELECT_MUTED}
               >
-                <option value="">Select start time</option>
-                {TIME_SLOTS.map((slot) => (
-                  <option key={slot.value} value={slot.value}>
-                    {slot.label}
+                <option value="">Select level</option>
+                {LEVEL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
             </div>
+          </div>
+        </div>
+      </section>
 
+      {!reviewOpen && error && (
+        <p className="text-body-main rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
+          {error}
+        </p>
+      )}
+
+      <div className="sticky bottom-0 z-20 -mx-4 border-t border-[#E2E8F0] bg-white/95 px-4 pb-3 pt-3 backdrop-blur md:static md:mx-0 md:border-t-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0">
+        <button
+          type="button"
+          onClick={handleDetailsNext}
+          className="text-title-main w-full rounded-xl bg-[#0d6efd] px-6 py-3.5 text-white shadow-[0_18px_40px_-24px_rgba(13,110,253,0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] md:text-h2 md:py-4"
+        >
+          Next: Players
+        </button>
+      </div>
+        </>
+      ) : null}
+
+      {createStep === 2 ? (
+        <>
+      <section className="px-1 py-2">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="flex items-center">
+            <SportSectionIcon sport={selectedSport} className="mr-3" />
             <div>
-              <label className="text-label mb-1 block">Duration</label>
-              <select
-                value={durationMinutes}
-                onChange={(event) => setDurationMinutes(parseInt(event.target.value, 10))}
-                className={DS_COMPACT_FIELD}
-              >
-                {[30, 45, 60, 90, 120].map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    {minutes} min
-                  </option>
-                ))}
-              </select>
+              <h3 className={DS_SECTION_TITLE}>Players</h3>
+              <p className="mt-1 text-body-sub font-semibold text-[#64748B]">
+                Choose players to invite, or open spots for others to join.
+              </p>
             </div>
+          </div>
+          <div className="text-label rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-[#94A3B8]">
+            <span className="text-[#0d6efd]">{playersNeededCopy}</span>
+          </div>
+        </div>
 
+        <div className="flex flex-col gap-6 md:flex-row">
+          <div className="w-full space-y-3 md:w-1/4">
+            <div className="text-label mb-1 flex items-center text-[#94A3B8]">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
+              Add by
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectionMode('invite')}
+              className={[
+                'flex h-[48px] w-full items-center gap-2.5 rounded-xl border px-3 text-left transition active:scale-[0.98]',
+                selectionMode === 'invite'
+                  ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
+                  : 'border-[#E2E8F0] bg-white text-[#0d6efd] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff]',
+              ].join(' ')}
+            >
+              <span className="text-base">+</span>
+              <span className="text-body-main font-medium">Invite</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectionMode('request')}
+              className={[
+                'flex h-[48px] w-full items-center gap-2.5 rounded-xl border px-3 text-left transition active:scale-[0.98]',
+                selectionMode === 'request'
+                  ? 'border-[#22C55E] bg-[#F0FDF4] text-[#15803D]'
+                  : 'border-[#E2E8F0] bg-white text-[#15803D] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4]',
+              ].join(' ')}
+            >
+              <span className="text-base">+</span>
+              <span className="text-body-main whitespace-nowrap font-medium">Open to Join</span>
+            </button>
+          </div>
+
+          <div className="w-full md:flex-1">
+            <div className="text-label mb-4 flex items-center text-[#94A3B8]">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
+              Choose players
+            </div>
+            <div className="flex min-h-[200px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+              {!selectionMode ? (
+                <div className="flex flex-1 items-center justify-center px-6 text-center">
+                  <p className="text-body-main italic leading-relaxed text-[#CBD5E1]">
+                    Choose an action on the left to add people or groups.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col">
+                  <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
+                    <div className="text-title-main text-[#0B1F44]">
+                      {selectionMode === 'request' ? 'Open spots to join' : 'Invite specific players'}
+                    </div>
+                    <p className="mt-1 text-body-sub font-semibold text-[#64748B]">
+                      {selectionMode === 'request'
+                        ? 'Let eligible players request or join open spots.'
+                        : 'Choose saved players or contacts to invite directly.'}
+                    </p>
+                  </div>
+                  <div className="mb-4 grid gap-2">
+                    {selectionMode === 'invite' && (
+                      <>
+                        {filteredInviteOptions.map((candidate) => renderInviteCandidateButton(candidate))}
+                        {filteredInviteGroups.map((group) =>
+                          renderGroupSelector(
+                            group,
+                            invitedGroupIds.includes(group.id),
+                            () =>
+                              setInvitedGroupIds((prev) =>
+                                prev.includes(group.id)
+                                  ? prev.filter((id) => id !== group.id)
+                                  : [...prev, group.id],
+                              ),
+                            'indigo',
+                          ),
+                        )}
+                        <NeedMorePlayersPrompt
+                          onAdd={() => {
+                            setError(null)
+                            setContactAddPanelOpen(true)
+                          }}
+                        />
+                      </>
+                    )}
+
+                    {selectionMode === 'request' && (
+                      <>
+                        {filteredRequestUsers.map((candidate) => renderRequestScopeCandidateButton(candidate))}
+                        {filteredRequestGroups.map((group) =>
+                          renderGroupSelector(
+                            group,
+                            scopeGroupIds.includes(group.id),
+                            () =>
+                              setScopeGroupIds((prev) =>
+                                prev.includes(group.id)
+                                  ? prev.filter((id) => id !== group.id)
+                                  : [...prev, group.id],
+                              ),
+                            'green',
+                          ),
+                        )}
+                        <NeedMorePlayersPrompt
+                          onAdd={() => {
+                            setError(null)
+                            setContactAddPanelOpen(true)
+                          }}
+                        />
+                      </>
+                    )}
+
+                    {selectionMode === 'invite' && hasSavedOrContactInvitePlayers && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 && (
+                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
+                        Everyone available here is already selected.
+                      </div>
+                    )}
+                    {selectionMode === 'request' && filteredRequestUsers.length === 0 && filteredRequestGroups.length === 0 && (
+                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
+                        Save registered players to your Hood first, or add a group to Visible to Groups.
+                      </div>
+                    )}
+                  </div>
+
+                  {shouldShowHoodPanelButton ? (
+                    <div className="mt-auto">
+                      <button type="button" className="text-label w-full rounded-xl border border-[#E2E8F0] bg-white py-2 text-[#64748B] transition hover:border-[#0d6efd]/30 hover:text-[#0d6efd]">
+                        Hood Panel
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="w-full md:w-1/3">
+            <div className="text-label mb-4 flex items-center text-[#94A3B8]">
+              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
+              Summary
+            </div>
+            <div className="min-h-[200px] rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+              {summaryIsEmpty ? (
+                <div className="py-10 text-center opacity-30">
+                  <div className="mb-2 text-3xl">[]</div>
+                  <p className="text-body-sub">Empty</p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {(selectedInvitePlayers.length > 0 || selectedInvitedGroups.length > 0) && (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
+                        <span className="text-label">Invited</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedInvitePlayers.map((member) => (
+                          <button
+                            key={member.key}
+                            type="button"
+                            onClick={() => setSelectedDirectInviteKeys((prev) => {
+                              const next = new Set(prev)
+                              next.delete(member.key)
+                              return next
+                            })}
+                            className="text-body-sub flex items-center rounded-lg border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-1 font-semibold text-[#0d6efd]"
+                          >
+                            <ParticipantQuickPreviewTrigger
+                              target={{
+                                userId: member.userId ?? null,
+                                guestId: member.guestId ?? null,
+                                displayName: member.name,
+                                gender: member.gender,
+                              }}
+                            >
+                              <span>{member.name}</span>
+                            </ParticipantQuickPreviewTrigger>
+                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+                          </button>
+                        ))}
+                        {selectedInvitedGroups.map((group) =>
+                          renderSelectedGroupChip(
+                            group,
+                            'orange',
+                            () => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
+                          ),
+                        )}
+                      </div>
+
+                      {selectedInviteWarnings.length > 0 ? (
+                        <div className="mt-3 space-y-2 rounded-xl border border-amber-100 bg-white px-3 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                            <span className="text-label">Availability heads-up</span>
+                          </div>
+                          <div className="space-y-2">
+                            {selectedInviteWarnings.map(({ candidate, warning }) => (
+                              <div
+                                key={`summary-warning-${candidate.key}`}
+                                className={[
+                                  'text-body-sub rounded-lg border px-2.5 py-2',
+                                  warning.level === 'busy'
+                                    ? 'border-amber-100 bg-amber-50 text-amber-700'
+                                    : warning.level === 'away'
+                                      ? 'border-orange-100 bg-orange-50 text-orange-700'
+                                      : 'border-rose-100 bg-rose-50 text-rose-700',
+                                ].join(' ')}
+                              >
+                                <p className="font-bold">
+                                  {candidate.name} · {warning.label}
+                                </p>
+                                <p className="mt-0.5 leading-4 opacity-90">{warning.message}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {(selectedScopeUsers.length > 0 || selectedScopeGroups.length > 0) && (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                        <span className="text-label">Open to Join</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedScopeUsers.map((candidate) => (
+                          <button
+                            key={`summary-request-${candidate.key}`}
+                            type="button"
+                            onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
+                            className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
+                          >
+                            <ParticipantQuickPreviewTrigger
+                              target={{
+                                userId: candidate.userId ?? null,
+                                guestId: candidate.guestId ?? null,
+                                displayName: candidate.name,
+                                gender: candidate.gender,
+                              }}
+                            >
+                              <span>{candidate.name}</span>
+                            </ParticipantQuickPreviewTrigger>
+                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
+                          </button>
+                        ))}
+                        {selectedScopeGroups.map((group) =>
+                          renderSelectedGroupChip(
+                            group,
+                            'green',
+                            () => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id)),
+                            `summary-request-group-${group.id}`,
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
-      </>
-      ) : null}
 
-      {createStep === 'players' ? (
-      <section className="px-1 py-2 pb-36 md:py-1 md:pb-1">
-        <AddPlayersPickerPanel
-          mode={addPlayersMode}
-          onModeChange={switchSharedPlayerPickerMode}
-          searchValue={playerPickerSearch}
-          onSearchChange={setPlayerPickerSearch}
-          filterValue={playerPickerFilter}
-          onFilterChange={(value) => setPlayerPickerFilter(value as PlayerPickerFilter)}
-          filterOptions={pickerFilterOptions}
-          candidates={sharedPickerCandidates}
-          onToggleCandidate={toggleSharedPlayerCandidate}
-          shareLinkRow={(
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-body-main font-black text-[#1E293B]">Share link</span>
-              <span className="text-body-sub font-semibold text-[#94A3B8]">Available after creation</span>
-            </div>
-          )}
-          footerSlot={selectedPlayersFooter}
-          playerCallSummaryLabel=""
-          playerCallHelperText={null}
-          playerCallEmptyLabel={(
-            'Choose who can see this on their Match Board.'
-          )}
-        />
-      </section>
-      ) : null}
+      {!reviewOpen && error && (
+        <p className="text-body-main rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
+          {error}
+        </p>
+      )}
 
-      {createStep === 'review' ? (
-      <>
-      <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FBFF] p-3 md:rounded-2xl md:p-5">
-        <h3 className="text-[16px] font-black text-[#1E293B] md:text-h2">Summary</h3>
-        <div className="mt-2 rounded-xl border border-[#E2E8F0] bg-white px-3 md:mt-4 md:px-4">
-          <ReviewLine label="Sport" value={selectedSport?.display_name ?? 'Not selected'} />
-          <ReviewLine label="Players needed" value={`${requiredCount} players`} />
-          <ReviewLine label="Game type" value={`${capitalizeLabel(gameType)} / ${selectedFormatLabel}`} />
-          <ReviewLine label="Venue" value={selectedVenueLabel} />
-          <ReviewLine label="Schedule" value={`${formatReviewDate(matchDate)} / ${formatReviewTimeRange(startTime, durationMinutes)}`} />
-          <ReviewLine
-            label="Court plan"
-            value={courtPlanMode === 'secured' ? `${selectedCourtPlanLabel}: ${reviewCourtSummary}` : selectedCourtPlanLabel}
-          />
-          <ReviewLine label="Players" value={reviewPlayersCopy} />
+      <div className="sticky bottom-0 z-20 -mx-5 border-t border-[#E2E8F0] bg-white/95 px-5 pb-4 pt-4 backdrop-blur md:static md:mx-0 md:border-t-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0">
+        <div className="grid grid-cols-[minmax(0,0.42fr)_minmax(0,1fr)] gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              setCreateStep(1)
+            }}
+            className="text-body-main rounded-xl border border-[#DCE5F2] bg-white px-4 py-4 font-bold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              setCreateStep(3)
+            }}
+            className="text-h2 rounded-xl bg-[#0d6efd] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(13,110,253,0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99]"
+          >
+            Next: Host Note
+          </button>
         </div>
-        {!summaryIsEmpty ? (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {reviewDirectInviteLabels.length > 0 ? (
-              <div className="rounded-xl border border-[#D7E3F4] bg-white p-3 md:p-4">
-                <p className="text-label text-[#0d6efd]">Invited</p>
-                <p className="mt-1 text-body-main font-semibold text-[#1E293B]">
-                  {reviewDirectInviteLabels.map((item) => item.label).join(', ')}
-                </p>
-              </div>
-            ) : null}
-            {reviewRequestItems.length > 0 ? (
-              <div className="rounded-xl border border-green-100 bg-white p-3 md:p-4">
-                <p className="text-label text-green-700">Post to Board</p>
-                <p className="mt-1 text-body-main font-semibold text-[#1E293B]">
-                  {reviewRequestItems.map((item) => item.label).join(', ')}
-                </p>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </section>
+      </div>
+        </>
+      ) : null}
 
-      <section className="rounded-xl border border-[#E2E8F0] bg-white p-3 md:rounded-2xl md:p-5">
+      {createStep === 3 ? (
+        <>
+      <section className={`${DS_CARD} p-5`}>
         <button
           type="button"
           onClick={() => setOrganizerNoteExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between rounded-xl text-left transition hover:bg-[#F8FAFC] md:p-1"
+          className="flex w-full items-center justify-between rounded-xl p-1 text-left transition hover:bg-[#F8FAFC]"
         >
           <div className="flex items-center gap-3">
-            <div>
-              <h3 className="text-[15px] font-black text-[#1E293B] md:text-h2">Host Note</h3>
-              <p className="text-body-sub font-semibold text-[#94A3B8]">{organizerNote.trim() ? 'Added' : 'Optional'}</p>
-            </div>
+            <SportSectionIcon sport={selectedSport} />
+            <h3 className={DS_SECTION_TITLE}>Host Note</h3>
             {organizerNote.trim() && !organizerNoteExpanded ? (
               <span className="text-body-sub rounded-full border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-0.5 font-bold text-[#0d6efd]">
                 Saved
@@ -3538,7 +3693,7 @@ export function CreateMatchInline({
         </button>
 
         {organizerNoteExpanded ? (
-          <div className="mt-3 space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 md:mt-4 md:space-y-4 md:rounded-2xl md:p-4">
+          <div className="mt-4 space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {ORGANIZER_NOTE_PRESETS.map((group) => (
                 <div key={group.label} className="flex items-center gap-2 border-r border-[#E2E8F0] pr-4 last:border-r-0 last:pr-0">
@@ -3593,31 +3748,67 @@ export function CreateMatchInline({
           </div>
         ) : null}
       </section>
-      </>
-      ) : null}
 
-            {error && (
+            {!reviewOpen && error && (
               <p className="text-body-main rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
                 {error}
               </p>
             )}
 
-            <div className="h-32 md:hidden" aria-hidden="true" />
-            <div className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+7rem)] z-40 rounded-xl border border-[#E2E8F0] bg-white/95 p-1.5 shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] backdrop-blur md:static md:inset-auto md:mt-2 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
-            <div className="flex flex-col gap-4 md:flex-row">
+            <div className="sticky bottom-0 z-20 -mx-5 border-t border-[#E2E8F0] bg-white/95 px-5 pb-4 pt-4 backdrop-blur md:static md:mx-0 md:border-t-0 md:bg-transparent md:px-0 md:pb-0">
+            <div className="grid grid-cols-[minmax(0,0.42fr)_minmax(0,1fr)] gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  setCreateStep(2)
+                }}
+                className="text-body-main rounded-xl border border-[#DCE5F2] bg-white px-4 py-4 font-bold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
+              >
+                Back
+              </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-xl bg-[#0d6efd] px-5 py-3 text-[15px] font-black text-white shadow-[0_18px_40px_-24px_rgba(13,110,253,0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 md:rounded-2xl md:px-6 md:py-4 md:text-h2"
+                className="text-h2 w-full rounded-xl bg-[#0d6efd] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(13, 110, 253, 0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {stepCtaLabel}
+                {loading && submitMode === 'create'
+                  ? (matchMode === 'recurring' ? 'Creating...' : 'Posting...')
+                  : (matchMode === 'recurring' ? 'Review & Create Recurring Match' : 'Review & Post Match')}
               </button>
             </div>
             </div>
+        </>
+      ) : null}
           </div>
         ) : null}
       </section>
     </form>
+    <ReviewMatchModal
+      open={reviewOpen}
+      recurring={matchMode === 'recurring'}
+      recurringCount={recurringWeeksAheadCount}
+      sportLabel={selectedSport?.display_name ?? 'Not selected'}
+      venueLabel={selectedVenue?.name ?? 'Not selected'}
+      gameTypeLabel={gameType}
+      formatLabel={selectedFormatLabel}
+      dateLabel={formatReviewDate(matchDate)}
+      timeRangeLabel={formatReviewTimeRange(startTime, durationMinutes)}
+      durationLabel={`${durationMinutes} Min`}
+      courtLabel={reviewCourtSummary}
+      courtSecured={courtPlanMode === 'secured'}
+      neededLabel={`${requiredCount} Players`}
+      directInviteItems={reviewDirectInviteLabels}
+      requestItems={reviewRequestItems}
+      organizerNote={organizerNote}
+      error={reviewOpen ? error : null}
+      posting={loading && submitMode === 'create'}
+      onClose={() => {
+        setReviewOpen(false)
+        setError(null)
+      }}
+      onConfirm={handleConfirmCreate}
+    />
     </>
   )
 }

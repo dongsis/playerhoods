@@ -154,7 +154,7 @@ export function MatchToolsSection({
 
     const timeout = window.setTimeout(() => {
       setShareLinkStatusMessage(null)
-    }, 5000)
+    }, 3000)
 
     return () => {
       window.clearTimeout(timeout)
@@ -221,9 +221,8 @@ export function MatchToolsSection({
       ? 'Lineup is full.'
       : 'Need more players?'
   const toolsSubcopy = !isFormed && !isLineupFull
-    ? 'Share the public link or invite specific players.'
+    ? 'Choose how you want to invite them.'
     : null
-  const addMoreIsPrimary = !isFormed && !isLineupFull
   const canUsePublicSignupLink = showInviteTools && matchStatus === 'active' && !isFormed && !isLineupFull
   const showTopLevelPublicShare = canUsePublicSignupLink
 
@@ -239,6 +238,16 @@ export function MatchToolsSection({
       }
       return next
     })
+  }
+
+  const openInvitePanel = () => {
+    if (activeTab === 'invite') return
+    togglePanel('invite')
+  }
+
+  const closeInvitePanel = () => {
+    setActiveTab(null)
+    setTargetLoadError(null)
   }
 
   const copyPublicSignupLink = async () => {
@@ -257,7 +266,7 @@ export function MatchToolsSection({
 
       const link = Array.isArray(data) ? data[0] : null
       if (!link?.public_token) {
-        throw new Error('Could not create the public signup link.')
+        throw new Error('Could not create the invite link.')
       }
 
       const url = `${window.location.origin}/join/${link.public_token}`
@@ -270,10 +279,10 @@ export function MatchToolsSection({
         url,
       })
       const copied = await copyTextToClipboard(shareText)
-      setShareLinkStatusMessage(copied ? 'Share link copied' : 'Share text ready. Copy the link if your browser asks.')
+      setShareLinkStatusMessage(copied ? 'Invite link copied. Share only with people you want to invite.' : 'Invite text ready. Copy the link if your browser asks.')
     } catch (error) {
       console.error('[MatchToolsSection] public signup link:', error)
-      setPublicSignupLinkError((error as { message?: string })?.message ?? 'Could not create the public share link.')
+      setPublicSignupLinkError((error as { message?: string })?.message ?? 'Could not create the invite link.')
     } finally {
       setIsPublicSignupLinkBusy(false)
     }
@@ -283,10 +292,10 @@ export function MatchToolsSection({
     <div className="space-y-3">
       <div>
         <p className="m-0 text-body-main font-black text-[#0F172A]">
-          Share this match link
+          Invite by Link
         </p>
         <p className="mt-1 text-body-sub font-semibold leading-relaxed text-[#64748B]">
-          Anyone with the link can ask to join this match.
+          Share it only with people you want to invite.
         </p>
       </div>
       <button
@@ -295,7 +304,7 @@ export function MatchToolsSection({
         disabled={isPublicSignupLinkBusy}
         className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#B7D7FF] bg-[#EFF6FF] px-3 text-[13px] font-black text-[#1D4ED8] transition active:scale-95 disabled:cursor-wait disabled:opacity-60"
       >
-        {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Share Link'}
+        {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Link'}
       </button>
       {shareLinkStatusMessage ? (
         <p className="text-body-sub font-semibold text-emerald-700">
@@ -310,6 +319,124 @@ export function MatchToolsSection({
     </div>
   ) : null
 
+  const invitePickerPanel = !formedActionsCollapsed && activeTab === 'invite' && showInviteTools ? (
+    <div className="mt-2 rounded-xl border border-[#DCE9FA] bg-[#F8FBFF] p-2 md:p-3">
+      {isLoadingInviteTargets ? (
+        <div className="rounded-xl border border-dashed border-[#BFD7FF] bg-white px-4 py-5 text-center">
+          <p className="m-0 text-sm font-black text-slate-800">Loading invite options...</p>
+          <p className="mt-2 text-xs font-semibold text-slate-400">
+            Saved players are loaded only when you choose to invite them.
+          </p>
+        </div>
+      ) : (
+        <MatchManagePanel
+          embedded
+          panelMode="invite"
+          matchId={matchId}
+          matchSportId={sportId}
+          matchSportName={sportName}
+          isOrganizer={isOrganizer}
+          organizerUserId={organizerUserId}
+          requiredCount={requiredCount}
+          confirmedParticipants={confirmedParticipants}
+          activeInviteParticipants={activeInviteParticipants}
+          activeGroupInvites={activeGroupInvites}
+          activeRequestUsers={activeRequestUsers}
+          activeRequestGroups={activeRequestGroups}
+          candidateUsers={lazyCandidateUsers}
+          contactTargets={lazyContactTargets}
+          candidateGroups={candidateGroups}
+          onUpdateMatchDetails={onUpdateMatchDetails}
+          onRemoveParticipant={onRemoveParticipant}
+          shareLinkRow={shareLinkRow}
+          onEmbeddedCancel={closeInvitePanel}
+          onApplied={() => {
+            setLoadedInviteMatchId(null)
+            setActiveTab(null)
+            setApplySuccessMessage('Changes applied.')
+          }}
+        />
+      )}
+      {targetLoadError ? (
+        <p className="mt-3 text-body-sub font-semibold text-red-500">{targetLoadError}</p>
+      ) : null}
+    </div>
+  ) : null
+
+  const inviteMethodCards = showTopLevelPublicShare ? (
+    <div className="rounded-[18px] border border-[#DCE9FA] bg-white p-4 shadow-[0_4px_18px_rgba(15,23,42,0.05)] md:rounded-[22px] md:p-5 md:shadow-none">
+      <div>
+        <p className="m-0 text-[1rem] font-black text-slate-900">Need more players?</p>
+        <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
+          Copy an invite link, or invite saved players in PlayerHoods.
+        </p>
+      </div>
+      <div className="mt-4 space-y-3">
+        <div>
+          <button
+            type="button"
+            onClick={copyPublicSignupLink}
+            disabled={isPublicSignupLinkBusy}
+            className="group flex min-h-[76px] w-full items-center justify-between gap-3 rounded-2xl border border-[#D7E3F4] bg-white px-4 py-3 text-left text-[#0F172A] transition hover:border-[#B7D7FF] hover:bg-[#F8FBFF] active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
+          >
+            <span className="min-w-0">
+              <span className="block text-[14px] font-black leading-5">Invite by Link</span>
+              <span className="mt-1 block text-[12px] font-semibold leading-relaxed text-[#64748B] group-hover:text-[#475569]">
+                Share by text, WhatsApp, WeChat, or other chats.
+              </span>
+            </span>
+            <span className="shrink-0 rounded-full border border-[#B7D7FF] bg-[#EFF6FF] px-3 py-1 text-[12px] font-black text-[#1D4ED8]">
+              {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Link'}
+            </span>
+          </button>
+          {shareLinkStatusMessage ? (
+            <p className="mt-2 px-1 text-[11px] font-semibold leading-snug text-emerald-700">
+              {shareLinkStatusMessage}
+            </p>
+          ) : null}
+          {publicSignupLinkError ? (
+            <p className="mt-2 px-1 text-[11px] font-semibold leading-snug text-red-600">
+              {publicSignupLinkError}
+            </p>
+          ) : null}
+        </div>
+        <div
+          className={[
+            'overflow-hidden rounded-2xl border transition',
+            activeTab === 'invite'
+              ? 'border-[#B7D7FF] bg-[#F8FBFF]'
+              : 'border-[#D7E3F4] bg-white hover:border-[#B7D7FF] hover:bg-[#F8FBFF]',
+          ].join(' ')}
+        >
+          <button
+            type="button"
+            onClick={() => togglePanel('invite')}
+            className="group flex min-h-[76px] w-full items-center justify-between gap-3 px-4 py-3 text-left text-[#0F172A] transition active:scale-[0.99]"
+            aria-expanded={activeTab === 'invite'}
+          >
+            <span className="min-w-0">
+              <span className="block text-[14px] font-black leading-5">Invite Saved Players</span>
+              <span className="mt-1 block text-[12px] font-semibold leading-relaxed text-[#64748B] group-hover:text-[#475569]">
+                Choose saved players and send invites by SMS or email.
+              </span>
+            </span>
+            <span
+              className={`shrink-0 text-[18px] font-black text-[#94A3B8] transition-transform ${activeTab === 'invite' ? 'rotate-90' : ''}`}
+              aria-hidden="true"
+            >
+              {'>'}
+            </span>
+          </button>
+          {invitePickerPanel ? (
+            <div className="border-t border-[#DCE9FA] px-2 pb-2 md:px-3 md:pb-3">
+              {invitePickerPanel}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  ) : null
+
   return (
     <section
       ref={sectionRef}
@@ -318,56 +445,21 @@ export function MatchToolsSection({
         'rounded-[18px] md:mt-5 md:block md:overflow-hidden md:rounded-[24px] md:border md:border-slate-100 md:bg-white md:shadow-[0_4px_20px_rgba(0,0,0,0.04)]',
       ].join(' ')}
     >
-      {showInviteTools && activeTab !== 'invite' ? (
+      {showInviteTools ? (
         <div className="space-y-3 md:hidden">
-          {showTopLevelPublicShare ? (
-            <div className="rounded-[18px] border border-[#DCE9FA] bg-white p-4 shadow-[0_4px_18px_rgba(15,23,42,0.05)]">
-              <p className="m-0 text-[1rem] font-black text-slate-900">{toolsTitle}</p>
-              {toolsSubcopy ? (
-                <p className="mt-1 text-[0.82rem] font-semibold leading-relaxed text-slate-500">
-                  {toolsSubcopy}
-                </p>
-              ) : null}
-              <div className="mt-3 grid gap-2">
-                <button
-                  type="button"
-                  onClick={copyPublicSignupLink}
-                  disabled={isPublicSignupLinkBusy}
-                  className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#B7D7FF] bg-[#EFF6FF] px-3 text-[13px] font-black text-[#1D4ED8] transition active:scale-95 disabled:cursor-wait disabled:opacity-60"
-                >
-                  {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Share Link'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => togglePanel('invite')}
-                  className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 text-[13px] font-black text-[#0F172A] transition active:scale-95"
-                >
-                  Add More Players
-                </button>
-              </div>
-              {shareLinkStatusMessage ? (
-                <p className="mt-3 text-body-sub font-semibold text-emerald-700">
-                  {shareLinkStatusMessage}
-                </p>
-              ) : null}
-              {publicSignupLinkError ? (
-                <p className="mt-3 text-body-sub font-semibold text-red-600">
-                  {publicSignupLinkError}
-                </p>
-              ) : null}
-            </div>
-          ) : (
+          {inviteMethodCards ?? (
             <button
               type="button"
-              onClick={() => togglePanel('invite')}
+              onClick={openInvitePanel}
               className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3 text-[13px] font-black text-[#0F172A] transition active:scale-95"
             >
-              {isFormed ? 'Adjust Lineup' : 'Add More Players'}
+              {isFormed ? 'Adjust Lineup' : 'Invite Players'}
             </button>
           )}
         </div>
       ) : null}
 
+      {!showTopLevelPublicShare ? (
       <div className="hidden flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-5 md:flex">
         <div>
           <p className="m-0 text-[1rem] font-black text-slate-900">
@@ -397,44 +489,20 @@ export function MatchToolsSection({
 
           {!formedActionsCollapsed && showInviteTools ? (
             <>
-              {showTopLevelPublicShare ? (
+              {!showTopLevelPublicShare ? (
                 <button
                   type="button"
-                  onClick={copyPublicSignupLink}
-                  disabled={isPublicSignupLinkBusy}
-                  className="inline-flex items-center justify-center rounded-full border border-[#CBD5E1] bg-white px-3.5 py-2 text-[13px] font-black text-[#1D4ED8] transition hover:bg-[#F8FAFC] active:scale-95 disabled:cursor-wait disabled:opacity-60"
+                  onClick={openInvitePanel}
+                  className={[
+                    'inline-flex items-center justify-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-black transition active:scale-95',
+                    activeTab === 'invite'
+                      ? 'border-[#CBD5E1] bg-[#F8FAFC] text-[#1E293B]'
+                      : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]',
+                  ].join(' ')}
                 >
-                  {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Share Link'}
+                  <span>{isFormed ? 'Adjust Lineup' : 'Invite Players'}</span>
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => togglePanel('invite')}
-                className={[
-                  'inline-flex items-center justify-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-black transition active:scale-95',
-                  isFormed
-                    ? activeTab === 'invite'
-                      ? 'border-[#CBD5E1] bg-[#F8FAFC] text-[#1E293B]'
-                      : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]'
-                    : activeTab === 'invite'
-                      ? addMoreIsPrimary
-                        ? 'border-[#B7D7FF] bg-[#EFF6FF] text-[#1D4ED8]'
-                        : 'border-[#BFD1F8] bg-[#F5F8FF] text-[#2554D9]'
-                      : addMoreIsPrimary
-                        ? 'border-[#B7D7FF] bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#DBEAFE]'
-                        : 'border-[#CBD5E1] bg-white text-[#475569] hover:bg-[#F8FAFC]',
-                ].join(' ')}
-              >
-                {addMoreIsPrimary ? (
-                  <span
-                    aria-hidden="true"
-                    className="flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-base leading-none text-[#1D4ED8]"
-                  >
-                    +
-                  </span>
-                ) : null}
-                <span>{isFormed ? 'Adjust Lineup' : 'Add More Players'}</span>
-              </button>
             </>
           ) : null}
         </div>
@@ -457,14 +525,21 @@ export function MatchToolsSection({
           </p>
         ) : null}
 
-        {shareLinkStatusMessage ? (
+        {!showTopLevelPublicShare && shareLinkStatusMessage ? (
           <p className="basis-full rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-body-main font-semibold text-emerald-700">
             {shareLinkStatusMessage}
           </p>
         ) : null}
       </div>
+      ) : null}
 
-      {!formedActionsCollapsed && activeTab === 'invite' && showInviteTools && isLoadingInviteTargets ? (
+      {!formedActionsCollapsed && showInviteTools && showTopLevelPublicShare ? (
+        <div className="hidden border-b border-slate-100 px-6 py-5 md:block">
+          {inviteMethodCards}
+        </div>
+      ) : null}
+
+      {!showTopLevelPublicShare && !formedActionsCollapsed && activeTab === 'invite' && showInviteTools && isLoadingInviteTargets ? (
         <div className="border-t border-slate-100 px-6 py-8">
           <div className="rounded-2xl border border-dashed border-[#BFD7FF] bg-[#F8FBFF] px-5 py-6 text-center">
             <p className="m-0 text-sm font-black text-slate-800">Loading invite options...</p>
@@ -475,7 +550,7 @@ export function MatchToolsSection({
         </div>
       ) : null}
 
-      {!formedActionsCollapsed && activeTab === 'invite' && showInviteTools && !isLoadingInviteTargets ? (
+      {!showTopLevelPublicShare && !formedActionsCollapsed && activeTab === 'invite' && showInviteTools && !isLoadingInviteTargets ? (
         <MatchManagePanel
           embedded
           panelMode="invite"
@@ -496,6 +571,7 @@ export function MatchToolsSection({
           onUpdateMatchDetails={onUpdateMatchDetails}
           onRemoveParticipant={onRemoveParticipant}
           shareLinkRow={shareLinkRow}
+          onEmbeddedCancel={closeInvitePanel}
           onApplied={() => {
             setLoadedInviteMatchId(null)
             setActiveTab(null)
@@ -504,7 +580,7 @@ export function MatchToolsSection({
         />
       ) : null}
 
-      {!formedActionsCollapsed && activeTab === 'invite' && targetLoadError ? (
+      {!showTopLevelPublicShare && !formedActionsCollapsed && activeTab === 'invite' && targetLoadError ? (
         <p className="px-6 pb-5 text-body-sub font-semibold text-red-500">{targetLoadError}</p>
       ) : null}
 

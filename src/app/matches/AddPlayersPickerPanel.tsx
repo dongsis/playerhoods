@@ -148,6 +148,9 @@ function candidateMatches(candidate: AddPlayersCandidate, query: string, filter:
 
 const COMPACT_PREVIEW_CLICK_DELAY_MS = 300
 const COMPACT_PREVIEW_DOUBLE_TAP_MS = 280
+// Temporarily hidden while user base is small.
+// Keep this path intact so Post to Board can be restored later.
+export const ENABLE_POST_TO_BOARD_INVITE_METHOD = false
 const DEFAULT_AVAILABLE_MODES: AddPlayersMode[] = ['invite', 'playerCall', 'shareLink']
 
 export function AddPlayersPickerPanel({
@@ -182,7 +185,11 @@ export function AddPlayersPickerPanel({
   const suppressNextClickRef = useRef(false)
   const longPressOpenedRef = useRef(false)
   const filteredCandidates = candidates.filter((candidate) => candidateMatches(candidate, searchValue, filterValue))
-  const visibleModes = availableModes.length > 0 ? availableModes : DEFAULT_AVAILABLE_MODES
+  const configuredModes = availableModes.length > 0 ? availableModes : DEFAULT_AVAILABLE_MODES
+  const enabledModes = configuredModes.filter((nextMode) => (
+    nextMode !== 'playerCall' || ENABLE_POST_TO_BOARD_INVITE_METHOD
+  ))
+  const visibleModes: AddPlayersMode[] = enabledModes.length > 0 ? enabledModes : ['invite']
   const modeGridClass = visibleModes.length === 1 ? 'grid-cols-1' : visibleModes.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
 
   const clearClickTimer = () => {
@@ -261,43 +268,45 @@ export function AddPlayersPickerPanel({
 
   return (
     <div className="space-y-4">
-      <div
-        className={[
-          `grid ${modeGridClass} gap-1 rounded-xl bg-[#EEF4FB] p-1`,
-          expandModeButtonsOnMobile ? '-mx-5 sm:mx-0' : '',
-        ].filter(Boolean).join(' ')}
-      >
-        {visibleModes.includes('invite') ? (
-          <button
-            type="button"
-            onClick={() => onModeChange('invite')}
-            className={modeButtonClass(mode === 'invite', 'invite')}
-          >
-            <InviteIcon />
-            <span className="whitespace-nowrap">Invite</span>
-          </button>
-        ) : null}
-        {visibleModes.includes('playerCall') ? (
-          <button
-            type="button"
-            onClick={() => onModeChange('playerCall')}
-            className={modeButtonClass(mode === 'playerCall', 'playerCall')}
-          >
-            <BoardIcon />
-            <span className="whitespace-nowrap">Post to Board</span>
-          </button>
-        ) : null}
-        {visibleModes.includes('shareLink') ? (
-          <button
-            type="button"
-            onClick={() => onModeChange('shareLink')}
-            className={modeButtonClass(mode === 'shareLink', 'shareLink')}
-          >
-            <LinkIcon />
-            <span className="whitespace-nowrap">Share Link</span>
-          </button>
-        ) : null}
-      </div>
+      {visibleModes.length > 1 ? (
+        <div
+          className={[
+            `grid ${modeGridClass} gap-1 rounded-xl bg-[#EEF4FB] p-1`,
+            expandModeButtonsOnMobile ? '-mx-5 sm:mx-0' : '',
+          ].filter(Boolean).join(' ')}
+        >
+          {visibleModes.includes('invite') ? (
+            <button
+              type="button"
+              onClick={() => onModeChange('invite')}
+              className={modeButtonClass(mode === 'invite', 'invite')}
+            >
+              <InviteIcon />
+              <span className="whitespace-nowrap">Invite Players</span>
+            </button>
+          ) : null}
+          {visibleModes.includes('playerCall') ? (
+            <button
+              type="button"
+              onClick={() => onModeChange('playerCall')}
+              className={modeButtonClass(mode === 'playerCall', 'playerCall')}
+            >
+              <BoardIcon />
+              <span className="whitespace-nowrap">Post to Board</span>
+            </button>
+          ) : null}
+          {visibleModes.includes('shareLink') ? (
+            <button
+              type="button"
+              onClick={() => onModeChange('shareLink')}
+              className={modeButtonClass(mode === 'shareLink', 'shareLink')}
+            >
+              <LinkIcon />
+              <span className="whitespace-nowrap">Share Link</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {mode === 'shareLink' ? (
         <div className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-3">
