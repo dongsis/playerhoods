@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { MatchManagePanel } from './MatchManagePanel'
 import { MatchRoundRobinPanel, type MatchRoundRobinPanelProps } from './MatchRoundRobinPanel'
+import { AddPlayersMethodPanel } from '../AddPlayersMethodPanel'
 import {
   admissionTargetsToScopeUsers,
   getAdmissionTargets,
@@ -116,6 +118,7 @@ export function MatchToolsSection({
   onSaveLineup,
 }: Props) {
   const RoundRobinPanel = MatchRoundRobinPanel as ComponentType<MatchRoundRobinPanelProps>
+  const searchParams = useSearchParams()
   const sectionRef = useRef<HTMLElement | null>(null)
   const [activeTab, setActiveTab] = useState<'invite' | 'round_robin' | null>(null)
   const [formedActionsCollapsed, setFormedActionsCollapsed] = useState(false)
@@ -215,10 +218,6 @@ export function MatchToolsSection({
     }
   }, [activeTab, loadedInviteMatchId, matchId, matchStatus, savedPlayerIds, showInviteTools])
 
-  if (!showInviteTools && !showRoundRobinTools) {
-    return null
-  }
-
   const isLineupFull = confirmedParticipants.length >= requiredCount
   const toolsTitle = isFormed
     ? 'Match formed'
@@ -231,6 +230,22 @@ export function MatchToolsSection({
   const canUsePublicSignupLink = showInviteTools && matchStatus === 'active' && !isFormed && !isLineupFull
   const showTopLevelPublicShare = canUsePublicSignupLink
   const manageActionLabel = 'Manage'
+  const showCreateInviteLinkPrompt = searchParams.get('inviteLinkReady') === '1'
+
+  useEffect(() => {
+    if (!showCreateInviteLinkPrompt || !canUsePublicSignupLink) return
+
+    setActiveTab(null)
+    setShareLinkCopiedText(null)
+    setShareLinkStatusMessage('Invite link is ready. Use Copy Link when you want to share it.')
+    requestAnimationFrame(() => {
+      sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [canUsePublicSignupLink, matchId, showCreateInviteLinkPrompt])
+
+  if (!showInviteTools && !showRoundRobinTools) {
+    return null
+  }
 
   const togglePanel = (nextTab: 'invite' | 'round_robin') => {
     setActiveTab((current) => {
@@ -396,70 +411,16 @@ export function MatchToolsSection({
   ) : null
 
   const inviteMethodCards = showTopLevelPublicShare ? (
-    <div className="space-y-4">
-      <div>
-        <p className="m-0 text-[1rem] font-black text-slate-900">Need more players?</p>
-      </div>
-      <div className="space-y-3">
-        <div>
-          <button
-            type="button"
-            onClick={copyPublicSignupLink}
-            disabled={isPublicSignupLinkBusy}
-            className="group flex min-h-[76px] w-full items-center justify-between gap-3 rounded-2xl border border-[#D7E3F4] bg-white px-4 py-3 text-left text-[#0F172A] transition hover:border-[#B7D7FF] hover:bg-[#F8FBFF] active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
-          >
-            <span className="min-w-0">
-              <span className="block text-[14px] font-black leading-5">Invite by Link</span>
-              <span className="mt-1 block text-[12px] font-semibold leading-relaxed text-[#64748B] group-hover:text-[#475569]">
-                Share by text, WhatsApp, WeChat, or other chats.
-              </span>
-            </span>
-            <span className="shrink-0 rounded-full border border-[#B7D7FF] bg-[#EFF6FF] px-3 py-1 text-[12px] font-black text-[#1D4ED8]">
-              {isPublicSignupLinkBusy ? 'Preparing...' : 'Copy Link'}
-            </span>
-          </button>
-          {shareLinkFeedback}
-          {publicSignupLinkError ? (
-            <p className="mt-2 px-1 text-[11px] font-semibold leading-snug text-red-600">
-              {publicSignupLinkError}
-            </p>
-          ) : null}
-        </div>
-        <div
-          className={[
-            'overflow-hidden rounded-2xl border transition',
-            activeTab === 'invite'
-              ? 'border-[#B7D7FF] bg-[#F8FBFF]'
-              : 'border-[#D7E3F4] bg-white hover:border-[#B7D7FF] hover:bg-[#F8FBFF]',
-          ].join(' ')}
-        >
-          <button
-            type="button"
-            onClick={() => togglePanel('invite')}
-            className="group flex min-h-[76px] w-full items-center justify-between gap-3 px-4 py-3 text-left text-[#0F172A] transition active:scale-[0.99]"
-            aria-expanded={activeTab === 'invite'}
-          >
-            <span className="min-w-0">
-              <span className="block text-[14px] font-black leading-5">Invite Saved Players</span>
-              <span className="mt-1 block text-[12px] font-semibold leading-relaxed text-[#64748B] group-hover:text-[#475569]">
-                Choose saved players and send invites by SMS or email.
-              </span>
-            </span>
-            <span
-              className={`shrink-0 text-[18px] font-black text-[#94A3B8] transition-transform ${activeTab === 'invite' ? 'rotate-90' : ''}`}
-              aria-hidden="true"
-            >
-              {'>'}
-            </span>
-          </button>
-          {invitePickerPanel ? (
-            <div className="border-t border-[#DCE9FA] px-2 pb-2 md:px-3 md:pb-3">
-              {invitePickerPanel}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
+    <AddPlayersMethodPanel
+      title="Need more players?"
+      linkBusy={isPublicSignupLinkBusy}
+      linkFeedback={shareLinkFeedback}
+      linkError={publicSignupLinkError}
+      onCopyLink={copyPublicSignupLink}
+      savedPlayersExpanded={activeTab === 'invite'}
+      savedPlayersPanel={invitePickerPanel}
+      onToggleSavedPlayers={() => togglePanel('invite')}
+    />
   ) : null
 
   return (

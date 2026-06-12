@@ -7,6 +7,7 @@ import { PlayerProfileTrigger } from '@/app/components/PlayerProfileTrigger'
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
 import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import { SportSectionIcon } from '@/app/components/SportBallIcon'
+import { AddPlayersMethodPanel } from '@/app/matches/AddPlayersMethodPanel'
 import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
@@ -2161,7 +2162,7 @@ export function CreateMatchInline({
         return
       }
 
-      router.push(`/dashboard?matchId=${match.id}`)
+      router.push(`/dashboard?matchId=${match.id}&inviteLinkReady=1`)
     } catch (err: unknown) {
       setError(normalizeCreateError(err))
     } finally {
@@ -2361,7 +2362,7 @@ export function CreateMatchInline({
     try {
       const inviteOk = await applySelectedInvites()
       if (!inviteOk) return
-      router.push(`/dashboard?matchId=${createdMatchId}`)
+      router.push(`/dashboard?matchId=${createdMatchId}&inviteLinkReady=1`)
       router.refresh()
     } finally {
       setOpenMatchLoading(false)
@@ -3354,10 +3355,7 @@ export function CreateMatchInline({
           <div className="flex items-center">
             <SportSectionIcon sport={selectedSport} className="mr-3" />
             <div>
-              <h3 className={DS_SECTION_TITLE}>Players</h3>
-              <p className="mt-1 text-body-sub font-semibold text-[#64748B]">
-                Choose players to invite, or open spots for others to join.
-              </p>
+              <h3 className={DS_SECTION_TITLE}>Add Players</h3>
             </div>
           </div>
           <div className="text-label rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-[#94A3B8]">
@@ -3367,36 +3365,15 @@ export function CreateMatchInline({
 
         <div className="flex flex-col gap-6 md:flex-row">
           <div className="w-full space-y-3 md:w-1/4">
-            <div className="text-label mb-1 flex items-center text-[#94A3B8]">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-              Add by
-            </div>
-            <button
-              type="button"
-              onClick={() => setSelectionMode('invite')}
-              className={[
-                'flex h-[48px] w-full items-center gap-2.5 rounded-xl border px-3 text-left transition active:scale-[0.98]',
-                selectionMode === 'invite'
-                  ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd]'
-                  : 'border-[#E2E8F0] bg-white text-[#0d6efd] hover:border-[#0d6efd]/35 hover:bg-[#eff6ff]',
-              ].join(' ')}
-            >
-              <span className="text-base">+</span>
-              <span className="text-body-main font-medium">Invite</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectionMode('request')}
-              className={[
-                'flex h-[48px] w-full items-center gap-2.5 rounded-xl border px-3 text-left transition active:scale-[0.98]',
-                selectionMode === 'request'
-                  ? 'border-[#22C55E] bg-[#F0FDF4] text-[#15803D]'
-                  : 'border-[#E2E8F0] bg-white text-[#15803D] hover:border-[#22C55E]/35 hover:bg-[#F0FDF4]',
-              ].join(' ')}
-            >
-              <span className="text-base">+</span>
-              <span className="text-body-main whitespace-nowrap font-medium">Open to Join</span>
-            </button>
+            <AddPlayersMethodPanel
+              linkDisabled
+              linkActionLabel="After create"
+              linkDescription="Create the match first, then copy the invite link."
+              savedPlayersExpanded={selectionMode === 'invite'}
+              savedPlayersPanel={null}
+              onToggleSavedPlayers={() => setSelectionMode(selectionMode === 'invite' ? null : 'invite')}
+              className="p-3 shadow-none"
+            />
           </div>
 
           <div className="w-full md:flex-1">
