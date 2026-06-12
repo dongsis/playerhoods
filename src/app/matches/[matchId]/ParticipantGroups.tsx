@@ -431,7 +431,7 @@ function ParticipantRow({
   } else if (p.join_method === 'requested') {
     timelineEvents.push({
       key: 'requested',
-      label: isPublicSignup ? 'Requested from public link' : `Asked to join`,
+      label: isPublicSignup ? 'Requested from invite link' : `Asked to join`,
       at: p.created_at,
     })
   }

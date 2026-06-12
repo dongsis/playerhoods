@@ -7,7 +7,12 @@ import { ParticipantDetailPanel, type DetailSportProfile } from '@/app/component
 import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuickPreviewTrigger'
 import { PlayerProfileDrawer } from '@/app/components/PlayerProfileDrawer'
 import { AddMyContactPanel } from '@/app/dashboard/AddMyContactPanel'
-import { AddPlayersPickerPanel, type AddPlayersCandidate, type AddPlayersMode } from '@/app/matches/AddPlayersPickerPanel'
+import {
+  AddPlayersPickerPanel,
+  ENABLE_POST_TO_BOARD_INVITE_METHOD,
+  type AddPlayersCandidate,
+  type AddPlayersMode,
+} from '@/app/matches/AddPlayersPickerPanel'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import {
   getAvailabilityStatusDotClass,
@@ -61,6 +66,9 @@ const PLAYER_CALL_FILTER_OPTIONS: Array<{ value: PickerFilter; label: string }> 
   { value: 'groups', label: 'Groups' },
   { value: 'venues', label: 'Venues' },
 ]
+const DIRECT_INVITE_AVAILABLE_MODES: AddPlayersMode[] = ENABLE_POST_TO_BOARD_INVITE_METHOD
+  ? ['invite', 'playerCall']
+  : ['invite']
 
 type CandidateItem = {
   key: string
@@ -181,6 +189,7 @@ type Props = {
   onRemoveParticipant: (participantId: string, note?: string | null) => Promise<void>
   onRequestPanelMode?: (mode: PanelMode) => void
   onApplied?: () => void
+  onEmbeddedCancel?: () => void
   shareLinkRow?: ReactNode
 }
 
@@ -1020,6 +1029,7 @@ export function MatchManagePanel({
   onRemoveParticipant,
   onRequestPanelMode,
   onApplied,
+  onEmbeddedCancel,
   shareLinkRow,
 }: Props) {
   const router = useRouter()
@@ -2025,7 +2035,9 @@ export function MatchManagePanel({
   const invitePrimaryLabel =
     inviteMode === 'request'
       ? hasExistingPlayerCall ? 'Update Board' : 'Post to Board'
-      : 'Send Invites'
+      : pendingInviteAdds.length > 0
+        ? `Send ${pendingInviteAdds.length} Invite${pendingInviteAdds.length === 1 ? '' : 's'}`
+        : 'Send Invites'
   const inviteActionDisabled =
     isApplying ||
     (inviteMode === 'request'
@@ -2238,8 +2250,11 @@ export function MatchManagePanel({
             setPendingAdds((prev) => prev.filter((item) => item.mode !== 'request'))
             setPendingRemovals((prev) => prev.filter((item) => item.category !== 'requests'))
           }
+          if (embedded) {
+            onEmbeddedCancel?.()
+          }
         }}
-        disabled={inviteActionDisabled}
+        disabled={embedded ? isApplying : inviteActionDisabled}
         className="text-body-main rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Cancel
@@ -2311,7 +2326,7 @@ export function MatchManagePanel({
       ) : null}
 
       {(embedded || isExpanded) ? (
-        <div className="px-6 pb-6 pt-5">
+        <div className={embedded ? 'px-0 pb-0 pt-0' : 'px-6 pb-6 pt-5'}>
           {panelMode === 'remove' ? (
             <div className="mb-5 rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3">
               <div className="text-title-main text-orange-700">Remove mode</div>
@@ -2359,7 +2374,7 @@ export function MatchManagePanel({
                 filterOptions={pickerFilterOptions}
                 candidates={sharedPickerCandidates}
                 onToggleCandidate={toggleSharedPickerCandidate}
-                availableModes={isOrganizer ? undefined : ['invite', 'shareLink']}
+                availableModes={DIRECT_INVITE_AVAILABLE_MODES}
                 expandModeButtonsOnMobile
                 compactPreviewRows
                 renderPreview={(candidate, actions) => {
@@ -2385,7 +2400,8 @@ export function MatchManagePanel({
                 inviteSummary={inviteSummarySlot}
                 addContactSlot={addContactSlot}
                 footerSlot={inviteFooterSlot}
-                inviteEmptyLabel={isOrganizer ? undefined : 'No matching players. Use Share Link to invite someone new.'}
+                inviteEmptyLabel={isOrganizer ? undefined : 'No matching players.'}
+                searchPlaceholder="Search saved players..."
                 playerCallEmptyLabel="Choose who can see this on their Match Board."
               />
 

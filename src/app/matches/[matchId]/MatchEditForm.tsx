@@ -32,8 +32,8 @@ interface Props {
 
 const COURT_PLAN_OPTIONS: { value: MatchCourtPlanMode; label: string }[] = [
   { value: 'secured', label: 'Court already secured' },
-  { value: 'walk_in', label: 'Walk-in / no advance booking' },
-  { value: 'self_book_later', label: 'Host will book it later' },
+  { value: 'walk_in', label: 'Walk-in court' },
+  { value: 'self_book_later', label: 'Host will book court' },
   { value: 'needs_help_booking', label: 'Players can help secure a court' },
 ]
 

@@ -16,6 +16,7 @@ import type { MatchDetailPageViewModel } from './match-detail.view-model'
 import type { MatchCourtPlanUpdateInput, MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
 import type { MatchParticipantEnriched } from '@/lib/api/matches'
+import { formatDoublesFormatLabel } from '@/lib/utils/match-roster'
 
 function IconCalendar({ size = 12, color = '#0d6efd' }: { size?: number; color?: string }) {
   return (
@@ -106,6 +107,11 @@ function getCompactCourtLabel(label: string | null | undefined): string | null {
   return label.replace(/^court\s+/i, 'Court ')
 }
 
+function getVenueMapHref(venueName: string | null | undefined): string | null {
+  const query = venueName?.trim()
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : null
+}
+
 type MatchDetailPageViewProps = {
   viewModel: MatchDetailPageViewModel
   embedded?: boolean
@@ -122,14 +128,111 @@ type MatchDetailPageViewProps = {
   onKeepSeparateIdentityLink: (guestId: string) => Promise<void | { ok: boolean; error?: string }>
 }
 
+function getOverviewPlayers(viewModel: MatchDetailPageViewModel) {
+  const hasProxyManagedParticipants = viewModel.participantsForDisplay.some(
+    (participant) => participant.proxy_manageable_by_viewer === true,
+  )
+  const showManagedRows = viewModel.isOrganizer || hasProxyManagedParticipants
+  return viewModel.participantsForDisplay.filter((participant) =>
+    participant.removed_at === null &&
+    (showManagedRows || participant.status === 'confirmed' || participant.status === 'waiting_list'),
+  )
+}
+
+function MatchOverviewPlayerRows({
+  viewModel,
+  onRemoveParticipant,
+}: Pick<MatchDetailPageViewProps, 'viewModel' | 'onRemoveParticipant'>) {
+  const players = getOverviewPlayers(viewModel)
+
+  if (players.length === 0) {
+    return (
+      <p className="m-0 rounded-[14px] border border-dashed border-[#D7E1EE] bg-[#F8FBFF] px-3 py-3 text-[13px] font-semibold text-[#64748B]">
+        No players confirmed yet.
+      </p>
+    )
+  }
+
+  return (
+    <div className="divide-y divide-[#E2E8F0]">
+      {players.map((participant) => {
+        const isHost = participant.user_id === viewModel.match.organizer_id || participant.display_name === viewModel.organizerName
+        const isCurrentUser = participant.user_id === viewModel.userId
+        return (
+          <div key={participant.id} className="flex min-h-9 items-center justify-between gap-3 py-2">
+            <ParticipantDetailTrigger
+              participant={participant}
+              className="min-w-0 flex-1 text-left transition hover:text-[#0d6efd]"
+              label={`View details for ${participant.display_name}`}
+            >
+              <span className="block truncate text-[14px] font-bold text-[#0F172A]">
+                {participant.display_name}
+              </span>
+            </ParticipantDetailTrigger>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {isHost ? <span className="rounded-full bg-[#fff7ed] px-2 py-0.5 text-[11px] font-black text-[#9a3412] ring-1 ring-[#fed7aa]">Host</span> : null}
+              {isCurrentUser ? <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-black text-[#64748B]">You</span> : null}
+              <MobileRosterActionMenu
+                matchId={viewModel.matchId}
+                matchStatus={viewModel.match.status}
+                participant={participant}
+                isOrganizer={viewModel.isOrganizer}
+                myUserId={viewModel.userId}
+                organizerUserId={viewModel.match.organizer_id}
+                onRemoveParticipant={onRemoveParticipant}
+              />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function MatchVenueLine({
+  venueName,
+  courtLabel,
+}: {
+  venueName: string | null
+  courtLabel: string | null
+}) {
+  const mapHref = getVenueMapHref(venueName)
+
+  if (!venueName && !courtLabel) {
+    return null
+  }
+
+  return (
+    <p className="m-0 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-relaxed text-[#475569]">
+      <IconMapPin size={13} />
+      {mapHref && venueName ? (
+        <a
+          href={mapHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${venueName} in maps`}
+          className="min-w-0 truncate font-black text-[#0d6efd] underline-offset-2 hover:underline"
+        >
+          {venueName}
+        </a>
+      ) : venueName ? (
+        <span className="min-w-0 truncate font-black text-[#0F172A]">{venueName}</span>
+      ) : null}
+      {venueName && courtLabel ? <span className="shrink-0 text-[#94A3B8]">•</span> : null}
+      {courtLabel ? <span className="min-w-0 truncate text-[#64748B]">{courtLabel}</span> : null}
+    </p>
+  )
+}
+
 function MobileMatchDetailHeaderSection({
   viewModel,
   onUpdateMatchDetails,
   onCancelMatch,
   onSaveCourtPlan,
   onConfirmMatch,
+  onRemoveParticipant,
   hasTimeConflict = false,
-}: Pick<MatchDetailPageViewProps, 'viewModel' | 'onUpdateMatchDetails' | 'onCancelMatch' | 'onSaveCourtPlan' | 'onConfirmMatch' | 'hasTimeConflict'>) {
+}: Pick<MatchDetailPageViewProps, 'viewModel' | 'onUpdateMatchDetails' | 'onCancelMatch' | 'onSaveCourtPlan' | 'onConfirmMatch' | 'onRemoveParticipant' | 'hasTimeConflict'>) {
   const {
     match,
     sportName,
@@ -143,24 +246,19 @@ function MobileMatchDetailHeaderSection({
     isOrganizer,
     venueCourts,
     courtState,
-    rosterInsight,
     lineupShortWarning,
   } = viewModel
   const isLineupFull = confirmedCount >= match.required_count
+  const remainingSpots = Math.max(match.required_count - confirmedCount, 0)
   const showReadyToConfirm =
     isOrganizer &&
     match.status === 'active' &&
     !match.formed_at &&
     isLineupFull
   const gameTypeLabel = formatGameTypeLabel(match.game_type)
-  const matchTitle = [sportName, gameTypeLabel].filter(Boolean).join(' · ')
-  const matchStateLabel = match.formed_at
-    ? 'Formed'
-    : isLineupFull
-      ? 'Ready to form'
-      : rosterInsight.formatLabel?.replace(/\s+/g, ' ') ?? 'Open to Join'
-  const courtLabel = getCompactCourtLabel(courtState.badgeLabel)
-  const locationLabel = [venueName, courtLabel].filter(Boolean).join(' · ')
+  const formatLabel = formatDoublesFormatLabel(match.game_type, match.doubles_format)
+  const matchTitle = [sportName, gameTypeLabel, formatLabel].filter(Boolean).join(' • ')
+  const courtLabel = courtState.badgeLabel || getCompactCourtLabel(match.final_court_label)
   const conflictDateLabel = formatMatchDayLabel(match.match_date)
 
   return (
@@ -196,52 +294,63 @@ function MobileMatchDetailHeaderSection({
       </div>
 
       <section className="rounded-[20px] border border-[#E2E8F0] bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="truncate text-[22px] font-black leading-tight text-[#0F172A]">
+              <h1 className="truncate text-[19px] font-black leading-[1.1] tracking-normal text-[#0F172A]">
                 {matchTitle || 'Match'}
               </h1>
-              <p className="mt-1 text-[13px] font-black text-[#0d6efd]">
-                {matchStateLabel}
-              </p>
             </div>
           </div>
 
           <div className="space-y-1.5 text-[13px] font-semibold leading-relaxed text-[#475569]">
             <p className="m-0">{timeLabel}</p>
-            {locationLabel ? <p className="m-0 truncate">{locationLabel}</p> : null}
-            <p className="m-0 truncate">Host: {organizerName}</p>
+            <MatchVenueLine venueName={venueName} courtLabel={courtLabel} />
+            <p className="m-0 truncate">
+              Host:{' '}
+              <ParticipantDetailTrigger
+                participant={{
+                  user_id: match.organizer_id,
+                  guest_id: null,
+                  display_name: organizerName,
+                  avatar_url: null,
+                  gender: null,
+                  saved_by_viewer: false,
+                  shares_group_with_viewer: false,
+                }}
+                className="font-black text-[#0F172A] transition hover:text-[#0d6efd]"
+                label={`View details for ${organizerName}`}
+              >
+                <span>{organizerName}</span>
+              </ParticipantDetailTrigger>
+            </p>
           </div>
 
-          <div className="mt-3 rounded-[16px] border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3">
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="m-0 text-[15px] font-black text-[#0F172A]">
-                  {confirmedCount}/{match.required_count} players confirmed
-                </p>
-                <p className="mt-1 text-[12px] font-semibold text-[#64748B]">
-                  {showReadyToConfirm
-                    ? 'Ready to form this match.'
-                    : match.formed_at
-                      ? 'Confirmed players have been notified.'
-                      : isLineupFull
-                        ? 'Waiting for the host to form the match.'
-                        : `${Math.max(match.required_count - confirmedCount, 0)} more ${Math.max(match.required_count - confirmedCount, 0) === 1 ? 'player' : 'players'} needed.`}
-                </p>
-              </div>
-              {showReadyToConfirm ? (
-                <form action={onConfirmMatch}>
-                  <button
-                    type="submit"
-                    className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-black text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
-                  >
-                    Form Match
-                  </button>
-                </form>
-              ) : null}
-            </div>
+          <div className="pt-1">
+            <MatchOverviewPlayerRows viewModel={viewModel} onRemoveParticipant={onRemoveParticipant} />
           </div>
+
+          <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-[#E2E8F0] pt-3 text-[13px] font-black text-[#0F172A]">
+            <span>{confirmedCount}/{match.required_count} players confirmed</span>
+            <span className="text-[#64748B]">
+              {remainingSpots > 0
+                ? `${remainingSpots} more ${remainingSpots === 1 ? 'player' : 'players'} needed.`
+                : match.formed_at
+                  ? 'Lineup confirmed.'
+                  : 'No more players needed.'}
+            </span>
+          </div>
+
+          {showReadyToConfirm ? (
+            <form action={onConfirmMatch}>
+              <button
+                type="submit"
+                className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-black text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
+              >
+                Form Match
+              </button>
+            </form>
+          ) : null}
 
           {lineupShortWarning ? (
             <div className="rounded-[14px] border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-[#92400E]">
@@ -281,8 +390,9 @@ function MatchHeaderSection({
   onCancelMatch,
   onSaveCourtPlan,
   onConfirmMatch,
+  onRemoveParticipant,
   hasTimeConflict = false,
-}: Pick<MatchDetailPageViewProps, 'viewModel' | 'embedded' | 'onUpdateMatchDetails' | 'onCancelMatch' | 'onSaveCourtPlan' | 'onConfirmMatch' | 'hasTimeConflict'>) {
+}: Pick<MatchDetailPageViewProps, 'viewModel' | 'embedded' | 'onUpdateMatchDetails' | 'onCancelMatch' | 'onSaveCourtPlan' | 'onConfirmMatch' | 'onRemoveParticipant' | 'hasTimeConflict'>) {
   const {
     match,
     sportName,
@@ -297,39 +407,23 @@ function MatchHeaderSection({
     isOrganizer,
     venueCourts,
     courtState,
-    rosterInsight,
     lineupShortWarning,
   } = viewModel
-  const showMatchFormedBanner =
-    match.status === 'active' &&
-    Boolean(match.formed_at)
   const showReadyToConfirm =
     isOrganizer &&
     match.status === 'active' &&
     !match.formed_at &&
     confirmedCount >= match.required_count
-  const isLineupFull = confirmedCount >= match.required_count
-  const matchStateLabel = match.formed_at
-    ? 'Formed'
-    : isLineupFull
-      ? 'Ready to Form'
-      : rosterInsight.formatLabel?.replace(/\s+/g, ' ')
-  const gameTypeLabel = match.game_type
-    ? `${match.game_type.charAt(0).toUpperCase()}${match.game_type.slice(1)}`
-    : null
-  const courtBadgeColors =
-    courtState.status === 'secured'
-      ? { background: '#F0FDF4', color: '#166534', dot: '#22C55E' }
-      : courtState.status === 'walk_in'
-        ? { background: '#eff6ff', color: '#0b5ed7', dot: '#0d6efd' }
-        : { background: '#eff6ff', color: '#0d6efd', dot: '#F97316' }
+  const remainingSpots = Math.max(match.required_count - confirmedCount, 0)
+  const gameTypeLabel = formatGameTypeLabel(match.game_type)
+  const formatLabel = formatDoublesFormatLabel(match.game_type, match.doubles_format)
+  const matchTitle = [sportName, gameTypeLabel, formatLabel].filter(Boolean).join(' • ')
+  const courtLabel = courtState.badgeLabel || getCompactCourtLabel(match.final_court_label)
   const showUpdateCourtInfo =
     Boolean(userId)
     && match.status === 'active'
     && match.court_plan_mode === 'needs_help_booking'
     && (isOrganizer || myParticipant?.status === 'confirmed')
-  const formedTimeLabel = timeLabel.replace(/, (?=\d{1,2}:)/, ' · ')
-  const formedVenueLabel = [venueName, courtState.badgeLabel].filter(Boolean).join(' · ')
   const conflictDateLabel = formatMatchDayLabel(match.match_date)
 
   return (
@@ -341,6 +435,7 @@ function MatchHeaderSection({
         onCancelMatch={onCancelMatch}
         onSaveCourtPlan={onSaveCourtPlan}
         onConfirmMatch={onConfirmMatch}
+        onRemoveParticipant={onRemoveParticipant}
       />
 
       <div className="hidden md:block">
@@ -404,39 +499,12 @@ function MatchHeaderSection({
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', marginBottom: '0.7rem' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.15rem' }}>
-                  <h1 style={{ margin: 0, fontSize: '1.55rem', color: '#1E293B', lineHeight: 1, fontWeight: 900, letterSpacing: '-0.03em' }}>
-                    {sportName}
-                    {gameTypeLabel && (
-                      <>
-                        {' '}
-                        <span aria-hidden="true">&middot;</span>
-                        {' '}
-                        {gameTypeLabel}
-                      </>
-                    )}
+                  <h1 style={{ margin: 0, fontSize: '1.45rem', color: '#1E293B', lineHeight: 1.08, fontWeight: 900, letterSpacing: 0 }}>
+                    {matchTitle || 'Match'}
                   </h1>
-                  {matchStateLabel ? (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        borderRadius: '999px',
-                        padding: '0.22rem 0.58rem',
-                        background: match.formed_at ? '#F0FDF4' : '#eff6ff',
-                        color: match.formed_at ? '#166534' : '#0d6efd',
-                        border: match.formed_at ? '1px solid #BBF7D0' : '1px solid #bfdbfe',
-                        fontSize: '0.62rem',
-                        fontWeight: 900,
-                        letterSpacing: '0.08em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {matchStateLabel}
-                    </span>
-                  ) : null}
                 </div>
-                <p style={{ margin: 0, fontSize: '0.76rem', color: '#94A3B8', fontWeight: 500 }}>
-                  Hosted by{' '}
+                <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B', fontWeight: 600 }}>
+                  Host:{' '}
                   <ParticipantDetailTrigger
                     participant={{
                       user_id: match.organizer_id,
@@ -447,7 +515,7 @@ function MatchHeaderSection({
                       saved_by_viewer: false,
                       shares_group_with_viewer: false,
                     }}
-                    className="font-bold text-[#64748B] transition hover:text-[#0d6efd]"
+                    className="font-black text-[#0F172A] transition hover:text-[#0d6efd]"
                     label={`View details for ${organizerName}`}
                   >
                     <span>{organizerName}</span>
@@ -506,111 +574,50 @@ function MatchHeaderSection({
               ) : null}
             </div>
 
-            {showMatchFormedBanner ? (
-              <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3.5">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-[12px] font-black uppercase tracking-[0.14em] text-emerald-700">Match formed</p>
-                    <p className="mt-1 text-[17px] font-black leading-tight text-[#0F172A]">
-                      {formedTimeLabel}
-                    </p>
-                    <p className="mt-1 text-[13px] font-bold text-[#166534]">
-                      {formedVenueLabel}
-                    </p>
-                  </div>
-                  <span className="inline-flex w-fit items-center rounded-full bg-white px-3 py-1.5 text-[12px] font-black text-emerald-700 ring-1 ring-emerald-200">
-                    {confirmedCount}/{match.required_count} players confirmed
-                  </span>
-                </div>
-                {hasTimeConflict ? (
-                  <div className="mt-3 rounded-[14px] border border-[#FCA5A5] bg-[#FFF1F2] px-3 py-2 text-[12px] font-bold text-[#B91C1C]">
-                    <span aria-hidden="true">! </span>
-                    Time conflict detected. This overlaps with another match{conflictDateLabel ? ` on ${conflictDateLabel}` : ''}.
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
             {lineupShortWarning ? (
               <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] font-bold leading-relaxed text-[#92400E]">
                 Lineup changed after Game On: {lineupShortWarning.playerName} {lineupShortWarning.actionLabel} at {formatLineupChangeTime(lineupShortWarning.happenedAt)}. {lineupShortWarning.confirmedCount} of {lineupShortWarning.targetCount} players are confirmed.
               </div>
             ) : null}
 
+            <div className="mt-3 space-y-1.5">
+              <p className="m-0 flex items-center gap-1.5 text-[14px] font-semibold text-[#475569]">
+                <IconCalendar size={13} />
+                <span>{timeLabel}</span>
+              </p>
+              <MatchVenueLine venueName={venueName} courtLabel={courtLabel} />
+            </div>
+
+            <div className="mt-4">
+              <MatchOverviewPlayerRows viewModel={viewModel} onRemoveParticipant={onRemoveParticipant} />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-x-8 gap-y-1 border-t border-[#E2E8F0] pt-3 text-[14px] font-black text-[#0F172A]">
+              <span>{confirmedCount}/{match.required_count} players confirmed</span>
+              <span className="text-[#64748B]">
+                {remainingSpots > 0
+                  ? `${remainingSpots} more ${remainingSpots === 1 ? 'player' : 'players'} needed.`
+                  : match.formed_at
+                    ? 'Lineup confirmed.'
+                    : 'No more players needed.'}
+              </span>
+            </div>
+
             {showReadyToConfirm ? (
-              <div className="mb-4 rounded-[18px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#0d6efd]">Ready to Form</p>
-                    <p className="mt-1 text-[14px] font-semibold text-[#0F172A]">
-                      {confirmedCount} of {match.required_count} players confirmed
-                    </p>
-                    <p className="mt-1 text-[12px] font-semibold text-[#64748B]">
-                      Forming the match will notify confirmed players.
-                    </p>
-                  </div>
-                  <form action={onConfirmMatch}>
-                    <button
-                      type="submit"
-                      className="inline-flex h-10 items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
-                    >
-                      Form Match
-                    </button>
-                  </form>
-                </div>
-              </div>
+              <form action={onConfirmMatch} className="mt-4">
+                <button
+                  type="submit"
+                  className="inline-flex h-10 items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
+                >
+                  Form Match
+                </button>
+              </form>
             ) : null}
 
-            {!showMatchFormedBanner ? (
-            <div
-              style={{
-                background: '#F8FAFC',
-                borderRadius: '18px',
-                padding: '0.7rem 0.8rem',
-                display: 'grid',
-                gap: '0.5rem',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.84rem' }}>
-                <IconCalendar />
-                <span style={{ fontWeight: 700, color: '#64748B', fontSize: '0.76rem' }}>
-                  {timeLabel.split(' ').slice(0, 3).join(' ')}
-                </span>
-                <span style={{ color: '#1E293B', fontSize: '1.1rem', fontWeight: 900 }}>
-                  {timeLabel.split(' ').slice(3).join(' ')}
-                </span>
+            {hasTimeConflict ? (
+              <div className="mt-3 rounded-[14px] border border-[#FCA5A5] bg-[#FFF1F2] px-3 py-2 text-[12px] font-bold text-[#B91C1C]">
+                Time conflict detected{conflictDateLabel ? ` on ${conflictDateLabel}` : ''}.
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', flexWrap: 'wrap' }}>
-                <IconMapPin />
-                {venueName ? <span style={{ fontWeight: 800, color: '#1E293B' }}>{venueName}</span> : null}
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.35rem',
-                    borderRadius: '999px',
-                    padding: '0.22rem 0.55rem',
-                    fontSize: '0.66rem',
-                    fontWeight: 800,
-                    background: courtBadgeColors.background,
-                    color: courtBadgeColors.color,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: '0.35rem',
-                      height: '0.35rem',
-                      borderRadius: '999px',
-                      background: courtBadgeColors.dot,
-                    }}
-                  />
-                  {courtState.badgeLabel}
-                </span>
-              </div>
-            </div>
             ) : null}
           </div>
         </div>
@@ -1180,6 +1187,7 @@ export function MatchDetailPageView({
         onCancelMatch={onCancelMatch}
         onSaveCourtPlan={onSaveCourtPlan}
         onConfirmMatch={onConfirmMatch}
+        onRemoveParticipant={onRemoveParticipant}
       />
       {viewModel.identityLinkCandidates.length > 0 ? (
         <div style={{ marginBottom: '1.1rem' }}>
@@ -1196,11 +1204,11 @@ export function MatchDetailPageView({
       ) : null}
       <LinkedContactNotice viewModel={viewModel} />
       <MatchSelfActionsSection viewModel={viewModel} />
-      <MatchParticipantsSection
-        viewModel={viewModel}
-        onRemoveParticipant={onRemoveParticipant}
-        tools={matchToolsSection}
-      />
+      {matchToolsSection ? (
+        <div style={{ marginBottom: '1.1rem' }}>
+          {matchToolsSection}
+        </div>
+      ) : null}
       <MatchChatSection
         viewModel={viewModel}
         onUpdateOrganizerNote={onUpdateOrganizerNote}

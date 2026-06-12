@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, useTransition, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { MatchListItem } from '@/lib/api/matches'
@@ -13,6 +13,7 @@ import { getMatchParticipantRemovalCopy } from '@/lib/utils/match-participant-re
 import { CreateMatchInline } from '@/app/matches/CreateMatchInline'
 import type { UserPlayCity, VenueSport } from '@/lib/types/database'
 import type { ContactImportDraft, ContactScreenshotUpload } from '@/lib/contact-screenshot-import'
+import { getVenueDisplayName } from '@/lib/venues/display'
 
 const FALLBACK_COURT_STATE = {
   status: 'open',
@@ -39,123 +40,196 @@ const FALLBACK_ROSTER_INSIGHT = {
 } as const
 
 type StarterMatchFormat = 'singles' | 'doubles' | 'unknown'
-type MobileMatchesMainTab = 'my-matches' | 'call-board'
-type MatchBoardSection = 'action-needed' | 'my-matches' | 'looking-for' | 'history'
-type MatchBoardWarningKind = 'needs-players' | 'time-conflict'
-type MatchBoardCardWarning = {
-  kind: MatchBoardWarningKind
-  message: string
-}
-type MatchBoardIconKind = 'invite' | 'formed' | 'upcoming' | 'looking' | 'warning' | 'cancelled'
+type MobileBoardTab = 'upcoming' | 'call-board' | 'calendar' | 'history'
 
 type FirstMatchStarterCardProps = {
+  contactCount: number
+  firstMatchCreated: boolean
+  preferredFormat: StarterMatchFormat
+  onPreferredFormatChange: (format: StarterMatchFormat) => void
+  venueName?: string | null
   onAddContact?: () => void
+  onStartMatch: () => void
   onDismiss: () => void
 }
 
+function StarterPlayingCircleIllustration({ count }: { count: number }) {
+  const activeCount = Math.min(Math.max(count, 0), 4)
+  return (
+    <div className="relative h-28 w-28 shrink-0 rounded-[30px] border border-[#D7E6F7] bg-gradient-to-br from-[#F8FBFF] via-white to-[#EEF6FF] shadow-[0_18px_42px_rgba(37,99,235,0.10)]">
+      <div className="absolute inset-x-5 bottom-5 h-10 rounded-[14px] border border-[#D8E6F6] bg-white/90 shadow-sm" />
+      <div className="absolute inset-x-7 bottom-8 h-10 rounded-[14px] border border-[#D8E6F6] bg-white/95 shadow-sm" />
+      <div className="absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-[#9BC2F4]" />
+      {[
+        'left-5 top-5',
+        'right-5 top-5',
+        'left-6 bottom-6',
+        'right-6 bottom-6',
+      ].map((position, index) => (
+        <span
+          key={position}
+          className={[
+            'absolute flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-black shadow-sm',
+            position,
+            index < activeCount ? 'bg-[#0d6efd] text-white' : 'bg-[#EAF2FC] text-[#8AA0BC]',
+          ].join(' ')}
+        >
+          {index + 1}
+        </span>
+      ))}
+      <span className="absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#D7F223] text-[#0B1F44] shadow-[0_10px_20px_rgba(215,242,35,0.28)]">
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="7" />
+          <path d="M7 8c3 1.8 7 1.8 10 0" />
+          <path d="M7 16c3-1.8 7-1.8 10 0" />
+        </svg>
+      </span>
+    </div>
+  )
+}
+
 function FirstMatchStarterCard({
+  contactCount,
+  firstMatchCreated,
+  onPreferredFormatChange,
+  venueName,
   onAddContact,
+  onStartMatch,
   onDismiss,
 }: FirstMatchStarterCardProps) {
+  const hasVenue = Boolean(venueName?.trim())
+  const savedCount = Math.max(contactCount, 0)
+  const progressTarget = savedCount >= 3 ? 3 : savedCount >= 1 ? 3 : 1
+  const progress = Math.min(100, Math.round((Math.min(savedCount, progressTarget) / progressTarget) * 100))
+  const state = savedCount >= 3 ? 'ready' : savedCount === 2 ? 'two' : savedCount === 1 ? 'one' : 'zero'
+
+  const copy = (() => {
+    if (firstMatchCreated) {
+      return {
+        kicker: 'Your local playing circle starts here.',
+        title: 'Your first match is live',
+        body: 'Keep inviting your saved players as your playing circle grows.',
+        primary: 'Create Match',
+        secondary: 'Add More Contacts',
+        helper: 'Less chasing. More playing.',
+      }
+    }
+
+    if (state === 'zero') {
+      return {
+        kicker: hasVenue ? `You're joining the ${venueName} playing community.` : "Glad you're here. Let's build your playing circle.",
+        title: hasVenue ? `Welcome to your ${venueName} PlayerHood` : 'Welcome to PlayerHoods',
+        body: hasVenue
+          ? 'Start with someone you already play with here. Add them as a player card, then create your first match.'
+          : 'Your PlayerHood starts with someone you already play with. Add one regular player as a player card to create your first match.',
+        primary: '+ Add My Contact',
+        secondary: 'Create Match',
+        helper: hasVenue ? 'Private by default. You choose who to invite.' : 'Add 1 player for singles. Add 3 players for doubles.',
+      }
+    }
+
+    if (state === 'one') {
+      return {
+        kicker: 'Your playing circle is taking shape.',
+        title: 'Nice - your first player is saved',
+        body: 'You can create a singles match now, or add two more players for doubles.',
+        primary: 'Create Singles Match',
+        secondary: 'Add 2 More for Doubles',
+        helper: "You're always in control of who gets invited.",
+      }
+    }
+
+    if (state === 'two') {
+      return {
+        kicker: 'Almost there.',
+        title: 'Almost ready for doubles',
+        body: 'Create a singles match now, or add one more player to start a doubles match.',
+        primary: 'Create Singles Match',
+        secondary: 'Add 1 More for Doubles',
+        helper: "You're always in control of who gets invited.",
+      }
+    }
+
+    return {
+      kicker: 'Your playing circle is ready.',
+      title: "You're ready to start playing",
+      body: "Create a singles or doubles match from your saved players. We'll help handle invites and confirmations.",
+      primary: 'Create Match',
+      secondary: 'Add More Contacts',
+      helper: 'Less chasing. More playing.',
+    }
+  })()
+
+  const handlePrimary = () => {
+    if (firstMatchCreated) {
+      onStartMatch()
+      return
+    }
+    if (state === 'zero') {
+      onAddContact?.()
+      return
+    }
+    if (state === 'one' || state === 'two') {
+      onPreferredFormatChange('singles')
+    }
+    onStartMatch()
+  }
+
+  const handleSecondary = () => {
+    onAddContact?.()
+  }
+
   return (
-    <section className="relative rounded-[16px] border border-[#D8E6F6] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+    <section className="relative overflow-hidden rounded-[28px] border border-[#D8E6F6] bg-white px-5 py-5 shadow-[0_20px_48px_rgba(15,23,42,0.06)] sm:px-7">
       <button
         type="button"
         onClick={onDismiss}
-        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-[18px] font-light leading-none text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#1E293B]"
+        className="absolute right-5 top-5 inline-flex h-8 w-8 items-center justify-center rounded-full text-[22px] font-light leading-none text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#1E293B]"
         aria-label="Dismiss starter card"
       >
         x
       </button>
-      <div className="min-w-0 pr-8">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="min-w-0 text-[16px] font-black tracking-[-0.01em] text-[#0F172A]">Get Started</h2>
-          <button
-            type="button"
-            onClick={onAddContact}
-            className="h-9 shrink-0 rounded-[10px] border border-[#D8E6F6] bg-white px-3 text-[12px] font-black text-[#0B2A5B] transition hover:border-[#B8CCE5] hover:bg-[#F8FBFF]"
-          >
-            Add My Contact
-          </button>
+      <div className="flex flex-col gap-5 pr-9 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#7A8AA6]">{copy.kicker}</p>
+          <h2 className="mt-2 text-h2 font-black tracking-[-0.03em] text-[#0F172A]">{copy.title}</h2>
+          <p className="mt-2 max-w-2xl text-body-main leading-6 text-[#536783]">{copy.body}</p>
+
+          <div className="mt-4">
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#7186A4]">
+              <span>{Math.min(savedCount, progressTarget)} / {progressTarget} Player Card{progressTarget === 1 ? '' : 's'} Saved</span>
+              {savedCount >= progressTarget ? <span className="text-[#16A34A]">Done</span> : null}
+            </div>
+            <div className="h-2 w-full max-w-[520px] overflow-hidden rounded-full bg-[#E7EEF7]">
+              <div className="h-full rounded-full bg-[#22C55E]" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handlePrimary}
+              className="rounded-[12px] bg-[#0B2A5B] px-5 py-3 text-body-main font-black text-white shadow-[0_12px_24px_rgba(11,42,91,0.18)] transition hover:bg-[#12386F]"
+            >
+              {copy.primary}
+            </button>
+            <button
+              type="button"
+              onClick={handleSecondary}
+              disabled={state === 'zero' && !firstMatchCreated}
+              className="rounded-[12px] border border-[#D8E6F6] bg-white px-5 py-3 text-body-main font-black text-[#536783] transition hover:border-[#B8CCE5] hover:text-[#0F172A] disabled:cursor-not-allowed disabled:bg-[#F8FBFF] disabled:text-[#AAB8CC]"
+            >
+              {copy.secondary}
+            </button>
+          </div>
+
+          <p className="mt-3 text-body-sub font-semibold text-[#7A8AA6]">{copy.helper}</p>
         </div>
-        <p className="mt-2 text-[13px] font-semibold leading-5 text-[#536783]">
-          Add players you know, then create your first match.
-        </p>
+        <div className="hidden shrink-0 items-center gap-4 sm:flex">
+          <StarterPlayingCircleIllustration count={savedCount} />
+        </div>
       </div>
     </section>
-  )
-}
-
-function getProfileInitials(displayName?: string | null, firstName?: string | null, lastName?: string | null): string | null {
-  const nameParts = [firstName, lastName]
-    .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part))
-
-  if (nameParts.length > 0) {
-    return nameParts
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join('') || null
-  }
-
-  const displayParts = (displayName ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-
-  if (displayParts.length === 0) return null
-
-  return displayParts
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || null
-}
-
-function MobileProfileAvatar({
-  avatarUrl,
-  displayName,
-  firstName,
-  lastName,
-}: {
-  avatarUrl?: string | null
-  displayName?: string | null
-  firstName?: string | null
-  lastName?: string | null
-}) {
-  const initials = getProfileInitials(displayName, firstName, lastName)
-  const profileLabel = displayName?.trim() || [firstName, lastName].map((part) => part?.trim()).filter(Boolean).join(' ') || 'Profile'
-
-  if (avatarUrl?.trim()) {
-    return (
-      <img
-        src={avatarUrl.trim()}
-        alt={profileLabel}
-        className="h-10 w-10 rounded-full border border-[#E2E8F0] bg-white object-cover shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-      />
-    )
-  }
-
-  if (initials) {
-    return (
-      <span
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D8E6F6] bg-white text-[14px] font-black text-[#0B2A5B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-        aria-label={profileLabel}
-      >
-        {initials}
-      </span>
-    )
-  }
-
-  return (
-    <span
-      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D8E6F6] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-      aria-label="Profile"
-    >
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4 21c1.8-4 5-6 8-6s6.2 2 8 6" />
-      </svg>
-    </span>
   )
 }
 
@@ -209,117 +283,6 @@ function isLookingForPlayersMatch(item: MatchListItem, nowIso: string): boolean 
   )
 }
 
-function getMatchDateKey(item: MatchListItem): string | null {
-  if (item.match.match_date) return item.match.match_date
-  if (item.match.start_at_utc) return toDateKey(new Date(item.match.start_at_utc))
-  return null
-}
-
-function getHoursUntilStart(item: MatchListItem, nowMs: number): number | null {
-  if (!item.match.start_at_utc) return null
-  return (new Date(item.match.start_at_utc).getTime() - nowMs) / 3_600_000
-}
-
-function getNeededPlayerCount(item: MatchListItem): number {
-  return Math.max(item.match.required_count - item.confirmedCount, 0)
-}
-
-function isSameDayMatch(item: MatchListItem, todayKey: string): boolean {
-  return getMatchDateKey(item) === todayKey
-}
-
-function formatHoursUntilStart(hoursLeft: number): string {
-  const totalMinutes = Math.max(1, Math.round(hoursLeft * 60))
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
-}
-
-function isBoardRelevantMatch(item: MatchListItem, userId: string, nowIso: string): boolean {
-  if (item.match.status !== 'active') return false
-  if (isPast(item, nowIso)) return false
-  if (item.myParticipant?.status === 'removed') return false
-  return Boolean(item.myParticipant) || item.match.organizer_id === userId
-}
-
-function canEvaluateTimeConflict(item: MatchListItem): boolean {
-  return Boolean(getMatchDateKey(item) && (item.match.start_time || item.match.start_at_utc))
-}
-
-function getBoardConflictIds(items: MatchListItem[], userId: string, nowIso: string): Set<string> {
-  const conflictIds = new Set<string>()
-  const byDate = new Map<string, MatchListItem[]>()
-
-  for (const item of items) {
-    if (!isBoardRelevantMatch(item, userId, nowIso)) continue
-    if (!canEvaluateTimeConflict(item)) continue
-
-    const dateKey = getMatchDateKey(item)
-    if (!dateKey) continue
-
-    const bucket = byDate.get(dateKey) ?? []
-    bucket.push(item)
-    byDate.set(dateKey, bucket)
-  }
-
-  for (const dayItems of byDate.values()) {
-    for (let leftIndex = 0; leftIndex < dayItems.length; leftIndex += 1) {
-      const left = dayItems[leftIndex]
-      const leftTiming = getCalendarTiming(left)
-
-      for (let rightIndex = leftIndex + 1; rightIndex < dayItems.length; rightIndex += 1) {
-        const right = dayItems[rightIndex]
-        const rightTiming = getCalendarTiming(right)
-
-        if (leftTiming.startMinutes < rightTiming.endMinutes && rightTiming.startMinutes < leftTiming.endMinutes) {
-          conflictIds.add(left.match.id)
-          conflictIds.add(right.match.id)
-        }
-      }
-    }
-  }
-
-  return conflictIds
-}
-
-function getMatchBoardWarningForItem(
-  item: MatchListItem,
-  userId: string,
-  todayKey: string,
-  nowMs: number,
-  conflictIds: Set<string>,
-): MatchBoardCardWarning | null {
-  if (item.match.status !== 'active') return null
-
-  const hoursLeft = getHoursUntilStart(item, nowMs)
-  const isOrganizer = item.match.organizer_id === userId
-  const neededPlayers = getNeededPlayerCount(item)
-  const needsPlayersSoon =
-    isOrganizer
-    && isSameDayMatch(item, todayKey)
-    && !item.isFormed
-    && neededPlayers > 0
-    && hoursLeft !== null
-    && hoursLeft > 0
-    && hoursLeft < 12
-
-  if (needsPlayersSoon) {
-    return {
-      kind: 'needs-players',
-      message: `Starts in ${formatHoursUntilStart(hoursLeft)} \u00b7 still need ${neededPlayers} player${neededPlayers === 1 ? '' : 's'}`,
-    }
-  }
-
-  if (conflictIds.has(item.match.id) && isBoardRelevantMatch(item, userId, new Date(nowMs).toISOString())) {
-    return {
-      kind: 'time-conflict',
-      message: 'Time conflict with another match',
-    }
-  }
-
-  return null
-}
-
 type MatchRowProps = {
   item: MatchListItem
   userId?: string | null
@@ -327,16 +290,10 @@ type MatchRowProps = {
   onViewed?: (matchId: string) => void
   onDismissAlert?: (matchId: string) => void
   showAcknowledge?: boolean
-  cardWarning?: MatchBoardCardWarning | null
-  showFindPlayersAction?: boolean
-  showCancelMatchAction?: boolean
-  onCancelMatch?: (matchId: string) => Promise<void>
+  showOverlapWarning?: boolean
   variant?: 'default' | 'incoming' | 'history'
-  boardSection?: MatchBoardSection
   showRosterNames?: boolean
   isSelected?: boolean
-  isLoadingDetail?: boolean
-  onSelectMatch?: (matchId: string) => void
 }
 
 function getCompactRosterMeta(summaryLabel: string | null | undefined): string[] {
@@ -351,6 +308,22 @@ function getCompactRosterMeta(summaryLabel: string | null | undefined): string[]
 
 function getSafeParticipants(item: Pick<MatchListItem, 'participants'>): MatchListItem['participants'] {
   return Array.isArray(item.participants) ? item.participants : []
+}
+
+function hasTimeConflictWithItems(item: MatchListItem, items: MatchListItem[] | undefined): boolean {
+  if (!items || item.match.status === 'cancelled') return false
+  const itemDate = item.match.match_date
+  if (!itemDate) return false
+  const itemTiming = getCalendarTiming(item)
+
+  return items.some((other) => {
+    if (other.match.id === item.match.id || other.match.status === 'cancelled') return false
+    if (other.myParticipant?.status === 'removed') return false
+    if (other.match.match_date !== itemDate) return false
+
+    const otherTiming = getCalendarTiming(other)
+    return itemTiming.startMinutes < otherTiming.endMinutes && otherTiming.startMinutes < itemTiming.endMinutes
+  })
 }
 
 function getParticipantPreview(participants: MatchListItem['participants'], organizerId: string): string | null {
@@ -372,7 +345,8 @@ function getParticipantPreview(participants: MatchListItem['participants'], orga
 
 function getBoardCourtLabel(label: string | null | undefined): string | null {
   if (!label) return null
-  if (/host will book it later/i.test(label)) return 'Court TBD'
+  if (/host will book it later/i.test(label)) return 'Host will book court'
+  if (/walk-in\s*\/\s*no advance booking/i.test(label)) return 'Walk-in court'
   return label
 }
 
@@ -566,70 +540,12 @@ function StatusBadge({
   )
 }
 
-function MatchBoardStatusIcon({
-  kind,
-  size = 'desktop',
-}: {
-  kind: MatchBoardIconKind
-  size?: 'desktop' | 'mobile'
-}) {
-  const theme =
-    kind === 'formed'
-      ? 'bg-[#ECFDF5] text-[#16A34A] ring-[#BBF7D0]'
-      : kind === 'looking'
-        ? 'bg-[#FFF7ED] text-[#EA580C] ring-[#FED7AA]'
-        : kind === 'warning' || kind === 'cancelled'
-          ? 'bg-[#FEF2F2] text-[#F97316] ring-[#FED7AA]'
-          : 'bg-[#EFF6FF] text-[#0d6efd] ring-[#BFDBFE]'
-  const sizeClass = size === 'mobile' ? 'h-8 w-8' : 'h-9 w-9'
-  const iconClass = size === 'mobile' ? 'h-4 w-4' : 'h-[18px] w-[18px]'
-
+function MatchBoardClockIcon() {
   return (
-    <span
-      className={`inline-flex ${sizeClass} shrink-0 items-center justify-center rounded-full ring-1 ${theme}`}
-      aria-hidden="true"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={iconClass}
-      >
-        {kind === 'invite' ? (
-          <>
-            <rect x="3" y="5" width="18" height="14" rx="2" />
-            <path d="m3 7 9 7 9-7" />
-          </>
-        ) : kind === 'formed' ? (
-          <>
-            <rect x="4" y="5" width="16" height="17" rx="2" />
-            <path d="M8 3v4" />
-            <path d="M16 3v4" />
-            <path d="M4 10h16" />
-            <path d="m8 16 2.5 2.5L16 13" />
-          </>
-        ) : kind === 'looking' ? (
-          <>
-            <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-            <circle cx="9.5" cy="7" r="4" />
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          </>
-        ) : kind === 'warning' || kind === 'cancelled' ? (
-          <>
-            <path d="M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z" />
-            <path d="M12 9v5" />
-            <path d="M12 17h.01" />
-          </>
-        ) : (
-          <>
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7v5l3 2" />
-          </>
-        )}
+    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#D7E6F7] bg-[#F5FAFF] text-[#0d6efd]">
+      <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="7" />
+        <path d="M12 8v4l2.5 1.5" />
       </svg>
     </span>
   )
@@ -642,16 +558,10 @@ function MatchRow({
   onViewed,
   onDismissAlert,
   showAcknowledge = false,
-  cardWarning = null,
-  showFindPlayersAction = false,
-  showCancelMatchAction = false,
-  onCancelMatch,
+  showOverlapWarning = false,
   variant = 'default',
-  boardSection,
   showRosterNames = true,
   isSelected = false,
-  isLoadingDetail = false,
-  onSelectMatch,
 }: MatchRowProps) {
   const {
     match,
@@ -671,11 +581,7 @@ function MatchRow({
   }
   const [isPending, startTransition] = useTransition()
   const [confirmError, setConfirmError] = useState<string | null>(null)
-  const [cancelError, setCancelError] = useState<string | null>(null)
-  const [confirmingCancel, setConfirmingCancel] = useState(false)
   const [optimisticAccepted, setOptimisticAccepted] = useState(false)
-  const [optimisticDeclined, setOptimisticDeclined] = useState(false)
-  const router = useRouter()
   const normalizedSportName = (sportName ?? '').trim().toLowerCase()
   const showSportIcon = normalizedSportName.includes('tennis') || normalizedSportName.includes('pickleball')
   const compactRosterMeta = getCompactRosterMeta(rosterInsight.summaryLabel)
@@ -713,41 +619,9 @@ function MatchRow({
     startTransition(async () => {
       try {
         await acceptMatchInvite(supabase, match.id)
-        router.refresh()
-        window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
       } catch (err: unknown) {
         setOptimisticAccepted(false)
         setConfirmError((err as { message?: string })?.message ?? 'Failed')
-      }
-    })
-  }
-
-  const handleNotThisTime = () => {
-    setConfirmError(null)
-    setOptimisticDeclined(true)
-    const supabase = createSupabaseBrowserClient()
-    startTransition(async () => {
-      try {
-        await userWithdraw(supabase, match.id, 'Not this time')
-        router.refresh()
-        window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
-      } catch (err: unknown) {
-        setOptimisticDeclined(false)
-        setConfirmError((err as { message?: string })?.message ?? 'Failed')
-      }
-    })
-  }
-
-  const handleCancelMatch = () => {
-    if (!onCancelMatch) return
-    setCancelError(null)
-    startTransition(async () => {
-      try {
-        await onCancelMatch(match.id)
-        router.refresh()
-        window.dispatchEvent(new Event('playerhoods:dashboard-live-refresh'))
-      } catch (err: unknown) {
-        setCancelError((err as { message?: string })?.message ?? 'Failed')
       }
     })
   }
@@ -759,86 +633,8 @@ function MatchRow({
     match.duration_minutes,
     venueTimezone ?? 'UTC',
   )
-  const playerCountLabel = `${confirmedCount}/${match.required_count}`
-  const boardCourtLabel = getBoardCourtLabel(courtState.badgeLabel)
-  const courtTbdBoardLabel = boardCourtLabel === 'Court TBD'
-  const compactBoardCourtLabel = boardCourtLabel && !courtTbdBoardLabel
-    ? boardCourtLabel.replace(/^court\s+/i, 'crt ')
-    : null
-  const boardStatusLabel = isCancelled
-    ? 'Match cancelled'
-    : courtTbdBoardLabel && !isFormed
-      ? `Court TBD · ${playerCountLabel}`
-      : isFormed
-        ? `Formed · ${playerCountLabel}`
-        : confirmedCount >= match.required_count
-          ? `Ready · ${playerCountLabel}`
-          : playerCountLabel
-  const boardStatusTone: 'green' | 'amber' | 'blue' | 'red' | 'slate' = isCancelled
-    ? 'red'
-    : isFormed
-        ? 'green'
-        : confirmedCount >= match.required_count
-          ? 'blue'
-          : 'amber'
-  const participantPreview = getParticipantPreview(participants, match.organizer_id)
-  const compactBoardStatusLabel = isCancelled
-    ? 'Match cancelled'
-    : courtTbdBoardLabel && !isFormed
-      ? 'Court TBD'
-    : isHistoryRow && isPastMatch
-      ? (isFormed ? 'Played' : 'Past')
-      : isFormed
-        ? 'Formed'
-        : confirmedCount >= match.required_count
-          ? 'Ready'
-          : 'Open to Join'
-  const handleDetailsClick = () => {
-    onViewed?.(match.id)
-    onSelectMatch?.(match.id)
-  }
-  const hasResponseAction = !isHistoryRow && !isCancelled && (
-    isInvited || (isParticipantInvite && !hasUserAccepted) || needsReconfirmRequested
-  )
-  const isActionNeededRow = boardSection === 'action-needed' && hasResponseAction
-  const responseStatusLabel = needsReconfirmRequested ? 'Needs confirm' : 'Invited'
-  const hasBoardAccessory = Boolean(
-    hasResponseAction
-    || (!isHistoryRow && !isCancelled && isParticipantInvite && hasUserAccepted)
-    || (!isHistoryRow && !isCancelled && isRequested && !needsReconfirmRequested)
-    || (!isHistoryRow && !isCancelled && isRemoved)
-    || (!isHistoryRow && !isCancelled && myParticipant?.status === 'waiting_list')
-    || (!isHistoryRow && !isCancelled && wasConfirmedByOther)
-    || hostRequestCount > 0
-    || (showAcknowledge && onDismissAlert)
-  )
-  const hasInlineBoardAction = isActionNeededRow || showFindPlayersAction || showCancelMatchAction
-  const useCompactBoardRow = variant !== 'default' && (!hasBoardAccessory || hasInlineBoardAction)
-  const hasLeadingIcon = variant !== 'default' && variant !== 'history'
-  const primaryCompactStatusLabel = isActionNeededRow
-    ? responseStatusLabel
-    : boardSection === 'my-matches' || boardSection === 'looking-for'
-      ? courtTbdBoardLabel && !isFormed
-        ? 'Court TBD'
-        : null
-      : compactBoardStatusLabel
-  const compactBoardMeta = [
-    primaryCompactStatusLabel,
-    playerCountLabel,
-    compactBoardCourtLabel,
-    participantPreview ?? 'No lineup players yet',
-  ].filter(Boolean)
-  const boardIconKind: MatchBoardIconKind = isCancelled
-    ? 'cancelled'
-    : cardWarning
-      ? 'warning'
-      : isActionNeededRow
-        ? 'invite'
-        : boardSection === 'looking-for' || showFindPlayersAction
-          ? 'looking'
-          : isFormed
-            ? 'formed'
-            : 'upcoming'
+  const boardWhenWhereLabel = getMatchBoardWhenWhereLabel(item)
+  const venueDisplayLabel = getMatchBoardVenueLabel(item)
 
   const statusBadge = isCancelled ? (
     <StatusBadge label="Match cancelled" tone="red" />
@@ -869,99 +665,43 @@ function MatchRow({
   return (
     <div
       className={[
-        useCompactBoardRow
-          ? hasLeadingIcon
-            ? 'grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-0.5 bg-white transition-colors md:grid-cols-[auto_minmax(0,1fr)_auto]'
-            : 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 bg-white transition-colors'
-          : 'flex items-center gap-3 bg-white transition-colors',
-        cardWarning
-          ? 'rounded-[16px] border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2.5 shadow-[0_8px_20px_rgba(249,115,22,0.08)] hover:border-[#FDBA74]'
-          : isSelected
-          ? 'rounded-[16px] border border-[#0d6efd] bg-[#eff6ff] px-3 py-2.5 shadow-[0_8px_20px_rgba(13,110,253,0.10)]'
+        'flex min-w-0 items-center gap-3 bg-white transition-colors',
+        isSelected
+          ? 'rounded-[18px] border border-[#0d6efd] bg-[#eff6ff] px-4 py-3 shadow-[0_12px_30px_rgba(13,110,253,0.10)]'
           : variant !== 'default'
-          ? 'rounded-[16px] border border-[#E2E8F0] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.045)] hover:border-[#CBD5E1]'
-          : 'rounded-[16px] border border-[#E2E8F0] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.045)] hover:border-[#CBD5E1]',
+          ? 'rounded-[18px] border border-[#E2E8F0] px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]'
+          : 'rounded-[24px] border border-[#E2E8F0] px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] hover:border-[#CBD5E1]',
       ].join(' ')}
     >
-      {hasLeadingIcon ? (
-        <div className={useCompactBoardRow ? 'col-start-1 row-span-4 row-start-1 self-center md:row-span-3' : 'shrink-0'}>
-          <MatchBoardStatusIcon kind={boardIconKind} />
+      {variant !== 'default' ? (
+        <MatchBoardClockIcon />
+      ) : (
+        <div className="w-36 shrink-0 text-body-sub leading-snug text-[#64748B]">
+          {!showSportIcon && sportName ? (
+            <div className="text-label mb-1 text-[#94A3B8]">
+              {sportName}
+            </div>
+          ) : null}
+          <div className="whitespace-nowrap">{timeStr || <span className="italic">No time set</span>}</div>
+          {venueName ? <div className="truncate text-[#94A3B8]">{venueDisplayLabel}</div> : null}
         </div>
-      ) : null}
-
-      <div className={[
-        useCompactBoardRow
-          ? hasLeadingIcon
-            ? 'col-start-2 row-start-1 min-w-0 text-[12px] font-semibold leading-4 text-[#64748B] md:min-w-[15rem]'
-            : 'col-span-2 min-w-0 text-[12px] font-semibold leading-4 text-[#64748B]'
-          : variant !== 'default'
-            ? 'w-40 shrink-0 text-body-main leading-snug text-[#64748B]'
-            : 'w-36 shrink-0 text-body-sub leading-snug text-[#64748B]',
-      ].join(' ')}>
-        {useCompactBoardRow ? (
-          <>
-            <p className="flex min-w-0 items-center text-[#334155]">
-              <span className="shrink-0 whitespace-nowrap">{timeStr || <span className="italic">No time set</span>}</span>
-              {venueName ? (
-                <>
-                  <span className="px-1 text-[#CBD5E1]">&middot;</span>
-                  <span className="min-w-0 truncate text-[#64748B]">{venueName}</span>
-                </>
-              ) : null}
-            </p>
-          </>
-        ) : (
-          <>
-            {!showSportIcon && sportName ? (
-              <div className="text-label mb-1 text-[#94A3B8]">
-                {sportName}
-              </div>
-            ) : null}
-            <div className="whitespace-nowrap">{timeStr || <span className="italic">No time set</span>}</div>
-            {venueName ? <div className="truncate text-[#94A3B8]">{venueName}</div> : null}
-          </>
-        )}
-      </div>
+      )}
 
       {variant !== 'default' ? (
-        <div className={useCompactBoardRow ? hasLeadingIcon ? 'col-start-2 row-start-2 min-w-0 self-center' : 'min-w-0 self-center' : 'flex min-w-0 flex-1 flex-col gap-2'}>
-          {useCompactBoardRow ? (
-            <>
-              <p className="truncate text-[11px] font-semibold leading-4 text-[#64748B]">
-                {compactBoardMeta.map((label, index) => (
-                  <span key={`${label}-${index}`}>
-                    {index > 0 ? <span className="px-1 text-[#CBD5E1]">&middot;</span> : null}
-                    <span>{label}</span>
-                  </span>
-                ))}
-              </p>
-              {cardWarning ? (
-                <p className="line-clamp-2 text-[11px] font-semibold leading-4 text-[#DC2626]">
-                  <span>{cardWarning.message}</span>
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                {showSportIcon ? <InlineSportBadge sportName={sportName} /> : null}
-                <StatusBadge label={boardStatusLabel} tone={boardStatusTone} />
-                {!isCancelled && boardCourtLabel && !courtTbdBoardLabel ? (
-                  <span className="text-body-sub font-semibold text-[#64748B]">
-                    {boardCourtLabel}
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-body-sub truncate font-semibold text-[#64748B]">
-                {participantPreview ?? 'No lineup players yet'}
-              </p>
-              {cardWarning ? (
-                <p className="text-body-sub font-semibold text-[#DC2626]">
-                  {cardWarning.message}
-                </p>
-              ) : null}
-            </>
-          )}
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="truncate text-[13px] font-black leading-5 text-[#1E293B]">
+            {boardWhenWhereLabel}
+          </p>
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <MatchBoardStatusMeta item={item} showOverlapWarning={showOverlapWarning} />
+            <Link
+              href={`/dashboard?matchId=${match.id}`}
+              onClick={() => onViewed?.(match.id)}
+              className="shrink-0 text-[12px] font-extrabold text-[#0d6efd] hover:text-[#0b5ed7] whitespace-nowrap"
+            >
+              Details -&gt;
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -995,53 +735,24 @@ function MatchRow({
       )}
 
       {!isHistoryRow && !isCancelled && (isInvited || (isParticipantInvite && !hasUserAccepted) || needsReconfirmRequested) ? (
-        <div className={useCompactBoardRow ? hasLeadingIcon ? 'col-start-2 row-start-3 flex flex-wrap items-center justify-end gap-2 self-center md:col-start-3 md:row-span-2 md:row-start-1' : 'row-start-2 col-start-2 flex flex-wrap items-center justify-end gap-2 self-center' : 'shrink-0 flex items-center gap-2'}>
-          {!isActionNeededRow ? (
-            <span className="text-label rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd] ring-1 ring-[#dbeafe] whitespace-nowrap">
-              {responseStatusLabel}
-            </span>
-          ) : null}
+        <div className="shrink-0 flex items-center gap-2">
+          <span className="text-label rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd] ring-1 ring-[#dbeafe] whitespace-nowrap">
+            {isParticipantInvite ? 'Invited' : isInvited ? 'Invited' : 'Needs confirm'}
+          </span>
           <button
             onClick={handleConfirm}
-            disabled={isPending || optimisticDeclined}
-            className="whitespace-nowrap rounded-full bg-[#0d6efd] px-2.5 py-1 text-[11px] font-semibold leading-4 text-white hover:bg-[#0b5ed7] disabled:opacity-50"
+            disabled={isPending}
+            className="text-body-sub whitespace-nowrap rounded-full bg-[#0d6efd] px-3 py-1.5 font-semibold text-white hover:bg-[#0b5ed7] disabled:opacity-50"
           >
-            Confirm
+            {isPending ? '...' : 'Confirm'}
           </button>
-          {isActionNeededRow ? (
-            <button
-              type="button"
-              onClick={handleNotThisTime}
-              disabled={isPending || optimisticDeclined}
-              className="whitespace-nowrap rounded-full border border-[#D7DEE7] bg-white px-2.5 py-1 text-[11px] font-semibold leading-4 text-[#64748B] transition hover:border-[#CBD5E1] hover:text-[#1E293B] disabled:opacity-50"
-            >
-              Not this time
-            </button>
-          ) : null}
-          {isActionNeededRow ? (
-            <Link
-              href={`/dashboard?matchId=${match.id}`}
-              onClick={handleDetailsClick}
-              aria-current={isSelected ? 'page' : undefined}
-              className={[
-                'inline-flex items-center justify-end whitespace-nowrap text-[11px] font-semibold leading-4 transition',
-                isLoadingDetail
-                  ? 'pointer-events-none text-[#0d6efd]'
-                  : isSelected
-                  ? 'text-[#0d6efd]'
-                  : 'text-[#1E293B] hover:text-[#0d6efd]',
-              ].join(' ')}
-            >
-              {isLoadingDetail ? 'Loading' : 'Details ->'}
-            </Link>
-          ) : null}
           {confirmError ? <span className="text-body-sub text-[#EF4444]">{confirmError}</span> : null}
         </div>
       ) : null}
 
       {!isHistoryRow && !isCancelled && isParticipantInvite && hasUserAccepted ? (
         <span className="text-label shrink-0 rounded-full bg-[#eff6ff] px-2.5 py-1 text-[#0d6efd] ring-1 ring-[#dbeafe] whitespace-nowrap">
-          Waiting for host confirmation
+          Invited and waiting for approval
         </span>
       ) : null}
 
@@ -1071,206 +782,100 @@ function MatchRow({
 
       {hostRequestCount > 0 ? (
         <span
-          className={[
-            'ph-request-glow text-label shrink-0 rounded-full bg-[#0d6efd] px-3 py-1.5 text-white ring-1 ring-[#93C5FD] whitespace-nowrap',
-            useCompactBoardRow
-              ? hasLeadingIcon
-                ? 'col-start-2 row-start-3 justify-self-end self-center md:col-start-3 md:row-start-2'
-                : 'row-start-2 col-start-2 justify-self-end self-center'
-              : '',
-          ].join(' ')}
+          className="ph-request-glow text-label shrink-0 rounded-full bg-[#0d6efd] px-3 py-1.5 text-white ring-1 ring-[#93C5FD] whitespace-nowrap"
           title={`${hostRequestCount} request${hostRequestCount === 1 ? '' : 's'} to review`}
         >
           Request
         </span>
       ) : null}
 
-      {!isActionNeededRow ? (
-        <div
-          className={
-            useCompactBoardRow
-              ? hasLeadingIcon
-                ? showFindPlayersAction || showCancelMatchAction || hostRequestCount > 0
-                  ? 'col-start-2 row-start-4 flex flex-wrap items-center justify-end gap-2 self-center md:col-start-3 md:row-start-3'
-                  : 'col-start-2 row-start-3 flex flex-wrap items-center justify-end gap-2 self-center md:col-start-3 md:row-start-2'
-                : showFindPlayersAction && hostRequestCount > 0
-                  ? 'col-span-2 row-start-3 flex items-center justify-end gap-2 self-center'
-                  : 'row-start-2 col-start-2 flex items-center justify-end gap-2 self-center'
-              : 'shrink-0 flex items-center gap-3'
-          }
-        >
-        {showFindPlayersAction ? (
-          <Link
-            href={`/dashboard?matchId=${match.id}`}
-            onClick={handleDetailsClick}
-            className="whitespace-nowrap rounded-full bg-[#0d6efd] px-2.5 py-1 text-[11px] font-semibold leading-4 text-white transition hover:bg-[#0b5ed7]"
-          >
-            Find Players
-          </Link>
-        ) : null}
-        {showCancelMatchAction && onCancelMatch ? (
-          confirmingCancel ? (
-            <>
-              <button
-                type="button"
-                onClick={handleCancelMatch}
-                disabled={isPending}
-                className="whitespace-nowrap rounded-full border border-[#FCA5A5] bg-white px-2.5 py-1 text-[11px] font-semibold leading-4 text-[#DC2626] transition hover:bg-[#FEF2F2] disabled:opacity-50"
-              >
-                Cancel match
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmingCancel(false)}
-                disabled={isPending}
-                className="whitespace-nowrap rounded-full border border-[#D7DEE7] bg-white px-2.5 py-1 text-[11px] font-semibold leading-4 text-[#64748B] transition hover:border-[#CBD5E1] hover:text-[#1E293B] disabled:opacity-50"
-              >
-                Keep
-              </button>
-            </>
-          ) : (
+      {(variant === 'default' || (showAcknowledge && onDismissAlert)) ? (
+        <div className="shrink-0 flex items-center gap-3">
+          {showAcknowledge && onDismissAlert ? (
             <button
-              type="button"
-              onClick={() => setConfirmingCancel(true)}
-              className="whitespace-nowrap text-[11px] font-semibold leading-4 text-[#1E293B] transition hover:text-[#DC2626]"
+              onClick={() => onDismissAlert(match.id)}
+              className="text-body-sub font-medium text-[#64748B] hover:text-[#1E293B] whitespace-nowrap"
             >
-              Cancel match
+              Dismiss
             </button>
-          )
-        ) : null}
-        {showAcknowledge && onDismissAlert ? (
-          <button
-            onClick={() => onDismissAlert(match.id)}
-            className="text-body-sub font-medium text-[#64748B] hover:text-[#1E293B] whitespace-nowrap"
-          >
-            Dismiss
-          </button>
-        ) : null}
-        <Link
-          href={`/dashboard?matchId=${match.id}`}
-          onClick={handleDetailsClick}
-          aria-current={isSelected ? 'page' : undefined}
-          className={[
-            'inline-flex min-w-[4.5rem] items-center justify-end gap-1.5 whitespace-nowrap text-[11px] font-semibold leading-4 transition',
-            isLoadingDetail
-              ? 'pointer-events-none text-[#0d6efd]'
-              : isSelected
-              ? 'text-[#0d6efd]'
-              : 'text-[#1E293B] hover:text-[#0d6efd]',
-          ].join(' ')}
-        >
-          {isLoadingDetail ? (
-            <>
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#BFDBFE] border-t-[#0d6efd]" aria-hidden="true" />
-              Loading
-            </>
-          ) : (
-            'Details ->'
-          )}
-        </Link>
-        {cancelError ? <span className="text-body-sub text-[#EF4444]">{cancelError}</span> : null}
+          ) : null}
+          {variant === 'default' ? (
+            <Link
+              href={`/dashboard?matchId=${match.id}`}
+              onClick={() => onViewed?.(match.id)}
+              className="text-body-sub font-extrabold text-[#0d6efd] hover:text-[#0b5ed7] whitespace-nowrap"
+            >
+              Details -&gt;
+            </Link>
+          ) : null}
         </div>
       ) : null}
     </div>
   )
 }
 
-function MatchDetailSkeleton() {
-  return (
-    <div className="space-y-5" aria-live="polite" aria-busy="true">
-      <div className="rounded-[24px] border border-[#D8E6F6] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-        <p className="text-label text-[#0d6efd]">Opening match</p>
-        <h2 className="mt-2 text-h2 font-black text-[#1E293B]">Loading selected match...</h2>
-        <p className="mt-2 text-body-main text-[#64748B]">
-          We are getting the latest lineup and match actions.
-        </p>
-      </div>
-    </div>
-  )
-}
+function ExpiryBanner({
+  item,
+  hoursLeft,
+  onCancel,
+}: {
+  item: MatchListItem
+  hoursLeft: number
+  onCancel: (matchId: string) => Promise<void>
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [confirming, setConfirming] = useState(false)
+  const { match, confirmedCount } = item
+  const need = match.required_count - confirmedCount
+  const h = Math.floor(hoursLeft)
+  const m = Math.round((hoursLeft - h) * 60)
+  const timeLabel = h > 0 ? `${h}h ${m}m` : `${m}m`
 
-function SelectedMatchLoadingFrame({ children }: { children: ReactNode }) {
-  return (
-    <div className="relative" aria-busy="true" aria-live="polite">
-      {children}
-      <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex justify-center sm:inset-x-6">
-        <div className="inline-flex items-center gap-2 rounded-full border border-[#BFDBFE] bg-white/95 px-4 py-2 text-body-sub font-black text-[#0d6efd] shadow-[0_12px_28px_rgba(13,110,253,0.16)] backdrop-blur">
-          <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#BFDBFE] border-t-[#0d6efd]" aria-hidden="true" />
-          Loading selected match...
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ProvisionalMatchDetailSummary({ item }: { item: MatchListItem }) {
-  const timeLabel = formatTimeWindow(
-    item.match.start_at_utc,
-    item.match.match_date,
-    item.match.start_time,
-    item.match.duration_minutes,
-    item.venueTimezone ?? 'UTC',
-  )
-  const gameType = item.match.game_type
-    ? item.match.game_type.charAt(0).toUpperCase() + item.match.game_type.slice(1)
-    : 'Match'
-  const confirmedParticipants = getSafeParticipants(item).filter((participant) => participant.status === 'confirmed')
-  const pendingParticipants = getSafeParticipants(item).filter((participant) => participant.status === 'pending')
+  const handleCancel = () => {
+    startTransition(async () => {
+      await onCancel(match.id)
+      router.refresh()
+    })
+  }
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-[24px] border border-[#D8E6F6] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-        <p className="text-label text-[#0d6efd]">Selected match</p>
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-h1 text-[#1E293B]">
-              {item.sportName ?? 'Match'} <span className="text-[#94A3B8]">&middot;</span> {gameType}
-            </h2>
-            <p className="mt-2 text-body-main font-semibold text-[#64748B]">
-              {timeLabel || 'Time TBD'}
-            </p>
-            {item.venueName ? (
-              <p className="mt-1 text-body-main font-bold text-[#1E293B]">{item.venueName}</p>
-            ) : null}
-          </div>
-          <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1.5 text-body-sub font-black text-[#0d6efd]">
-            {item.confirmedCount} / {item.match.required_count} players
-          </span>
-        </div>
-      </section>
-
-      <section className="rounded-[24px] border border-[#E2E8F0] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-        <p className="text-label text-[#64748B]">Lineup preview</p>
-        <div className="mt-4 space-y-3">
-          {confirmedParticipants.length > 0 ? confirmedParticipants.slice(0, 4).map((participant) => (
-            <div key={participant.id} className="flex items-center gap-3 rounded-[18px] border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0d6efd] text-sm font-black text-white">
-                {participant.display_name.slice(0, 1).toUpperCase()}
-              </span>
-              <div className="min-w-0">
-                <p className="text-body-main font-black text-[#1E293B]">{participant.display_name}</p>
-                <p className="text-body-sub text-[#64748B]">Confirmed</p>
-              </div>
-            </div>
-          )) : (
-            <p className="rounded-[18px] border border-dashed border-[#D7E1EE] bg-[#F8FAFC] px-4 py-4 text-body-main font-semibold text-[#94A3B8]">
-              No confirmed players yet.
-            </p>
-          )}
-        </div>
-        {pendingParticipants.length > 0 ? (
-          <p className="mt-4 text-body-sub font-semibold text-[#64748B]">
-            {pendingParticipants.length} waiting for player response.
-          </p>
-        ) : null}
-      </section>
+    <div className="mx-1 flex items-center justify-between gap-3 rounded-b-[24px] border-x border-b border-[#FECACA] bg-[#FEF2F2] px-4 py-2.5">
+      <span className="text-body-sub text-[#EF4444]">
+        Starts in <strong>{timeLabel}</strong> - still need {need} player{need !== 1 ? 's' : ''}
+      </span>
+      {confirming ? (
+        <span className="flex items-center gap-2">
+          <span className="text-body-sub font-medium text-[#b91c1c]">Cancel this match?</span>
+          <button
+            onClick={handleCancel}
+            disabled={isPending}
+            className="text-body-sub rounded-full bg-[#EF4444] px-3 py-1 font-semibold text-white hover:bg-[#dc2626] disabled:opacity-50"
+          >
+            {isPending ? '...' : 'Yes, cancel'}
+          </button>
+          <button
+            onClick={() => setConfirming(false)}
+            className="text-body-sub rounded-full border border-[#E2E8F0] px-3 py-1 font-semibold text-[#64748B] hover:bg-white"
+          >
+            Keep
+          </button>
+        </span>
+      ) : (
+        <button
+          onClick={() => setConfirming(true)}
+          className="text-body-sub font-semibold text-[#EF4444] hover:text-[#b91c1c] whitespace-nowrap"
+        >
+          Cancel match
+        </button>
+      )}
     </div>
   )
 }
 
 function SectionHeading({ label, count }: { label: string; count: number }) {
   return (
-    <div className="mb-2 flex items-center gap-2">
+    <div className="mb-3 flex items-center gap-2">
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8] sm:text-[12px]">
         {label}
       </h3>
@@ -1331,26 +936,6 @@ function formatCalendarHeading(date: Date): string {
     month: 'long',
     year: 'numeric',
   }).format(date)
-}
-
-function formatCalendarRangeHeading(days: Date[]): string {
-  const start = days[0]
-  const end = days[days.length - 1]
-  if (!start || !end) return ''
-
-  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
-    const month = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(start)
-    return `${month} ${start.getDate()}-${end.getDate()}, ${start.getFullYear()}`
-  }
-
-  const monthDay = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
-  const monthDayYear = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-
-  if (start.getFullYear() === end.getFullYear()) {
-    return `${monthDay.format(start)}-${monthDayYear.format(end)}`
-  }
-
-  return `${monthDayYear.format(start)}-${monthDayYear.format(end)}`
 }
 
 function formatCalendarDayLabel(date: Date): string {
@@ -1489,25 +1074,19 @@ function markCalendarConflicts(entries: CalendarEntry[]): CalendarEntry[] {
 function WeeklyCalendar({
   items,
   userId,
-  rangeMode = 'week',
-  hourHeight = 34,
   compact = false,
 }: {
   items: MatchListItem[]
   userId: string
-  rangeMode?: 'week' | 'rolling8'
-  hourHeight?: number
   compact?: boolean
 }) {
-  const [weekAnchor, setWeekAnchor] = useState(() => startOfWeek(new Date()))
-  const rollingAnchor = useMemo(() => startOfCalendarDay(new Date()), [])
+  const [weekAnchor, setWeekAnchor] = useState(() => (compact ? startOfCalendarDay(new Date()) : startOfWeek(new Date())))
   const nowIso = useMemo(() => new Date().toISOString(), [])
-  const calendarStart = rangeMode === 'rolling8' ? rollingAnchor : weekAnchor
-  const visibleDayCount = rangeMode === 'rolling8' ? 8 : 7
+  const visibleDayCount = compact ? 10 : 7
 
-  const calendarDays = useMemo(
-    () => Array.from({ length: visibleDayCount }, (_, index) => addDays(calendarStart, index)),
-    [calendarStart, visibleDayCount],
+  const weekDays = useMemo(
+    () => Array.from({ length: visibleDayCount }, (_, index) => addDays(weekAnchor, index)),
+    [weekAnchor, visibleDayCount],
   )
 
   const entries = useMemo(() => {
@@ -1572,78 +1151,67 @@ function WeeklyCalendar({
     return next
   }, [entries])
 
-  const heading = rangeMode === 'rolling8'
-    ? formatCalendarRangeHeading(calendarDays)
-    : formatCalendarHeading(weekAnchor)
+  const heading = formatCalendarHeading(weekAnchor)
   const todayKey = toDateKey(new Date())
   const visibleStartMinutes = 7 * 60
-  const visibleEndMinutes = 22 * 60
+  const visibleEndMinutes = 23 * 60
   const visibleHourCount = (visibleEndMinutes - visibleStartMinutes) / 60
   const hourTicks = Array.from({ length: visibleHourCount + 1 }, (_, index) => visibleStartMinutes + index * 60)
+  const hourHeight = compact ? 30 : 34
   const calendarHeight = hourHeight * visibleHourCount
-  const timeColumnWidth = compact ? 42 : 52
-  const calendarGridTemplate = `${timeColumnWidth}px repeat(${calendarDays.length}, minmax(0, 1fr))`
+  const gridColsClass = compact
+    ? 'grid-cols-[34px_repeat(10,32px)]'
+    : 'grid-cols-[52px_repeat(7,minmax(0,1fr))]'
 
   return (
-    <section
-      className={
-        compact
-          ? 'rounded-[22px] border border-[#E2E8F0] bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.05)]'
-          : 'rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6'
-      }
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className={compact ? 'bg-transparent p-0' : 'rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6'}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-label text-[#94A3B8]">Match Calendar</p>
-          <h3 className="text-h2 mt-2 tracking-tight text-[#1E293B]">{heading}</h3>
+          <p className={compact ? 'text-[8px] font-black uppercase tracking-[0.12em] text-[#94A3B8]' : 'text-label text-[#94A3B8]'}>Match Calendar</p>
+          <h3 className={compact ? 'mt-1 text-[16px] font-black leading-5 tracking-tight text-[#1E293B]' : 'text-h2 mt-2 tracking-tight text-[#1E293B]'}>{heading}</h3>
         </div>
-        {rangeMode === 'week' ? (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setWeekAnchor(startOfWeek(new Date()))}
-              className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
-            >
-              Today
-            </button>
-            <button
-              onClick={() => setWeekAnchor((current) => addDays(current, -7))}
-              className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
-              aria-label="Previous week"
-            >
-              {'<'}
-            </button>
-            <button
-              onClick={() => setWeekAnchor((current) => addDays(current, 7))}
-              className="text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]"
-              aria-label="Next week"
-            >
-              {'>'}
-            </button>
-          </div>
-        ) : null}
+        <div className={compact ? 'flex items-center gap-1.5' : 'flex items-center gap-2'}>
+          <button
+            onClick={() => setWeekAnchor(compact ? startOfCalendarDay(new Date()) : startOfWeek(new Date()))}
+            className={compact ? 'rounded-full border border-[#D7DEE7] bg-white px-3 py-1.5 text-[11px] font-black text-[#1E293B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]' : 'text-body-sub rounded-full border border-[#D7DEE7] bg-white px-4 py-2 font-semibold text-[#1E293B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]'}
+          >
+            Today
+          </button>
+          <button
+            onClick={() => setWeekAnchor((current) => addDays(current, -visibleDayCount))}
+            className={compact ? 'h-8 w-8 rounded-full border border-[#D7DEE7] bg-white text-[11px] font-black text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]' : 'text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]'}
+            aria-label={compact ? 'Previous 10 days' : 'Previous week'}
+          >
+            {'<'}
+          </button>
+          <button
+            onClick={() => setWeekAnchor((current) => addDays(current, visibleDayCount))}
+            className={compact ? 'h-8 w-8 rounded-full border border-[#D7DEE7] bg-white text-[11px] font-black text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]' : 'text-body-sub rounded-full border border-[#D7DEE7] bg-white px-3 py-2 font-semibold text-[#64748B] transition hover:border-[#0d6efd] hover:text-[#0d6efd]'}
+            aria-label={compact ? 'Next 10 days' : 'Next week'}
+          >
+            {'>'}
+          </button>
+        </div>
       </div>
 
-      <div className={compact ? 'mt-4 w-full overflow-hidden' : 'mt-5 w-full overflow-hidden'}>
-        <div className="w-full min-w-0">
-          <div className="grid border-b border-[#E2E8F0]" style={{ gridTemplateColumns: calendarGridTemplate }}>
+      <div className={compact ? 'mt-3 w-full overflow-hidden' : 'mt-5 w-full overflow-hidden'}>
+        <div className={compact ? 'w-max max-w-full min-w-0 overflow-hidden' : 'w-full min-w-0'}>
+          <div className={['grid border-b border-[#E2E8F0]', gridColsClass].join(' ')}>
             <div className="border-r border-[#E2E8F0]" />
-            {calendarDays.map((day) => {
+            {weekDays.map((day) => {
               const dayKey = toDateKey(day)
               const isToday = dayKey === todayKey
 
               return (
-                <div
-                  key={dayKey}
-                  className={compact ? 'border-r border-[#E2E8F0] px-1 pb-2 text-center' : 'border-r border-[#E2E8F0] px-2 pb-3'}
-                >
-                  <p className={compact ? 'text-[9px] font-bold uppercase leading-tight text-[#94A3B8]' : 'text-label text-[#94A3B8]'}>
+                <div key={dayKey} className={compact ? 'border-r border-[#E2E8F0] px-0.5 pb-2 text-center' : 'border-r border-[#E2E8F0] px-2 pb-3'}>
+                  <p className={compact ? 'text-[8px] font-black leading-none tracking-[0.04em] text-[#94A3B8]' : 'text-label text-[#94A3B8]'}>
                     {formatCalendarDayLabel(day)}
                   </p>
                   <div className={compact ? 'mt-1 flex justify-center' : 'mt-1'}>
                     <span
                       className={[
                         compact
-                          ? 'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-[13px] font-black leading-none'
+                          ? 'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-[14px] font-black leading-none'
                           : 'text-h2 inline-flex h-9 min-w-9 items-center justify-center rounded-full px-2',
                         isToday ? 'bg-[#0d6efd] text-white' : 'text-[#1E293B]',
                       ].join(' ')}
@@ -1656,16 +1224,12 @@ function WeeklyCalendar({
             })}
           </div>
 
-          <div className="grid" style={{ gridTemplateColumns: calendarGridTemplate }}>
+          <div className={['grid', gridColsClass].join(' ')}>
             <div className="relative border-r border-[#E2E8F0]" style={{ height: calendarHeight }}>
               {hourTicks.map((minutes, index) => (
                 <div
                   key={minutes}
-                  className={
-                    compact
-                      ? 'absolute inset-x-0 flex -translate-y-1/2 justify-end pr-1.5 text-[9px] font-bold leading-none text-[#94A3B8]'
-                      : 'text-label absolute inset-x-0 flex -translate-y-1/2 justify-end pr-2 text-[#94A3B8]'
-                  }
+                  className={compact ? 'absolute inset-x-0 flex -translate-y-1/2 justify-end pr-1 text-[9px] font-black leading-none text-[#94A3B8]' : 'text-label absolute inset-x-0 flex -translate-y-1/2 justify-end pr-2 text-[#94A3B8]'}
                   style={{ top: index * hourHeight }}
                 >
                   {formatEventTimeLabel(minutes)}
@@ -1673,7 +1237,7 @@ function WeeklyCalendar({
               ))}
             </div>
 
-            {calendarDays.map((day) => {
+            {weekDays.map((day) => {
               const dayKey = toDateKey(day)
               const dayEntries = entryMap.get(dayKey) ?? []
 
@@ -1696,7 +1260,7 @@ function WeeklyCalendar({
                     }
 
                     const top = ((clampedStart - visibleStartMinutes) / 60) * hourHeight
-                    const height = Math.max(((clampedEnd - clampedStart) / 60) * hourHeight, 20)
+                    const height = Math.max(((clampedEnd - clampedStart) / 60) * hourHeight, compact ? 16 : 20)
 
                     return (
                       <Link
@@ -1705,7 +1269,7 @@ function WeeklyCalendar({
                         title={entry.hasConflict ? 'Time conflict with another match' : undefined}
                         className={[
                           compact
-                            ? 'absolute left-0.5 right-0.5 overflow-hidden rounded-[9px] border px-1 py-0.5 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:z-10 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]'
+                            ? 'absolute left-0.5 right-0.5 overflow-hidden rounded-[8px] border px-0.5 py-0.5 shadow-[0_6px_12px_rgba(15,23,42,0.04)] transition hover:z-10'
                             : 'absolute left-1 right-1 overflow-hidden rounded-[11px] border px-1.5 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:z-10 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]',
                           entry.hasConflict
                             ? 'border-[#FCA5A5] bg-[#FFF1F2]'
@@ -1730,22 +1294,13 @@ function WeeklyCalendar({
                             </span>
                           </>
                         ) : null}
-                        <div className="flex min-w-0 items-center gap-1">
-                          <SportGlyph sportKey={entry.sportKey} />
-                          <p className={[
-                            compact
-                              ? 'truncate text-[9px] font-medium leading-tight text-[#475569] sm:text-[10px] sm:font-semibold'
-                              : 'truncate text-[10px] font-semibold leading-tight text-[#1E293B]',
-                            entry.hasConflict ? 'pr-4' : '',
-                          ].join(' ')}>
+                        <div className="flex items-center gap-1">
+                          {compact ? null : <SportGlyph sportKey={entry.sportKey} />}
+                          <p className={[compact ? 'truncate text-[8px] font-black leading-[9px] text-[#1E293B]' : 'text-[10px] font-semibold leading-tight text-[#1E293B]', entry.hasConflict ? 'pr-4' : ''].join(' ')}>
                             {entry.organizerName}
                           </p>
                         </div>
-                        <p className={[
-                          'mt-0.5 leading-tight',
-                          compact ? 'text-[9px] sm:text-[10px]' : 'text-[10px]',
-                          entry.hasConflict ? 'font-semibold text-[#B91C1C]' : 'text-[#475569]',
-                        ].join(' ')}>
+                        <p className={[compact ? 'mt-0.5 truncate text-[8px] font-bold leading-[9px]' : 'mt-0.5 text-[10px] leading-tight', entry.hasConflict ? 'font-semibold text-[#B91C1C]' : 'text-[#475569]'].join(' ')}>
                           {entry.timeLabel}
                         </p>
                       </Link>
@@ -1801,6 +1356,24 @@ function getMobileTimeLabel(item: MatchListItem) {
   return parts.length >= 2 ? parts[parts.length - 1] : raw
 }
 
+function getMatchBoardWhenWhereLabel(item: MatchListItem) {
+  const dateLabel = getMobileDateLabel(item, item.venueTimezone)
+  const timeLabel = getMobileTimeLabel(item)
+  const whenLabel = dateLabel === 'Date TBD' || timeLabel === 'Time TBD'
+    ? timeLabel
+    : `${dateLabel} at ${timeLabel}`
+
+  return [whenLabel, getMatchBoardVenueLabel(item)].filter(Boolean).join(' \u00b7 ')
+}
+
+function getMatchBoardVenueLabel(item: MatchListItem) {
+  const venueName = item.venueName?.trim()
+  if (!venueName) return 'Venue TBD'
+  return getVenueDisplayName({
+    name: venueName,
+  })
+}
+
 function getOrganizerLabel(item: MatchListItem) {
   const organizer = getSafeParticipants(item).find((participant) => participant.user_id === item.match.organizer_id)
   return organizer?.display_name ?? 'Host'
@@ -1808,128 +1381,200 @@ function getOrganizerLabel(item: MatchListItem) {
 
 function getMobileCompactCourtLabel(label: string | null | undefined) {
   const boardLabel = getBoardCourtLabel(label)
-  if (!boardLabel || boardLabel === 'Court TBD') return null
-  return boardLabel.replace(/^court\s+/i, 'CRT ')
+  if (!boardLabel) return null
+  if (/host will book court/i.test(boardLabel)) return 'Host booking'
+  if (/walk-in court/i.test(boardLabel)) return 'Walk-in'
+  return boardLabel.replace(/^court\s+/i, 'crt ').replace(/^crt\s+/i, 'crt ')
 }
 
 function getMobileCompactStatusLabel(item: MatchListItem) {
   if (item.match.status === 'cancelled') return 'Cancelled'
   if (item.isFormed) return 'Formed'
   if (item.confirmedCount >= item.match.required_count) return 'Ready'
-  return 'Open to Join'
+  return null
+}
+
+function getMatchBoardStatusParts(item: MatchListItem, showOverlapWarning = false) {
+  const compactCourtLabel = getMobileCompactCourtLabel(item.courtState.badgeLabel)
+
+  return [
+    showOverlapWarning ? 'Overlaps' : null,
+    getMobileCompactStatusLabel(item),
+    `${item.confirmedCount}/${item.match.required_count}`,
+    compactCourtLabel,
+  ].filter((part): part is string => Boolean(part))
+}
+
+function MatchBoardHostIcon() {
+  return (
+    <span className="inline-flex h-[15px] w-[15px] shrink-0 items-center justify-center text-[#B7791F]" aria-label="Host">
+      <svg viewBox="0 0 24 24" className="h-[15px] w-[15px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M6 18V6" />
+        <path d="M18 18V6" />
+        <path d="M6 12h12" />
+        <path d="M3.8 7.5c1.6 0 2.2-1.2 2.2-2.4" />
+        <path d="M20.2 7.5c-1.6 0-2.2-1.2-2.2-2.4" />
+        <path d="M3.8 16.5c1.6 0 2.2 1.2 2.2 2.4" />
+        <path d="M20.2 16.5c-1.6 0-2.2 1.2-2.2 2.4" />
+      </svg>
+    </span>
+  )
+}
+
+function MatchBoardStatusMeta({
+  item,
+  showOverlapWarning = false,
+}: {
+  item: MatchListItem
+  showOverlapWarning?: boolean
+}) {
+  const statusParts = getMatchBoardStatusParts(item, showOverlapWarning)
+  const hostLabel = getOrganizerLabel(item)
+  const summaryCount = Math.max(item.confirmedCount - 1, 0)
+
+  return (
+    <div className="min-w-0 flex-1 overflow-hidden">
+      <div className="flex min-w-0 items-center gap-1.5 truncate text-[12px] font-extrabold leading-5 text-[#64748B]">
+        {statusParts.map((part, index) => (
+          <span key={`${part}-${index}`} className="inline-flex shrink-0 items-center gap-1.5">
+            {index > 0 ? <span className="text-[#CBD5E1]">·</span> : null}
+            <span>{part}</span>
+          </span>
+        ))}
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          {statusParts.length > 0 ? <span className="shrink-0 text-[#CBD5E1]">·</span> : null}
+          <MatchBoardHostIcon />
+          <span className="truncate">{hostLabel}</span>
+        </span>
+        {summaryCount > 0 ? (
+          <span className="inline-flex shrink-0 items-center gap-1.5">
+            <span className="text-[#CBD5E1]">·</span>
+            <span>+{summaryCount}</span>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 function MobileMatchCard({
   item,
-  cardWarning = null,
-  primaryActionLabel,
-  boardSection,
-  showLeadingIcon = true,
+  showOverlapWarning = false,
   onViewed,
-  onSelectMatch,
-  isLoadingDetail = false,
 }: {
   item: MatchListItem
-  cardWarning?: MatchBoardCardWarning | null
-  primaryActionLabel?: 'Find Players'
-  boardSection?: MatchBoardSection
-  showLeadingIcon?: boolean
+  showOverlapWarning?: boolean
   onViewed?: (matchId: string) => void
-  onSelectMatch?: (matchId: string) => void
-  isLoadingDetail?: boolean
 }) {
-  const hostLabel = getOrganizerLabel(item)
-  const dateLabel = getMobileDateLabel(item, item.venueTimezone)
-  const timeLabel = getMobileTimeLabel(item)
-  const summaryCount = Math.max(item.confirmedCount - 1, 0)
-  const compactCourtLabel = getMobileCompactCourtLabel(item.courtState.badgeLabel)
-  const whenLabel = [dateLabel, timeLabel].filter(Boolean).join(' \u00b7 ')
-  const venueLabel = item.venueName ?? 'Venue TBD'
-  const statusLabel = boardSection === 'history' ? getMobileCompactStatusLabel(item) : null
-  const statusLine = [
-    statusLabel,
-    `${item.confirmedCount}/${item.match.required_count}`,
-    item.courtState.badgeLabel === 'Court TBD' ? 'Court TBD' : null,
-    compactCourtLabel,
-    `Host ${hostLabel}`,
-    summaryCount > 0 ? `+${summaryCount}` : null,
-  ].filter(Boolean).join(' \u00b7 ')
-  const iconKind: MatchBoardIconKind = item.match.status === 'cancelled'
-    ? 'cancelled'
-    : cardWarning
-      ? 'warning'
-      : boardSection === 'looking-for' || primaryActionLabel
-        ? 'looking'
-        : item.isFormed
-          ? 'formed'
-          : 'upcoming'
-  const detailsHref = `/dashboard?matchId=${item.match.id}`
+  const whenWhereLabel = getMatchBoardWhenWhereLabel(item)
 
-  const handleSelect = () => {
-    onViewed?.(item.match.id)
-    onSelectMatch?.(item.match.id)
+  return (
+    <div className="block w-full min-w-0 rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#D6DEE9]">
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="truncate text-[13px] font-black leading-5 text-[#1E293B]">{whenWhereLabel}</p>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <MatchBoardStatusMeta item={item} showOverlapWarning={showOverlapWarning} />
+          <Link
+            href={`/dashboard?matchId=${item.match.id}`}
+            onClick={() => onViewed?.(item.match.id)}
+            className="shrink-0 text-[12px] font-extrabold text-[#0d6efd] hover:text-[#0b5ed7]"
+          >
+            Details -&gt;
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MatchBoardEnvelopeIcon() {
+  return (
+    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#D7E6F7] bg-[#F5FAFF] text-[#0d6efd]">
+      <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 6h16v12H4z" />
+        <path d="m4 7 8 6 8-6" />
+      </svg>
+    </span>
+  )
+}
+
+function getActionNeededStatusLine(item: MatchListItem) {
+  const actionLabel = item.myParticipant?.join_method === 'requested' ? 'Needs confirm' : 'Invited'
+  const compactCourtLabel = getMobileCompactCourtLabel(item.courtState.badgeLabel)
+  const participantPreview = getParticipantPreview(getSafeParticipants(item), item.match.organizer_id)
+
+  return [
+    actionLabel,
+    `${item.confirmedCount}/${item.match.required_count}`,
+    compactCourtLabel,
+    participantPreview,
+  ].filter(Boolean).join(' \u00b7 ')
+}
+
+function MobileActionNeededCard({
+  item,
+  onViewed,
+}: {
+  item: MatchListItem
+  onViewed?: (matchId: string) => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [actionError, setActionError] = useState<string | null>(null)
+  const whenWhereLabel = getMatchBoardWhenWhereLabel(item)
+  const statusLine = getActionNeededStatusLine(item)
+
+  const runAction = (kind: 'confirm' | 'decline') => {
+    setActionError(null)
+    const supabase = createSupabaseBrowserClient()
+    startTransition(async () => {
+      try {
+        if (kind === 'confirm') {
+          await acceptMatchInvite(supabase, item.match.id)
+        } else {
+          await userWithdraw(supabase, item.match.id, 'Not This Time')
+        }
+        router.refresh()
+      } catch (err: unknown) {
+        setActionError((err as { message?: string })?.message ?? 'Action failed')
+      }
+    })
   }
 
   return (
-    <article
-      aria-busy={isLoadingDetail ? 'true' : undefined}
-      className={[
-        'min-h-[64px] rounded-[14px] border bg-white px-3 py-2 shadow-[0_7px_18px_rgba(15,23,42,0.045)] transition hover:border-[#D6DEE9]',
-        isLoadingDetail
-          ? 'border-[#0d6efd] ring-2 ring-[#BFDBFE]'
-          : cardWarning
-            ? 'border-[#FED7AA] bg-[#FFF7ED]'
-            : 'border-[#E2E8F0]',
-      ].join(' ')}
-    >
-      <div className="flex min-w-0 gap-2.5">
-        {showLeadingIcon ? <MatchBoardStatusIcon kind={iconKind} size="mobile" /> : null}
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <p className="flex min-w-0 items-center text-[12px] font-black leading-4 text-[#1E293B]">
-            <span className="shrink-0 whitespace-nowrap">{whenLabel}</span>
-            <span className="px-1 text-[#CBD5E1]">&middot;</span>
-            <span className="min-w-0 truncate text-[#334155]">{venueLabel}</span>
-          </p>
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="min-w-0 flex-1 truncate text-[11px] font-extrabold leading-4 text-[#64748B]">{statusLine}</p>
-            {!primaryActionLabel && !cardWarning ? (
-              <Link
-                href={detailsHref}
-                onClick={handleSelect}
-                className="shrink-0 text-[11px] font-extrabold leading-4 text-[#0d6efd]"
-              >
-                {isLoadingDetail ? 'Opening...' : 'Details ->'}
-              </Link>
-            ) : null}
-          </div>
-          {cardWarning ? (
-            <p className="text-[11px] font-extrabold leading-4 text-[#DC2626]">
-              {cardWarning.message}
-            </p>
-          ) : null}
-        </div>
-      </div>
-      {primaryActionLabel || cardWarning ? (
-        <div className={showLeadingIcon ? 'mt-1.5 flex flex-wrap items-center justify-end gap-2.5 pl-[42px]' : 'mt-1.5 flex flex-wrap items-center justify-end gap-2.5'}>
-        {primaryActionLabel ? (
-          <Link
-            href={detailsHref}
-            onClick={handleSelect}
-            className="rounded-full bg-[#0d6efd] px-2.5 py-1 text-[11px] font-extrabold leading-4 text-white shadow-[0_6px_14px_rgba(13,110,253,0.16)]"
+    <div className="flex w-full min-w-0 items-center gap-3 rounded-[18px] border border-[#D7E6F7] bg-white px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+      <MatchBoardEnvelopeIcon />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <p className="truncate text-[13px] font-black leading-5 text-[#1E293B]">{whenWhereLabel}</p>
+        <p className="truncate text-[12px] font-extrabold leading-5 text-[#64748B]">{statusLine}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => runAction('confirm')}
+            disabled={isPending}
+            className="rounded-full bg-[#0d6efd] px-3 py-1.5 text-[12px] font-black leading-none text-white shadow-[0_8px_16px_rgba(13,110,253,0.18)] disabled:opacity-50"
           >
-            {primaryActionLabel}
+            {isPending ? '...' : 'Confirm'}
+          </button>
+          <button
+            type="button"
+            onClick={() => runAction('decline')}
+            disabled={isPending}
+            className="rounded-full border border-[#D7E1EE] bg-white px-3 py-1.5 text-[12px] font-black leading-none text-[#536783] disabled:opacity-50"
+          >
+            Not this time
+          </button>
+          <Link
+            href={`/dashboard?matchId=${item.match.id}`}
+            onClick={() => onViewed?.(item.match.id)}
+            className="ml-auto shrink-0 text-[12px] font-extrabold text-[#0d6efd] hover:text-[#0b5ed7] whitespace-nowrap"
+          >
+            Details -&gt;
           </Link>
-        ) : null}
-        <Link
-          href={detailsHref}
-          onClick={handleSelect}
-          className="text-[11px] font-extrabold leading-4 text-[#0d6efd]"
-        >
-          {isLoadingDetail ? 'Opening...' : 'Details ->'}
-        </Link>
         </div>
-      ) : null}
-    </article>
+        {actionError ? <p className="text-[11px] font-bold text-[#EF4444]">{actionError}</p> : null}
+      </div>
+    </div>
   )
 }
 
@@ -1949,6 +1594,7 @@ interface Props {
   profileDisplayName?: string | null
   profileFirstName?: string | null
   profileLastName?: string | null
+  starterVenueName?: string | null
   starterCard?: {
     contactCount: number
     preferredFormat: StarterMatchFormat
@@ -1978,62 +1624,20 @@ export function MatchesPanel({
   onViewedMatch,
   dismissedAlertMatchIds,
   onDismissAlert,
-  profileAvatarUrl,
-  profileDisplayName,
-  profileFirstName,
-  profileLastName,
+  starterVenueName,
   starterCard,
   onParseScreenshots,
   onImportScreenshotContacts,
 }: Props) {
   const [subTab, setSubTab] = useState<'upcoming' | 'calendar' | 'history'>('upcoming')
-  const [mobileMainTab, setMobileMainTab] = useState<MobileMatchesMainTab>('my-matches')
+  const [mobileBoardTab, setMobileBoardTab] = useState<MobileBoardTab>('upcoming')
   const [historyShown, setHistoryShown] = useState(PAGE_SIZE)
-  const [createMatchExpanded, setCreateMatchExpanded] = useState(false)
   const [mobileCreateMounted, setMobileCreateMounted] = useState(false)
   const [mobileCreateExpandSignal, setMobileCreateExpandSignal] = useState(0)
-  const [pendingMatchId, setPendingMatchId] = useState<string | null>(null)
-  const effectiveSelectedMatchId = pendingMatchId ?? selectedMatchId ?? null
-  const isMatchDetailLoading = Boolean(pendingMatchId)
-  const hasActiveMatchSelection = Boolean(effectiveSelectedMatchId)
+  const [desktopCreateExpanded, setDesktopCreateExpanded] = useState(false)
   const hasSelectedMatchDetail = Boolean(selectedMatchId && selectedMatchDetail)
-  const pendingMatchItem = useMemo(
-    () => pendingMatchId ? items.find((item) => item.match.id === pendingMatchId) ?? null : null,
-    [items, pendingMatchId],
-  )
 
-  useEffect(() => {
-    if (pendingMatchId && selectedMatchId === pendingMatchId && selectedMatchDetail) {
-      setPendingMatchId(null)
-    }
-  }, [pendingMatchId, selectedMatchDetail, selectedMatchId])
-
-  useEffect(() => {
-    if (!pendingMatchId) return
-    const timeoutId = window.setTimeout(() => {
-      setPendingMatchId((current) => current === pendingMatchId ? null : current)
-    }, 15000)
-    return () => window.clearTimeout(timeoutId)
-  }, [pendingMatchId])
-
-  const handleSelectMatch = useCallback((matchId: string) => {
-    if (matchId === selectedMatchId && selectedMatchDetail) return
-    setPendingMatchId(matchId)
-  }, [selectedMatchDetail, selectedMatchId])
-
-  const handleCreateMatchAction = useCallback(() => {
-    setMobileCreateMounted(true)
-    setMobileCreateExpandSignal((value) => value + 1)
-    window.setTimeout(() => {
-      document.getElementById('mobile-create-match-inline')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 120)
-  }, [])
-
-  const nowDate = useMemo(() => new Date(), [])
-  const now = useMemo(() => nowDate.toISOString(), [nowDate])
-  const nowMs = nowDate.getTime()
-  const todayKey = useMemo(() => toDateKey(nowDate), [nowDate])
-  const boardConflictIds = useMemo(() => getBoardConflictIds(items, userId, now), [items, now, userId])
+  const now = useMemo(() => new Date().toISOString(), [])
 
   const { actionNeeded, incoming, lookingFor, removed, cancelled, history } = useMemo(() => {
     const actionNeeded: MatchListItem[] = []
@@ -2047,7 +1651,6 @@ export function MatchesPanel({
       const status = item.myParticipant?.status
       const isOrganizer = item.match.organizer_id === userId
       const dismissed = dismissedAlertMatchIds?.has(item.match.id) ?? false
-      const cardWarning = getMatchBoardWarningForItem(item, userId, todayKey, nowMs, boardConflictIds)
 
       if (item.match.status === 'cancelled') {
         if (status && !isPast(item, now) && !dismissed) cancelled.push(item)
@@ -2055,20 +1658,22 @@ export function MatchesPanel({
       } else if (needsUserAction(item)) {
         if (item.match.status === 'active' && !isPast(item, now)) actionNeeded.push(item)
         else history.push(item)
-      } else if (cardWarning || shouldLiveInMyMatches(item)) {
+      } else if (shouldLiveInMyMatches(item)) {
         if (isInboxItem(item, now)) incoming.push(item)
         else history.push(item)
-      } else if (isOrganizer && isLookingForPlayersMatch(item, now)) {
-        lookingFor.push(item)
       } else if (status === 'pending') {
-        history.push(item)
+        if (isLookingForPlayersMatch(item, now)) lookingFor.push(item)
+        else history.push(item)
       } else if (status === 'removed') {
         if (item.match.status === 'active' && !isPast(item, now) && !dismissed) removed.push(item)
         else history.push(item)
       } else if (status == null) {
         if (item.match.status === 'active' && !isPast(item, now)) {
           if (isOrganizer) incoming.push(item)
+          else if (isLookingForPlayersMatch(item, now)) lookingFor.push(item)
         }
+      } else if (isLookingForPlayersMatch(item, now)) {
+        lookingFor.push(item)
       } else {
         history.push(item)
       }
@@ -2077,43 +1682,48 @@ export function MatchesPanel({
     history.sort((a, b) => (b.match.start_at_utc ?? '').localeCompare(a.match.start_at_utc ?? ''))
 
     return { actionNeeded, incoming, lookingFor, removed, cancelled, history }
-  }, [boardConflictIds, dismissedAlertMatchIds, items, now, nowMs, todayKey, userId])
+  }, [dismissedAlertMatchIds, items, now, userId])
 
   const visibleCancelled = cancelled
   const visibleRemoved = removed
   const visibleActionNeeded = actionNeeded
-  const visibleActionNeededCount = visibleActionNeeded.length + visibleCancelled.length + visibleRemoved.length
-  const getCardWarning = useCallback(
-    (item: MatchListItem) => getMatchBoardWarningForItem(item, userId, todayKey, nowMs, boardConflictIds),
-    [boardConflictIds, nowMs, todayKey, userId],
-  )
-  const upcomingCount = visibleActionNeededCount + incoming.length + lookingFor.length
+  const mobileActionCount = visibleActionNeeded.length + visibleCancelled.length + visibleRemoved.length
 
-  const mobileMainTabBtn = (key: MobileMatchesMainTab, label: string, count: number) => (
+  const mobileBoardTabBtn = (key: MobileBoardTab, label: string, count?: number) => (
     <button
       type="button"
-      onClick={() => setMobileMainTab(key)}
+      onClick={() => setMobileBoardTab(key)}
       className={[
-        'min-h-11 min-w-0 rounded-[14px] border px-2 py-2 text-center text-[12px] font-black leading-tight transition',
-        mobileMainTab === key
-          ? 'border-[#0d6efd] bg-[#eff6ff] text-[#0d6efd] shadow-[0_8px_18px_rgba(13,110,253,0.13)]'
-          : 'border-[#E2E8F0] bg-white text-[#536783] hover:border-[#B8CCE5] hover:text-[#0F172A]',
+        'h-10 min-w-0 rounded-full px-1 text-center text-[11px] font-black leading-tight transition focus:outline-none focus:ring-2 focus:ring-[#BFDBFE]',
+        mobileBoardTab === key
+          ? 'bg-[#DCEBFF]/80 text-[#0d6efd] shadow-[0_8px_18px_rgba(13,110,253,0.10)] ring-1 ring-[#BFD8FF]/70'
+          : 'text-[#64748B] hover:text-[#1E293B]',
       ].join(' ')}
-      aria-pressed={mobileMainTab === key}
+      aria-pressed={mobileBoardTab === key}
     >
       <span>{label}</span>
-      <span className={mobileMainTab === key ? 'ml-1 text-[#0d6efd]/70' : 'ml-1 text-[#94A3B8]'}>
-        {count}
-      </span>
+      {typeof count === 'number' ? (
+        <span
+          className={[
+            'ml-1.5',
+            key === 'call-board' && count > 0
+              ? 'text-[12px] font-black text-[#16A34A]'
+              : mobileBoardTab === key
+                ? 'text-[#0d6efd]/70'
+                : 'text-[#94A3B8]',
+          ].join(' ')}
+        >
+          {count}
+        </span>
+      ) : null}
     </button>
   )
 
   const subTabBtn = (key: 'upcoming' | 'calendar' | 'history', label: string, count?: number) => (
     <button
-      type="button"
       onClick={() => setSubTab(key)}
       className={[
-        'h-8 min-w-0 rounded-full px-2 text-[12px] font-bold transition sm:h-9 sm:px-3 sm:text-[13px]',
+        'text-body-main rounded-full px-4 py-2 font-semibold transition',
         subTab === key
           ? 'bg-[#0d6efd] text-white shadow-[0_8px_18px_rgba(13, 110, 253, 0.24)]'
           : 'text-[#64748B] hover:text-[#1E293B]',
@@ -2128,275 +1738,231 @@ export function MatchesPanel({
     </button>
   )
 
-  const mobileSubTabs = mobileMainTab === 'my-matches' && !createMatchExpanded ? (
-    <div className="sticky top-2 z-20 grid w-full grid-cols-3 rounded-full border border-[#E2E8F0] bg-white/95 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur">
-      {subTabBtn('upcoming', 'Upcoming', upcomingCount)}
-      {subTabBtn('calendar', 'Calendar')}
-      {subTabBtn('history', 'History', history.length)}
-    </div>
-  ) : null
-
+  const openCreateMatch = useCallback(() => {
+    setMobileCreateMounted(true)
+    setMobileCreateExpandSignal((value) => value + 1)
+    window.setTimeout(() => {
+      const mobileTarget = document.getElementById('mobile-create-match-inline')
+      const desktopTarget = document.getElementById('create-match-inline')
+      ;(mobileTarget ?? desktopTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 120)
+  }, [])
   const handleCreateExpandedChange = useCallback((expanded: boolean) => {
-    setCreateMatchExpanded(expanded)
+    setDesktopCreateExpanded(expanded)
   }, [])
 
-  const shouldRenderStarterCard = Boolean(
-    starterCard
-    && !hasActiveMatchSelection
-    && starterCard.contactCount === 0
-    && !starterCard.firstMatchCreated
-    && items.length === 0,
-  )
-  const renderStarterCard = () => shouldRenderStarterCard && starterCard ? (
+  const renderStarterCard = () => starterCard && !hasSelectedMatchDetail ? (
     <FirstMatchStarterCard
+      contactCount={starterCard.contactCount}
+      firstMatchCreated={starterCard.firstMatchCreated}
+      preferredFormat={starterCard.preferredFormat}
+      onPreferredFormatChange={starterCard.onPreferredFormatChange}
+      venueName={starterVenueName}
       onAddContact={starterCard.onAddContact}
+      onStartMatch={openCreateMatch}
       onDismiss={starterCard.onDismiss}
     />
   ) : null
 
-  const selectedMatchContent = isMatchDetailLoading ? (
-    hasSelectedMatchDetail ? (
-      <SelectedMatchLoadingFrame>{selectedMatchDetail}</SelectedMatchLoadingFrame>
-    ) : pendingMatchItem ? (
-      <SelectedMatchLoadingFrame>
-        <ProvisionalMatchDetailSummary item={pendingMatchItem} />
-      </SelectedMatchLoadingFrame>
-    ) : (
-      <MatchDetailSkeleton />
-    )
-  ) : hasSelectedMatchDetail ? (
-    selectedMatchDetail
-  ) : null
-
   return (
-    <div className="space-y-8">
-      <div className="space-y-5 md:hidden">
-        {!hasActiveMatchSelection ? (
-          <>
-            <section className="rounded-[20px] border border-[#E2E8F0] bg-white px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <img
-                    src="/playerhoods-brand-horizontal-cropped.png"
-                    alt="PlayerHoods"
-                    className="h-10 w-auto max-w-[170px] object-contain"
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M15 17H9" />
-                      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
-                    </svg>
-                    {visibleActionNeededCount > 0 ? (
-                      <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#F97316]" />
-                    ) : null}
-                  </span>
-                  <MobileProfileAvatar
-                    avatarUrl={profileAvatarUrl}
-                    displayName={profileDisplayName}
-                    firstName={profileFirstName}
-                    lastName={profileLastName}
-                  />
-                </div>
-              </div>
-            </section>
-
-            {renderStarterCard()}
-
-            <section className="rounded-[24px] border border-[#E2E8F0] bg-white px-4 py-4 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
-              <h1 className="text-h1 text-[#1E293B]">Matches</h1>
-
-              <div className="mt-4 grid w-full grid-cols-[1.12fr_1fr_1fr] gap-2">
-                <button
-                  type="button"
-                  onClick={handleCreateMatchAction}
-                  className="flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-[14px] border border-[#86EFAC] bg-[#ECFDF5]/90 px-2 py-2 text-center text-[12px] font-black leading-tight text-[#047857] shadow-[0_12px_24px_rgba(4,120,87,0.12)] transition hover:bg-[#D1FAE5]"
-                >
-                  <span className="text-[17px] leading-none">+</span>
-                  <span>Create Match</span>
-                </button>
-                {mobileMainTabBtn('my-matches', 'My Matches', upcomingCount)}
-                {mobileMainTabBtn('call-board', 'Call Board', lookingFor.length)}
-              </div>
-
-            </section>
-            {mobileSubTabs}
-          </>
-        ) : null}
-
-        {selectedMatchContent ? (
-          <section className="space-y-4">
-            {selectedMatchContent}
-          </section>
-        ) : mobileMainTab === 'call-board' ? (
-          <section className="space-y-4">
-            <SectionHeading label="Call Board" count={lookingFor.length} />
-            {lookingFor.length === 0 ? (
-              <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-body-main text-[#94A3B8]">
-                No player calls right now.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {lookingFor.map((item) => (
-                  <MobileMatchCard
-                    key={`mobile-call-board-${item.match.id}`}
-                    item={item}
-                    cardWarning={getCardWarning(item)}
-                    primaryActionLabel="Find Players"
-                    boardSection="looking-for"
-                    onViewed={onViewedMatch}
-                    onSelectMatch={handleSelectMatch}
-                    isLoadingDetail={pendingMatchId === item.match.id}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        ) : subTab === 'upcoming' ? (
-          <>
-            {visibleActionNeededCount > 0 ? (
-              <section className="space-y-2">
-                <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
-                <div className="space-y-1.5">
-                  {visibleActionNeeded.map((item) => (
-                    <MatchRow
-                      key={`mobile-action-${item.match.id}`}
-                      item={item}
-                      userId={userId}
-                      detailItems={items}
-                      onViewed={onViewedMatch}
-                      onSelectMatch={handleSelectMatch}
-                      variant="incoming"
-                      boardSection="action-needed"
-                      isSelected={effectiveSelectedMatchId === item.match.id}
-                      isLoadingDetail={pendingMatchId === item.match.id}
-                    />
-                  ))}
-                  {visibleCancelled.map((item) => (
-                    <MatchRow
-                      key={`mobile-cancelled-${item.match.id}`}
-                      item={item}
-                      userId={userId}
-                      detailItems={items}
-                      onViewed={onViewedMatch}
-                      onSelectMatch={handleSelectMatch}
-                      onDismissAlert={onDismissAlert}
-                      showAcknowledge={isDismissibleAlert(item, now)}
-                      variant="incoming"
-                      boardSection="action-needed"
-                      isSelected={effectiveSelectedMatchId === item.match.id}
-                      isLoadingDetail={pendingMatchId === item.match.id}
-                    />
-                  ))}
-                  {visibleRemoved.map((item) => (
-                    <MatchRow
-                      key={`mobile-removed-${item.match.id}`}
-                      item={item}
-                      userId={userId}
-                      detailItems={items}
-                      onViewed={onViewedMatch}
-                      onSelectMatch={handleSelectMatch}
-                      onDismissAlert={onDismissAlert}
-                      showAcknowledge={isDismissibleAlert(item, now)}
-                      variant="incoming"
-                      boardSection="action-needed"
-                      isSelected={effectiveSelectedMatchId === item.match.id}
-                      isLoadingDetail={pendingMatchId === item.match.id}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            <section className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <SectionHeading label="My Matches" count={incoming.length} />
-                {incoming.length > 0 ? <span className="text-body-main font-bold text-[#0d6efd]">View all -&gt;</span> : null}
-              </div>
-              {incoming.length === 0 ? (
-                <div className="rounded-[14px] border border-dashed border-[#D7E1EE] bg-white px-3 py-2.5 text-center text-[12px] font-semibold leading-4 text-[#94A3B8]">
-                  No upcoming matches.
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  {incoming.map((item) => {
-                    const cardWarning = getCardWarning(item)
-
-                    return (
-                      <MobileMatchCard
-                        key={`mobile-incoming-${item.match.id}`}
-                        item={item}
-                        cardWarning={cardWarning}
-                        primaryActionLabel={cardWarning?.kind === 'needs-players' ? 'Find Players' : undefined}
-                        boardSection="my-matches"
-                        onViewed={onViewedMatch}
-                        onSelectMatch={handleSelectMatch}
-                        isLoadingDetail={pendingMatchId === item.match.id}
-                      />
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-
-            {lookingFor.length > 0 ? (
-              <section className="space-y-2">
-                <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                <div className="space-y-1.5">
-                  {lookingFor.map((item) => (
-                    <MobileMatchCard
-                      key={`mobile-looking-${item.match.id}`}
-                      item={item}
-                      cardWarning={getCardWarning(item)}
-                      primaryActionLabel="Find Players"
-                      boardSection="looking-for"
-                      onViewed={onViewedMatch}
-                      onSelectMatch={handleSelectMatch}
-                      isLoadingDetail={pendingMatchId === item.match.id}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
-        ) : subTab === 'calendar' ? (
-          <section className="space-y-4">
-            <WeeklyCalendar items={items} userId={userId} rangeMode="rolling8" hourHeight={28} compact />
+    <div className="w-full min-w-0 space-y-8 overflow-hidden">
+      <div className="w-full min-w-0 space-y-3 md:hidden">
+        {hasSelectedMatchDetail ? (
+          <section className="w-full min-w-0 overflow-hidden">
+            {selectedMatchDetail}
           </section>
         ) : (
-          <section className="space-y-4">
-            <SectionHeading label="History" count={history.length} />
-            {history.length === 0 ? (
-              <div className="rounded-[28px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-body-main text-[#94A3B8]">
-                No match history.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {history.slice(0, historyShown).map((item) => (
-                  <MobileMatchCard
-                    key={`mobile-history-${item.match.id}`}
-                    item={item}
-                    boardSection="history"
-                    showLeadingIcon={false}
-                    onViewed={onViewedMatch}
-                    onSelectMatch={handleSelectMatch}
-                    isLoadingDetail={pendingMatchId === item.match.id}
-                  />
-                ))}
-                {historyShown < history.length ? (
-                  <button
-                    onClick={() => setHistoryShown((n) => n + PAGE_SIZE)}
-                    className="text-body-main w-full rounded-full border border-[#E2E8F0] bg-white py-3 font-semibold text-[#64748B]"
-                  >
-                    Load more
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </section>
-        )}
+          <>
+            <div className="w-full min-w-0 px-2 py-1">
+              <img
+                src="/playerhoods-brand-horizontal-cropped.png"
+                alt="PlayerHoods"
+                className="h-12 w-auto max-w-[215px] object-contain"
+              />
+            </div>
 
+            <button
+              type="button"
+              onClick={openCreateMatch}
+              className="flex w-full min-w-0 items-center gap-2.5 rounded-[20px] border border-[#E2E8F0] bg-white px-4 py-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.05)] transition hover:border-[#B8CCE5]"
+            >
+              <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-[#0B2A5B]">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="8" />
+                  <path d="M12 8v8" />
+                  <path d="M8 12h8" />
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1 text-[15px] font-black leading-5 text-[#0F172A]">
+                Create a Match
+              </span>
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F5F9FE] text-[18px] font-black text-[#94A3B8]">
+                &rsaquo;
+              </span>
+            </button>
+
+            {mobileCreateMounted ? (
+              <div id="mobile-create-match-inline">
+                <CreateMatchInline
+                  defaultVenueId={defaultVenueId}
+                  expandSignal={mobileCreateExpandSignal}
+                  onExpandedChange={handleCreateExpandedChange}
+                  hideCollapsedTrigger
+                  myPlayCities={myPlayCities}
+                  venueSports={venueSports}
+                  onParseScreenshots={onParseScreenshots}
+                  onImportScreenshotContacts={onImportScreenshotContacts}
+                />
+              </div>
+            ) : null}
+
+            <section className="w-full min-w-0 overflow-hidden rounded-[20px] border border-[#E2E8F0] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+              <div className="px-5 py-5">
+                <h2 className="flex items-center gap-2.5 text-[15px] font-black leading-5 text-[#0F172A]">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-6 w-6 shrink-0 text-[#0B2A5B]"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M8 4h8" />
+                    <path d="M9 2.8h6a1 1 0 0 1 1 1V5a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3.8a1 1 0 0 1 1-1Z" />
+                    <path d="M6 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1" />
+                    <path d="m8 11 1.5 1.5L12 10" />
+                    <path d="M14 12h4" />
+                    <path d="m8 16 1.5 1.5L12 15" />
+                    <path d="M14 17h4" />
+                  </svg>
+                  <span>Match Board</span>
+                </h2>
+              </div>
+              <div className="border-y border-[#E2E8F0] bg-white">
+                <div className="grid w-full grid-cols-4 gap-0 p-1">
+                  {mobileBoardTabBtn('upcoming', 'Upcoming', incoming.length)}
+                  {mobileBoardTabBtn('call-board', 'Call Board', lookingFor.length)}
+                  {mobileBoardTabBtn('calendar', 'Calendar')}
+                  {mobileBoardTabBtn('history', 'History', history.length)}
+                </div>
+              </div>
+
+              <div className="bg-white p-3">
+                {mobileBoardTab === 'calendar' ? (
+                  <WeeklyCalendar items={items} userId={userId} compact />
+                ) : mobileBoardTab === 'call-board' ? (
+                  <section className="w-full min-w-0 space-y-3">
+                    <div className="inline-flex bg-[#EAF4FF] px-1.5 py-1 text-[12px] font-black leading-none text-[#0d6efd]">
+                      Call Board <span className={lookingFor.length > 0 ? 'ml-1 text-[13px] text-[#16A34A]' : 'ml-1 text-[#94A3B8]'}>{lookingFor.length}</span>
+                    </div>
+                    {lookingFor.length === 0 ? (
+                      <div className="rounded-[18px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-[13px] font-bold text-[#94A3B8]">
+                        No player calls right now.
+                      </div>
+                    ) : (
+                      <div className="w-full min-w-0 space-y-2">
+                        {lookingFor.map((item) => (
+                          <MobileMatchCard key={`mobile-looking-${item.match.id}`} item={item} showOverlapWarning={hasTimeConflictWithItems(item, incoming)} onViewed={onViewedMatch} />
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                ) : mobileBoardTab === 'history' ? (
+                  <section className="w-full min-w-0 space-y-3">
+                    <div className="inline-flex text-[12px] font-black leading-none text-[#0d6efd]">
+                      History <span className="ml-1 text-[#94A3B8]">{history.length}</span>
+                    </div>
+                    {history.length === 0 ? (
+                      <div className="rounded-[18px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-[13px] font-bold text-[#94A3B8]">
+                        No match history.
+                      </div>
+                    ) : (
+                      <div className="w-full min-w-0 space-y-2">
+                        {history.slice(0, historyShown).map((item) => (
+                          <MobileMatchCard key={`mobile-history-${item.match.id}`} item={item} onViewed={onViewedMatch} />
+                        ))}
+                        {historyShown < history.length ? (
+                          <button
+                            type="button"
+                            onClick={() => setHistoryShown((n) => n + PAGE_SIZE)}
+                            className="w-full rounded-full border border-[#E2E8F0] bg-white py-3 text-[13px] font-black text-[#64748B]"
+                          >
+                            Load more
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+                  </section>
+                ) : (
+                  <div className="w-full min-w-0 space-y-3">
+                    {mobileActionCount > 0 ? (
+                      <section className="w-full min-w-0 space-y-2">
+                        <SectionHeading label="Action Needed" count={mobileActionCount} />
+                        <div className="w-full min-w-0 space-y-2">
+                          {visibleActionNeeded.map((item) => (
+                            <MobileActionNeededCard key={`mobile-action-${item.match.id}`} item={item} onViewed={onViewedMatch} />
+                          ))}
+                          {visibleCancelled.map((item) => (
+                            <MatchRow
+                              key={`mobile-cancelled-${item.match.id}`}
+                              item={item}
+                              userId={userId}
+                              detailItems={items}
+                              onViewed={onViewedMatch}
+                              onDismissAlert={onDismissAlert}
+                              showAcknowledge
+                              variant="incoming"
+                            />
+                          ))}
+                          {visibleRemoved.map((item) => (
+                            <MatchRow
+                              key={`mobile-removed-${item.match.id}`}
+                              item={item}
+                              userId={userId}
+                              detailItems={items}
+                              onViewed={onViewedMatch}
+                              onDismissAlert={onDismissAlert}
+                              showAcknowledge
+                              variant="incoming"
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    <section className="w-full min-w-0 space-y-2">
+                      <div className="inline-flex text-[12px] font-black leading-none text-[#0d6efd]">
+                        My Matches <span className="ml-1 text-[#0d6efd]">{incoming.length}</span>
+                      </div>
+                      {incoming.length === 0 ? (
+                        <div className="rounded-[18px] border border-dashed border-[#D7E1EE] bg-white px-5 py-8 text-center text-[13px] font-bold text-[#94A3B8]">
+                          No upcoming matches.
+                        </div>
+                      ) : (
+                        <div className="w-full min-w-0 space-y-2">
+                          {incoming.map((item) => (
+                            <MobileMatchCard key={`mobile-incoming-${item.match.id}`} item={item} onViewed={onViewedMatch} />
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
+        )}
       </div>
 
       <div className="hidden space-y-8 md:block">
@@ -2404,29 +1970,20 @@ export function MatchesPanel({
         <div
           className={[
             'grid items-start gap-6 transition-[grid-template-columns] duration-300',
-              hasActiveMatchSelection
-                ? 'lg:grid-cols-[minmax(720px,1.25fr)_minmax(500px,0.86fr)] xl:grid-cols-[minmax(820px,1.32fr)_minmax(520px,0.82fr)]'
-                : createMatchExpanded
-                ? 'lg:grid-cols-[minmax(520px,1fr)_minmax(400px,420px)] xl:grid-cols-[minmax(540px,1fr)_minmax(420px,440px)] 2xl:grid-cols-[minmax(640px,720px)_minmax(460px,520px)]'
-                : 'lg:grid-cols-[minmax(430px,640px)_minmax(520px,1fr)]',
-            ].join(' ')}
+            hasSelectedMatchDetail
+              ? 'lg:grid-cols-[minmax(720px,1.25fr)_minmax(500px,0.86fr)] xl:grid-cols-[minmax(820px,1.32fr)_minmax(520px,0.82fr)]'
+              : desktopCreateExpanded
+              ? 'lg:grid-cols-[minmax(680px,1.2fr)_minmax(430px,0.86fr)] xl:grid-cols-[minmax(760px,1.25fr)_minmax(500px,0.86fr)]'
+              : 'lg:grid-cols-[minmax(430px,640px)_minmax(520px,1fr)]',
+          ].join(' ')}
         >
           <section className="min-w-0">
-            {isMatchDetailLoading ? (
-              hasSelectedMatchDetail ? (
-                <SelectedMatchLoadingFrame>{selectedMatchDetail}</SelectedMatchLoadingFrame>
-              ) : pendingMatchItem ? (
-                <SelectedMatchLoadingFrame>
-                  <ProvisionalMatchDetailSummary item={pendingMatchItem} />
-                </SelectedMatchLoadingFrame>
-              ) : (
-                <MatchDetailSkeleton />
-              )
-            ) : hasSelectedMatchDetail ? (
+            {hasSelectedMatchDetail ? (
               selectedMatchDetail
             ) : (
             <CreateMatchInline
               defaultVenueId={defaultVenueId}
+              expandSignal={mobileCreateExpandSignal}
               onExpandedChange={handleCreateExpandedChange}
               myPlayCities={myPlayCities}
               venueSports={venueSports}
@@ -2437,26 +1994,31 @@ export function MatchesPanel({
           </section>
 
           <section className="min-w-0 rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E8F0] pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
               <div>
                 <h2 className="text-h2 font-semibold tracking-tight text-[#0F172A]">Match Board</h2>
               </div>
-              {!createMatchExpanded ? (
-                <div className="grid grid-cols-3 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
-                  {subTabBtn('upcoming', 'Upcoming', upcomingCount)}
-                  {subTabBtn('calendar', 'Calendar')}
-                  {subTabBtn('history', 'History', history.length)}
-                </div>
-              ) : null}
+              <div className="inline-flex rounded-full border border-[#E2E8F0] bg-[#F8FAFC] p-1">
+                {subTabBtn('upcoming', 'Upcoming', incoming.length)}
+                {subTabBtn('calendar', 'Calendar')}
+                {subTabBtn('history', 'History', history.length)}
+              </div>
             </div>
 
-            <div className="mt-4 space-y-5">
+            <div className="mt-5 space-y-8">
               {subTab === 'upcoming' ? (
                 <>
-                  {visibleActionNeededCount > 0 ? (
+                  {(visibleActionNeeded.length > 0 || visibleCancelled.length > 0 || visibleRemoved.length > 0) ? (
                     <section>
-                      <SectionHeading label="Action Needed" count={visibleActionNeededCount} />
-                      <div className="space-y-1">
+                      <SectionHeading
+                        label="Action Needed"
+                        count={
+                          visibleActionNeeded.length
+                          + visibleCancelled.length
+                          + visibleRemoved.length
+                        }
+                      />
+                      <div className="space-y-2">
                         {visibleActionNeeded.map((item) => (
                           <MatchRow
                             key={item.match.id}
@@ -2464,11 +2026,8 @@ export function MatchesPanel({
                             userId={userId}
                             detailItems={items}
                             onViewed={onViewedMatch}
-                            onSelectMatch={handleSelectMatch}
                             variant="incoming"
-                            boardSection="action-needed"
-                            isSelected={effectiveSelectedMatchId === item.match.id}
-                            isLoadingDetail={pendingMatchId === item.match.id}
+                            isSelected={selectedMatchId === item.match.id}
                           />
                         ))}
                         {visibleCancelled.map((item) => (
@@ -2478,13 +2037,10 @@ export function MatchesPanel({
                             userId={userId}
                             detailItems={items}
                             onViewed={onViewedMatch}
-                            onSelectMatch={handleSelectMatch}
                             onDismissAlert={onDismissAlert}
                             showAcknowledge={isDismissibleAlert(item, now)}
                             variant="incoming"
-                            boardSection="action-needed"
-                            isSelected={effectiveSelectedMatchId === item.match.id}
-                            isLoadingDetail={pendingMatchId === item.match.id}
+                            isSelected={selectedMatchId === item.match.id}
                           />
                         ))}
                         {visibleRemoved.map((item) => (
@@ -2494,13 +2050,10 @@ export function MatchesPanel({
                             userId={userId}
                             detailItems={items}
                             onViewed={onViewedMatch}
-                            onSelectMatch={handleSelectMatch}
                             onDismissAlert={onDismissAlert}
                             showAcknowledge={isDismissibleAlert(item, now)}
                             variant="incoming"
-                            boardSection="action-needed"
-                            isSelected={effectiveSelectedMatchId === item.match.id}
-                            isLoadingDetail={pendingMatchId === item.match.id}
+                            isSelected={selectedMatchId === item.match.id}
                           />
                         ))}
                       </div>
@@ -2510,61 +2063,51 @@ export function MatchesPanel({
                   <section>
                     <SectionHeading label="My Matches" count={incoming.length} />
                     {incoming.length === 0 ? (
-                      <div className="rounded-[14px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5 text-[12px] font-semibold leading-4 text-[#94A3B8]">
+                      <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
                         No upcoming matches.
                       </div>
                     ) : (
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         {incoming.map((item) => {
-                          const cardWarning = getCardWarning(item)
-                          const isNeedsPlayersWarning = cardWarning?.kind === 'needs-players'
+                          const isOrg = item.match.organizer_id === userId
+                          const hoursLeft = item.match.start_at_utc
+                            ? (new Date(item.match.start_at_utc).getTime() - Date.now()) / 3_600_000
+                            : null
+                          const expiring =
+                            isOrg
+                            && !item.isFormed
+                            && hoursLeft !== null
+                            && hoursLeft > 0
+                            && hoursLeft < 12
 
                           return (
-                            <MatchRow
-                              key={item.match.id}
-                              item={item}
-                              userId={userId}
-                              detailItems={items}
-                              onViewed={onViewedMatch}
-                              onSelectMatch={handleSelectMatch}
-                              variant="incoming"
-                              boardSection="my-matches"
-                              cardWarning={cardWarning}
-                              showFindPlayersAction={isNeedsPlayersWarning}
-                              showCancelMatchAction={isNeedsPlayersWarning && Boolean(onCancelMatch)}
-                              onCancelMatch={onCancelMatch}
-                              isSelected={effectiveSelectedMatchId === item.match.id}
-                              isLoadingDetail={pendingMatchId === item.match.id}
-                            />
+                            <div key={item.match.id}>
+                              <MatchRow item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="incoming" isSelected={selectedMatchId === item.match.id} />
+                              {expiring && onCancelMatch ? (
+                                <ExpiryBanner item={item} hoursLeft={hoursLeft} onCancel={onCancelMatch} />
+                              ) : null}
+                            </div>
                           )
                         })}
                       </div>
                     )}
                   </section>
 
-                  {lookingFor.length > 0 ? (
-                    <section>
-                      <SectionHeading label="Looking for Players" count={lookingFor.length} />
-                      <div className="space-y-1">
+                  <section>
+                    <SectionHeading label="Looking for Players" count={lookingFor.length} />
+                    {lookingFor.length === 0 ? (
+                      <div className="text-body-main rounded-[20px] border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-4 py-5 text-[#94A3B8]">
+                        <p className="font-semibold text-[#64748B]">No open matches right now.</p>
+                        <p className="mt-1 text-[#94A3B8]">Start a match or open one to join when you need players.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
                         {lookingFor.map((item) => (
-                          <MatchRow
-                            key={item.match.id}
-                            item={item}
-                            userId={userId}
-                            detailItems={items}
-                            onViewed={onViewedMatch}
-                            onSelectMatch={handleSelectMatch}
-                            variant="incoming"
-                            boardSection="looking-for"
-                            showFindPlayersAction
-                            cardWarning={getCardWarning(item)}
-                            isSelected={effectiveSelectedMatchId === item.match.id}
-                            isLoadingDetail={pendingMatchId === item.match.id}
-                          />
+                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} variant="incoming" showOverlapWarning={hasTimeConflictWithItems(item, incoming)} isSelected={selectedMatchId === item.match.id} />
                         ))}
                       </div>
-                    </section>
-                  ) : null}
+                    )}
+                  </section>
                 </>
               ) : subTab === 'calendar' ? (
                 <WeeklyCalendar items={items} userId={userId} />
@@ -2579,17 +2122,7 @@ export function MatchesPanel({
                     <>
                       <div className="space-y-2">
                         {history.slice(0, historyShown).map((item) => (
-                          <MatchRow
-                            key={item.match.id}
-                            item={item}
-                            userId={userId}
-                            detailItems={items}
-                            onViewed={onViewedMatch}
-                            onSelectMatch={handleSelectMatch}
-                            variant="history"
-                            isSelected={effectiveSelectedMatchId === item.match.id}
-                            isLoadingDetail={pendingMatchId === item.match.id}
-                          />
+                          <MatchRow key={item.match.id} item={item} userId={userId} detailItems={items} onViewed={onViewedMatch} variant="history" isSelected={selectedMatchId === item.match.id} />
                         ))}
                       </div>
                       {historyShown < history.length ? (
@@ -2609,22 +2142,6 @@ export function MatchesPanel({
         </div>
       </div>
 
-      {!hasActiveMatchSelection && mobileCreateMounted ? (
-        <div
-          id="mobile-create-match-inline"
-          className={createMatchExpanded ? 'md:hidden' : 'hidden'}
-        >
-          <CreateMatchInline
-            defaultVenueId={defaultVenueId}
-            expandSignal={mobileCreateExpandSignal}
-            onExpandedChange={handleCreateExpandedChange}
-            myPlayCities={myPlayCities}
-            venueSports={venueSports}
-            onParseScreenshots={onParseScreenshots}
-            onImportScreenshotContacts={onImportScreenshotContacts}
-          />
-        </div>
-      ) : null}
     </div>
   )
 }

@@ -24,8 +24,8 @@ export function deriveMatchCourtStatus(params: {
   if (params.courtPlanMode === 'walk_in') {
     return {
       status: 'walk_in',
-      badgeLabel: 'Walk-in',
-      detailLabel: 'Walk-in / no advance booking',
+      badgeLabel: 'Walk-in court',
+      detailLabel: 'Walk-in court',
     }
   }
 
@@ -45,17 +45,25 @@ export function deriveMatchCourtStatus(params: {
     }
   }
 
-  if (params.courtPlanMode === 'self_book_later' || params.courtPlanMode == null) {
+  if (params.courtPlanMode === 'self_book_later') {
     return {
       status: 'open',
-      badgeLabel: 'Host will book it later',
-      detailLabel: 'Host will book it later',
+      badgeLabel: 'Host will book court',
+      detailLabel: 'Host will book court',
+    }
+  }
+
+  if (params.courtPlanMode == null) {
+    return {
+      status: 'open',
+      badgeLabel: 'Court TBD',
+      detailLabel: 'Court TBD',
     }
   }
 
   return {
     status: 'open',
-    badgeLabel: 'Host will book it later',
-    detailLabel: 'Host will book it later',
+    badgeLabel: 'Court TBD',
+    detailLabel: 'Court TBD',
   }
 }
