@@ -7,7 +7,8 @@ import { acceptInvitationAsGuest } from '@/lib/invitations/accept-invitation-as-
 import { declineInvitationAsGuest } from '@/lib/invitations/decline-invitation-as-guest'
 import { getStatusPath, issuePublicParticipantStatusTokenForInvitation } from '@/lib/public-participant-status'
 
-const FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000001'
+const FALLBACK_GUEST_INVITATION_DECLINE_ACTOR_ID = '00000000-0000-0000-0000-000000000001'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function getGuestInvitationActionErrorCode(error: unknown): string {
   const message =
@@ -31,17 +32,30 @@ function redirectToInvitation(invitationId: string, params: Record<string, strin
   redirect(`/invitations/${invitationId}?${query.toString()}`)
 }
 
+function getGuestInvitationStatusTokenActorId(): string | null {
+  const rawActorId = process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
+  if (!rawActorId) return null
+
+  if (!UUID_PATTERN.test(rawActorId)) {
+    console.error('[invitation:status-token-actor]', {
+      safe_error_code: 'invalid-guest-invitation-system-actor-id',
+      has_error: true,
+    })
+    return null
+  }
+
+  return rawActorId
+}
+
 export async function acceptInvitationAsGuestAction(invitationId: string): Promise<void> {
   const supabase = await createSupabaseServerClient()
-  const systemActorId =
-    process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
-    || FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID
+  const statusTokenActorId = getGuestInvitationStatusTokenActorId()
   let statusPath: string | null = null
 
   try {
     await acceptInvitationAsGuest(supabase, invitationId)
     try {
-      const statusToken = await issuePublicParticipantStatusTokenForInvitation(invitationId, systemActorId)
+      const statusToken = await issuePublicParticipantStatusTokenForInvitation(invitationId, statusTokenActorId)
       if (statusToken?.status_token) {
         statusPath = getStatusPath(statusToken.status_token, { notice: 'accepted' })
       }
@@ -68,7 +82,7 @@ export async function declineInvitationAsGuestAction(invitationId: string): Prom
   const supabase = await createSupabaseServerClient()
   const systemActorId =
     process.env.GUEST_INVITATION_SYSTEM_ACTOR_ID?.trim()
-    || FALLBACK_GUEST_INVITATION_SYSTEM_ACTOR_ID
+    || FALLBACK_GUEST_INVITATION_DECLINE_ACTOR_ID
   try {
     await declineInvitationAsGuest(supabase, invitationId, systemActorId)
     revalidatePath(`/invitations/${invitationId}`)
