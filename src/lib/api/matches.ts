@@ -550,6 +550,7 @@ export async function updateMatchDetails(
     invitation_scope_group_ids?: string[] | null
     invitation_scope_user_ids?: string[] | null
     doubles_format?: MatchDoublesFormat | null
+    level?: string | null
     organizer_note?: string | null
   }
 ): Promise<void> {
@@ -562,6 +563,7 @@ export async function updateMatchDetails(
   if (data.invitation_scope_group_ids !== undefined) updateData.invitation_scope_group_ids = data.invitation_scope_group_ids
   if (data.invitation_scope_user_ids !== undefined) updateData.invitation_scope_user_ids = data.invitation_scope_user_ids
   if (data.doubles_format !== undefined) updateData.doubles_format = data.doubles_format
+  if (data.level !== undefined) updateData.level = data.level?.trim() || null
   if (data.organizer_note !== undefined) updateData.organizer_note = data.organizer_note
   if (Object.keys(updateData).length === 0) return
   const { error } = await supabase.from('matches').update(updateData).eq('id', matchId)
@@ -1245,6 +1247,7 @@ export async function createMatch(
     final_court_label?: string | null
     court_labels?: string[] | null
     doubles_format?: MatchDoublesFormat | null
+    level?: string | null
     organizer_note?: string | null
     recurring_series_id?: string | null
     recurring_instance_index?: number | null
@@ -1328,6 +1331,16 @@ export async function createMatch(
       .eq('id', created.id)
     if (doublesFormatError) throw doublesFormatError
     created.doubles_format = data.doubles_format
+  }
+
+  if (data.level !== undefined) {
+    const level = data.level?.trim() || null
+    const { error: levelError } = await supabase
+      .from('matches')
+      .update({ level })
+      .eq('id', created.id)
+    if (levelError) throw levelError
+    created.level = level
   }
 
   if (data.organizer_note !== undefined) {

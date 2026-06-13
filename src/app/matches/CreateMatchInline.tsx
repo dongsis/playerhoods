@@ -2109,6 +2109,7 @@ export function CreateMatchInline({
         player_reminder_minutes: playerReminderMinutes,
         game_type: gameType || undefined,
         doubles_format: doublesFormat,
+        level: gameLevel || null,
         venue_id: venueId || undefined,
         sport_id: sportId,
         invitation_scope_group_ids: scopeGroupIds.length > 0 ? scopeGroupIds : undefined,

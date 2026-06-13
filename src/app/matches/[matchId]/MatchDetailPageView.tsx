@@ -238,6 +238,7 @@ function MobileMatchDetailHeaderSection({
             startTime={match.start_time}
             durationMinutes={match.duration_minutes}
             playerReminderMinutes={match.player_reminder_minutes}
+            level={match.level}
             courtPlanMode={match.court_plan_mode}
             courtNote={match.court_note}
             finalCourtLabel={match.final_court_label}
@@ -511,6 +512,7 @@ function MatchHeaderSection({
                       startTime={match.start_time}
                       durationMinutes={match.duration_minutes}
                       playerReminderMinutes={match.player_reminder_minutes}
+                      level={match.level}
                       courtPlanMode={match.court_plan_mode}
                       courtNote={match.court_note}
                       finalCourtLabel={match.final_court_label}

@@ -31,6 +31,7 @@ export type MatchUpdateInput = {
   invitation_scope_group_ids?: string[] | null
   invitation_scope_user_ids?: string[] | null
   doubles_format?: MatchDoublesFormat | null
+  level?: string | null
   organizer_note?: string | null
 }
 
