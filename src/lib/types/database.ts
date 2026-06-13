@@ -283,6 +283,7 @@ export type Match = {
   player_reminder_minutes: number | null
   game_type: string | null
   doubles_format: MatchDoublesFormat | null
+  level: string | null
   required_count: number
   invitation_scope_group_ids: string[] | null
   invitation_scope_user_ids: string[] | null

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Court, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
+import { LEVEL_OPTIONS } from '@/lib/profile-options'
 import type { MatchCourtPlanUpdateInput } from './match-detail.actions'
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
   startTime: string | null
   durationMinutes: number | null
   playerReminderMinutes: number | null
+  level: string | null
   courtPlanMode: MatchCourtPlanMode
   courtNote: string | null
   finalCourtLabel: string | null
@@ -25,6 +27,7 @@ interface Props {
     start_time: string | null
     duration_minutes: number | null
     player_reminder_minutes?: number | null
+    level?: string | null
   }) => Promise<void>
   onCancelMatch: (reason: string) => Promise<void>
   onSaveCourtPlan: (data: MatchCourtPlanUpdateInput) => Promise<void>
@@ -86,6 +89,7 @@ export function MatchEditForm({
   startTime,
   durationMinutes,
   playerReminderMinutes,
+  level,
   courtPlanMode,
   courtNote,
   finalCourtLabel,
@@ -107,6 +111,7 @@ export function MatchEditForm({
   const [duration, setDuration] = useState(durationMinutes?.toString() ?? '')
   const [reminderMinutes, setReminderMinutes] = useState<number | null>(playerReminderMinutes ?? 1440)
   const [nextDoublesFormat, setNextDoublesFormat] = useState<MatchDoublesFormat>(doublesFormat ?? 'open')
+  const [nextLevel, setNextLevel] = useState(level ?? '')
   const [planMode, setPlanMode] = useState<MatchCourtPlanMode>(courtPlanMode)
   const [planNote, setPlanNote] = useState(courtNote ?? '')
   const [courtLabel, setCourtLabel] = useState(finalCourtLabel ?? '')
@@ -132,10 +137,11 @@ export function MatchEditForm({
     setDuration(durationMinutes?.toString() ?? '')
     setReminderMinutes(playerReminderMinutes ?? 1440)
     setNextDoublesFormat(doublesFormat ?? 'open')
+    setNextLevel(level ?? '')
     setPlanMode(courtPlanMode)
     setPlanNote(courtNote ?? '')
     setCourtLabel(finalCourtLabel ?? '')
-  }, [open, requiredCount, doublesFormat, matchDate, startTime, durationMinutes, playerReminderMinutes, courtPlanMode, courtNote, finalCourtLabel])
+  }, [open, requiredCount, doublesFormat, level, matchDate, startTime, durationMinutes, playerReminderMinutes, courtPlanMode, courtNote, finalCourtLabel])
 
   useEffect(() => {
     if (planMode !== 'secured') return
@@ -159,6 +165,7 @@ export function MatchEditForm({
   const nextDate = date || null
   const nextTime = time || null
   const nextDuration = duration ? parseInt(duration, 10) : null
+  const normalizedLevel = nextLevel.trim() || null
   const nextCourtNote = planMode === 'secured' ? null : (planNote.trim() || null)
   const normalizedCourtLabel = courtLabel.trim()
   const nextCourtLabel = planMode === 'secured' ? (normalizedCourtLabel || null) : null
@@ -178,6 +185,7 @@ export function MatchEditForm({
     || nextTime !== (startTime ?? null)
     || nextDuration !== (durationMinutes ?? null)
     || reminderMinutes !== (playerReminderMinutes ?? 1440)
+    || normalizedLevel !== (level ?? null)
 
   const scheduleChanged =
     nextDate !== (matchDate ?? null)
@@ -216,6 +224,7 @@ export function MatchEditForm({
             start_time: nextTime,
             duration_minutes: nextDuration,
             player_reminder_minutes: reminderMinutes,
+            level: normalizedLevel,
           })
         }
 
@@ -350,6 +359,24 @@ export function MatchEditForm({
               style={{ width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.85rem' }}
             >
               {(gameType === 'singles' ? SINGLES_FORMAT_OPTIONS : DOUBLES_FORMAT_OPTIONS).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '0.2rem' }}>
+              Level
+            </label>
+            <select
+              value={nextLevel}
+              onChange={(e) => setNextLevel(e.target.value)}
+              style={{ width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.85rem' }}
+            >
+              <option value="">No level</option>
+              {LEVEL_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
