@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { getPublicParticipantStatus } from '@/lib/public-participant-status'
-import type { Json } from '@/lib/types/database'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase/server'
+import type { Json, MatchDoublesFormat } from '@/lib/types/database'
+import { formatDoublesFormatLabel } from '@/lib/utils/match-roster'
 import { markStatusTokenOutAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -19,6 +21,12 @@ type SafeConfirmedPlayer = {
   display_name: string
   avatar_url: string | null
   is_self: boolean
+}
+
+type StatusMatchDisplayDetails = {
+  duration_minutes: number | null
+  doubles_format: MatchDoublesFormat | null
+  organizer_note: string | null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,6 +65,19 @@ function formatGameType(gameType: string | null | undefined, sportName: string |
   return /\bmatch\b/i.test(label) ? label : `${label} match`
 }
 
+function formatSpecificMatchType(
+  gameType: string | null | undefined,
+  sportName: string | null | undefined,
+  doublesFormat: MatchDoublesFormat | null | undefined,
+): string {
+  const formatLabel = formatDoublesFormatLabel(gameType, doublesFormat)
+  if (formatLabel) {
+    return /\bmatch\b/i.test(formatLabel) ? formatLabel : `${formatLabel} match`
+  }
+
+  return formatGameType(gameType, sportName)
+}
+
 function formatDate(value: string | null | undefined): string | null {
   if (!value) return null
   const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -84,18 +105,49 @@ function formatTime(value: string | null | undefined): string | null {
   }).format(date)
 }
 
-function formatFormedAt(value: string | null | undefined): string | null {
+function parseTimeParts(value: string | null | undefined): { hours: number; minutes: number } | null {
   if (!value) return null
+  const parts = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!parts) return null
 
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
+  return {
+    hours: Number(parts[1]),
+    minutes: Number(parts[2]),
+  }
+}
 
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
+function formatTimeRange(startTime: string | null | undefined, durationMinutes: number | null | undefined): string | null {
+  const startLabel = formatTime(startTime)
+  if (!startLabel) return null
+
+  const startParts = parseTimeParts(startTime)
+  if (!startParts || !durationMinutes || durationMinutes <= 0) {
+    return startLabel
+  }
+
+  const end = new Date(Date.UTC(2026, 0, 1, startParts.hours, startParts.minutes + durationMinutes))
+  const endLabel = new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
     minute: '2-digit',
-  }).format(date)
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(end)
+
+  return `${startLabel} - ${endLabel}`
+}
+
+function getVenueMapHref(venueName: string | null | undefined): string | null {
+  const venue = venueName?.trim()
+  if (!venue) return null
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue)}`
+}
+
+function getFirstName(value: string | null | undefined): string | null {
+  const name = value?.trim()
+  if (!name) return null
+
+  return name.split(/\s+/)[0] || null
 }
 
 function getInitials(displayName: string): string {
@@ -112,7 +164,7 @@ function getInitials(displayName: string): string {
 function getPageNotice(code: string | undefined): string | null {
   switch (code) {
     case 'request-sent':
-      return 'The host has your response.'
+      return null
     case 'accepted':
       return "You're in."
     case 'out':
@@ -183,17 +235,39 @@ function getParticipantStatusCopy(status: {
   if (status.participant_status === 'waiting_list') {
     return {
       label: 'Waiting list',
-      title: "You're waiting for a spot",
-      body: "The host has your response. We'll update you if a spot opens.",
+      title: 'Thanks \u2014 we have your response',
+      body: "We'll notify you if a spot opens.",
       tone: 'waiting',
     }
   }
 
   return {
     label: 'Waiting for host',
-    title: 'The host has your response',
-    body: "We'll update you when the host sets the Confirmed Lineup.",
+    title: 'Thanks \u2014 we have your response',
+    body: "We'll notify you when the host sets the confirmed lineup.",
     tone: 'waiting',
+  }
+}
+
+async function getStatusMatchDisplayDetails(matchId: string): Promise<StatusMatchDisplayDetails | null> {
+  try {
+    const supabase = createSupabaseServiceRoleClient()
+    const { data, error } = await supabase
+      .from('matches')
+      .select('duration_minutes, doubles_format, organizer_note')
+      .eq('id', matchId)
+      .maybeSingle()
+
+    if (error) throw error
+
+    return data as StatusMatchDisplayDetails | null
+  } catch (error) {
+    console.error('[public-status] match display details load failed', {
+      has_error: true,
+      match_id: matchId,
+      error_code: error && typeof error === 'object' && 'code' in error ? String(error.code) : 'unknown',
+    })
+    return null
   }
 }
 
@@ -236,14 +310,20 @@ export default async function PublicParticipantStatusPage({ params, searchParams
     )
   }
 
+  const matchDisplayDetails = await getStatusMatchDisplayDetails(status.match_id)
   const confirmedPlayers = parseConfirmedPlayers(status.confirmed_players)
   const participantCopy = getParticipantStatusCopy(status)
-  const matchType = formatGameType(status.game_type, status.sport_name)
+  const matchType = formatSpecificMatchType(status.game_type, status.sport_name, matchDisplayDetails?.doubles_format)
   const matchDate = formatDate(status.match_date)
-  const matchTime = formatTime(status.start_time)
-  const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' at ') || 'Time to be confirmed'
+  const matchTime = formatTimeRange(status.start_time, matchDisplayDetails?.duration_minutes)
+  const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' \u00b7 ') || 'Time to be confirmed'
   const venueName = status.venue_name ?? 'Venue to be confirmed'
-  const formedAt = formatFormedAt(status.formed_at)
+  const venueMapHref = getVenueMapHref(status.venue_name)
+  const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
+  const participantFirstName = getFirstName(status.participant_display_name)
+  const lineupHeading = status.is_formed ? 'Confirmed Lineup' : 'Confirmed So Far'
+  const statusPath = `/status/${encodeURIComponent(token)}`
+  const createAccountHref = `/login?mode=register&next=${encodeURIComponent(statusPath)}`
   const outAction = markStatusTokenOutAction.bind(null, token)
 
   return (
@@ -251,98 +331,77 @@ export default async function PublicParticipantStatusPage({ params, searchParams
       <style>{statusPageStyles}</style>
       <main className="status-shell">
         <div className="status-brand">
-          <BrandLogo variant="horizontal" />
-          <div>
-            <div className="status-brand-title">PlayerHoods</div>
-            <div className="status-brand-subtitle">Your private match status</div>
+          <BrandLogo variant="horizontal" imageClassName="status-brand-logo" />
+          <div className="status-brand-copy">
+            <div className="status-brand-subtitle">Private match status</div>
           </div>
         </div>
 
         <div className="status-layout">
-          <section className="status-card status-main-card">
-            <div className="status-topline">
-              <p className="status-kicker">Match status</p>
-              <span className={`status-pill status-pill-${participantCopy.tone}`}>
+          <div className="status-left-stack">
+            <section className="status-card status-main-card">
+              <p className="status-greeting">Hi {participantFirstName ?? 'there'},</p>
+
+              {pageError ? (
+                <div className="status-alert status-alert-error">
+                  {pageError}
+                </div>
+              ) : null}
+
+              {pageNotice ? (
+                <div className="status-alert status-alert-notice">
+                  {pageNotice}
+                </div>
+              ) : null}
+
+              <div className={`status-state status-state-${participantCopy.tone}`}>
                 {participantCopy.label}
-              </span>
-            </div>
+              </div>
 
-            {pageError ? (
-              <div className="status-alert status-alert-error">
-                {pageError}
-              </div>
-            ) : null}
+              <h1 className="status-title">{participantCopy.title}</h1>
+              <p className="status-subtext">{participantCopy.body}</p>
 
-            {pageNotice ? (
-              <div className="status-alert status-alert-notice">
-                {pageNotice}
-              </div>
-            ) : null}
+              {status.is_formed ? (
+                <p className="status-formed-inline">
+                  This match is already formed. Please keep this time reserved and allow enough time to arrive.
+                </p>
+              ) : null}
 
-            <h1 className="status-title">{participantCopy.title}</h1>
-            <p className="status-subtext">{participantCopy.body}</p>
+              <section className="status-summary" aria-label="Match details">
+                <h2>{matchType}</h2>
+                <p>{matchDateTime}</p>
+                <p className="status-venue-line">
+                  {venueMapHref ? (
+                    <>
+                      <a href={venueMapHref} target="_blank" rel="noreferrer" className="status-map-link">
+                        Map
+                      </a>
+                      <span aria-hidden="true">\u00b7</span>
+                    </>
+                  ) : null}
+                  <span>{venueName}</span>
+                </p>
+                <p>Host: {status.host_display_name}</p>
+                {hostNote ? (
+                  <p>
+                    <span className="status-summary-label-inline">Host note: </span>
+                    {hostNote}
+                  </p>
+                ) : null}
+              </section>
 
-            <section className="status-summary" aria-label="Match details">
-              <div>
-                <div className="status-summary-label">Game type</div>
-                <div className="status-summary-value">{matchType}</div>
-              </div>
-              <div>
-                <div className="status-summary-label">When</div>
-                <div className="status-summary-value">{matchDateTime}</div>
-              </div>
-              <div>
-                <div className="status-summary-label">Where</div>
-                <div className="status-summary-value">{venueName}</div>
-              </div>
-              <div>
-                <div className="status-summary-label">Host</div>
-                <div className="status-summary-value">{status.host_display_name}</div>
-              </div>
+              {status.player_visible_note ? (
+                <section className="status-host-note" aria-label="Host note">
+                  <div className="status-host-note-label">Status note</div>
+                  <p>{status.player_visible_note}</p>
+                </section>
+              ) : null}
             </section>
 
-            <section className={`status-formed-card${status.is_formed ? ' status-formed-card-ready' : ''}`}>
-              <div className="status-formed-marker" aria-hidden="true" />
-              <div>
-                <h2>{status.is_formed ? 'Game formed' : 'Match is forming'}</h2>
-                <p>
-                  {status.is_formed
-                    ? `The host formed this match${formedAt ? ` on ${formedAt}` : ''}.`
-                    : "The host is still setting the lineup. We'll update this page when the match is formed."}
-                </p>
-              </div>
-            </section>
-
-            {status.player_visible_note ? (
-              <section className="status-host-note" aria-label="Host note">
-                <div className="status-host-note-label">Host note</div>
-                <p>{status.player_visible_note}</p>
-              </section>
-            ) : null}
-
-            {status.can_out ? (
-              <section className="status-out-card">
-                <h2>Plans changed?</h2>
-                <p>
-                  Mark yourself out if you can't make it. This only updates your own match status.
-                </p>
-                <details className="status-out-confirm">
-                  <summary>I can't make it</summary>
-                  <form action={outAction}>
-                    <button type="submit" className="status-button status-button-danger">
-                      Confirm I can't make it
-                    </button>
-                  </form>
-                </details>
-              </section>
-            ) : null}
-          </section>
-
-          <aside className="status-side">
-            <section className="status-card status-lineup-card" aria-label="Confirmed Lineup">
+            <section className="status-card status-lineup-card" aria-label={lineupHeading}>
               <div className="status-lineup-header">
                 <div>
-                  <p className="status-kicker">Confirmed Lineup</p>
+                  <p className="status-kicker">{lineupHeading}</p>
                   <h2>{confirmedPlayers.length} player{confirmedPlayers.length === 1 ? '' : 's'}</h2>
                 </div>
               </div>
@@ -367,23 +426,86 @@ export default async function PublicParticipantStatusPage({ params, searchParams
                 </ul>
               ) : (
                 <p className="status-empty-lineup">
-                  The Confirmed Lineup has not been set yet.
+                  No players are confirmed yet.
                 </p>
               )}
+              <p className="status-lineup-note">Only confirmed players are shown.</p>
             </section>
 
-            <section className="status-card status-privacy-card">
-              <h2>Private status link</h2>
-              <p>
-                This page only shows your own status and a safe Confirmed Lineup.
-              </p>
-              <ul className="status-privacy-list">
-                <li>Your phone and email stay private on PlayerHoods.</li>
-                <li>PlayerHoods limits invitations to match-connected players.</li>
-                <li>Internal notes stay private.</li>
+            {status.can_out ? (
+              <section className="status-card status-out-card">
+                {status.is_formed ? (
+                  <>
+                    <h2>Can&apos;t make it?</h2>
+                    <p>
+                      If you can no longer make it, mark yourself out as soon as possible so the host can adjust the lineup.
+                    </p>
+                    <details className="status-out-confirm">
+                      <summary>Mark me as unable to play</summary>
+                      <div className="status-out-confirm-panel">
+                        <h3>Mark yourself as unable to play?</h3>
+                        <p>
+                          This match is already formed. Only continue if you can no longer make it.
+                        </p>
+                        <div className="status-out-confirm-actions">
+                          <Link href={`/status/${encodeURIComponent(token)}`} className="status-button status-button-muted">
+                            Keep my spot
+                          </Link>
+                          <form action={outAction}>
+                            <button type="submit" className="status-button status-button-outline">
+                              Mark me as unable to play
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    </details>
+                  </>
+                ) : (
+                  <>
+                    <h2>Need to change your response?</h2>
+                    <p>
+                      This only updates your own match status.
+                    </p>
+                    <details className="status-out-confirm">
+                      <summary>I can&apos;t make it</summary>
+                      <form action={outAction}>
+                        <button type="submit" className="status-button status-button-outline">
+                          Confirm I can&apos;t make it
+                        </button>
+                      </form>
+                    </details>
+                  </>
+                )}
+              </section>
+            ) : null}
+          </div>
+
+          <aside className="status-account-rail">
+            <section className="status-card status-account-card" aria-label="Create a free account">
+              <p className="status-kicker">New to PlayerHoods?</p>
+              <h2>Create a free account</h2>
+              <ul className="status-account-list">
+                <li><span aria-hidden="true">&#10003;</span> Join matches faster and host with less work</li>
+                <li><span aria-hidden="true">&#10003;</span> Track updates, change responses, and manage your match status in one place</li>
+                <li><span aria-hidden="true">&#10003;</span> Communicate more easily in match chat and group chat</li>
+                <li><span aria-hidden="true">&#10003;</span> Save trusted players to your Hood and stay connected through groups</li>
               </ul>
+              <div className="status-account-actions">
+                <Link href={createAccountHref} className="status-button status-button-primary">
+                  Create Free Account
+                </Link>
+              </div>
             </section>
           </aside>
+
+          <section className="status-card status-privacy-card">
+            <h2>Private status link</h2>
+            <p>
+              This page shows only your own status and confirmed players.
+            </p>
+            <p>Your phone, email, and internal notes stay private.</p>
+            <p>Invitations are limited to match-connected players.</p>
+          </section>
         </div>
       </main>
     </div>
@@ -395,7 +517,7 @@ const statusPageStyles = `
     min-height: 100vh;
     background: #edf5ff;
     color: #06183d;
-    padding: 28px 18px 48px;
+    padding: 22px 16px 40px;
   }
 
   .status-shell {
@@ -410,12 +532,22 @@ const statusPageStyles = `
   .status-brand {
     align-items: center;
     display: flex;
-    gap: 14px;
-    margin-bottom: 22px;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .status-brand-logo {
+    height: 34px !important;
+    width: 154px !important;
+  }
+
+  .status-brand-copy {
+    border-left: 1px solid #cfdced;
+    padding-left: 10px;
   }
 
   .status-brand-title {
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 850;
     line-height: 1.1;
   }
@@ -429,32 +561,40 @@ const statusPageStyles = `
   .status-layout {
     align-items: start;
     display: grid;
-    gap: 18px;
-    grid-template-columns: minmax(0, 1fr) 330px;
+    gap: 14px;
+    grid-template-columns: 1fr;
   }
 
   .status-card {
     background: rgba(255, 255, 255, 0.96);
     border: 1px solid #d5e2f2;
-    border-radius: 24px;
-    box-shadow: 0 18px 44px rgba(17, 42, 84, 0.08);
+    border-radius: 20px;
+    box-shadow: 0 14px 30px rgba(17, 42, 84, 0.07);
   }
 
   .status-main-card {
-    padding: 28px;
+    padding: 24px;
   }
 
-  .status-side {
+  .status-left-stack,
+  .status-account-rail {
     display: grid;
     gap: 14px;
   }
 
-  .status-topline,
   .status-lineup-header {
     align-items: center;
     display: flex;
     gap: 12px;
     justify-content: space-between;
+  }
+
+  .status-greeting {
+    color: #16335f;
+    font-size: 1.05rem;
+    font-weight: 780;
+    line-height: 1.35;
+    margin: 0 0 16px;
   }
 
   .status-kicker {
@@ -466,46 +606,55 @@ const statusPageStyles = `
     text-transform: uppercase;
   }
 
-  .status-pill {
-    align-items: center;
+  .status-state {
     border-radius: 999px;
     display: inline-flex;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     font-weight: 900;
+    line-height: 1;
+    margin-top: 2px;
     min-height: 30px;
     padding: 0 12px;
-    white-space: nowrap;
+    align-items: center;
   }
 
-  .status-pill-confirmed {
+  .status-state-confirmed {
     background: #e8f9d7;
     color: #225400;
   }
 
-  .status-pill-waiting {
+  .status-state-waiting {
     background: #fff7d6;
     color: #6a4b00;
   }
 
-  .status-pill-stopped {
+  .status-state-stopped {
     background: #fee2e2;
     color: #991b1b;
   }
 
   .status-title {
-    font-size: clamp(2rem, 4vw, 3.1rem);
+    font-size: clamp(1.75rem, 3vw, 2.35rem);
     letter-spacing: 0;
-    line-height: 1.06;
-    margin: 18px 0 0;
+    line-height: 1.1;
+    margin: 16px 0 0;
   }
 
   .status-subtext {
     color: #405474;
     font-size: 1rem;
     font-weight: 650;
-    line-height: 1.55;
-    margin: 14px 0 0;
+    line-height: 1.5;
+    margin: 8px 0 0;
     max-width: 620px;
+  }
+
+  .status-formed-inline {
+    color: #526784;
+    font-size: 0.92rem;
+    font-weight: 720;
+    line-height: 1.45;
+    margin: 8px 0 0;
   }
 
   .status-alert {
@@ -531,67 +680,61 @@ const statusPageStyles = `
 
   .status-summary {
     display: grid;
-    gap: 12px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin: 24px 0;
-    padding: 18px;
-    border: 1px solid #d9e6f4;
-    border-radius: 18px;
-    background: #f8fbff;
+    gap: 3px;
+    margin: 20px 0 0;
   }
 
-  .status-summary-label {
-    color: #7c8eaa;
-    font-size: 0.72rem;
+  .status-summary h2 {
+    color: #06183d;
+    font-size: 1.06rem;
     font-weight: 900;
-    letter-spacing: 0.12em;
-    margin-bottom: 5px;
-    text-transform: uppercase;
+    line-height: 1.35;
+    margin: 0 0 2px;
   }
 
-  .status-summary-value {
-    color: #0b1f4d;
+  .status-summary p {
+    color: #405474;
     font-size: 0.96rem;
-    font-weight: 850;
+    font-weight: 720;
     line-height: 1.35;
+    margin: 0;
     overflow-wrap: anywhere;
   }
 
-  .status-formed-card,
+  .status-summary-label-inline {
+    color: #16335f;
+    font-weight: 900;
+  }
+
+  .status-venue-line {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .status-map-link {
+    color: #1f5fe8;
+    font-weight: 900;
+    text-decoration: none;
+  }
+
+  .status-map-link:hover {
+    text-decoration: underline;
+  }
+
   .status-host-note,
   .status-out-card {
     border: 1px solid #d9e6f4;
-    border-radius: 18px;
+    border-radius: 16px;
     margin-top: 14px;
     padding: 16px;
   }
 
-  .status-formed-card {
-    align-items: start;
-    background: #f8fbff;
-    display: flex;
-    gap: 12px;
+  .status-out-card {
+    margin-top: 0;
   }
 
-  .status-formed-card-ready {
-    background: #f3ffe9;
-    border-color: #c7eb9d;
-  }
-
-  .status-formed-marker {
-    background: #7c8eaa;
-    border-radius: 999px;
-    flex: 0 0 auto;
-    height: 12px;
-    margin-top: 6px;
-    width: 12px;
-  }
-
-  .status-formed-card-ready .status-formed-marker {
-    background: #67a400;
-  }
-
-  .status-formed-card h2,
   .status-host-note-label,
   .status-out-card h2,
   .status-lineup-card h2,
@@ -602,11 +745,11 @@ const statusPageStyles = `
     margin: 0;
   }
 
-  .status-formed-card p,
   .status-host-note p,
   .status-out-card p,
   .status-privacy-card p,
-  .status-empty-lineup {
+  .status-empty-lineup,
+  .status-lineup-note {
     color: #526784;
     font-size: 0.92rem;
     font-weight: 680;
@@ -621,10 +764,6 @@ const statusPageStyles = `
 
   .status-host-note-label {
     font-size: 0.9rem;
-  }
-
-  .status-out-card {
-    background: #fff;
   }
 
   .status-out-confirm {
@@ -643,10 +782,41 @@ const statusPageStyles = `
     font-weight: 900;
     min-height: 42px;
     padding: 0 14px;
+    box-sizing: border-box;
   }
 
-  .status-out-confirm form {
+  .status-out-confirm > form {
     margin-top: 10px;
+  }
+
+  .status-out-confirm-panel {
+    background: #f8fbff;
+    border: 1px solid #d9e6f4;
+    border-radius: 16px;
+    margin-top: 12px;
+    padding: 14px;
+  }
+
+  .status-out-confirm-panel h3 {
+    color: #06183d;
+    font-size: 1rem;
+    font-weight: 900;
+    margin: 0;
+  }
+
+  .status-out-confirm-panel p {
+    margin-top: 6px;
+  }
+
+  .status-out-confirm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .status-out-confirm-actions form {
+    margin: 0;
   }
 
   .status-actions {
@@ -668,6 +838,7 @@ const statusPageStyles = `
     min-height: 44px;
     padding: 0 18px;
     text-decoration: none;
+    box-sizing: border-box;
   }
 
   .status-button-secondary {
@@ -675,33 +846,89 @@ const statusPageStyles = `
     color: #fff;
   }
 
-  .status-button-danger {
-    background: #b42318;
+  .status-button-primary {
+    background: #1f5fe8;
     color: #fff;
+    box-shadow: 0 12px 22px rgba(31, 95, 232, 0.18);
+  }
+
+  .status-button-outline {
+    background: #fff;
+    border: 1px solid #d4dfed;
+    color: #16335f;
+  }
+
+  .status-button-muted {
+    background: #eef4fb;
+    color: #405474;
   }
 
   .status-lineup-card,
+  .status-account-card,
+  .status-out-card,
   .status-privacy-card {
-    padding: 20px;
+    padding: 18px;
+  }
+
+  .status-account-card h2 {
+    color: #06183d;
+    font-size: 1.1rem;
+    font-weight: 900;
+    margin: 8px 0 0;
+  }
+
+  .status-account-list {
+    color: #16335f;
+    display: grid;
+    font-size: 0.86rem;
+    font-weight: 720;
+    gap: 7px;
+    line-height: 1.35;
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+  }
+
+  .status-account-list li {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: 14px minmax(0, 1fr);
+  }
+
+  .status-account-list span {
+    color: #16335f;
+    font-weight: 900;
+  }
+
+  .status-account-actions {
+    display: grid;
+    gap: 10px;
+    justify-items: start;
+    margin-top: 14px;
   }
 
   .status-player-list {
     display: grid;
     gap: 10px;
     list-style: none;
-    margin: 18px 0 0;
+    margin: 16px 0 0;
     padding: 0;
   }
 
-  .status-privacy-list {
-    color: #526784;
-    display: grid;
-    font-size: 0.88rem;
-    font-weight: 680;
-    gap: 7px;
-    line-height: 1.45;
-    margin: 12px 0 0;
-    padding-left: 18px;
+  .status-lineup-note {
+    margin-top: 14px;
+  }
+
+  .status-privacy-card {
+    box-shadow: none;
+  }
+
+  .status-privacy-card h2 {
+    font-size: 0.98rem;
+  }
+
+  .status-privacy-card p + p {
+    margin-top: 4px;
   }
 
   .status-player-row {
@@ -756,12 +983,12 @@ const statusPageStyles = `
 
   @media (max-width: 820px) {
     .status-page {
-      padding: 20px 12px 34px;
+      padding: 16px 12px 32px;
     }
 
     .status-brand {
-      justify-content: center;
-      text-align: center;
+      justify-content: flex-start;
+      text-align: left;
     }
 
     .status-layout {
@@ -769,30 +996,39 @@ const statusPageStyles = `
     }
 
     .status-card {
-      border-radius: 22px;
+      border-radius: 20px;
     }
 
     .status-main-card {
-      padding: 22px;
-    }
-
-    .status-topline {
-      align-items: flex-start;
-      flex-direction: column;
+      padding: 20px;
     }
 
     .status-title {
-      font-size: 2rem;
+      font-size: 1.75rem;
       line-height: 1.12;
     }
 
-    .status-summary {
-      grid-template-columns: 1fr;
-    }
-
     .status-out-confirm summary,
+    .status-out-confirm-actions,
+    .status-out-confirm-actions form,
     .status-button {
       width: 100%;
+    }
+  }
+
+  @media (min-width: 900px) {
+    .status-layout {
+      grid-template-columns: minmax(0, 1fr) 320px;
+    }
+
+    .status-left-stack,
+    .status-privacy-card {
+      grid-column: 1;
+    }
+
+    .status-account-rail {
+      grid-column: 2;
+      grid-row: 1;
     }
   }
 `
