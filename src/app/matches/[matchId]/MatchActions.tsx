@@ -119,6 +119,11 @@ export function MatchActions({
   const isPending = mp?.status === 'pending'
   const isWaitingList = mp?.status === 'waiting_list'
   const isConfirmedDerived = mp?.status === 'confirmed'
+  const isActiveConfirmedWithoutReconfirm = Boolean(
+    isConfirmedDerived &&
+    !mp?.removed_at &&
+    !needsReconfirm,
+  )
   const hasGroupInvite = myGroupInvites.length > 0
   const invitedGroupNames = myGroupInvites.map((invite) => invite.group_name)
   const primaryButtonStyle = {
@@ -528,6 +533,10 @@ export function MatchActions({
         )}
       </div>
     )
+  }
+
+  if (isActiveConfirmedWithoutReconfirm) {
+    return null
   }
 
   if (isConfirmedDerived) {
