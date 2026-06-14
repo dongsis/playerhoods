@@ -8,6 +8,7 @@ import { ParticipantQuickPreviewTrigger } from '@/app/components/ParticipantQuic
 import { ContactPlayerMark } from '@/app/components/ContactPlayerMark'
 import { SportSectionIcon } from '@/app/components/SportBallIcon'
 import { AddPlayersMethodPanel } from '@/app/matches/AddPlayersMethodPanel'
+import { AddPlayersPickerPanel, type AddPlayersCandidate } from '@/app/matches/AddPlayersPickerPanel'
 import { ContactScreenshotImportSection } from '@/app/dashboard/ContactScreenshotImportSection'
 import { processDeliveriesAction } from '@/app/matches/[matchId]/process-deliveries-action'
 import { createRecurringMatchSeriesAction } from '@/app/matches/recurring-actions'
@@ -257,25 +258,6 @@ function ContactAddIcon({ kind }: { kind: 'card' | 'invite' | 'reply' | 'bell' |
   )
 }
 
-function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
-  return (
-    <div className="w-full rounded-xl border border-dashed border-[#7FB2FF] bg-[#F8FBFF] px-4 py-3">
-      <div className="flex flex-col items-start gap-2">
-        <h4 className="text-title-main text-[#0B1F44]">Need someone not listed?</h4>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="text-body-main inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
-        >
-          <span className="text-lg leading-none">+</span>
-          Save contact player
-        </button>
-      </div>
-    </div>
-  )
-}
-
-
 const DOUBLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open doubles' },
   { value: 'mens_doubles', label: "Men's doubles" },
@@ -287,6 +269,10 @@ const SINGLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open singles' },
   { value: 'mens_doubles', label: "Men's singles" },
   { value: 'womens_doubles', label: "Women's singles" },
+]
+
+const CREATE_MATCH_INVITE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
 ]
 
 type ReviewInviteItem = {
@@ -1228,9 +1214,9 @@ export function CreateMatchInline({
     return baseCandidates
   }, [availableInviteOptions, scopeUserIds])
 
-  const filteredInviteGroups = useMemo(() => {
-    return groups.filter((group) => !scopeGroupIds.includes(group.id) && !invitedGroupIds.includes(group.id))
-  }, [groups, invitedGroupIds, scopeGroupIds])
+  const inviteGroupOptions = useMemo(() => {
+    return groups.filter((group) => !scopeGroupIds.includes(group.id))
+  }, [groups, scopeGroupIds])
 
   const visibleInviteCandidates = useMemo(
     () => filteredInviteOptions.slice(0, 8),
@@ -2321,7 +2307,7 @@ export function CreateMatchInline({
     }
   }
 
-  const toggleDirectInviteCandidate = (candidate: InviteCandidate) => {
+  const toggleDirectInviteCandidate = useCallback((candidate: InviteCandidate) => {
     if (candidate.kind === 'contact' && candidate.hasReachableChannel === false) return
 
     setSelectedDirectInviteKeys((prev) => {
@@ -2330,6 +2316,193 @@ export function CreateMatchInline({
       else next.add(candidate.key)
       return next
     })
+  }, [])
+
+  const createInvitePickerCandidates = useMemo<AddPlayersCandidate[]>(() => {
+    const playerCandidates = filteredInviteOptions.map((candidate) => {
+      const isSelected = selectedDirectInviteKeys.has(candidate.key)
+      const isContact = candidate.kind === 'contact'
+      const contactUnavailable = isContact && candidate.hasReachableChannel === false
+      const contactStatusLabel = contactUnavailable
+        ? candidate.emailOptedOut || candidate.smsOptedOut
+          ? 'Unsubscribed'
+          : 'No email or phone'
+        : null
+      const availabilityLabel = isContact ? null : getAvailabilityStatusLabel(candidate.availabilityStatus)
+      const availabilityWarning = isContact ? null : getAvailabilityWarning(candidate)
+      const sourceLabel = candidate.sourceLabels.join(', ')
+
+      return {
+        key: candidate.key,
+        name: candidate.name,
+        kind: isContact ? 'contact' as const : 'person' as const,
+        filterTags: ['all', candidate.source, isContact ? 'contacts' : 'saved'],
+        selected: isSelected,
+        disabled: contactUnavailable,
+        title: contactStatusLabel
+          ? `${candidate.name}: ${contactStatusLabel}`
+          : availabilityWarning
+            ? `${candidate.name}: ${sourceLabel}. ${availabilityWarning.label}. ${availabilityWarning.message}`
+            : `${candidate.name}: ${sourceLabel}`,
+        searchText: `${candidate.name} ${sourceLabel}`,
+        leadingNode: isContact ? null : (
+          <span
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${getAvailabilityDotClass(candidate.availabilityStatus)}`}
+            aria-label={availabilityLabel ?? 'Available'}
+            title={availabilityLabel ?? 'Available'}
+          />
+        ),
+        labelNode: (
+          <ParticipantQuickPreviewTrigger
+            target={{
+              userId: candidate.userId ?? null,
+              guestId: candidate.guestId ?? null,
+              displayName: candidate.name,
+              gender: candidate.gender,
+            }}
+          >
+            <span className="truncate">{candidate.name}</span>
+          </ParticipantQuickPreviewTrigger>
+        ),
+        supportingNode: sourceLabel,
+        trailingNode: contactStatusLabel ? (
+          <span className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+            {contactStatusLabel}
+          </span>
+        ) : null,
+        previewTitle: candidate.name,
+        previewSubtitle: isContact ? 'Contact player' : sourceLabel,
+        previewDetails: availabilityWarning ? (
+          <div className="space-y-1">
+            <p className="m-0 font-bold">{availabilityWarning.label}</p>
+            <p className="m-0">{availabilityWarning.message}</p>
+          </div>
+        ) : (
+          <p className="m-0">{sourceLabel || (isContact ? 'Contact player' : 'Saved player')}</p>
+        ),
+        payload: candidate,
+      }
+    })
+
+    const groupCandidates = inviteGroupOptions.map((group) => {
+      const isSelected = invitedGroupIds.includes(group.id)
+      const memberPreview = groupMembersById[group.id]
+      const memberNames = memberPreview?.members.map((member) => member.name) ?? []
+
+      return {
+        key: `group:${group.id}`,
+        name: group.name,
+        kind: 'group' as const,
+        filterTags: ['all', 'groups'],
+        selected: isSelected,
+        title: `${group.name}: Shared group`,
+        searchText: `${group.name} ${memberNames.join(' ')}`,
+        leadingNode: (
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500">
+            <ContactAddIcon kind="people" />
+          </span>
+        ),
+        labelNode: <span>{group.name}</span>,
+        previewTitle: group.name,
+        previewSubtitle: `Shared group${memberPreview ? ` · ${memberPreview.count} player${memberPreview.count === 1 ? '' : 's'}` : ''}`,
+        previewDetails: (
+          <div className="space-y-2">
+            <p className="m-0 font-semibold">Shared group</p>
+            {memberPreview ? (
+              <div>
+                <p className="m-0 font-bold">{memberPreview.count} player{memberPreview.count === 1 ? '' : 's'}</p>
+                <div className="mt-2 max-h-40 overflow-y-auto pr-1">
+                  {(memberNames.length > 0 ? memberNames : ['No active members yet.']).map((name) => (
+                    <p key={name} className="m-0 py-0.5">
+                      {name}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="m-0">Member list not loaded yet.</p>
+            )}
+          </div>
+        ),
+        payload: group,
+      }
+    })
+
+    return [...playerCandidates, ...groupCandidates]
+  }, [filteredInviteOptions, groupMembersById, invitedGroupIds, inviteGroupOptions, selectedDirectInviteKeys])
+
+  const createInviteSummarySlot = useMemo(() => {
+    const selectedItems = [
+      ...selectedInvitePlayers.map((candidate) => ({
+        key: candidate.key,
+        label: candidate.name,
+        meta: candidate.kind === 'contact' ? 'Contact' : candidate.sourceLabels.join(', '),
+        onRemove: () => toggleDirectInviteCandidate(candidate),
+      })),
+      ...selectedInvitedGroups.map((group) => ({
+        key: `group:${group.id}`,
+        label: group.name,
+        meta: 'Shared group',
+        onRemove: () =>
+          setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
+      })),
+    ]
+
+    if (selectedItems.length === 0) {
+      return (
+        <p className="text-body-sub m-0 font-semibold text-[#94A3B8]">
+          No people or groups selected yet.
+        </p>
+      )
+    }
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        {selectedItems.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={item.onRemove}
+            className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-3 py-1.5 text-body-sub font-bold text-[#334155] transition hover:border-[#0d6efd]/35 hover:bg-[#eff6ff] hover:text-[#0d6efd]"
+            title={`Remove ${item.label}`}
+          >
+            <span className="truncate">{item.label}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.08em] text-[#94A3B8]">{item.meta}</span>
+            <span aria-hidden="true">x</span>
+          </button>
+        ))}
+      </div>
+    )
+  }, [selectedInvitePlayers, selectedInvitedGroups, toggleDirectInviteCandidate])
+
+  const createInviteAddContactSlot = (
+    <button
+      type="button"
+      onClick={() => {
+        setError(null)
+        setContactAddPanelOpen(true)
+      }}
+      className="text-body-main inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
+    >
+      <span className="text-lg leading-none">+</span>
+      Save contact player
+    </button>
+  )
+
+  const handleCreateInvitePickerToggle = (candidate: AddPlayersCandidate) => {
+    if (candidate.kind === 'group') {
+      const group = candidate.payload as Group | undefined
+      if (!group?.id) return
+      setInvitedGroupIds((prev) =>
+        prev.includes(group.id)
+          ? prev.filter((id) => id !== group.id)
+          : [...prev, group.id],
+      )
+      return
+    }
+
+    const inviteCandidate = candidate.payload as InviteCandidate | undefined
+    if (inviteCandidate) toggleDirectInviteCandidate(inviteCandidate)
   }
 
   const renderInviteCandidateButton = (candidate: InviteCandidate, compact = false) => {
@@ -3321,32 +3494,28 @@ export function CreateMatchInline({
           linkDescription="Create the match first, then copy the invite link."
           savedPlayersExpanded={selectionMode === 'invite'}
           savedPlayersPanel={(
-            <div className="space-y-3 pt-3">
-              <div className="flex flex-wrap gap-2">
-                {filteredInviteOptions.map((candidate) => renderInviteCandidateButton(candidate))}
-                {filteredInviteGroups.map((group) =>
-                  renderGroupSelector(
-                    group,
-                    invitedGroupIds.includes(group.id),
-                    () =>
-                      setInvitedGroupIds((prev) =>
-                        prev.includes(group.id)
-                          ? prev.filter((id) => id !== group.id)
-                          : [...prev, group.id],
-                      ),
-                    'indigo',
-                  ),
-                )}
-              </div>
-
-              {hasSavedOrContactInvitePlayers && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 ? (
-                <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-5 text-center font-semibold text-[#94A3B8]">
-                  Everyone available here is already selected.
-                </div>
-              ) : null}
+            <div className="pt-3">
+              <AddPlayersPickerPanel
+                mode="invite"
+                onModeChange={() => undefined}
+                searchValue=""
+                onSearchChange={() => undefined}
+                filterValue="all"
+                onFilterChange={() => undefined}
+                filterOptions={CREATE_MATCH_INVITE_FILTER_OPTIONS}
+                candidates={createInvitePickerCandidates}
+                onToggleCandidate={handleCreateInvitePickerToggle}
+                availableModes={['invite']}
+                compactPreviewRows
+                hideSearchRow
+                inviteSummary={createInviteSummarySlot}
+                addContactSlot={createInviteAddContactSlot}
+                inviteEmptyLabel="No saved players, contacts, or groups yet."
+                searchPlaceholder="Search saved players..."
+              />
 
               {selectedInviteWarnings.length > 0 ? (
-                <div className="space-y-2 rounded-xl border border-amber-100 bg-white px-3 py-3">
+                <div className="mt-3 space-y-2 rounded-xl border border-amber-100 bg-white px-3 py-3">
                   <div className="flex items-center gap-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                     <span className="text-label">Availability heads-up</span>
@@ -3373,13 +3542,6 @@ export function CreateMatchInline({
                   </div>
                 </div>
               ) : null}
-
-              <NeedMorePlayersPrompt
-                onAdd={() => {
-                  setError(null)
-                  setContactAddPanelOpen(true)
-                }}
-              />
             </div>
           )}
           onToggleSavedPlayers={() => setSelectionMode(selectionMode === 'invite' ? null : 'invite')}
