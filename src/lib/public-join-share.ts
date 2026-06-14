@@ -1,5 +1,4 @@
 import type { MatchDoublesFormat } from '@/lib/types/database'
-import { formatDoublesFormatLabel } from '@/lib/utils/match-roster'
 
 type PublicJoinShareTextInput = {
   url: string
@@ -36,9 +35,9 @@ function formatShareMatchKind(sportName: string | null | undefined, gameType: st
 }
 
 function formatShareMatchType(input: PublicJoinShareTextInput): string {
-  const formatLabel = formatDoublesFormatLabel(input.gameType, input.doublesFormat)
-  if (formatLabel) {
-    return /\bmatch\b/i.test(formatLabel) ? formatLabel : `${formatLabel} match`
+  if (input.doublesFormat === 'open') {
+    const isSingles = (input.gameType ?? '').toLowerCase() === 'singles'
+    return isSingles ? 'Open singles match' : 'Open doubles match'
   }
 
   const label = (input.gameType || input.sportName || '').replace(/_/g, ' ').trim()

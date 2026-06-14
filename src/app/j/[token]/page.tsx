@@ -3,7 +3,6 @@ import Link from 'next/link'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { createSupabasePublicServerClient, createSupabaseServiceRoleClient } from '@/lib/supabase/server'
 import type { MatchDoublesFormat } from '@/lib/types/database'
-import { formatDoublesFormatLabel } from '@/lib/utils/match-roster'
 import { declinePublicJoinSmsSpotAction, requestPublicJoinSmsSpotAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -83,9 +82,9 @@ function formatSpecificMatchType(
   sportName: string | null | undefined,
   doublesFormat: MatchDoublesFormat | null | undefined,
 ): string {
-  const formatLabel = formatDoublesFormatLabel(gameType, doublesFormat)
-  if (formatLabel) {
-    return /\bmatch\b/i.test(formatLabel) ? formatLabel : `${formatLabel} match`
+  if (doublesFormat === 'open') {
+    const isSingles = (gameType ?? '').toLowerCase() === 'singles'
+    return isSingles ? 'Open singles match' : 'Open doubles match'
   }
 
   return formatGameType(gameType, sportName)
@@ -264,18 +263,18 @@ export default async function PublicJoinSmsPage({ params, searchParams }: Props)
   const title = linkUnavailable
     ? 'This link is no longer available'
     : requestSent
-    ? 'The host has your response'
+    ? 'Thanks — we have your response'
     : declined
-      ? 'No problem'
+      ? "Thanks — we've updated your response"
       : expired
         ? 'This text link expired'
         : 'Want to play?'
   const subtext = linkUnavailable
     ? 'This match text link may have expired or already been used. Open the match link again if you still want to play.'
     : requestSent
-    ? "We'll text you if there's a spot for you."
+    ? "We'll notify you when the host sets the confirmed lineup."
     : declined
-      ? "We won't let the host know you're interested for this one."
+      ? "The host will see that you can't make this one."
       : expired
         ? 'Use the public join link to text yourself the match again.'
         : 'Tap a response below to let the host know.'

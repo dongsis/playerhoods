@@ -3,7 +3,6 @@ import { BrandLogo } from '@/app/components/BrandLogo'
 import { getPublicParticipantStatus } from '@/lib/public-participant-status'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server'
 import type { Json, MatchDoublesFormat } from '@/lib/types/database'
-import { formatDoublesFormatLabel } from '@/lib/utils/match-roster'
 import { markStatusTokenOutAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -71,9 +70,9 @@ function formatSpecificMatchType(
   sportName: string | null | undefined,
   doublesFormat: MatchDoublesFormat | null | undefined,
 ): string {
-  const formatLabel = formatDoublesFormatLabel(gameType, doublesFormat)
-  if (formatLabel) {
-    return /\bmatch\b/i.test(formatLabel) ? formatLabel : `${formatLabel} match`
+  if (doublesFormat === 'open') {
+    const isSingles = (gameType ?? '').toLowerCase() === 'singles'
+    return isSingles ? 'Open singles match' : 'Open doubles match'
   }
 
   return formatGameType(gameType, sportName)
@@ -369,7 +368,7 @@ export default async function PublicParticipantStatusPage({ params, searchParams
                 </p>
               ) : null}
 
-              <section className="status-summary" aria-label="Match details">
+              <section className="status-summary" aria-label="Match summary">
                 <h2>{matchType}</h2>
                 {matchLevel ? (
                   <p>

@@ -2,8 +2,14 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
-import { createSupabasePublicServerClient, createSupabaseServerClient, getUser } from '@/lib/supabase/server'
+import {
+  createSupabasePublicServerClient,
+  createSupabaseServerClient,
+  createSupabaseServiceRoleClient,
+  getUser,
+} from '@/lib/supabase/server'
 import { getAbsoluteUrl } from '@/lib/site-url'
+import type { MatchDoublesFormat } from '@/lib/types/database'
 import { requestRegisteredPublicMatchSpotAction, startPublicMatchSignupAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -33,6 +39,13 @@ type PublicSignupContext = {
 type PublicSignupContextResult = {
   context: PublicSignupContext | null
   error: boolean
+}
+
+type PublicSignupMatchDisplayDetails = {
+  duration_minutes: number | null
+  doubles_format: MatchDoublesFormat | null
+  organizer_note: string | null
+  level: string | null
 }
 
 type RegisteredParticipantState = {
@@ -67,11 +80,6 @@ type PublicJoinStatus = {
   variant: 'success' | 'warning' | 'error' | 'neutral'
 }
 
-type MatchDetailStatus = {
-  label: string
-  variant: PublicJoinStatus['variant']
-}
-
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
@@ -83,6 +91,19 @@ function formatGameType(value: string | null | undefined): string {
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase())
   return /\bmatch\b/i.test(label) ? label : `${label} match`
+}
+
+function formatPublicMatchType(
+  gameType: string | null | undefined,
+  sportName: string | null | undefined,
+  doublesFormat: MatchDoublesFormat | null | undefined,
+): string {
+  if (doublesFormat === 'open') {
+    const isSingles = (gameType ?? '').toLowerCase() === 'singles'
+    return isSingles ? 'Open singles match' : 'Open doubles match'
+  }
+
+  return formatGameType(gameType ?? sportName)
 }
 
 function formatDate(value: string | null | undefined): string | null {
@@ -110,6 +131,51 @@ function formatTime(value: string | null | undefined): string | null {
   }).format(date)
 }
 
+function parseTimeParts(value: string | null | undefined): { hours: number; minutes: number } | null {
+  if (!value) return null
+  const parts = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!parts) return null
+
+  return {
+    hours: Number(parts[1]),
+    minutes: Number(parts[2]),
+  }
+}
+
+function formatTimeRange(startTime: string | null | undefined, durationMinutes: number | null | undefined): string | null {
+  const startLabel = formatTime(startTime)
+  if (!startLabel) return null
+
+  const startParts = parseTimeParts(startTime)
+  if (!startParts || !durationMinutes || durationMinutes <= 0) {
+    return startLabel
+  }
+
+  const end = new Date(Date.UTC(2026, 0, 1, startParts.hours, startParts.minutes + durationMinutes))
+  const endLabel = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(end)
+
+  return `${startLabel} – ${endLabel}`
+}
+
+function getVenueMapHref(venueName: string | null | undefined): string | null {
+  const venue = venueName?.trim()
+  if (!venue) return null
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue)}`
+}
+
+function getFirstName(value: string | null | undefined): string | null {
+  const name = value?.trim()
+  if (!name) return null
+
+  return name.split(/\s+/)[0] || null
+}
+
 async function getPublicSignupContextResult(token: string): Promise<PublicSignupContextResult> {
   const publicSupabase = createSupabasePublicServerClient()
   const { data, error } = await publicSupabase.rpc('rpc_public_match_signup_context', {
@@ -119,6 +185,28 @@ async function getPublicSignupContextResult(token: string): Promise<PublicSignup
   return {
     context: ((data ?? []) as PublicSignupContext[])[0] ?? null,
     error: Boolean(error),
+  }
+}
+
+async function getPublicSignupMatchDisplayDetails(matchId: string): Promise<PublicSignupMatchDisplayDetails | null> {
+  try {
+    const supabase = createSupabaseServiceRoleClient()
+    const { data, error } = await supabase
+      .from('matches')
+      .select('duration_minutes, doubles_format, organizer_note, level')
+      .eq('id', matchId)
+      .maybeSingle()
+
+    if (error) throw error
+
+    return data as PublicSignupMatchDisplayDetails | null
+  } catch (error) {
+    console.error('[public-signup] match display details load failed', {
+      has_error: true,
+      match_id: matchId,
+      error_code: error && typeof error === 'object' && 'code' in error ? String(error.code) : 'unknown',
+    })
+    return null
   }
 }
 
@@ -133,7 +221,7 @@ function getPublicJoinMetadataCopy(context: PublicSignupContext) {
   const description = [
     matchLabel,
     matchDateTime ? `on ${matchDateTime}` : null,
-    "View match details and let the host know if you're interested.",
+    "View the match invitation and let the host know if you're interested.",
   ].filter(Boolean).join(' ')
 
   return { title, description }
@@ -146,7 +234,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!isUuid(token)) {
     return {
       title: 'Join a match | PlayerHoods',
-      description: "View match details and let the host know if you're interested.",
+      description: "View the match invitation and let the host know if you're interested.",
       robots: {
         index: false,
         follow: false,
@@ -156,7 +244,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const { context } = await getPublicSignupContextResult(token)
   const fallbackTitle = 'Join a match | PlayerHoods'
-  const fallbackDescription = "View match details and let the host know if you're interested."
+  const fallbackDescription = "View the match invitation and let the host know if you're interested."
   const { title, description } = context
     ? getPublicJoinMetadataCopy(context)
     : { title: fallbackTitle, description: fallbackDescription }
@@ -216,10 +304,10 @@ function getRegisteredRequestState(
 
   if (participant || requestSentNotice) {
     return {
-      title: 'The host has your response',
-      subtext: "You're marked interested for this match.",
-      note: "We'll let you know if there's a spot for you.",
-      message: "You're marked interested. The host is checking availability.",
+      title: 'Thanks — we have your response',
+      subtext: "We'll notify you when the host sets the confirmed lineup.",
+      note: null,
+      message: "You're marked interested. We'll notify you when the host sets the confirmed lineup.",
       statusLabel: 'Host is checking availability',
       variant: 'success',
     }
@@ -313,8 +401,8 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
   if (notice === 'already-submitted' || notice === 'request-sent') {
     return {
-      title: 'The host has your response',
-      subtext: "You're marked interested for this match.",
+      title: 'Thanks — we have your response',
+      subtext: "We'll notify you when the host sets the confirmed lineup.",
       badge: 'Host is checking availability',
       variant: 'success',
     }
@@ -340,8 +428,8 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
   if (intent === 'review-changes') {
     return {
-      title: 'Review match details',
-      subtext: "Check the latest safe match details below before deciding whether to let the host know you're interested.",
+      title: 'Review match invitation',
+      subtext: "Check the latest safe match summary below before deciding whether to let the host know you're interested.",
       badge: 'Review details',
       variant: 'neutral',
     }
@@ -349,77 +437,8 @@ function getGuestStatus(context: PublicSignupContext, notice?: string, error?: s
 
   return {
     title: 'Want to play?',
-    subtext: "Choose how you'd like to let the host know you're interested.",
+    subtext: 'Tap a response below to let the host know.',
     badge: "Seeing who's free",
-    variant: 'neutral',
-  }
-}
-
-function getMatchDetailStatus(
-  context: PublicSignupContext | null,
-  registeredRequestState: RegisteredRequestState | null,
-  guestStatus: PublicJoinStatus | null,
-  isSmsPending: boolean,
-  isAlreadySubmitted: boolean,
-): MatchDetailStatus {
-  if (registeredRequestState) {
-    return {
-      label: registeredRequestState.statusLabel,
-      variant: registeredRequestState.variant,
-    }
-  }
-
-  if (!context) {
-    return {
-      label: 'Link unavailable',
-      variant: 'error',
-    }
-  }
-
-  if (isSmsPending) {
-    return {
-      label: 'Waiting for your text',
-      variant: 'neutral',
-    }
-  }
-
-  if (isAlreadySubmitted) {
-    return {
-      label: 'Host is checking availability',
-      variant: 'success',
-    }
-  }
-
-  if (guestStatus) {
-    return {
-      label: guestStatus.badge,
-      variant: guestStatus.variant,
-    }
-  }
-
-  if (context.match_status === 'cancelled') {
-    return {
-      label: 'Cancelled',
-      variant: 'error',
-    }
-  }
-
-  if (context.match_status === 'formed') {
-    return {
-      label: 'Group is set',
-      variant: 'success',
-    }
-  }
-
-  if (!context.signup_open || context.match_status !== 'active') {
-    return {
-      label: 'Closed',
-      variant: 'error',
-    }
-  }
-
-  return {
-    label: "Seeing who's free",
     variant: 'neutral',
   }
 }
@@ -518,13 +537,21 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
 
   const signupAction = startPublicMatchSignupAction.bind(null, token)
   const registeredRequestAction = requestRegisteredPublicMatchSpotAction.bind(null, token)
-  const matchType = context ? formatGameType(context.game_type ?? context.sport_name) : 'Link unavailable'
+  const matchDisplayDetails = context ? await getPublicSignupMatchDisplayDetails(context.match_id) : null
+  const matchType = context
+    ? formatPublicMatchType(context.game_type, context.sport_name, matchDisplayDetails?.doubles_format)
+    : 'Link unavailable'
   const matchDate = context ? formatDate(context.match_date) : null
-  const matchTime = context ? formatTime(context.start_time) : null
+  const matchTime = context ? formatTimeRange(context.start_time, matchDisplayDetails?.duration_minutes) : null
   const matchDateTime = context
-    ? [matchDate, matchTime].filter(Boolean).join(' - ') || 'Time to be confirmed'
+    ? [matchDate, matchTime].filter(Boolean).join(' · ') || 'Time to be confirmed'
     : 'Ask the host for a fresh share link'
-  const venueName = context?.venue_name ?? 'Match details unavailable'
+  const venueName = context?.venue_name ?? 'Venue to be confirmed'
+  const venueMapHref = getVenueMapHref(context?.venue_name)
+  const hostName = context?.host_display_name ?? 'Unavailable'
+  const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
+  const matchLevel = matchDisplayDetails?.level?.trim() || null
+  const participantFirstName = getFirstName(playerCardIdentity?.display_name)
   const pageError = getErrorMessage(pageParams.error)
   const isAlreadySubmitted = pageParams.notice === 'already-submitted' || pageParams.notice === 'request-sent'
   const isSmsPending = pageParams.notice === 'sms-pending'
@@ -551,7 +578,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const showRequestForm = Boolean(!user && context?.signup_open && !isSmsPending && !isAlreadySubmitted)
   const pageTitle = registeredRequestState?.title
     ?? guestStatus?.title
-    ?? (showPublicAlreadySubmitted ? 'The host has your response' : showPublicSmsPending ? 'Check your texts' : 'Want to play?')
+    ?? (showPublicAlreadySubmitted ? 'Thanks — we have your response' : showPublicSmsPending ? 'Check your texts' : 'Want to play?')
   const guestNudgeHref = linkUnavailable
     ? '/'
     : (showPublicSmsPending || showPublicAlreadySubmitted)
@@ -560,19 +587,11 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const guestNudgeLabel = linkUnavailable
     ? 'Maybe later'
     : (showPublicSmsPending || showPublicAlreadySubmitted)
-      ? 'Back to match details'
+      ? 'Back to match invitation'
       : 'Join with mobile number'
   const showGuestStatusBadge = Boolean(
     guestStatus && guestStatus.variant !== 'neutral',
   )
-  const matchDetailStatus = getMatchDetailStatus(
-    context,
-    registeredRequestState,
-    guestStatus,
-    showPublicSmsPending,
-    showPublicAlreadySubmitted,
-  )
-
   return (
     <div className="public-signup-page">
       <style>{`
@@ -580,7 +599,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           min-height: 100vh;
           background: #edf5ff;
           color: #06183d;
-          padding: 32px 18px 48px;
+          padding: 22px 16px 48px;
         }
 
         .public-signup-shell {
@@ -603,30 +622,45 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
         .public-signup-brand {
           display: flex;
           align-items: center;
-          gap: 14px;
-          margin-bottom: 22px;
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+
+        .public-signup-brand-logo {
+          height: 34px !important;
+          width: 154px !important;
+        }
+
+        .public-signup-brand-copy {
+          border-left: 1px solid #cfdced;
+          padding-left: 10px;
+        }
+
+        .public-signup-brand-subtitle {
+          color: #5c6f91;
+          font-size: 0.84rem;
+          font-weight: 700;
         }
 
         .public-signup-card {
           background: rgba(255, 255, 255, 0.96);
           border: 1px solid #d5e2f2;
-          border-radius: 28px;
-          box-shadow: 0 18px 44px rgba(17, 42, 84, 0.08);
-          padding: 30px;
+          border-radius: 20px;
+          box-shadow: 0 14px 30px rgba(17, 42, 84, 0.07);
+          padding: 24px;
         }
 
-        .public-signup-kicker {
-          color: #7c8eaa;
-          font-size: 0.72rem;
-          font-weight: 900;
-          letter-spacing: 0.16em;
-          margin: 0 0 14px;
-          text-transform: uppercase;
+        .public-signup-greeting {
+          color: #16335f;
+          font-size: 1.05rem;
+          font-weight: 780;
+          line-height: 1.35;
+          margin: 0 0 16px;
         }
 
         .public-signup-title {
-          font-size: clamp(2rem, 3.5vw, 2.85rem);
-          line-height: 1.08;
+          font-size: clamp(1.9rem, 3vw, 2.35rem);
+          line-height: 1.1;
           margin: 0;
           letter-spacing: 0;
         }
@@ -635,98 +669,54 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           color: #405474;
           font-size: 1rem;
           font-weight: 650;
-          line-height: 1.55;
-          margin: 14px 0 0;
+          line-height: 1.5;
+          margin: 8px 0 0;
           max-width: 620px;
         }
 
         .public-signup-summary {
           display: grid;
-          gap: 10px;
-          margin: 24px 0;
-          padding: 18px;
-          border: 1px solid #d9e6f4;
-          border-radius: 20px;
-          background: #f8fbff;
-        }
-
-        .public-signup-summary-heading {
-          color: #7c8eaa;
-          font-size: 0.72rem;
-          font-weight: 900;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
+          gap: 3px;
+          margin: 20px 0 22px;
         }
 
         .public-signup-summary-type {
-          font-size: 1.15rem;
-          font-weight: 850;
+          color: #06183d;
+          font-size: 1.06rem;
+          font-weight: 900;
+          line-height: 1.35;
+          margin: 0 0 2px;
         }
 
-        .public-signup-summary-venue {
-          color: #0b1f4d;
-          font-size: 1rem;
-          font-weight: 800;
+        .public-signup-summary-line {
+          color: #405474;
+          font-size: 0.96rem;
+          font-weight: 720;
+          line-height: 1.35;
+          margin: 0;
+          overflow-wrap: anywhere;
         }
 
-        .public-signup-summary-time {
-          color: #526784;
-          font-size: 0.95rem;
-          font-weight: 700;
+        .public-signup-summary-label-inline {
+          color: #16335f;
+          font-weight: 900;
         }
 
-        .public-signup-summary-host {
-          color: #526784;
-          font-size: 0.95rem;
-          font-weight: 700;
-        }
-
-        .public-signup-status-row {
-          align-items: center;
+        .public-signup-venue-line {
+          align-items: baseline;
           display: flex;
           flex-wrap: wrap;
-          gap: 10px;
-          justify-content: space-between;
-          margin-top: 4px;
+          gap: 6px;
         }
 
-        .public-signup-status-label {
-          color: #526784;
-          font-size: 0.9rem;
-          font-weight: 800;
-        }
-
-        .public-signup-status-pill {
-          border-radius: 999px;
-          display: inline-flex;
-          font-size: 0.82rem;
+        .public-signup-map-link {
+          color: #1f5fe8;
           font-weight: 900;
-          line-height: 1;
-          padding: 8px 11px;
+          text-decoration: none;
         }
 
-        .public-signup-status-pill.success {
-          background: #ecfdf5;
-          border: 1px solid #a7f3d0;
-          color: #047857;
-        }
-
-        .public-signup-status-pill.error {
-          background: #fff5f5;
-          border: 1px solid #fecaca;
-          color: #b42318;
-        }
-
-        .public-signup-status-pill.warning {
-          background: #fffbeb;
-          border: 1px solid #fde68a;
-          color: #92400e;
-        }
-
-        .public-signup-status-pill.neutral {
-          background: #eef6ff;
-          border: 1px solid #c9def6;
-          color: #2554d9;
+        .public-signup-map-link:hover {
+          text-decoration: underline;
         }
 
         .public-response-options {
@@ -971,16 +961,34 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           font-weight: 700;
           margin-top: 22px;
         }
+
+        @media (max-width: 820px) {
+          .public-signup-page {
+            padding: 16px 12px 40px;
+          }
+
+          .public-signup-card {
+            padding: 20px;
+          }
+
+          .public-signup-title {
+            font-size: 1.85rem;
+            line-height: 1.12;
+          }
+        }
       `}</style>
 
       <main className="public-signup-shell">
         <div className="public-signup-brand">
-          <BrandLogo variant="horizontal" />
+          <BrandLogo variant="horizontal" imageClassName="public-signup-brand-logo" />
+          <div className="public-signup-brand-copy">
+            <div className="public-signup-brand-subtitle">Match invitation</div>
+          </div>
         </div>
 
         <div className="public-signup-layout">
         <section className="public-signup-card">
-          <p className="public-signup-kicker">Join Link</p>
+          <p className="public-signup-greeting">Hi {participantFirstName ?? 'there'},</p>
           <h1 className="public-signup-title">{pageTitle}</h1>
           {registeredRequestState ? (
             <>
@@ -991,7 +999,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             </>
           ) : showPublicAlreadySubmitted ? (
             <p className="public-signup-subtext">
-              You&apos;re marked interested for this match. We&apos;ll text you if there&apos;s a spot for you.
+              We&apos;ll notify you when the host sets the confirmed lineup.
             </p>
           ) : showPublicSmsPending ? (
             <>
@@ -1030,15 +1038,32 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
           )}
 
           <div className="public-signup-summary" aria-label="Match summary">
-            <div className="public-signup-summary-heading">Match details</div>
-            <div className="public-signup-summary-type">{matchType}</div>
-            <div className="public-signup-summary-venue">{venueName}</div>
-            <div className="public-signup-summary-time">{matchDateTime}</div>
-            <div className="public-signup-summary-host">Host: {context?.host_display_name || 'Unavailable'}</div>
-            <div className="public-signup-status-row">
-              <span className="public-signup-status-label">Status</span>
-              <span className={`public-signup-status-pill ${matchDetailStatus.variant}`}>{matchDetailStatus.label}</span>
-            </div>
+            <h2 className="public-signup-summary-type">{matchType}</h2>
+            {matchLevel ? (
+              <p className="public-signup-summary-line">
+                <span className="public-signup-summary-label-inline">Level: </span>
+                {matchLevel}
+              </p>
+            ) : null}
+            <p className="public-signup-summary-line">{matchDateTime}</p>
+            <p className="public-signup-summary-line public-signup-venue-line">
+              <span>{venueName}</span>
+              {venueMapHref ? (
+                <>
+                  <span aria-hidden="true"> · </span>
+                  <a href={venueMapHref} target="_blank" rel="noreferrer" className="public-signup-map-link">
+                    Map
+                  </a>
+                </>
+              ) : null}
+            </p>
+            <p className="public-signup-summary-line">Host: {hostName}</p>
+            {hostNote ? (
+              <p className="public-signup-summary-line">
+                <span className="public-signup-summary-label-inline">Note from host: </span>
+                {hostNote}
+              </p>
+            ) : null}
           </div>
 
           {pageError ? <p className="public-signup-message error">{pageError}</p> : null}
@@ -1052,16 +1077,16 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
                 Can&apos;t find the text? Check that your mobile number was entered correctly, then try again in a few minutes.
               </p>
               <Link href={`/join/${token}`} className="public-signup-link">
-                Back to match details
+                Back to match invitation
               </Link>
             </>
           ) : showPublicAlreadySubmitted ? (
             <Link href={`/join/${token}`} className="public-signup-link">
-              Back to match details
+              Back to match invitation
             </Link>
           ) : registeredRequestState ? (
             <Link href={`/join/${token}`} className="public-signup-link">
-              Back to match details
+              Back to match invitation
             </Link>
           ) : showRegisteredRequestButton ? (
             <form action={registeredRequestAction} className="public-signup-form">
@@ -1071,7 +1096,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             </form>
           ) : user && isRegisteredRequestBlocked ? (
             <Link href={`/join/${token}`} className="public-signup-link">
-              Back to match details
+              Back to match invitation
             </Link>
           ) : linkUnavailable ? (
             <Link href="/" className="public-signup-link">
@@ -1128,7 +1153,7 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
             <h2 className="public-signed-in-title">{playerCardIdentity?.display_name ?? user.email ?? 'Signed-in player'}</h2>
             <p className="public-signed-in-copy">
               {registeredRequestState
-                ? 'The host has your response through your PlayerHoods account.'
+                ? 'Your PlayerHoods account has your response for this match.'
                 : "Use your PlayerHoods account to let the host know you're interested and track match updates."}
             </p>
             {playerCardIdentity?.level ? (
