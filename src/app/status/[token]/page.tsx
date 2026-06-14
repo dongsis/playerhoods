@@ -27,6 +27,7 @@ type StatusMatchDisplayDetails = {
   duration_minutes: number | null
   doubles_format: MatchDoublesFormat | null
   organizer_note: string | null
+  level: string | null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -133,7 +134,7 @@ function formatTimeRange(startTime: string | null | undefined, durationMinutes: 
     timeZone: 'UTC',
   }).format(end)
 
-  return `${startLabel} - ${endLabel}`
+  return `${startLabel} – ${endLabel}`
 }
 
 function getVenueMapHref(venueName: string | null | undefined): string | null {
@@ -254,7 +255,7 @@ async function getStatusMatchDisplayDetails(matchId: string): Promise<StatusMatc
     const supabase = createSupabaseServiceRoleClient()
     const { data, error } = await supabase
       .from('matches')
-      .select('duration_minutes, doubles_format, organizer_note')
+      .select('duration_minutes, doubles_format, organizer_note, level')
       .eq('id', matchId)
       .maybeSingle()
 
@@ -316,10 +317,11 @@ export default async function PublicParticipantStatusPage({ params, searchParams
   const matchType = formatSpecificMatchType(status.game_type, status.sport_name, matchDisplayDetails?.doubles_format)
   const matchDate = formatDate(status.match_date)
   const matchTime = formatTimeRange(status.start_time, matchDisplayDetails?.duration_minutes)
-  const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' \u00b7 ') || 'Time to be confirmed'
+  const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' · ') || 'Time to be confirmed'
   const venueName = status.venue_name ?? 'Venue to be confirmed'
   const venueMapHref = getVenueMapHref(status.venue_name)
   const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
+  const matchLevel = matchDisplayDetails?.level?.trim() || null
   const participantFirstName = getFirstName(status.participant_display_name)
   const lineupHeading = status.is_formed ? 'Confirmed Lineup' : 'Confirmed So Far'
   const statusPath = `/status/${encodeURIComponent(token)}`
@@ -369,22 +371,28 @@ export default async function PublicParticipantStatusPage({ params, searchParams
 
               <section className="status-summary" aria-label="Match details">
                 <h2>{matchType}</h2>
+                {matchLevel ? (
+                  <p>
+                    <span className="status-summary-label-inline">Level: </span>
+                    {matchLevel}
+                  </p>
+                ) : null}
                 <p>{matchDateTime}</p>
                 <p className="status-venue-line">
+                  <span>{venueName}</span>
                   {venueMapHref ? (
                     <>
+                      <span aria-hidden="true"> · </span>
                       <a href={venueMapHref} target="_blank" rel="noreferrer" className="status-map-link">
                         Map
                       </a>
-                      <span aria-hidden="true">\u00b7</span>
                     </>
                   ) : null}
-                  <span>{venueName}</span>
                 </p>
                 <p>Host: {status.host_display_name}</p>
                 {hostNote ? (
                   <p>
-                    <span className="status-summary-label-inline">Host note: </span>
+                    <span className="status-summary-label-inline">Note from host: </span>
                     {hostNote}
                   </p>
                 ) : null}
@@ -437,6 +445,9 @@ export default async function PublicParticipantStatusPage({ params, searchParams
                 {status.is_formed ? (
                   <>
                     <h2>Can&apos;t make it?</h2>
+                    <p>
+                      This match is already formed. Please keep this time reserved and allow enough time to arrive.
+                    </p>
                     <p>
                       If you can no longer make it, mark yourself out as soon as possible so the host can adjust the lineup.
                     </p>

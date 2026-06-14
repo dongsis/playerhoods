@@ -4,7 +4,7 @@ import { buildPublicJoinShareText } from '@/lib/public-join-share'
 import { getAbsoluteUrl } from '@/lib/site-url'
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from '@/lib/supabase/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/lib/types/database'
+import type { Database, MatchDoublesFormat } from '@/lib/types/database'
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -15,6 +15,10 @@ type MatchShareRow = {
   organizer_id: string
   status: string
   formed_at: string | null
+  game_type: string | null
+  doubles_format: MatchDoublesFormat | null
+  duration_minutes: number | null
+  level: string | null
 }
 
 function formatDate(value: string | null | undefined): string | null {
@@ -40,6 +44,37 @@ function formatTime(value: string | null | undefined): string | null {
     hour12: true,
     timeZone: 'UTC',
   }).format(date)
+}
+
+function parseTimeParts(value: string | null | undefined): { hours: number; minutes: number } | null {
+  if (!value) return null
+  const parts = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!parts) return null
+
+  return {
+    hours: Number(parts[1]),
+    minutes: Number(parts[2]),
+  }
+}
+
+function formatTimeRange(startTime: string | null | undefined, durationMinutes: number | null | undefined): string | null {
+  const startLabel = formatTime(startTime)
+  if (!startLabel) return null
+
+  const startParts = parseTimeParts(startTime)
+  if (!startParts || !durationMinutes || durationMinutes <= 0) {
+    return startLabel
+  }
+
+  const end = new Date(Date.UTC(2026, 0, 1, startParts.hours, startParts.minutes + durationMinutes))
+  const endLabel = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(end)
+
+  return `${startLabel}–${endLabel}`
 }
 
 function invitationCanSharePublicLink(invitation: InvitationDisplay): boolean {
@@ -117,7 +152,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const serviceClient = createSupabaseServiceRoleClient()
     const { data: match, error: matchError } = await serviceClient
       .from('matches')
-      .select('id,organizer_id,status,formed_at')
+      .select('id,organizer_id,status,formed_at,game_type,doubles_format,duration_minutes,level')
       .eq('id', invitation.related_id)
       .maybeSingle()
 
@@ -132,11 +167,13 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const shareUrl = getAbsoluteUrl(`/join/${publicToken}`)
     const dateTimeLabel = [
       formatDate(invitation.match_summary?.match_date),
-      formatTime(invitation.match_summary?.start_time),
+      formatTimeRange(invitation.match_summary?.start_time, matchRow.duration_minutes),
     ].filter(Boolean).join(', ')
     const shareText = buildPublicJoinShareText({
       hostName: invitation.inviter_display_name,
-      gameType: invitation.match_summary?.game_type,
+      gameType: matchRow.game_type ?? invitation.match_summary?.game_type,
+      doublesFormat: matchRow.doubles_format,
+      level: matchRow.level,
       venueName: invitation.match_summary?.club_name,
       dateTimeLabel,
       url: shareUrl,
