@@ -268,7 +268,7 @@ function NeedMorePlayersPrompt({ onAdd }: { onAdd: () => void }) {
           className="text-body-main inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D7E3F4] bg-white px-4 py-2 font-semibold text-[#0B1F44] shadow-sm transition hover:border-[#B8C8DF] hover:bg-[#F8FBFF]"
         >
           <span className="text-lg leading-none">+</span>
-          Add My Contact
+          Save contact player
         </button>
       </div>
     </div>
@@ -403,12 +403,23 @@ function formatReviewDate(dateStr: string) {
 }
 
 function formatReviewTime(timeValue: string) {
-  if (!timeValue) return 'Not selected'
+  if (!timeValue) return 'Time not set'
   return TIME_SLOTS.find((slot) => slot.value === timeValue)?.label ?? timeValue
 }
 
+function getReviewClockParts(value: Date) {
+  const hours = value.getHours()
+  const minutes = value.getMinutes()
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const hour12 = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours
+  return {
+    time: `${hour12}:${minutes.toString().padStart(2, '0')}`,
+    period,
+  }
+}
+
 function formatReviewTimeRange(timeValue: string, durationMinutes: number) {
-  if (!timeValue) return 'Not selected'
+  if (!timeValue) return 'Time not set'
   const [hoursPart, minutesPart] = timeValue.split(':')
   const hours = Number.parseInt(hoursPart ?? '', 10)
   const minutes = Number.parseInt(minutesPart ?? '', 10)
@@ -416,13 +427,14 @@ function formatReviewTimeRange(timeValue: string, durationMinutes: number) {
 
   const start = new Date(2000, 0, 1, hours, minutes, 0, 0)
   const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
+  const startParts = getReviewClockParts(start)
+  const endParts = getReviewClockParts(end)
 
-  return `${formatter.format(start)} - ${formatter.format(end)}`
+  if (startParts.period === endParts.period) {
+    return `${startParts.time}–${endParts.time} ${endParts.period}`
+  }
+
+  return `${startParts.time} ${startParts.period}–${endParts.time} ${endParts.period}`
 }
 
 function capitalizeLabel(value: string) {
@@ -446,6 +458,18 @@ function buildRecurringSeriesName({
     parts.push(`at ${venueLabel}`)
   }
   return parts.join(' ')
+}
+
+function formatReviewInviteItem(item: ReviewInviteItem) {
+  return item.label
+}
+
+function formatReviewInviteSummary(items: ReviewInviteItem[]) {
+  if (items.length === 0) return null
+  const labels = items.map(formatReviewInviteItem)
+  const visible = labels.slice(0, 2).join(', ')
+  const hiddenCount = labels.length - 2
+  return hiddenCount > 0 ? `${visible} +${hiddenCount} more` : visible
 }
 
 function getAvailabilityPriority(status: AvailabilityStatus | null | undefined) {
@@ -538,11 +562,11 @@ function ReviewMatchModal({
   venueLabel,
   gameTypeLabel,
   formatLabel,
+  levelLabel,
   dateLabel,
   timeRangeLabel,
-  durationLabel,
+  durationMinutes,
   courtLabel,
-  courtSecured,
   neededLabel,
   directInviteItems,
   requestItems,
@@ -559,11 +583,11 @@ function ReviewMatchModal({
   venueLabel: string
   gameTypeLabel: string
   formatLabel: string
+  levelLabel: string
   dateLabel: string
   timeRangeLabel: string
-  durationLabel: string
+  durationMinutes: number
   courtLabel: string
-  courtSecured: boolean
   neededLabel: string
   directInviteItems: ReviewInviteItem[]
   requestItems: ReviewInviteItem[]
@@ -574,6 +598,17 @@ function ReviewMatchModal({
   onConfirm: () => void
 }) {
   if (!open) return null
+
+  const gameSummary = [sportLabel, capitalizeLabel(gameTypeLabel), formatLabel]
+    .filter((part) => part && part !== 'Not selected')
+    .join(' · ')
+  const levelSummary = levelLabel ? `Level: ${levelLabel}` : 'Level not set'
+  const venueCourtSummary = [venueLabel, courtLabel]
+    .filter((part) => part && part !== 'Not selected')
+    .join(' · ')
+  const dateTimeSummary = `${dateLabel} · ${timeRangeLabel} · ${durationMinutes} min`
+  const directInviteSummary = formatReviewInviteSummary(directInviteItems)
+  const requestInviteSummary = formatReviewInviteSummary(requestItems)
 
   return (
     <div
@@ -590,133 +625,58 @@ function ReviewMatchModal({
           <h3 className="text-h2 text-[#1E293B]">{recurring ? 'Review Recurring Match' : 'Review Match'}</h3>
           <p className="text-body-sub mt-1 text-[#64748B]">
             {recurring
-              ? `Everything looks good? Create ${recurringCount} weekly match instances now.`
-              : 'Everything looks good? Post it now.'}
+              ? `Review the details before creating ${recurringCount} weekly matches.`
+              : 'Review the details before creating your match.'}
           </p>
         </div>
 
-        <div className="space-y-6 px-6 pb-6 pt-5">
-          <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+        <div className="space-y-5 px-6 pb-6 pt-5">
+          <div className="space-y-3 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
             <div>
-              <p className="text-label">Sport</p>
-              <p className="text-title-main mt-0.5 text-[#1E293B]">{sportLabel}</p>
-            </div>
-            <div>
-              <p className="text-label">Venue</p>
-              <p className="text-title-main mt-0.5 text-[#1E293B]">{venueLabel}</p>
-            </div>
-            <div>
-              <p className="text-label">Game Type</p>
-              <p className="text-title-main mt-0.5 capitalize text-[#1E293B]">{gameTypeLabel}</p>
-            </div>
-            <div>
-              <p className="text-label">Format</p>
-              <p className="text-title-main mt-0.5 text-[#1E293B]">{formatLabel}</p>
-            </div>
-          </div>
-
-          <div className="border-t border-[#F1F5F9]" />
-
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-label">Date &amp; Time</p>
-              <p className="text-title-main mt-0.5 text-[#1E293B]">
-                {dateLabel} <span className="mx-1 text-[#CBD5E1]">|</span> {timeRangeLabel}
+              <p className="text-title-main text-[#0B1F44]">{gameSummary || 'Match details not set'}</p>
+              <p className="text-body-main mt-1 font-semibold text-[#64748B]">
+                {levelLabel ? levelSummary : 'Level not set'}
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-label">Duration</p>
-              <p className="text-title-main mt-0.5 text-[#1E293B]">{durationLabel}</p>
+
+            <div className="space-y-1.5 text-body-main font-semibold text-[#1E293B]">
+              <p>{venueCourtSummary || 'Venue not set'}</p>
+              <p>{dateTimeSummary}</p>
+              <p>{neededLabel}</p>
             </div>
           </div>
-
-          <div className="border-t border-[#F1F5F9]" />
-
-          <div className="grid grid-cols-2 gap-x-8">
-            <div>
-              <p className="text-label text-[#94A3B8]">Court</p>
-              <p className="text-title-main mt-0.5 text-[#1E293B]">
-                {courtLabel}
-                {courtSecured ? <span className="text-body-sub ml-1 font-bold text-[#1E293B]">• SECURED</span> : null}
-              </p>
-            </div>
-            <div>
-              <p className="text-label text-[#94A3B8]">Needed</p>
-              <p className="text-title-main mt-0.5 text-[#1E293B]">{neededLabel}</p>
-            </div>
-          </div>
-
-          <div className="border-t border-[#F1F5F9]" />
 
           {recurring ? (
             <>
               <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-                <p className="text-label">Recurring Setup</p>
+                <p className="text-title-main text-[#0B1F44]">Recurring setup</p>
                 <p className="text-body-main mt-1 text-[#1E293B]">
                   Creates {recurringCount} weekly match instances. Players sign up for each week separately.
                 </p>
               </div>
-              <div className="border-t border-[#F1F5F9]" />
             </>
           ) : null}
 
-          <div className="space-y-4">
-            <p className="text-label">Invitations Summary</p>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
-                <span className="text-label text-[#64748B]">Directly Invited</span>
+          <div className="space-y-2 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-4">
+            <p className="text-title-main text-[#0B1F44]">Invites</p>
+            {directInviteSummary ? (
+              <p className="text-body-main font-semibold text-[#1E293B]">{directInviteSummary}</p>
+            ) : (
+              <div className="space-y-1 text-body-main font-semibold text-[#64748B]">
+                <p>No saved players invited yet.</p>
+                <p>You can invite more players after creating the match.</p>
               </div>
-              <div className="flex flex-wrap gap-2 pl-3">
-                {directInviteItems.length > 0 ? directInviteItems.map((item) => (
-                  <span
-                    key={`review-direct-${item.label}`}
-                    className="text-body-main inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#E2E8F0] bg-white px-2.5 py-1 font-medium text-[#1E293B]"
-                  >
-                    <span className="font-semibold">{item.label}</span>
-                    {item.members && item.members.length > 0 ? (
-                      <span className="text-body-sub truncate font-medium text-[#475569]">
-                        · {item.members.join(', ')}
-                      </span>
-                    ) : null}
-                  </span>
-                )) : (
-                  <span className="text-body-main pl-0 text-slate-300">None</span>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
-                <span className="text-label text-[#64748B]">Open to Join</span>
-              </div>
-              <div className="flex flex-wrap gap-2 pl-3">
-                {requestItems.length > 0 ? requestItems.map((item) => (
-                  <span
-                    key={`review-request-${item.label}`}
-                    className="text-body-main inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#E2E8F0] bg-white px-2.5 py-1 font-medium text-[#1E293B]"
-                  >
-                    <span className="font-semibold">{item.label}</span>
-                    {item.members && item.members.length > 0 ? (
-                      <span className="text-body-sub truncate font-medium text-[#475569]">
-                        · {item.members.join(', ')}
-                      </span>
-                    ) : null}
-                  </span>
-                )) : (
-                  <span className="text-body-main pl-0 text-slate-300">None</span>
-                )}
-              </div>
-            </div>
+            )}
+            {requestInviteSummary ? (
+              <p className="text-body-sub font-semibold text-[#64748B]">Also open to join: {requestInviteSummary}</p>
+            ) : null}
           </div>
 
           {organizerNote.trim() ? (
             <>
-              <div className="border-t border-slate-100" />
+              <div className="border-t border-[#F1F5F9]" />
               <div>
-                <p className="text-label text-slate-400">Host Note</p>
+                <p className="text-title-main text-[#0B1F44]">Host note</p>
                 <p className="text-body-main mt-2 whitespace-pre-line rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 leading-relaxed text-[#1E293B]">
                   {organizerNote.trim()}
                 </p>
@@ -736,7 +696,7 @@ function ReviewMatchModal({
               disabled={posting}
               className="text-h2 w-full rounded-2xl bg-[#0d6efd] py-4 text-white transition hover:-translate-y-[1px] hover:bg-[#0b5ed7] hover:shadow-[0_10px_15px_-3px_rgba(13, 110, 253, 0.3)] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {posting ? (recurring ? 'Creating...' : 'Posting...') : (recurring ? 'Create Recurring Match' : 'Post Match Now')}
+              {posting ? 'Creating...' : (recurring ? 'Create Recurring Match' : 'Create Match')}
             </button>
             <button
               type="button"
@@ -744,7 +704,7 @@ function ReviewMatchModal({
               disabled={posting}
               className="text-body-main w-full py-2 font-medium text-slate-400 transition-colors hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Wait, I need to edit
+              Back to edit
             </button>
           </div>
         </div>
@@ -1125,7 +1085,7 @@ export function CreateMatchInline({
 }) {
   const searchParams = useSearchParams()
   const [createExpanded, setCreateExpanded] = useState(false)
-  const [createStep, setCreateStep] = useState<1 | 2 | 3>(1)
+  const [createStep, setCreateStep] = useState<1 | 2>(1)
   const [matchMode] = useState<'one-time' | 'recurring'>('one-time')
   const [requiredCount, setRequiredCount] = useState(4)
   const [matchDate, setMatchDate] = useState('')
@@ -1314,16 +1274,6 @@ export function CreateMatchInline({
   const filteredRequestUsers = useMemo(() => {
     return requestScopeUserCandidates
   }, [requestScopeUserCandidates])
-
-  const shouldShowHoodPanelButton = useMemo(() => {
-    if (selectionMode === 'invite') {
-      return filteredInviteOptions.length > 20
-    }
-    if (selectionMode === 'request') {
-      return filteredRequestUsers.length > 20
-    }
-    return false
-  }, [filteredInviteOptions.length, filteredRequestUsers.length, selectionMode])
 
   const selectedInvitedGroups = useMemo(
     () => groups.filter((group) => invitedGroupIds.includes(group.id)),
@@ -1667,6 +1617,11 @@ export function CreateMatchInline({
     return source.find((option) => option.value === doublesFormat)?.label ?? 'Not selected'
   }, [doublesFormat, gameType])
 
+  const reviewLevelLabel = useMemo(() => {
+    if (!gameLevel) return ''
+    return LEVEL_OPTIONS.find((option) => option.value === gameLevel)?.label ?? gameLevel
+  }, [gameLevel])
+
   const reviewCourtSummary = useMemo(() => {
     if (courtPlanMode !== 'secured') {
       return COURT_PLAN_OPTIONS.find((option) => option.value === courtPlanMode)?.label ?? 'Not selected'
@@ -1697,10 +1652,6 @@ export function CreateMatchInline({
     [groupMembersById, selectedScopeGroups, selectedScopeUsers],
   )
 
-  const summaryIsEmpty = selectedInvitePlayers.length === 0
-    && selectedInvitedGroups.length === 0
-    && selectedScopeUsers.length === 0
-    && selectedScopeGroups.length === 0
   const selectedPlayerCount = selectedInvitePlayers.length + selectedScopeUsers.length
   const remainingPlayersNeeded = Math.max(requiredCount - selectedPlayerCount, 0)
   const playersNeededCopy = selectedPlayerCount > 0
@@ -3034,11 +2985,11 @@ export function CreateMatchInline({
         {createExpanded ? (
           <div className="space-y-3 px-4 pb-4 pt-2 md:space-y-5 md:px-7 md:pb-7 md:pt-3">
       <div className="md:hidden">
-        <p className="mb-1 text-[11px] font-bold text-[#7282A0]">Step {createStep} of 3</p>
+        <p className="mb-1 text-[11px] font-bold text-[#7282A0]">Step {Math.min(createStep, 2)} of 2</p>
         <div className="h-1 overflow-hidden rounded-full bg-[#EEF3F9]">
           <div
             className="h-full rounded-full bg-[#0d6efd] transition-all"
-            style={{ width: `${(createStep / 3) * 100}%` }}
+            style={{ width: `${(Math.min(createStep, 2) / 2) * 100}%` }}
           />
         </div>
       </div>
@@ -3343,7 +3294,7 @@ export function CreateMatchInline({
           onClick={handleDetailsNext}
           className="text-title-main w-full rounded-xl bg-[#0d6efd] px-6 py-3.5 text-white shadow-[0_18px_40px_-24px_rgba(13,110,253,0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] md:text-h2 md:py-4"
         >
-          Next: Players
+          Next: Add Players
         </button>
       </div>
         </>
@@ -3351,12 +3302,12 @@ export function CreateMatchInline({
 
       {createStep === 2 ? (
         <>
-      <section className="px-1 py-2">
-        <div className="mb-6 flex items-center justify-between gap-4">
+      <section className="space-y-4 px-1 py-2">
+        <div className="mb-2 flex items-center justify-between gap-4">
           <div className="flex items-center">
             <SportSectionIcon sport={selectedSport} className="mr-3" />
             <div>
-              <h3 className={DS_SECTION_TITLE}>Add Players</h3>
+              <h3 className="text-title-main text-[#1E293B]">Add Players</h3>
             </div>
           </div>
           <div className="text-label rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-[#94A3B8]">
@@ -3364,245 +3315,161 @@ export function CreateMatchInline({
           </div>
         </div>
 
-        <div className="flex flex-col gap-6 md:flex-row">
-          <div className="w-full space-y-3 md:w-1/4">
-            <AddPlayersMethodPanel
-              linkDisabled
-              linkActionLabel="After create"
-              linkDescription="Create the match first, then copy the invite link."
-              savedPlayersExpanded={selectionMode === 'invite'}
-              savedPlayersPanel={null}
-              onToggleSavedPlayers={() => setSelectionMode(selectionMode === 'invite' ? null : 'invite')}
-              className="p-3 shadow-none"
-            />
-          </div>
+        <AddPlayersMethodPanel
+          linkDisabled
+          linkActionLabel="Copy after create"
+          linkDescription="Create the match first, then copy the invite link."
+          savedPlayersExpanded={selectionMode === 'invite'}
+          savedPlayersPanel={(
+            <div className="space-y-3 pt-3">
+              <div className="flex flex-wrap gap-2">
+                {filteredInviteOptions.map((candidate) => renderInviteCandidateButton(candidate))}
+                {filteredInviteGroups.map((group) =>
+                  renderGroupSelector(
+                    group,
+                    invitedGroupIds.includes(group.id),
+                    () =>
+                      setInvitedGroupIds((prev) =>
+                        prev.includes(group.id)
+                          ? prev.filter((id) => id !== group.id)
+                          : [...prev, group.id],
+                      ),
+                    'indigo',
+                  ),
+                )}
+              </div>
 
-          <div className="w-full md:flex-1">
-            <div className="text-label mb-4 flex items-center text-[#94A3B8]">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-              Choose players
-            </div>
-            <div className="flex min-h-[200px] flex-col rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-              {!selectionMode ? (
-                <div className="flex flex-1 items-center justify-center px-6 text-center">
-                  <p className="text-body-main italic leading-relaxed text-[#CBD5E1]">
-                    Choose an action on the left to add people or groups.
-                  </p>
+              {hasSavedOrContactInvitePlayers && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 ? (
+                <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-5 text-center font-semibold text-[#94A3B8]">
+                  Everyone available here is already selected.
                 </div>
-              ) : (
-                <div className="flex flex-1 flex-col">
-                  <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
-                    <div className="text-title-main text-[#0B1F44]">
-                      {selectionMode === 'request' ? 'Open spots to join' : 'Invite specific players'}
-                    </div>
-                    <p className="mt-1 text-body-sub font-semibold text-[#64748B]">
-                      {selectionMode === 'request'
-                        ? 'Let eligible players request or join open spots.'
-                        : 'Choose saved players or contacts to invite directly.'}
-                    </p>
+              ) : null}
+
+              {selectedInviteWarnings.length > 0 ? (
+                <div className="space-y-2 rounded-xl border border-amber-100 bg-white px-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                    <span className="text-label">Availability heads-up</span>
                   </div>
-                  <div className="mb-4 grid gap-2">
-                    {selectionMode === 'invite' && (
-                      <>
-                        {filteredInviteOptions.map((candidate) => renderInviteCandidateButton(candidate))}
-                        {filteredInviteGroups.map((group) =>
-                          renderGroupSelector(
-                            group,
-                            invitedGroupIds.includes(group.id),
-                            () =>
-                              setInvitedGroupIds((prev) =>
-                                prev.includes(group.id)
-                                  ? prev.filter((id) => id !== group.id)
-                                  : [...prev, group.id],
-                              ),
-                            'indigo',
-                          ),
-                        )}
-                        <NeedMorePlayersPrompt
-                          onAdd={() => {
-                            setError(null)
-                            setContactAddPanelOpen(true)
-                          }}
-                        />
-                      </>
-                    )}
-
-                    {selectionMode === 'request' && (
-                      <>
-                        {filteredRequestUsers.map((candidate) => renderRequestScopeCandidateButton(candidate))}
-                        {filteredRequestGroups.map((group) =>
-                          renderGroupSelector(
-                            group,
-                            scopeGroupIds.includes(group.id),
-                            () =>
-                              setScopeGroupIds((prev) =>
-                                prev.includes(group.id)
-                                  ? prev.filter((id) => id !== group.id)
-                                  : [...prev, group.id],
-                              ),
-                            'green',
-                          ),
-                        )}
-                        <NeedMorePlayersPrompt
-                          onAdd={() => {
-                            setError(null)
-                            setContactAddPanelOpen(true)
-                          }}
-                        />
-                      </>
-                    )}
-
-                    {selectionMode === 'invite' && hasSavedOrContactInvitePlayers && filteredInviteOptions.length === 0 && filteredInviteGroups.length === 0 && (
-                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
-                        Everyone available here is already selected.
+                  <div className="space-y-2">
+                    {selectedInviteWarnings.map(({ candidate, warning }) => (
+                      <div
+                        key={`summary-warning-${candidate.key}`}
+                        className={[
+                          'text-body-sub rounded-lg border px-2.5 py-2',
+                          warning.level === 'busy'
+                            ? 'border-amber-100 bg-amber-50 text-amber-700'
+                            : warning.level === 'away'
+                              ? 'border-orange-100 bg-orange-50 text-orange-700'
+                              : 'border-rose-100 bg-rose-50 text-rose-700',
+                        ].join(' ')}
+                      >
+                        <p className="font-bold">
+                          {candidate.name} - {warning.label}
+                        </p>
+                        <p className="mt-0.5 leading-4 opacity-90">{warning.message}</p>
                       </div>
-                    )}
-                    {selectionMode === 'request' && filteredRequestUsers.length === 0 && filteredRequestGroups.length === 0 && (
-                      <div className="text-body-main w-full rounded-lg border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-[#CBD5E1]">
-                        Save registered players to your Hood first, or add a group to Visible to Groups.
-                      </div>
-                    )}
+                    ))}
                   </div>
-
-                  {shouldShowHoodPanelButton ? (
-                    <div className="mt-auto">
-                      <button type="button" className="text-label w-full rounded-xl border border-[#E2E8F0] bg-white py-2 text-[#64748B] transition hover:border-[#0d6efd]/30 hover:text-[#0d6efd]">
-                        Hood Panel
-                      </button>
-                    </div>
-                  ) : null}
                 </div>
-              )}
-            </div>
-          </div>
+              ) : null}
 
-          <div className="w-full md:w-1/3">
-            <div className="text-label mb-4 flex items-center text-[#94A3B8]">
-              <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-              Summary
+              <NeedMorePlayersPrompt
+                onAdd={() => {
+                  setError(null)
+                  setContactAddPanelOpen(true)
+                }}
+              />
             </div>
-            <div className="min-h-[200px] rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-              {summaryIsEmpty ? (
-                <div className="py-10 text-center opacity-30">
-                  <div className="mb-2 text-3xl">[]</div>
-                  <p className="text-body-sub">Empty</p>
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  {(selectedInvitePlayers.length > 0 || selectedInvitedGroups.length > 0) && (
-                    <div>
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#0d6efd]" />
-                        <span className="text-label">Invited</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedInvitePlayers.map((member) => (
-                          <button
-                            key={member.key}
-                            type="button"
-                            onClick={() => setSelectedDirectInviteKeys((prev) => {
-                              const next = new Set(prev)
-                              next.delete(member.key)
-                              return next
-                            })}
-                            className="text-body-sub flex items-center rounded-lg border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-1 font-semibold text-[#0d6efd]"
-                          >
-                            <ParticipantQuickPreviewTrigger
-                              target={{
-                                userId: member.userId ?? null,
-                                guestId: member.guestId ?? null,
-                                displayName: member.name,
-                                gender: member.gender,
-                              }}
-                            >
-                              <span>{member.name}</span>
-                            </ParticipantQuickPreviewTrigger>
-                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-                          </button>
-                        ))}
-                        {selectedInvitedGroups.map((group) =>
-                          renderSelectedGroupChip(
-                            group,
-                            'orange',
-                            () => setInvitedGroupIds((prev) => prev.filter((id) => id !== group.id)),
-                          ),
-                        )}
-                      </div>
+          )}
+          onToggleSavedPlayers={() => setSelectionMode(selectionMode === 'invite' ? null : 'invite')}
+          className="!rounded-none !border-0 !bg-transparent !p-0 !shadow-none md:!p-0"
+        />
 
-                      {selectedInviteWarnings.length > 0 ? (
-                        <div className="mt-3 space-y-2 rounded-xl border border-amber-100 bg-white px-3 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                            <span className="text-label">Availability heads-up</span>
-                          </div>
-                          <div className="space-y-2">
-                            {selectedInviteWarnings.map(({ candidate, warning }) => (
-                              <div
-                                key={`summary-warning-${candidate.key}`}
-                                className={[
-                                  'text-body-sub rounded-lg border px-2.5 py-2',
-                                  warning.level === 'busy'
-                                    ? 'border-amber-100 bg-amber-50 text-amber-700'
-                                    : warning.level === 'away'
-                                      ? 'border-orange-100 bg-orange-50 text-orange-700'
-                                      : 'border-rose-100 bg-rose-50 text-rose-700',
-                                ].join(' ')}
-                              >
-                                <p className="font-bold">
-                                  {candidate.name} · {warning.label}
-                                </p>
-                                <p className="mt-0.5 leading-4 opacity-90">{warning.message}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
+        <section className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setOrganizerNoteExpanded((expanded) => !expanded)}
+            className="flex w-full items-center justify-between rounded-xl px-1 py-2 text-left transition hover:bg-[#F8FAFC]"
+          >
+            <div className="flex items-center gap-3">
+              <SportSectionIcon sport={selectedSport} />
+              <h3 className="text-title-main text-[#1E293B]">Host Note</h3>
+              {organizerNote.trim() && !organizerNoteExpanded ? (
+                <span className="text-body-sub rounded-full border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-0.5 font-bold text-[#0d6efd]">
+                  Saved
+                </span>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              {!organizerNoteExpanded && !organizerNote.trim() ? (
+                <span className="text-body-main font-medium text-[#0d6efd]">+ Add Note</span>
+              ) : null}
+              <span
+                className={`text-sm text-[#94A3B8] transition-transform ${organizerNoteExpanded ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              >
+                v
+              </span>
+            </div>
+          </button>
+
+          {organizerNoteExpanded ? (
+            <div className="mt-4 space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                {ORGANIZER_NOTE_PRESETS.map((group) => (
+                  <div key={group.label} className="flex items-center gap-2 border-r border-[#E2E8F0] pr-4 last:border-r-0 last:pr-0">
+                    <span className="text-label text-[#94A3B8]">{group.label}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => appendOrganizerNote(item)}
+                          className={[
+                            'text-body-main rounded-md border px-2 py-1 font-medium shadow-sm transition active:scale-95',
+                            organizerNoteSentences.has(item.full)
+                              ? 'border-[#0d6efd]/35 bg-[#eff6ff] text-[#0d6efd]'
+                              : 'border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#0d6efd]/45 hover:text-[#0d6efd]',
+                          ].join(' ')}
+                        >
+                          {item.chip}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
+                ))}
+              </div>
 
-                  {(selectedScopeUsers.length > 0 || selectedScopeGroups.length > 0) && (
-                    <div>
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                        <span className="text-label">Open to Join</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedScopeUsers.map((candidate) => (
-                          <button
-                            key={`summary-request-${candidate.key}`}
-                            type="button"
-                            onClick={() => setScopeUserIds((prev) => prev.filter((id) => id !== candidate.userId))}
-                            className="text-body-sub flex items-center rounded-lg border border-green-100 bg-green-50 px-2 py-1 font-semibold text-green-700"
-                          >
-                            <ParticipantQuickPreviewTrigger
-                              target={{
-                                userId: candidate.userId ?? null,
-                                guestId: candidate.guestId ?? null,
-                                displayName: candidate.name,
-                                gender: candidate.gender,
-                              }}
-                            >
-                              <span>{candidate.name}</span>
-                            </ParticipantQuickPreviewTrigger>
-                            <span className="ml-2 cursor-pointer opacity-30 transition hover:opacity-100">x</span>
-                          </button>
-                        ))}
-                        {selectedScopeGroups.map((group) =>
-                          renderSelectedGroupChip(
-                            group,
-                            'green',
-                            () => setScopeGroupIds((prev) => prev.filter((id) => id !== group.id)),
-                            `summary-request-group-${group.id}`,
-                          ),
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="relative">
+                <textarea
+                  ref={organizerNoteRef}
+                  value={organizerNote}
+                  onChange={(e) => setOrganizerNote(e.target.value)}
+                  placeholder="Anything else for the group?"
+                  className="text-body-main h-[100px] w-full resize-none rounded-xl border border-[#E2E8F0] bg-white p-3 leading-relaxed text-[#1E293B] shadow-inner outline-none transition placeholder:text-[#CBD5E1] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
+                />
+                {organizerNote.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => setOrganizerNote('')}
+                    className="text-body-sub absolute right-2 top-2 rounded-md border border-[#E2E8F0] bg-white/90 p-1 text-[#94A3B8] shadow-sm transition hover:text-[#64748B]"
+                  >
+                    x
+                  </button>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOrganizerNoteExpanded(false)}
+                className="text-body-main flex w-full items-center justify-center border-t border-[#E2E8F0] pt-2 font-medium text-[#94A3B8] transition hover:text-[#0d6efd]"
+              >
+                Confirm
+              </button>
             </div>
-          </div>
-        </div>
+          ) : null}
+        </section>
       </section>
 
       {!reviewOpen && error && (
@@ -3624,138 +3491,17 @@ export function CreateMatchInline({
             Back
           </button>
           <button
-            type="button"
-            onClick={() => {
-              setError(null)
-              setCreateStep(3)
-            }}
-            className="text-h2 rounded-xl bg-[#0d6efd] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(13,110,253,0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99]"
+            type="submit"
+            disabled={loading}
+            className="text-h2 rounded-xl bg-[#0d6efd] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(13,110,253,0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Next: Host Note
+            {loading && submitMode === 'create' ? 'Creating...' : 'Create Match Now'}
           </button>
         </div>
       </div>
         </>
       ) : null}
 
-      {createStep === 3 ? (
-        <>
-      <section className={`${DS_CARD} p-5`}>
-        <button
-          type="button"
-          onClick={() => setOrganizerNoteExpanded((expanded) => !expanded)}
-          className="flex w-full items-center justify-between rounded-xl p-1 text-left transition hover:bg-[#F8FAFC]"
-        >
-          <div className="flex items-center gap-3">
-            <SportSectionIcon sport={selectedSport} />
-            <h3 className={DS_SECTION_TITLE}>Host Note</h3>
-            {organizerNote.trim() && !organizerNoteExpanded ? (
-              <span className="text-body-sub rounded-full border border-[#0d6efd]/15 bg-[#eff6ff] px-2 py-0.5 font-bold text-[#0d6efd]">
-                Saved
-              </span>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            {!organizerNoteExpanded && !organizerNote.trim() ? (
-              <span className="text-body-main font-medium text-[#0d6efd]">+ Add Note</span>
-            ) : null}
-            <span
-              className={`text-sm text-[#94A3B8] transition-transform ${organizerNoteExpanded ? 'rotate-180' : ''}`}
-              aria-hidden="true"
-            >
-              v
-            </span>
-          </div>
-        </button>
-
-        {organizerNoteExpanded ? (
-          <div className="mt-4 space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              {ORGANIZER_NOTE_PRESETS.map((group) => (
-                <div key={group.label} className="flex items-center gap-2 border-r border-[#E2E8F0] pr-4 last:border-r-0 last:pr-0">
-                  <span className="text-label text-[#94A3B8]">{group.label}</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {group.items.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => appendOrganizerNote(item)}
-                        className={[
-                          'text-body-main rounded-md border px-2 py-1 font-medium shadow-sm transition active:scale-95',
-                          organizerNoteSentences.has(item.full)
-                            ? 'border-[#0d6efd]/35 bg-[#eff6ff] text-[#0d6efd]'
-                            : 'border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#0d6efd]/45 hover:text-[#0d6efd]',
-                        ].join(' ')}
-                      >
-                        {item.chip}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="relative">
-              <textarea
-                ref={organizerNoteRef}
-                value={organizerNote}
-                onChange={(e) => setOrganizerNote(e.target.value)}
-                placeholder="Anything else for the group?"
-                className="text-body-main h-[100px] w-full resize-none rounded-xl border border-[#E2E8F0] bg-white p-3 leading-relaxed text-[#1E293B] shadow-inner outline-none transition placeholder:text-[#CBD5E1] focus:border-[#0d6efd] focus:ring-4 focus:ring-[#0d6efd]/10"
-              />
-              {organizerNote.trim() ? (
-                <button
-                  type="button"
-                  onClick={() => setOrganizerNote('')}
-                  className="text-body-sub absolute right-2 top-2 rounded-md border border-[#E2E8F0] bg-white/90 p-1 text-[#94A3B8] shadow-sm transition hover:text-[#64748B]"
-                >
-                  x
-                </button>
-              ) : null}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setOrganizerNoteExpanded(false)}
-              className="text-body-main flex w-full items-center justify-center border-t border-[#E2E8F0] pt-2 font-medium text-[#94A3B8] transition hover:text-[#0d6efd]"
-            >
-              Confirm
-            </button>
-          </div>
-        ) : null}
-      </section>
-
-            {!reviewOpen && error && (
-              <p className="text-body-main rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
-                {error}
-              </p>
-            )}
-
-            <div className="sticky bottom-0 z-20 -mx-5 border-t border-[#E2E8F0] bg-white/95 px-5 pb-4 pt-4 backdrop-blur md:static md:mx-0 md:border-t-0 md:bg-transparent md:px-0 md:pb-0">
-            <div className="grid grid-cols-[minmax(0,0.42fr)_minmax(0,1fr)] gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null)
-                  setCreateStep(2)
-                }}
-                className="text-body-main rounded-xl border border-[#DCE5F2] bg-white px-4 py-4 font-bold text-[#0B1F44] transition hover:bg-[#F8FBFF]"
-              >
-                Back
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="text-h2 w-full rounded-xl bg-[#0d6efd] px-6 py-4 text-white shadow-[0_18px_40px_-24px_rgba(13, 110, 253, 0.7)] transition hover:bg-[#0b5ed7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading && submitMode === 'create'
-                  ? (matchMode === 'recurring' ? 'Creating...' : 'Posting...')
-                  : (matchMode === 'recurring' ? 'Review & Create Recurring Match' : 'Review & Post Match')}
-              </button>
-            </div>
-            </div>
-        </>
-      ) : null}
           </div>
         ) : null}
       </section>
@@ -3768,12 +3514,12 @@ export function CreateMatchInline({
       venueLabel={selectedVenue?.name ?? 'Not selected'}
       gameTypeLabel={gameType}
       formatLabel={selectedFormatLabel}
+      levelLabel={reviewLevelLabel}
       dateLabel={formatReviewDate(matchDate)}
       timeRangeLabel={formatReviewTimeRange(startTime, durationMinutes)}
-      durationLabel={`${durationMinutes} Min`}
+      durationMinutes={durationMinutes}
       courtLabel={reviewCourtSummary}
-      courtSecured={courtPlanMode === 'secured'}
-      neededLabel={`${requiredCount} Players`}
+      neededLabel={`${requiredCount} ${requiredCount === 1 ? 'player' : 'players'} needed · ${courtCount} ${courtCount === 1 ? 'court' : 'courts'}`}
       directInviteItems={reviewDirectInviteLabels}
       requestItems={reviewRequestItems}
       organizerNote={organizerNote}
