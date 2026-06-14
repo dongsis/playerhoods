@@ -3,8 +3,10 @@ import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { IdentityLinkReviewCard } from '@/app/components/IdentityLinkReviewCard'
 import { getIdentityLinkCandidates } from '@/lib/api/identity-links'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { formatMatchLevelLabel } from '@/lib/match-level'
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from '@/lib/supabase/server'
 import { getUser } from '@/lib/supabase/server'
+import type { MatchDoublesFormat } from '@/lib/types/database'
 import { getInvitationById } from '@/lib/invitations/get-invitation-by-id'
 import { InvitationShareLinkSection } from './InvitationShareLinkSection'
 import { acceptInvitationAsGuestAction, declineInvitationAsGuestAction } from './guest-invitation-actions'
@@ -22,6 +24,13 @@ interface Props {
     error?: string
     notice?: string
   }>
+}
+
+type InvitationMatchDisplayDetails = {
+  duration_minutes: number | null
+  doubles_format: MatchDoublesFormat | null
+  organizer_note: string | null
+  level: string | null
 }
 
 function getInvitationPageErrorMessage(code: string | undefined): string | null {
@@ -71,6 +80,15 @@ function formatGameType(value: string | null | undefined): string {
   return /\bmatch\b/i.test(label) ? label : `${label} match`
 }
 
+function formatSpecificMatchType(value: string | null | undefined, doublesFormat: MatchDoublesFormat | null | undefined): string {
+  if (doublesFormat === 'open') {
+    const isSingles = (value ?? '').toLowerCase() === 'singles'
+    return isSingles ? 'Open singles match' : 'Open doubles match'
+  }
+
+  return formatGameType(value)
+}
+
 function formatDate(value: string | null | undefined): string | null {
   if (!value) return null
   const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -94,6 +112,44 @@ function formatTime(value: string | null | undefined): string | null {
     hour12: true,
     timeZone: 'UTC',
   }).format(date)
+}
+
+function parseTimeParts(value: string | null | undefined): { hours: number; minutes: number } | null {
+  if (!value) return null
+  const parts = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!parts) return null
+
+  return {
+    hours: Number(parts[1]),
+    minutes: Number(parts[2]),
+  }
+}
+
+function formatTimeRange(startTime: string | null | undefined, durationMinutes: number | null | undefined): string | null {
+  const startLabel = formatTime(startTime)
+  if (!startLabel) return null
+
+  const startParts = parseTimeParts(startTime)
+  if (!startParts || !durationMinutes || durationMinutes <= 0) {
+    return startLabel
+  }
+
+  const end = new Date(Date.UTC(2026, 0, 1, startParts.hours, startParts.minutes + durationMinutes))
+  const endLabel = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(end)
+
+  return `${startLabel} – ${endLabel}`
+}
+
+function getVenueMapHref(venueName: string | null | undefined): string | null {
+  const venue = venueName?.trim()
+  if (!venue) return null
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue)}`
 }
 
 function formatPersonName(value: string | null | undefined): string {
@@ -128,6 +184,28 @@ function getInactiveInvitationCopy(invitationStatus: string, matchStatus: string
   return {
     title: 'This invitation is no longer active',
     body: 'The host canceled this invitation or updated the match details.',
+  }
+}
+
+async function getInvitationMatchDisplayDetails(matchId: string): Promise<InvitationMatchDisplayDetails | null> {
+  try {
+    const supabase = createSupabaseServiceRoleClient()
+    const { data, error } = await supabase
+      .from('matches')
+      .select('duration_minutes, doubles_format, organizer_note, level')
+      .eq('id', matchId)
+      .maybeSingle()
+
+    if (error) throw error
+
+    return data as InvitationMatchDisplayDetails | null
+  } catch (error) {
+    console.error('[invitation-page] match display details load failed', {
+      has_error: true,
+      match_id: matchId,
+      error_code: error && typeof error === 'object' && 'code' in error ? String(error.code) : 'unknown',
+    })
+    return null
   }
 }
 
@@ -175,12 +253,18 @@ export default async function InvitationPage({ params, searchParams }: Props) {
     )
   }
 
+  const matchDisplayDetails = inv.match_summary?.match_id
+    ? await getInvitationMatchDisplayDetails(inv.match_summary.match_id)
+    : null
   const inviterName = formatPersonName(inv.inviter_display_name)
-  const matchType = formatGameType(inv.match_summary?.game_type)
+  const matchType = formatSpecificMatchType(inv.match_summary?.game_type, matchDisplayDetails?.doubles_format)
   const matchKind = formatMatchKindForSentence(inv.match_summary?.game_type)
   const matchDate = formatDate(inv.match_summary?.match_date)
-  const matchTime = formatTime(inv.match_summary?.start_time)
+  const matchTime = formatTimeRange(inv.match_summary?.start_time, matchDisplayDetails?.duration_minutes)
   const venueName = inv.match_summary?.club_name ?? null
+  const venueMapHref = getVenueMapHref(venueName)
+  const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
+  const matchLevel = formatMatchLevelLabel(matchDisplayDetails?.level)
   const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' · ')
   const matchHref = user && inv.related_type === 'match'
     ? `/matches/${inv.related_id}`
@@ -328,37 +412,47 @@ export default async function InvitationPage({ params, searchParams }: Props) {
 
         .invitation-summary {
           display: grid;
-          gap: 10px;
+          gap: 3px;
           margin: 24px 0;
-          padding: 18px;
-          border: 1px solid #d9e6f4;
-          border-radius: 20px;
-          background: #f8fbff;
-        }
-
-        .invitation-summary-heading {
-          color: #7c8eaa;
-          font-size: 0.72rem;
-          font-weight: 900;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
         }
 
         .invitation-summary-type {
-          font-size: 1.15rem;
-          font-weight: 850;
+          color: #06183d;
+          font-size: 1.06rem;
+          font-weight: 900;
+          line-height: 1.35;
+          margin: 0 0 2px;
         }
 
-        .invitation-summary-venue {
-          color: #0b1f4d;
-          font-size: 1rem;
-          font-weight: 800;
+        .invitation-summary-line {
+          color: #405474;
+          font-size: 0.96rem;
+          font-weight: 720;
+          line-height: 1.35;
+          margin: 0;
+          overflow-wrap: anywhere;
         }
 
-        .invitation-summary-time {
-          color: #526784;
-          font-size: 0.95rem;
-          font-weight: 700;
+        .invitation-summary-label-inline {
+          color: #16335f;
+          font-weight: 900;
+        }
+
+        .invitation-venue-line {
+          align-items: baseline;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .invitation-map-link {
+          color: #1f5fe8;
+          font-weight: 900;
+          text-decoration: none;
+        }
+
+        .invitation-map-link:hover {
+          text-decoration: underline;
         }
 
         .invitation-note {
@@ -692,10 +786,32 @@ export default async function InvitationPage({ params, searchParams }: Props) {
             )}
 
             <section className="invitation-summary" aria-label="Match summary">
-              <div className="invitation-summary-heading">Match details</div>
-              <div className="invitation-summary-type">{matchType}</div>
-              <div className="invitation-summary-venue">{venueName ?? 'Venue to be confirmed'}</div>
-              <div className="invitation-summary-time">{matchDateTime || 'Time to be confirmed'}</div>
+              <h2 className="invitation-summary-type">{matchType}</h2>
+              {matchLevel ? (
+                <p className="invitation-summary-line">
+                  <span className="invitation-summary-label-inline">Level: </span>
+                  {matchLevel}
+                </p>
+              ) : null}
+              <p className="invitation-summary-line">{matchDateTime || 'Time to be confirmed'}</p>
+              <p className="invitation-summary-line invitation-venue-line">
+                <span>{venueName ?? 'Venue to be confirmed'}</span>
+                {venueMapHref ? (
+                  <>
+                    <span aria-hidden="true"> · </span>
+                    <a href={venueMapHref} target="_blank" rel="noreferrer" className="invitation-map-link">
+                      Map
+                    </a>
+                  </>
+                ) : null}
+              </p>
+              <p className="invitation-summary-line">Host: {inviterName}</p>
+              {hostNote ? (
+                <p className="invitation-summary-line">
+                  <span className="invitation-summary-label-inline">Note from host: </span>
+                  {hostNote}
+                </p>
+              ) : null}
             </section>
 
             {isInvitationInactive ? (

@@ -3,11 +3,20 @@ import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
 import { getInvitationById } from '@/lib/invitations/get-invitation-by-id'
 import { resolveInvitationToken } from '@/lib/invitations/invitation-token'
-import { createSupabasePublicServerClient } from '@/lib/supabase/server'
+import { formatMatchLevelLabel } from '@/lib/match-level'
+import { createSupabasePublicServerClient, createSupabaseServiceRoleClient } from '@/lib/supabase/server'
+import type { MatchDoublesFormat } from '@/lib/types/database'
 import { openInvitationStatusAction } from '@/app/invitations/[id]/invitation-actions'
 
 type Props = {
   params: Promise<{ id: string }>
+}
+
+type GuestInvitationMatchDisplayDetails = {
+  duration_minutes: number | null
+  doubles_format: MatchDoublesFormat | null
+  organizer_note: string | null
+  level: string | null
 }
 
 function formatGameType(value: string | null | undefined): string {
@@ -17,6 +26,15 @@ function formatGameType(value: string | null | undefined): string {
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase())
   return /\bmatch\b/i.test(label) ? label : `${label} match`
+}
+
+function formatSpecificMatchType(value: string | null | undefined, doublesFormat: MatchDoublesFormat | null | undefined): string {
+  if (doublesFormat === 'open') {
+    const isSingles = (value ?? '').toLowerCase() === 'singles'
+    return isSingles ? 'Open singles match' : 'Open doubles match'
+  }
+
+  return formatGameType(value)
 }
 
 function formatDate(value: string | null | undefined): string | null {
@@ -44,6 +62,44 @@ function formatTime(value: string | null | undefined): string | null {
   }).format(date)
 }
 
+function parseTimeParts(value: string | null | undefined): { hours: number; minutes: number } | null {
+  if (!value) return null
+  const parts = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!parts) return null
+
+  return {
+    hours: Number(parts[1]),
+    minutes: Number(parts[2]),
+  }
+}
+
+function formatTimeRange(startTime: string | null | undefined, durationMinutes: number | null | undefined): string | null {
+  const startLabel = formatTime(startTime)
+  if (!startLabel) return null
+
+  const startParts = parseTimeParts(startTime)
+  if (!startParts || !durationMinutes || durationMinutes <= 0) {
+    return startLabel
+  }
+
+  const end = new Date(Date.UTC(2026, 0, 1, startParts.hours, startParts.minutes + durationMinutes))
+  const endLabel = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(end)
+
+  return `${startLabel} – ${endLabel}`
+}
+
+function getVenueMapHref(venueName: string | null | undefined): string | null {
+  const venue = venueName?.trim()
+  if (!venue) return null
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue)}`
+}
+
 function formatPersonName(value: string | null | undefined): string {
   const name = value?.trim()
   if (!name) return 'the host'
@@ -51,6 +107,28 @@ function formatPersonName(value: string | null | undefined): string {
     .split(/\s+/)
     .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : part))
     .join(' ')
+}
+
+async function getGuestInvitationMatchDisplayDetails(matchId: string): Promise<GuestInvitationMatchDisplayDetails | null> {
+  try {
+    const supabase = createSupabaseServiceRoleClient()
+    const { data, error } = await supabase
+      .from('matches')
+      .select('duration_minutes, doubles_format, organizer_note, level')
+      .eq('id', matchId)
+      .maybeSingle()
+
+    if (error) throw error
+
+    return data as GuestInvitationMatchDisplayDetails | null
+  } catch (error) {
+    console.error('[guest-invitation-match] match display details load failed', {
+      has_error: true,
+      match_id: matchId,
+      error_code: error && typeof error === 'object' && 'code' in error ? String(error.code) : 'unknown',
+    })
+    return null
+  }
 }
 
 export default async function GuestInvitationMatchPage({ params }: Props) {
@@ -64,11 +142,17 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
   }
 
   const summary = invitation.match_summary
+  const matchDisplayDetails = summary?.match_id
+    ? await getGuestInvitationMatchDisplayDetails(summary.match_id)
+    : null
   const inviterName = formatPersonName(invitation.inviter_display_name)
-  const matchType = formatGameType(summary?.game_type)
+  const matchType = formatSpecificMatchType(summary?.game_type, matchDisplayDetails?.doubles_format)
   const matchDate = formatDate(summary?.match_date)
-  const matchTime = formatTime(summary?.start_time)
+  const matchTime = formatTimeRange(summary?.start_time, matchDisplayDetails?.duration_minutes)
   const venueName = summary?.club_name ?? 'Venue to be confirmed'
+  const venueMapHref = getVenueMapHref(summary?.club_name)
+  const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
+  const matchLevel = formatMatchLevelLabel(matchDisplayDetails?.level)
   const matchDateTime = [matchDate, matchTime].filter(Boolean).join(' · ') || 'Time to be confirmed'
   const invitationHref = `/invitations/${invitationId}`
   const createAccountHref = `/login?mode=register&next=${encodeURIComponent(`/i/${id}/match`)}`
@@ -175,7 +259,6 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
         }
 
         .guest-invitation-kicker,
-        .guest-invitation-summary-heading,
         .guest-invitation-rsvp-label {
           color: #7c8eaa;
           font-size: 0.72rem;
@@ -206,29 +289,47 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
 
         .guest-invitation-summary {
           display: grid;
-          gap: 10px;
+          gap: 3px;
           margin: 24px 0;
-          padding: 18px;
-          border: 1px solid #d9e6f4;
-          border-radius: 20px;
-          background: #f8fbff;
         }
 
         .guest-invitation-summary-type {
-          font-size: 1.15rem;
-          font-weight: 850;
+          color: #06183d;
+          font-size: 1.06rem;
+          font-weight: 900;
+          line-height: 1.35;
+          margin: 0 0 2px;
         }
 
-        .guest-invitation-summary-venue {
-          color: #0b1f4d;
-          font-size: 1rem;
-          font-weight: 800;
+        .guest-invitation-summary-line {
+          color: #405474;
+          font-size: 0.96rem;
+          font-weight: 720;
+          line-height: 1.35;
+          margin: 0;
+          overflow-wrap: anywhere;
         }
 
-        .guest-invitation-summary-time {
-          color: #526784;
-          font-size: 0.95rem;
-          font-weight: 700;
+        .guest-invitation-summary-label-inline {
+          color: #16335f;
+          font-weight: 900;
+        }
+
+        .guest-invitation-venue-line {
+          align-items: baseline;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .guest-invitation-map-link {
+          color: #1f5fe8;
+          font-weight: 900;
+          text-decoration: none;
+        }
+
+        .guest-invitation-map-link:hover {
+          text-decoration: underline;
         }
 
         .guest-invitation-rsvp-card {
@@ -434,11 +535,33 @@ export default async function GuestInvitationMatchPage({ params }: Props) {
             <h1 className="guest-invitation-title">{pageState.title}</h1>
             <p className="guest-invitation-subtext">{pageState.body}</p>
 
-            <section className="guest-invitation-summary" aria-label="Match details">
-              <div className="guest-invitation-summary-heading">Match details</div>
-              <div className="guest-invitation-summary-type">{matchType}</div>
-              <div className="guest-invitation-summary-venue">{venueName}</div>
-              <div className="guest-invitation-summary-time">{matchDateTime}</div>
+            <section className="guest-invitation-summary" aria-label="Match summary">
+              <h2 className="guest-invitation-summary-type">{matchType}</h2>
+              {matchLevel ? (
+                <p className="guest-invitation-summary-line">
+                  <span className="guest-invitation-summary-label-inline">Level: </span>
+                  {matchLevel}
+                </p>
+              ) : null}
+              <p className="guest-invitation-summary-line">{matchDateTime}</p>
+              <p className="guest-invitation-summary-line guest-invitation-venue-line">
+                <span>{venueName}</span>
+                {venueMapHref ? (
+                  <>
+                    <span aria-hidden="true"> · </span>
+                    <a href={venueMapHref} target="_blank" rel="noreferrer" className="guest-invitation-map-link">
+                      Map
+                    </a>
+                  </>
+                ) : null}
+              </p>
+              <p className="guest-invitation-summary-line">Host: {inviterName}</p>
+              {hostNote ? (
+                <p className="guest-invitation-summary-line">
+                  <span className="guest-invitation-summary-label-inline">Note from host: </span>
+                  {hostNote}
+                </p>
+              ) : null}
             </section>
 
             {pageState.rsvp ? (
