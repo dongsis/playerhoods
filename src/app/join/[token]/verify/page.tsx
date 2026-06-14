@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { BrandLogo } from '@/app/components/BrandLogo'
+import { formatMatchLevelLabel } from '@/lib/match-level'
 import { createSupabasePublicServerClient } from '@/lib/supabase/server'
 import type { Database, MatchDoublesFormat } from '@/lib/types/database'
 import { verifyPublicMatchSignupAction } from '../actions'
@@ -292,7 +293,7 @@ export default async function PublicMatchSignupVerifyPage({ params, searchParams
   const venueMapHref = getVenueMapHref(context?.venue_name)
   const hostName = context?.host_display_name || 'the host'
   const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
-  const matchLevel = matchDisplayDetails?.level?.trim() || null
+  const matchLevel = formatMatchLevelLabel(matchDisplayDetails?.level)
   const verifyAction = verifyPublicMatchSignupAction.bind(null, publicToken)
 
   return (

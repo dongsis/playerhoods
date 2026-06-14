@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import Link from 'next/link'
 import { BrandLogo } from '@/app/components/BrandLogo'
+import { formatMatchLevelLabel } from '@/lib/match-level'
 import { createSupabasePublicServerClient, createSupabaseServiceRoleClient } from '@/lib/supabase/server'
 import type { MatchDoublesFormat } from '@/lib/types/database'
 import { declinePublicJoinSmsSpotAction, requestPublicJoinSmsSpotAction } from './actions'
@@ -253,7 +254,7 @@ export default async function PublicJoinSmsPage({ params, searchParams }: Props)
   const venueMapHref = getVenueMapHref(context?.venue_name)
   const hostName = context?.host_display_name ?? 'Host'
   const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
-  const matchLevel = matchDisplayDetails?.level?.trim() || null
+  const matchLevel = formatMatchLevelLabel(matchDisplayDetails?.level)
   const participantFirstName = getFirstName(context?.display_name)
   const pageError = getErrorMessage(pageParams.error)
   const requestSent = Boolean(context && (pageParams.notice === 'request-sent' || context.status === 'request_created'))

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BrandLogo } from '@/app/components/BrandLogo'
+import { formatMatchLevelLabel } from '@/lib/match-level'
 import {
   createSupabasePublicServerClient,
   createSupabaseServerClient,
@@ -550,8 +551,9 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
   const venueMapHref = getVenueMapHref(context?.venue_name)
   const hostName = context?.host_display_name ?? 'Unavailable'
   const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
-  const matchLevel = matchDisplayDetails?.level?.trim() || null
+  const matchLevel = formatMatchLevelLabel(matchDisplayDetails?.level)
   const participantFirstName = getFirstName(playerCardIdentity?.display_name)
+  const playerCardLevel = formatMatchLevelLabel(playerCardIdentity?.level)
   const pageError = getErrorMessage(pageParams.error)
   const isAlreadySubmitted = pageParams.notice === 'already-submitted' || pageParams.notice === 'request-sent'
   const isSmsPending = pageParams.notice === 'sms-pending'
@@ -1156,8 +1158,8 @@ export default async function PublicMatchSignupPage({ params, searchParams }: Pr
                 ? 'Your PlayerHoods account has your response for this match.'
                 : "Use your PlayerHoods account to let the host know you're interested and track match updates."}
             </p>
-            {playerCardIdentity?.level ? (
-              <p className="public-signed-in-copy">Level: {playerCardIdentity.level}</p>
+            {playerCardLevel ? (
+              <p className="public-signed-in-copy">Level: {playerCardLevel}</p>
             ) : null}
           </aside>
         ) : (

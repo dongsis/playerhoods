@@ -1,3 +1,4 @@
+import { formatMatchLevelLabel } from '@/lib/match-level'
 import type { MatchDoublesFormat } from '@/lib/types/database'
 
 type PublicJoinShareTextInput = {
@@ -48,8 +49,7 @@ function formatShareMatchType(input: PublicJoinShareTextInput): string {
 }
 
 function formatShareLevel(value: string | null | undefined): string | null {
-  const level = value?.trim()
-  return level || null
+  return formatMatchLevelLabel(value)
 }
 
 function formatShareActivity(sportName: string | null | undefined, gameType: string | null | undefined): string {

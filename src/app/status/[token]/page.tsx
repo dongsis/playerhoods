@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { BrandLogo } from '@/app/components/BrandLogo'
+import { formatMatchLevelLabel } from '@/lib/match-level'
 import { getPublicParticipantStatus } from '@/lib/public-participant-status'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server'
 import type { Json, MatchDoublesFormat } from '@/lib/types/database'
@@ -320,7 +321,7 @@ export default async function PublicParticipantStatusPage({ params, searchParams
   const venueName = status.venue_name ?? 'Venue to be confirmed'
   const venueMapHref = getVenueMapHref(status.venue_name)
   const hostNote = matchDisplayDetails?.organizer_note?.trim() || null
-  const matchLevel = matchDisplayDetails?.level?.trim() || null
+  const matchLevel = formatMatchLevelLabel(matchDisplayDetails?.level)
   const participantFirstName = getFirstName(status.participant_display_name)
   const lineupHeading = status.is_formed ? 'Confirmed Lineup' : 'Confirmed So Far'
   const statusPath = `/status/${encodeURIComponent(token)}`
