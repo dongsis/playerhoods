@@ -599,11 +599,15 @@ function MatchSelfActionsSection({
   if (!viewModel.showSelfActionsSection) {
     return null
   }
-  if (
-    viewModel.myParticipant?.removed_at === null &&
-    viewModel.myParticipant.status === 'confirmed' &&
-    !viewModel.myParticipantNeedsReconfirm
-  ) {
+  const myParticipant = viewModel.myParticipant
+  const hideSettledConfirmedState = Boolean(
+    myParticipant &&
+    myParticipant.status === 'confirmed' &&
+    !myParticipant.removed_at &&
+    !viewModel.myParticipantNeedsReconfirm,
+  )
+
+  if (hideSettledConfirmedState) {
     return null
   }
 
