@@ -567,17 +567,6 @@ function hasCityName(values: string[], cityName: string): boolean {
   return values.some((value) => normalizeCityName(value).toLowerCase() === normalized)
 }
 
-function isOrderedSubsequence(query: string, target: string): boolean {
-  if (!query) return true
-  let queryIndex = 0
-  for (let targetIndex = 0; targetIndex < target.length && queryIndex < query.length; targetIndex += 1) {
-    if (target[targetIndex] === query[queryIndex]) {
-      queryIndex += 1
-    }
-  }
-  return queryIndex === query.length
-}
-
 function boundedEditDistance(a: string, b: string, maxDistance: number): number {
   if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1
   const previous = Array.from({ length: b.length + 1 }, (_, index) => index)
@@ -604,6 +593,30 @@ function boundedEditDistance(a: string, b: string, maxDistance: number): number 
   }
 
   return previous[b.length]
+}
+
+function getVenueTokenMatchScore(queryToken: string, targetTokens: string[]): number | null {
+  let bestScore: number | null = null
+  const record = (score: number) => {
+    bestScore = bestScore == null ? score : Math.max(bestScore, score)
+  }
+
+  for (const token of targetTokens) {
+    if (token === queryToken) record(110)
+    else if (token.startsWith(queryToken)) record(102)
+    else if (token.includes(queryToken)) record(88)
+    else if (queryToken.length >= 3) {
+      const maxDistance = queryToken.length <= 5 ? 1 : 2
+      if (Math.abs(token.length - queryToken.length) <= maxDistance) {
+        const distance = boundedEditDistance(queryToken, token, maxDistance)
+        if (distance <= maxDistance) {
+          record(82 - distance * 8)
+        }
+      }
+    }
+  }
+
+  return bestScore
 }
 
 function getVenueFuzzyScore(rawQuery: string, rawValues: string[]): number | null {
@@ -636,25 +649,17 @@ function getVenueFuzzyScore(rawQuery: string, rawValues: string[]): number | nul
   if (tokens.some((token) => token.includes(query))) record(88)
   if (initials.startsWith(compactQuery)) record(86)
 
-  if (queryTokens.length > 1 && queryTokens.every((queryToken) => tokens.some((token) => token.startsWith(queryToken)))) {
-    record(94)
-  }
-
-  if (compactQuery.length >= 2 && isOrderedSubsequence(compactQuery, compactHaystack)) {
-    const spreadPenalty = Math.min(compactHaystack.length - compactQuery.length, 30)
-    record(72 - spreadPenalty)
-  }
-
-  if (compactQuery.length >= 3) {
-    const maxDistance = compactQuery.length <= 5 ? 1 : 2
-    for (const token of tokens) {
-      if (Math.abs(token.length - compactQuery.length) <= maxDistance) {
-        const distance = boundedEditDistance(compactQuery, token, maxDistance)
-        if (distance <= maxDistance) {
-          record(82 - distance * 8)
-        }
-      }
+  if (queryTokens.length > 1) {
+    let tokenScore = 0
+    for (const queryToken of queryTokens) {
+      const matchScore = getVenueTokenMatchScore(queryToken, tokens)
+      if (matchScore == null) return bestScore
+      tokenScore += matchScore
     }
+    record(Math.round(tokenScore / queryTokens.length))
+  } else if (compactQuery.length >= 3) {
+    const tokenScore = getVenueTokenMatchScore(compactQuery, tokens)
+    if (tokenScore != null) record(tokenScore)
   }
 
   return bestScore
@@ -1791,10 +1796,6 @@ export function ProfilePanel({
           venue.name,
           venue.abbreviation ?? '',
           getVenueDisplayName(venue),
-          venue.location_text ?? '',
-          venue.postal_code ?? '',
-          venue.website_url ?? '',
-          venue.google_maps_url ?? '',
         ]
         const venueLocationValues = [
           venue.city ?? '',
