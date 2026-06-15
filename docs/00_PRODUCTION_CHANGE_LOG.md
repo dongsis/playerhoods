@@ -14,6 +14,44 @@ Use this log to answer:
 
 Do not record secrets, tokens, passwords, service-role keys, or private user data in this document.
 
+## 2026-06-15 - PR-204-hood-discover-group-navigation
+
+**Type:** Patch
+**Code Commits:** PR #204 merged via `4335b0fd90baf72aca1e79b534959c20514e3c24`. Final PR head before merge: `8a7caf4983873238cc5de7a8bd68c8b15b5128ec`.
+**Migration:** None
+**Status:** Production deployed / code aligned; production smoke partial; Supabase Remote no change.
+
+### Summary
+
+Updates Hoods Discover so Club Members and City Players render all available groups at once instead of filtering to only one selected group. Club Members now shows venue chips based on the viewer's venue memberships and renders grouped venue sections below. City Players shows play-city chips and renders grouped city sections below. Chips act as smooth jump links with active state only; clicking a chip does not hide other groups.
+
+### Verification Evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| Build/typecheck | Passed locally and in GitHub PR check | `git diff --check`; `npx tsc --noEmit`; `npm run build`; GitHub Build and typecheck check |
+| Conflict scan | Passed | PR #204 conflict scan reported low risk; no configured high-conflict areas touched |
+| Vercel Preview | Passed | Vercel Preview for PR #204 reached Ready |
+| Local browser QA | Passed | Disposable `.test` QA account on `localhost:3003` verified Club Members venue chips/sections and City Players city chips/sections; chip clicks updated active state and did not hide other groups |
+| Vercel Production | Deployed successfully | GitHub Deployment `5070694233` for merge commit `4335b0fd90baf72aca1e79b534959c20514e3c24` reached `success`; deployment URL `https://playerhoods-codex-cdjekjz74-nancys-projects-128e326c.vercel.app` |
+| Supabase Remote | No change | No migration added or applied |
+| Real SMS/email/provider traffic | Not sent | Validation used a disposable `.test` QA account locally only; no production notification, email, SMS, or provider delivery was triggered |
+| Production verification | Partial / blocked | Light production smoke workflow #27574905002 passed login page reachability, but reported BLOCKED because the repo has no `npm run smoke:production` script. Per release governance, login reachability alone is not full production verification. |
+
+### Rollback
+
+- Code rollback: revert PR #204 and redeploy the previous production commit.
+- Database rollback: none required because this patch has no migration or backend contract change.
+- Provider rollback: none; no invite/email/SMS/notification provider configuration or traffic changed.
+
+### Notes
+
+- No DB migration.
+- No Supabase Remote action.
+- No notification, email, SMS, reminder, or provider behavior change.
+- The Codex PR review workflow failed because the action reported quota exceeded; this was not a code or build failure. Required Build/typecheck, Vercel Preview, and conflict scan checks passed before merge.
+- Production core Hoods Discover browser validation remains pending because only light reachability smoke was run on production.
+
 ## 2026-06-07 - MR-20260607-match-board-upcoming-sections
 
 **Type:** Patch
