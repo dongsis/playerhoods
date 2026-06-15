@@ -14,10 +14,8 @@ interface Props {
   matchDate: string | null
   startTime: string | null
   durationMinutes: number | null
-  playerReminderMinutes: number | null
   level: string | null
   courtPlanMode: MatchCourtPlanMode
-  courtNote: string | null
   finalCourtLabel: string | null
   venueCourts: Court[]
   onSaveMatchDetails: (data: {
@@ -26,7 +24,6 @@ interface Props {
     match_date: string | null
     start_time: string | null
     duration_minutes: number | null
-    player_reminder_minutes?: number | null
     level?: string | null
   }) => Promise<void>
   onCancelMatch: (reason: string) => Promise<void>
@@ -53,11 +50,6 @@ const SINGLES_FORMAT_OPTIONS: { value: MatchDoublesFormat; label: string }[] = [
   { value: 'open', label: 'Open singles' },
   { value: 'mens_doubles', label: "Men's singles" },
   { value: 'womens_doubles', label: "Women's singles" },
-]
-
-const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
-  { value: 1440, label: 'Send a reminder the day before at 5:00 PM.' },
-  { value: null, label: 'No reminder' },
 ]
 
 function getEditLevelOptions(currentLevel: string) {
@@ -102,10 +94,8 @@ export function MatchEditForm({
   matchDate,
   startTime,
   durationMinutes,
-  playerReminderMinutes,
   level,
   courtPlanMode,
-  courtNote,
   finalCourtLabel,
   venueCourts,
   onSaveMatchDetails,
@@ -123,11 +113,9 @@ export function MatchEditForm({
   const [date, setDate] = useState(matchDate ?? '')
   const [time, setTime] = useState(startTime ?? '')
   const [duration, setDuration] = useState(durationMinutes?.toString() ?? '')
-  const [reminderMinutes, setReminderMinutes] = useState<number | null>(playerReminderMinutes ?? 1440)
   const [nextDoublesFormat, setNextDoublesFormat] = useState<MatchDoublesFormat>(doublesFormat ?? 'open')
   const [nextLevel, setNextLevel] = useState(level ?? '')
   const [planMode, setPlanMode] = useState<MatchCourtPlanMode>(courtPlanMode)
-  const [planNote, setPlanNote] = useState(courtNote ?? '')
   const [courtLabel, setCourtLabel] = useState(finalCourtLabel ?? '')
   const [cancelReason, setCancelReason] = useState('')
 
@@ -149,13 +137,11 @@ export function MatchEditForm({
     setDate(matchDate ?? '')
     setTime(startTime ?? '')
     setDuration(durationMinutes?.toString() ?? '')
-    setReminderMinutes(playerReminderMinutes ?? 1440)
     setNextDoublesFormat(doublesFormat ?? 'open')
     setNextLevel(level ?? '')
     setPlanMode(courtPlanMode)
-    setPlanNote(courtNote ?? '')
     setCourtLabel(finalCourtLabel ?? '')
-  }, [open, requiredCount, doublesFormat, level, matchDate, startTime, durationMinutes, playerReminderMinutes, courtPlanMode, courtNote, finalCourtLabel])
+  }, [open, requiredCount, doublesFormat, level, matchDate, startTime, durationMinutes, courtPlanMode, finalCourtLabel])
 
   useEffect(() => {
     if (planMode !== 'secured') return
@@ -169,29 +155,14 @@ export function MatchEditForm({
     }
   }, [gameType, nextDoublesFormat])
 
-  useEffect(() => {
-    if (planMode === 'secured' && planNote) {
-      setPlanNote('')
-    }
-  }, [planMode, planNote])
-
   const nextRequiredCount = players ? parseInt(players, 10) : null
   const nextDate = date || null
   const nextTime = time || null
   const nextDuration = duration ? parseInt(duration, 10) : null
   const normalizedLevel = nextLevel.trim() || null
-  const nextCourtNote = planMode === 'secured' ? null : (planNote.trim() || null)
   const normalizedCourtLabel = courtLabel.trim()
   const nextCourtLabel = planMode === 'secured' ? (normalizedCourtLabel || null) : null
   const levelOptions = getEditLevelOptions(nextLevel)
-  const courtNotePlaceholder =
-    planMode === 'walk_in'
-      ? 'Walk-in only, meet early'
-      : planMode === 'self_book_later'
-        ? 'Host will confirm the court later'
-        : planMode === 'needs_help_booking'
-          ? 'Use the match message area to coordinate court booking'
-          : 'Optional court note'
 
   const detailsChanged =
     nextRequiredCount !== requiredCount
@@ -199,7 +170,6 @@ export function MatchEditForm({
     || nextDate !== (matchDate ?? null)
     || nextTime !== (startTime ?? null)
     || nextDuration !== (durationMinutes ?? null)
-    || reminderMinutes !== (playerReminderMinutes ?? 1440)
     || normalizedLevel !== (level ?? null)
 
   const scheduleChanged =
@@ -209,7 +179,6 @@ export function MatchEditForm({
 
   const courtPlanChanged =
     planMode !== courtPlanMode
-    || nextCourtNote !== (courtNote ?? null)
     || nextCourtLabel !== (finalCourtLabel ?? null)
 
   const handleSave = (e: React.FormEvent) => {
@@ -238,7 +207,6 @@ export function MatchEditForm({
             match_date: nextDate,
             start_time: nextTime,
             duration_minutes: nextDuration,
-            player_reminder_minutes: reminderMinutes,
             level: normalizedLevel,
           })
         }
@@ -246,7 +214,7 @@ export function MatchEditForm({
         if (courtPlanChanged) {
           await onSaveCourtPlan({
             court_plan_mode: planMode,
-            court_note: nextCourtNote,
+            court_note: null,
             final_court_label: nextCourtLabel,
           })
         }
@@ -254,7 +222,7 @@ export function MatchEditForm({
         if (!detailsChanged && !courtPlanChanged) {
           setNotice('No changes were saved.')
         } else if (scheduleChanged) {
-          setNotice('Saved. Players will be asked to confirm again because the schedule changed.')
+          setNotice('Saved. Date, time, or venue changes ask players to confirm availability again.')
         } else {
           setNotice('Saved.')
         }
@@ -390,7 +358,7 @@ export function MatchEditForm({
               onChange={(e) => setNextLevel(e.target.value)}
               style={{ width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.85rem' }}
             >
-              <option value="">No level</option>
+              <option value="">No level preference</option>
               {levelOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -439,45 +407,18 @@ export function MatchEditForm({
           </div>
         </div>
 
-        <div
+        <p
           style={{
-            display: 'grid',
-            gap: '0.45rem',
+            margin: 0,
+            color: '#64748b',
+            fontSize: '0.75rem',
+            lineHeight: 1.45,
             paddingTop: '0.25rem',
             borderTop: '1px solid #eef2f7',
           }}
         >
-          <label style={{ display: 'block', fontSize: '0.8rem', color: '#666' }}>
-            Player reminders
-          </label>
-          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-            {REMINDER_OPTIONS.map((option) => {
-              const active = reminderMinutes === option.value
-              return (
-                <button
-                  key={option.label}
-                  type="button"
-                  onClick={() => setReminderMinutes(option.value)}
-                  style={{
-                    padding: '0.42rem 0.7rem',
-                    borderRadius: '999px',
-                    border: active ? '1px solid #0d6efd' : '1px solid #d9e2ec',
-                    background: active ? '#eff6ff' : '#fff',
-                    color: active ? '#0d6efd' : '#475569',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '0.75rem', lineHeight: 1.45 }}>
-            Same-day matches skipped; only confirmed players receive the day-before reminder.
-          </p>
-        </div>
+          Date, time, or venue changes ask players to confirm availability again.
+        </p>
 
         <div
           style={{
@@ -526,20 +467,6 @@ export function MatchEditForm({
             </div>
           )}
 
-          {planMode !== 'secured' && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '0.2rem' }}>
-                Court note
-              </label>
-              <input
-                type="text"
-                value={planNote}
-                onChange={(e) => setPlanNote(e.target.value)}
-                placeholder={courtNotePlaceholder}
-                style={{ width: '100%', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
-              />
-            </div>
-          )}
         </div>
 
         <div
