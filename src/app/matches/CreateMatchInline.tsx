@@ -33,7 +33,8 @@ import { listSports, setGuestSports } from '@/lib/api/sports'
 import { getInviteCircleList, getInviteCircleSourceLabel, saveContactPlayer } from '@/lib/api/play-network'
 import { createRosterGuest, getContactPlayerResolution, type ContactPlayerResolved } from '@/lib/api/roster'
 import { getContactInvitationDeliveryStatus } from '@/lib/contact-communication'
-import { LEVEL_OPTIONS, getAvailabilityStatusLabel } from '@/lib/profile-options'
+import { formatMatchLevelLabel, MATCH_LEVEL_OPTIONS } from '@/lib/match-level'
+import { getAvailabilityStatusLabel } from '@/lib/profile-options'
 import { getVenueDisplayName } from '@/lib/venues/display'
 import type { AvailabilityStatus, Group, Venue, Court, Sport, MatchCourtPlanMode, MatchDoublesFormat, UserPlayCity, VenueSport } from '@/lib/types/database'
 
@@ -1605,7 +1606,7 @@ export function CreateMatchInline({
 
   const reviewLevelLabel = useMemo(() => {
     if (!gameLevel) return ''
-    return LEVEL_OPTIONS.find((option) => option.value === gameLevel)?.label ?? gameLevel
+    return formatMatchLevelLabel(gameLevel) ?? gameLevel
   }, [gameLevel])
 
   const reviewCourtSummary = useMemo(() => {
@@ -3443,8 +3444,8 @@ export function CreateMatchInline({
                 onChange={(event) => setGameLevel(event.target.value)}
                 className={gameLevel ? STEP_SELECT : STEP_SELECT_MUTED}
               >
-                <option value="">Select level</option>
-                {LEVEL_OPTIONS.map((option) => (
+                <option value="">No level</option>
+                {MATCH_LEVEL_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>

@@ -1115,6 +1115,8 @@ export function MatchDetailPageView({
       sportId={viewModel.match.sport_id}
       sportName={viewModel.sportName}
       gameType={viewModel.match.game_type}
+      doublesFormat={viewModel.match.doubles_format}
+      matchLevel={viewModel.match.level}
       venueName={viewModel.venueName}
       dateTimeLabel={viewModel.timeLabel}
       finalCourtLabel={viewModel.match.final_court_label}

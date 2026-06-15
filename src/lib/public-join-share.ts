@@ -1,7 +1,12 @@
+import { formatMatchLevelLabel } from '@/lib/match-level'
+import type { MatchDoublesFormat } from '@/lib/types/database'
+
 type PublicJoinShareTextInput = {
   url: string
   sportName?: string | null
   gameType?: string | null
+  doublesFormat?: MatchDoublesFormat | null
+  level?: string | null
   venueName?: string | null
   dateTimeLabel?: string | null
   hostName?: string | null
@@ -30,6 +35,23 @@ function formatShareMatchKind(sportName: string | null | undefined, gameType: st
   return /\bmatch\b/i.test(lowerLabel) ? lowerLabel : `${lowerLabel} match`
 }
 
+function formatShareMatchType(input: PublicJoinShareTextInput): string {
+  if (input.doublesFormat === 'open') {
+    const isSingles = (input.gameType ?? '').toLowerCase() === 'singles'
+    return isSingles ? 'Open singles match' : 'Open doubles match'
+  }
+
+  const label = (input.gameType || input.sportName || '').replace(/_/g, ' ').trim()
+  if (!label) return 'Match'
+
+  const titleLabel = formatTitleCase(label)
+  return /\bmatch\b/i.test(titleLabel) ? titleLabel : `${titleLabel} match`
+}
+
+function formatShareLevel(value: string | null | undefined): string | null {
+  return formatMatchLevelLabel(value)
+}
+
 function formatShareActivity(sportName: string | null | undefined, gameType: string | null | undefined): string {
   const label = formatShareLabel(sportName, gameType)
   if (!label) return 'this match'
@@ -46,8 +68,8 @@ function formatPublicShareOpening(input: PublicJoinShareTextInput): string {
 
   if (input.firstPerson) {
     return hostName
-      ? `Hey - this is ${hostName}. I'm seeing who's free for ${activity}.`
-      : `Hey - I'm seeing who's free for ${activity}.`
+      ? `Hey — this is ${hostName}. I'm seeing who's free for ${activity}.`
+      : `Hey — I'm seeing who's free for ${activity}.`
   }
 
   if (hostName) {
@@ -59,6 +81,11 @@ function formatPublicShareOpening(input: PublicJoinShareTextInput): string {
 
 export function buildPublicJoinShareText(input: PublicJoinShareTextInput): string {
   const url = input.url.trim()
+  const level = formatShareLevel(input.level)
+  const matchLine = [
+    formatShareMatchType(input),
+    level ? `Level: ${level}` : null,
+  ].filter(Boolean).join(' · ')
   const detailLine = [input.venueName?.trim(), input.dateTimeLabel?.trim()]
     .filter((value): value is string => Boolean(value))
     .join(' · ')
@@ -67,6 +94,10 @@ export function buildPublicJoinShareText(input: PublicJoinShareTextInput): strin
     formatPublicShareOpening(input),
     '',
   ]
+
+  if (matchLine) {
+    shareLines.push(matchLine)
+  }
 
   if (detailLine) {
     shareLines.push(detailLine)

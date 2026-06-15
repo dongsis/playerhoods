@@ -16,7 +16,7 @@ import {
 } from '@/lib/api/matches'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { buildPublicJoinShareText } from '@/lib/public-join-share'
-import type { Group, MatchCourt, MatchStatus } from '@/lib/types/database'
+import type { Group, MatchCourt, MatchDoublesFormat, MatchStatus } from '@/lib/types/database'
 import type { MatchUpdateInput } from './match-detail.actions'
 import type { MatchLineupSnapshot } from '@/lib/match-lineup'
 
@@ -63,6 +63,8 @@ type Props = {
   sportId: number | null
   sportName: string | null
   gameType: string | null
+  doublesFormat: MatchDoublesFormat | null
+  matchLevel: string | null
   venueName: string | null
   dateTimeLabel: string | null
   finalCourtLabel: string | null
@@ -95,6 +97,8 @@ export function MatchToolsSection({
   sportId,
   sportName,
   gameType,
+  doublesFormat,
+  matchLevel,
   venueName,
   dateTimeLabel,
   finalCourtLabel,
@@ -296,6 +300,8 @@ export function MatchToolsSection({
       const shareText = buildPublicJoinShareText({
         sportName,
         gameType,
+        doublesFormat,
+        level: matchLevel,
         venueName,
         dateTimeLabel,
         hostName: organizerName,

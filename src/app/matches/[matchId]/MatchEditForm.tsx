@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Court, MatchCourtPlanMode, MatchDoublesFormat } from '@/lib/types/database'
-import { LEVEL_OPTIONS } from '@/lib/profile-options'
+import { formatMatchLevelLabel, MATCH_LEVEL_OPTIONS } from '@/lib/match-level'
 import type { MatchCourtPlanUpdateInput } from './match-detail.actions'
 
 interface Props {
@@ -59,6 +59,20 @@ const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
   { value: 1440, label: 'Send a reminder the day before at 5:00 PM.' },
   { value: null, label: 'No reminder' },
 ]
+
+function getEditLevelOptions(currentLevel: string) {
+  if (!currentLevel || MATCH_LEVEL_OPTIONS.some((option) => option.value === currentLevel)) {
+    return MATCH_LEVEL_OPTIONS
+  }
+
+  return [
+    ...MATCH_LEVEL_OPTIONS,
+    {
+      value: currentLevel,
+      label: formatMatchLevelLabel(currentLevel) ?? currentLevel,
+    },
+  ]
+}
 
 const secondaryButtonStyle: React.CSSProperties = {
   background: '#fff',
@@ -169,6 +183,7 @@ export function MatchEditForm({
   const nextCourtNote = planMode === 'secured' ? null : (planNote.trim() || null)
   const normalizedCourtLabel = courtLabel.trim()
   const nextCourtLabel = planMode === 'secured' ? (normalizedCourtLabel || null) : null
+  const levelOptions = getEditLevelOptions(nextLevel)
   const courtNotePlaceholder =
     planMode === 'walk_in'
       ? 'Walk-in only, meet early'
@@ -376,7 +391,7 @@ export function MatchEditForm({
               style={{ width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.85rem' }}
             >
               <option value="">No level</option>
-              {LEVEL_OPTIONS.map((option) => (
+              {levelOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
