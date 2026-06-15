@@ -165,14 +165,33 @@ type HoodPerson = {
 type ClubDiscoverPerson = {
   userId: string
   displayName: string
+  clubKeys: string[]
   clubNames: string[]
 }
 
 type CityDiscoverPerson = {
   userId: string
   displayName: string
+  cityKeys: string[]
   cityNames: string[]
   isSaved: boolean
+}
+
+type DiscoverNavigationGroup = {
+  key: string
+  label: string
+}
+
+type ClubNavigationGroup = DiscoverNavigationGroup & {
+  venueId: string
+}
+
+type CityNavigationGroup = DiscoverNavigationGroup & {
+  cityName: string
+}
+
+type DiscoverPeopleGroup = DiscoverNavigationGroup & {
+  people: HoodPerson[]
 }
 
 type SearchDiscoverPerson = {
@@ -837,6 +856,19 @@ function matchesHoodSearch(person: HoodPerson, query: string): boolean {
     .includes(query)
 }
 
+function matchesDiscoverSearch(person: HoodPerson, query: string): boolean {
+  if (!query) return true
+  return [
+    person.displayName,
+    person.clubNames.join(' '),
+    person.cityNames.join(' '),
+    person.sourceBadges.join(' '),
+  ]
+    .join(' ')
+    .toLowerCase()
+    .includes(query)
+}
+
 function sortHoodPeople(left: HoodPerson, right: HoodPerson, openMatchCount: Map<string, number>): number {
   const openDelta = (openMatchCount.get(right.key) ?? 0) - (openMatchCount.get(left.key) ?? 0)
   if (openDelta !== 0) return openDelta
@@ -853,6 +885,14 @@ function sortDiscoverPeople(left: HoodPerson, right: HoodPerson): number {
   if (left.cityNames.length !== right.cityNames.length) return right.cityNames.length - left.cityNames.length
   if (left.clubNames.length !== right.clubNames.length) return right.clubNames.length - left.clubNames.length
   return left.displayName.localeCompare(right.displayName)
+}
+
+function getVenueGroupKey(venueId: string): string {
+  return `venue:${venueId}`
+}
+
+function getCityGroupKey(cityName: string): string {
+  return `city:${cityName.trim().toLowerCase()}`
 }
 
 function getHoodsUiStorageKey(userId: string) {
@@ -1812,7 +1852,12 @@ export function HoodsPanel({
   const [searchPeopleInput, setSearchPeopleInput] = useState('')
   const [submittedSearchPeopleQuery, setSubmittedSearchPeopleQuery] = useState('')
   const [searchPeopleRequestKey, setSearchPeopleRequestKey] = useState(0)
-  const [selectedCity, setSelectedCity] = useState<string>(myPlayCities[0]?.city_name ?? '')
+  const [activeClubGroupKey, setActiveClubGroupKey] = useState<string>(
+    myVenueMemberships[0]?.venue_id ? getVenueGroupKey(myVenueMemberships[0].venue_id) : '',
+  )
+  const [activeCityGroupKey, setActiveCityGroupKey] = useState<string>(
+    myPlayCities[0]?.city_name ? getCityGroupKey(myPlayCities[0].city_name) : '',
+  )
   const [contactToolsOpen, setContactToolsOpen] = useState(false)
   const [inviteCircleRows, setInviteCircleRows] = useState<InviteCircleRow[]>(inviteCircle)
   const [supportData, setSupportData] = useState<SupportData>({
@@ -1857,6 +1902,7 @@ export function HoodsPanel({
   const [starterPreferredFormat, setStarterPreferredFormat] = useState<StarterMatchFormat>('unknown')
   const [starterDismissedAt, setStarterDismissedAt] = useState<number | null>(null)
   const hasLoadedSupportDataRef = useRef(false)
+  const discoverGroupRefs = useRef<Record<string, HTMLElement | null>>({})
 
   useEffect(() => {
     if (sportOptions.some((sport) => sport.code === selectedSportCode)) return
@@ -1927,6 +1973,33 @@ export function HoodsPanel({
     () => Array.from(new Set(myVenueMemberships.map((membership) => getVenueDisplayName(membership.venue)).filter(Boolean))),
     [myVenueMemberships],
   )
+  const clubNavigationGroups = useMemo<ClubNavigationGroup[]>(() => {
+    const seenVenueIds = new Set<string>()
+    return myVenueMemberships.flatMap((membership) => {
+      if (seenVenueIds.has(membership.venue_id)) return []
+      seenVenueIds.add(membership.venue_id)
+      return [{
+        key: getVenueGroupKey(membership.venue_id),
+        venueId: membership.venue_id,
+        label: getVenueDisplayName(membership.venue) || membership.venue.name || 'Club',
+      }]
+    })
+  }, [myVenueMemberships])
+  const cityNavigationGroups = useMemo<CityNavigationGroup[]>(() => {
+    const seenCityNames = new Set<string>()
+    return myPlayCities.flatMap((city) => {
+      const cityName = city.city_name.trim()
+      if (!cityName) return []
+      const cityKey = getCityGroupKey(cityName)
+      if (seenCityNames.has(cityKey)) return []
+      seenCityNames.add(cityKey)
+      return [{
+        key: cityKey,
+        cityName,
+        label: cityName,
+      }]
+    })
+  }, [myPlayCities])
 
   const sportNameByIdAll = useMemo(
     () => new Map(sports.map((sport) => [sport.id, sport.display_name])),
@@ -2076,41 +2149,61 @@ export function HoodsPanel({
   }, [loadSupportData])
 
   useEffect(() => {
-    if (myPlayCities.length === 0) {
-      setSelectedCity('')
+    if (clubNavigationGroups.length === 0) {
+      setActiveClubGroupKey('')
       return
     }
-    if (!selectedCity || !myPlayCities.some((city) => city.city_name === selectedCity)) {
-      setSelectedCity(myPlayCities[0]?.city_name ?? '')
-    }
-  }, [myPlayCities, selectedCity])
+    setActiveClubGroupKey((current) =>
+      clubNavigationGroups.some((group) => group.key === current)
+        ? current
+        : clubNavigationGroups[0].key,
+    )
+  }, [clubNavigationGroups])
 
   useEffect(() => {
-    if (!selectedSport) return
+    if (cityNavigationGroups.length === 0) {
+      setActiveCityGroupKey('')
+      return
+    }
+    setActiveCityGroupKey((current) =>
+      cityNavigationGroups.some((group) => group.key === current)
+        ? current
+        : cityNavigationGroups[0].key,
+    )
+  }, [cityNavigationGroups])
+
+  useEffect(() => {
+    if (!selectedSport || clubNavigationGroups.length === 0) {
+      setClubDiscover([])
+      setClubProfiles(new Map())
+      setDirectInviteClubMemberIds(new Set())
+      setClubDiscoverError(null)
+      return
+    }
+
     const supabase = createSupabaseBrowserClient()
     let cancelled = false
 
     const loadClubDiscover = async () => {
       try {
         setClubDiscoverError(null)
-        const venueIds = Array.from(new Set(myVenueMemberships.map((membership) => membership.venue_id)))
         const entries = await Promise.all(
-          venueIds.map(async (venueId) => {
-            const membership = myVenueMemberships.find((item) => item.venue_id === venueId)
+          clubNavigationGroups.map(async (group) => {
             const [discoverRows, invitableRows] = await Promise.all([
-              getVenueMembersDiscovery(supabase, venueId, null),
-              getVenueInvitableMembers(supabase, venueId, userId),
+              getVenueMembersDiscovery(supabase, group.venueId, null),
+              getVenueInvitableMembers(supabase, group.venueId, userId),
             ])
             const invitableUserIds = new Set(invitableRows.map((row) => row.user_id))
             return {
               people: discoverRows
                 .filter((row) => row.user_id !== userId)
                 .map((row) => ({
-                userId: row.user_id,
-                displayName: normalizeDisplayName(row.display_name),
-                clubName: membership ? getVenueDisplayName(membership.venue) : 'Club',
-                isInvitable: invitableUserIds.has(row.user_id),
-              })),
+                  userId: row.user_id,
+                  displayName: normalizeDisplayName(row.display_name),
+                  clubKey: group.key,
+                  clubName: group.label,
+                  isInvitable: invitableUserIds.has(row.user_id),
+                })),
             }
           }),
         )
@@ -2121,12 +2214,14 @@ export function HoodsPanel({
           if (entry.isInvitable) directInvitableIds.add(entry.userId)
           const existing = deduped.get(entry.userId)
           if (existing) {
+            if (!existing.clubKeys.includes(entry.clubKey)) existing.clubKeys.push(entry.clubKey)
             if (!existing.clubNames.includes(entry.clubName)) existing.clubNames.push(entry.clubName)
             continue
           }
           deduped.set(entry.userId, {
             userId: entry.userId,
             displayName: entry.displayName,
+            clubKeys: [entry.clubKey],
             clubNames: [entry.clubName],
           })
         }
@@ -2161,10 +2256,10 @@ export function HoodsPanel({
     return () => {
       cancelled = true
     }
-  }, [groups, myVenueMemberships, selectedSport, userId])
+  }, [clubNavigationGroups, selectedSport, userId])
 
   useEffect(() => {
-    if (!selectedSport || !selectedCity) {
+    if (!selectedSport || cityNavigationGroups.length === 0) {
       setCityDiscover([])
       setCityProfiles(new Map())
       setCityDiscoverError(null)
@@ -2177,8 +2272,37 @@ export function HoodsPanel({
     const loadCityDiscover = async () => {
       try {
         setCityDiscoverError(null)
-        const rows = await getCityPlayersDiscovery(supabase, selectedCity, null)
-        const userIds = rows.map((row) => row.user_id)
+        const entries = await Promise.all(
+          cityNavigationGroups.map(async (group) => ({
+            group,
+            rows: await getCityPlayersDiscovery(supabase, group.cityName, null),
+          })),
+        )
+        const deduped = new Map<string, CityDiscoverPerson>()
+        for (const entry of entries) {
+          for (const row of entry.rows) {
+            if (row.user_id === userId) continue
+            const existing = deduped.get(row.user_id)
+            const cityNames = Array.from(new Set([...row.shared_city_names, entry.group.cityName]))
+            if (existing) {
+              if (!existing.cityKeys.includes(entry.group.key)) existing.cityKeys.push(entry.group.key)
+              for (const cityName of cityNames) {
+                if (!existing.cityNames.includes(cityName)) existing.cityNames.push(cityName)
+              }
+              if (row.is_saved) existing.isSaved = true
+              continue
+            }
+            deduped.set(row.user_id, {
+              userId: row.user_id,
+              displayName: normalizeDisplayName(row.display_name),
+              cityKeys: [entry.group.key],
+              cityNames,
+              isSaved: row.is_saved,
+            })
+          }
+        }
+
+        const userIds = Array.from(deduped.keys())
         const [profiles, userSportsMap] = await Promise.all([
           fetchPublicPlayerProfiles(supabase, userIds),
           fetchUserSportsMap(supabase, userIds),
@@ -2188,18 +2312,11 @@ export function HoodsPanel({
 
         setCityProfiles(profiles)
         setCityDiscover(
-          rows
-            .filter((row) => row.user_id !== userId)
-            .filter((row) =>
-              profileMatchesSport(profiles.get(row.user_id), selectedSport.id)
-              || (userSportsMap.get(row.user_id) ?? []).includes(selectedSport.id),
+          Array.from(deduped.values())
+            .filter((person) =>
+              profileMatchesSport(profiles.get(person.userId), selectedSport.id)
+              || (userSportsMap.get(person.userId) ?? []).includes(selectedSport.id),
             )
-            .map((row) => ({
-              userId: row.user_id,
-              displayName: normalizeDisplayName(row.display_name),
-              cityNames: row.shared_city_names,
-              isSaved: row.is_saved,
-            })),
         )
       } catch (cityError) {
         console.error('[hoods] city discover:', cityError)
@@ -2215,7 +2332,7 @@ export function HoodsPanel({
     return () => {
       cancelled = true
     }
-  }, [selectedCity, selectedSport, userId])
+  }, [cityNavigationGroups, selectedSport, userId])
 
   useEffect(() => {
     if (discoverSource !== 'search_people') {
@@ -2701,18 +2818,7 @@ export function HoodsPanel({
     }
     const query = search.trim().toLowerCase()
     return discoverPeople
-      .filter((person) => {
-        if (!query) return true
-        return [
-          person.displayName,
-          person.clubNames.join(' '),
-          person.cityNames.join(' '),
-          person.sourceBadges.join(' '),
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(query)
-      })
+      .filter((person) => matchesDiscoverSearch(person, query))
       .sort(sortDiscoverPeople)
   }, [discoverPeople, discoverSource, search])
 
@@ -2985,6 +3091,19 @@ export function HoodsPanel({
     setMessage(null)
   }, [])
 
+  const setDiscoverGroupRef = useCallback((groupKey: string, element: HTMLElement | null) => {
+    discoverGroupRefs.current[groupKey] = element
+  }, [])
+
+  const scrollToDiscoverGroup = useCallback((groupKey: string) => {
+    window.requestAnimationFrame(() => {
+      discoverGroupRefs.current[groupKey]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+  }, [])
+
   if (!selectedSport) {
     return (
       <div className="rounded-[28px] border border-slate-200 bg-white p-6">
@@ -3007,6 +3126,66 @@ export function HoodsPanel({
     () => (section === 'discover' ? filteredDiscoverPeople : filteredHoodPeople).map(applySavedOverride),
     [applySavedOverride, filteredDiscoverPeople, filteredHoodPeople, section],
   )
+  const discoverPeopleByUserId = useMemo(() => {
+    const map = new Map<string, HoodPerson>()
+    for (const person of discoverPeople.map(applySavedOverride)) {
+      if (person.userId) map.set(person.userId, person)
+    }
+    return map
+  }, [applySavedOverride, discoverPeople])
+  const groupedDiscoverPeople = useMemo<DiscoverPeopleGroup[]>(() => {
+    if (section !== 'discover') return []
+    const query = search.trim().toLowerCase()
+
+    if (discoverSource === 'club_members') {
+      return clubNavigationGroups
+        .map((group) => {
+          const seenKeys = new Set<string>()
+          const people = clubDiscover
+            .filter((person) => person.clubKeys.includes(group.key))
+            .map((person) => discoverPeopleByUserId.get(person.userId) ?? null)
+            .filter((person): person is HoodPerson => Boolean(person))
+            .filter((person) => {
+              if (seenKeys.has(person.key)) return false
+              seenKeys.add(person.key)
+              return matchesDiscoverSearch(person, query)
+            })
+            .sort(sortDiscoverPeople)
+
+          return { key: group.key, label: group.label, people }
+        })
+    }
+
+    if (discoverSource === 'city_players') {
+      return cityNavigationGroups
+        .map((group) => {
+          const seenKeys = new Set<string>()
+          const people = cityDiscover
+            .filter((person) => person.cityKeys.includes(group.key))
+            .map((person) => discoverPeopleByUserId.get(person.userId) ?? null)
+            .filter((person): person is HoodPerson => Boolean(person))
+            .filter((person) => {
+              if (seenKeys.has(person.key)) return false
+              seenKeys.add(person.key)
+              return matchesDiscoverSearch(person, query)
+            })
+            .sort(sortDiscoverPeople)
+
+          return { key: group.key, label: group.label, people }
+        })
+    }
+
+    return []
+  }, [
+    cityDiscover,
+    cityNavigationGroups,
+    clubDiscover,
+    clubNavigationGroups,
+    discoverPeopleByUserId,
+    discoverSource,
+    search,
+    section,
+  ])
   const savedPrimaryPeople = useMemo(() => {
     if (section !== 'hood' || hoodFilter !== 'saved') return [] as HoodPerson[]
     const query = search.trim().toLowerCase()
@@ -3250,29 +3429,60 @@ export function HoodsPanel({
           ) : null}
         </div>
 
-        {section === 'discover' && discoverSource === 'city_players' ? (
+        {section === 'discover' && discoverSource === 'club_members' ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            {myPlayCities.length === 0 ? (
+            {clubNavigationGroups.length === 0 ? (
               <span className="text-body-sub text-[#94A3B8]">
-                Add play cities in My Profile to use City Players discovery.
+                Join a venue in My Profile to use Club Members discovery.
               </span>
             ) : (
-              myPlayCities.map((city) => (
+              clubNavigationGroups.map((group) => (
                 <button
-                  key={city.id}
+                  key={group.key}
                   type="button"
                   onClick={() => {
                     clearMessage()
-                    setSelectedCity(city.city_name)
+                    setActiveClubGroupKey(group.key)
+                    scrollToDiscoverGroup(group.key)
                   }}
                   className={[
                     'text-body-sub rounded-full px-3 py-1.5 transition',
-                    selectedCity === city.city_name
+                    activeClubGroupKey === group.key
                       ? 'bg-[#1E293B] text-white'
                       : 'bg-[#F0F7FF] text-[#475569] hover:bg-[#E8F1FB]',
                   ].join(' ')}
                 >
-                  {city.city_name}
+                  {group.label}
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+
+        {section === 'discover' && discoverSource === 'city_players' ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {cityNavigationGroups.length === 0 ? (
+              <span className="text-body-sub text-[#94A3B8]">
+                Add play cities in My Profile to use City Players discovery.
+              </span>
+            ) : (
+              cityNavigationGroups.map((group) => (
+                <button
+                  key={group.key}
+                  type="button"
+                  onClick={() => {
+                    clearMessage()
+                    setActiveCityGroupKey(group.key)
+                    scrollToDiscoverGroup(group.key)
+                  }}
+                  className={[
+                    'text-body-sub rounded-full px-3 py-1.5 transition',
+                    activeCityGroupKey === group.key
+                      ? 'bg-[#1E293B] text-white'
+                      : 'bg-[#F0F7FF] text-[#475569] hover:bg-[#E8F1FB]',
+                  ].join(' ')}
+                >
+                  {group.label}
                 </button>
               ))
             )}
@@ -3317,7 +3527,7 @@ export function HoodsPanel({
             <div>
               <h3 className="text-h2 text-[#1E293B]">Find a registered player</h3>
               <p className="text-body-sub mt-1 text-[#64748B]">
-                Find by exact email or phone. Some players may ask you to request access before you can add or invite them.
+                Find by exact email or phone. Some players may ask you to send a Request to Add before you can add or invite them.
               </p>
             </div>
             <form onSubmit={handleSearchPeopleSubmit} className="flex flex-col gap-3 sm:flex-row">
@@ -3460,6 +3670,54 @@ export function HoodsPanel({
             ) : null}
           </div>
         )
+      ) : section === 'discover' && (discoverSource === 'club_members' || discoverSource === 'city_players') && groupedDiscoverPeople.length > 0 ? (
+        <div className="space-y-7">
+          {groupedDiscoverPeople.map((group) => (
+            <section
+              key={group.key}
+              ref={(element) => setDiscoverGroupRef(group.key, element)}
+              className="scroll-mt-28 space-y-3"
+            >
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h3 className="text-title-main text-[#1E293B]">{group.label}</h3>
+                <span className="text-body-sub text-[#94A3B8]">
+                  {group.people.length} {group.people.length === 1 ? 'player' : 'players'}
+                </span>
+              </div>
+              {group.people.length > 0 ? (
+                <HoodCardGrid
+                  people={group.people}
+                  myClubNames={myClubNames}
+                  openMatchCount={openMatchCount}
+                  activeInviteKey={activeInviteKey}
+                  activeMenuKey={activeMenuKey}
+                  openMatchTargetsByPerson={openMatchTargetsByPerson}
+                  loadingInviteKey={loadingInviteKey}
+                  pendingInviteMatchId={pendingInviteMatchId}
+                  onOpenDrawer={(nextPerson) => setActiveDrawerKey(nextPerson.key)}
+                  onOpenMenuAddToGroup={(nextPerson) => {
+                    setGroupDialogPerson(nextPerson)
+                    setActiveMenuKey(null)
+                  }}
+                  onSaveToggle={handleSaveToggle}
+                  onToggleInvite={handleToggleInvite}
+                  onToggleMenu={(nextPerson) => {
+                    setActiveInviteKey(null)
+                    setActiveMenuKey((current) => (current === nextPerson.key ? null : nextPerson.key))
+                  }}
+                  onInviteExisting={handleInviteExisting}
+                  onInviteNew={navigateToNewMatch}
+                />
+              ) : (
+                <div className="text-body-main rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-slate-500">
+                  {search.trim()
+                    ? 'No matching players in this group.'
+                    : 'No discoverable players in this group yet.'}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
       ) : activePeople.length === 0 ? (
         section === 'hood' && contactToolsOpen ? null : (
           <div className="text-body-main rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-500">
