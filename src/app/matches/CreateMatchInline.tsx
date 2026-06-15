@@ -589,7 +589,7 @@ function ReviewMatchModal({
   const gameSummary = [sportLabel, capitalizeLabel(gameTypeLabel), formatLabel]
     .filter((part) => part && part !== 'Not selected')
     .join(' · ')
-  const levelSummary = levelLabel ? `Level: ${levelLabel}` : 'Level not set'
+  const levelSummary = levelLabel ? `Level: ${levelLabel}` : 'No level preference'
   const venueCourtSummary = [venueLabel, courtLabel]
     .filter((part) => part && part !== 'Not selected')
     .join(' · ')
@@ -622,7 +622,7 @@ function ReviewMatchModal({
             <div>
               <p className="text-title-main text-[#0B1F44]">{gameSummary || 'Match details not set'}</p>
               <p className="text-body-main mt-1 font-semibold text-[#64748B]">
-                {levelLabel ? levelSummary : 'Level not set'}
+                {levelSummary}
               </p>
             </div>
 
@@ -3444,7 +3444,7 @@ export function CreateMatchInline({
                 onChange={(event) => setGameLevel(event.target.value)}
                 className={gameLevel ? STEP_SELECT : STEP_SELECT_MUTED}
               >
-                <option value="">No level</option>
+                <option value="">No level preference</option>
                 {MATCH_LEVEL_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

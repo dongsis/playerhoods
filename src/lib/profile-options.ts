@@ -40,13 +40,26 @@ export const PLAY_STYLE_OPTIONS = [
 ] as const
 
 export const LEVEL_OPTIONS = [
-  { value: 'Beginner', label: 'Beginner (2.0-2.5)' },
-  { value: 'Can Rally', label: 'Can Rally (2.5-3.0)' },
-  { value: 'Match Ready', label: 'Match Ready (3.0-3.5)' },
-  { value: 'Club Level', label: 'Club Level (3.5-4.0)' },
-  { value: 'Strong Club Level', label: 'Strong Club Level (4.0-4.5)' },
-  { value: 'Club Elite', label: 'Club Elite (4.5-5.0+)' },
+  { value: 'Beginner', label: 'Beginner (1.0-2.5)' },
+  { value: 'Recreational', label: 'Recreational (2.5-3.0)' },
+  { value: 'Intermediate', label: 'Intermediate (3.0-3.5)' },
+  { value: 'Club level', label: 'Club level (3.5-4.0)' },
+  { value: 'Advanced', label: 'Advanced (4.0-4.5)' },
+  { value: 'Competitive', label: 'Competitive (4.5+)' },
 ] as const
+
+const LEGACY_LEVEL_LABELS: Record<string, string> = {
+  'Can Rally': 'Recreational (2.5-3.0)',
+  'Match Ready': 'Intermediate (3.0-3.5)',
+  'Club Level': 'Club level (3.5-4.0)',
+  'Strong Club Level': 'Advanced (4.0-4.5)',
+  'Club Elite': 'Competitive (4.5+)',
+}
+
+const LEVEL_LABELS: Record<string, string> = {
+  ...Object.fromEntries(LEVEL_OPTIONS.map((option) => [option.value, option.label])),
+  ...LEGACY_LEVEL_LABELS,
+}
 
 export const GROUP_LEVEL_RATING_OPTIONS = [
   '2.0',
@@ -93,7 +106,9 @@ export function getCurrentFrequencyLabel(value: string | null | undefined): stri
 }
 
 export function getLevelLabel(value: string | null | undefined): string | null {
-  return LEVEL_OPTIONS.find((option) => option.value === value)?.label ?? null
+  const normalizedValue = value?.trim()
+  if (!normalizedValue) return null
+  return LEVEL_LABELS[normalizedValue] ?? null
 }
 
 export function formatRecommendedLevelRange(
