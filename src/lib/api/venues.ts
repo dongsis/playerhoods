@@ -35,10 +35,17 @@ export type PublicVenueSitemapRow = {
 // ============================================================================
 
 export async function isSuperAdmin(supabase: Client): Promise<boolean> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+  if (userError || !user) return false
+
   const { data, error } = await supabase
     .from('profiles')
     .select('is_super_admin')
-    .single()
+    .eq('id', user.id)
+    .maybeSingle()
   if (error) return false
   return (data as { is_super_admin: boolean })?.is_super_admin === true
 }
