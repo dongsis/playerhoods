@@ -46,7 +46,17 @@ export default async function AdminVenuesPage() {
               {venues.length} venue{venues.length !== 1 ? 's' : ''}
             </p>
           </div>
-          {canCreateVenue ? <CreateVenueDialog /> : null}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {superAdmin ? (
+              <Link
+                href="/admin/reports"
+                className="rounded-xl border border-[#D9E6F8] bg-white px-3 py-2 text-xs font-black text-[#0d6efd] transition hover:border-[#0d6efd]/40 hover:bg-[#EFF6FF]"
+              >
+                Reports
+              </Link>
+            ) : null}
+            {canCreateVenue ? <CreateVenueDialog /> : null}
+          </div>
         </div>
 
         {venues.length === 0 ? (
