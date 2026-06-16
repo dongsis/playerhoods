@@ -25,12 +25,20 @@ export function VenueManagementPanel({ myAdminVenues, isSuperAdmin }: Props) {
         <div className="flex items-center gap-2">
           {canCreateVenue ? <CreateVenueDialog /> : null}
           {isSuperAdmin ? (
-            <Link
-              href="/admin/venues"
-              className="rounded-xl bg-gray-900 px-3 py-1.5 text-xs text-white transition-colors hover:bg-gray-800"
-            >
-              All Venues →
-            </Link>
+            <>
+              <Link
+                href="/admin/reports"
+                className="rounded-xl border border-blue-100 bg-white px-3 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-50"
+              >
+                Reports
+              </Link>
+              <Link
+                href="/admin/venues"
+                className="rounded-xl bg-gray-900 px-3 py-1.5 text-xs text-white transition-colors hover:bg-gray-800"
+              >
+                All Venues &rarr;
+              </Link>
+            </>
           ) : null}
         </div>
       </div>
@@ -55,7 +63,7 @@ export function VenueManagementPanel({ myAdminVenues, isSuperAdmin }: Props) {
                   href={`/admin/venues/${venue.id}`}
                   className="text-xs font-medium text-blue-600 hover:text-blue-800"
                 >
-                  Manage →
+                  Manage &rarr;
                 </Link>
               </div>
 
@@ -85,4 +93,3 @@ export function VenueManagementPanel({ myAdminVenues, isSuperAdmin }: Props) {
     </div>
   )
 }
-
