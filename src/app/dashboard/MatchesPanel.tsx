@@ -283,6 +283,15 @@ function isLookingForPlayersMatch(item: MatchListItem, nowIso: string): boolean 
   )
 }
 
+function isReadyToFormMatch(item: MatchListItem, userId: string | null | undefined): boolean {
+  return (
+    item.match.organizer_id === userId
+    && item.match.status === 'active'
+    && !item.match.formed_at
+    && item.confirmedCount >= item.match.required_count
+  )
+}
+
 type MatchRowProps = {
   item: MatchListItem
   userId?: string | null
@@ -588,6 +597,7 @@ function MatchRow({
   const isHistoryRow = variant === 'history'
   const isPastMatch = isPast(item, new Date().toISOString())
   const isOrganizer = userId === match.organizer_id
+  const isReadyToForm = isReadyToFormMatch(item, userId)
   const pendingRequestApprovals = participants.filter(
     (participant) =>
       participant.status === 'pending'
@@ -642,6 +652,8 @@ function MatchRow({
     <StatusBadge label={isFormed ? 'Played' : 'Past'} tone="slate" />
   ) : isFormed ? (
     <StatusBadge label="Formed" tone="green" />
+  ) : isReadyToForm ? (
+    <StatusBadge label="Ready to Form" tone="blue" />
   ) : confirmedCount >= match.required_count ? (
     <StatusBadge label="Ready" tone="blue" />
   ) : (
@@ -693,13 +705,13 @@ function MatchRow({
             {boardWhenWhereLabel}
           </p>
           <div className="flex min-w-0 items-center justify-between gap-3">
-            <MatchBoardStatusMeta item={item} showOverlapWarning={showOverlapWarning} />
+            <MatchBoardStatusMeta item={item} showOverlapWarning={showOverlapWarning} isReadyToForm={isReadyToForm} />
             <Link
               href={`/dashboard?matchId=${match.id}`}
               onClick={() => onViewed?.(match.id)}
               className="shrink-0 text-[12px] font-extrabold text-[#0d6efd] hover:text-[#0b5ed7] whitespace-nowrap"
             >
-              Details -&gt;
+              {isReadyToForm ? 'Form Match ->' : 'Details ->'}
             </Link>
           </div>
         </div>
@@ -805,7 +817,7 @@ function MatchRow({
               onClick={() => onViewed?.(match.id)}
               className="text-body-sub font-extrabold text-[#0d6efd] hover:text-[#0b5ed7] whitespace-nowrap"
             >
-              Details -&gt;
+              {isReadyToForm ? 'Form Match ->' : 'Details ->'}
             </Link>
           ) : null}
         </div>
@@ -1387,19 +1399,20 @@ function getMobileCompactCourtLabel(label: string | null | undefined) {
   return boardLabel.replace(/^court\s+/i, 'crt ').replace(/^crt\s+/i, 'crt ')
 }
 
-function getMobileCompactStatusLabel(item: MatchListItem) {
+function getMobileCompactStatusLabel(item: MatchListItem, isReadyToForm = false) {
   if (item.match.status === 'cancelled') return 'Cancelled'
   if (item.isFormed) return 'Formed'
+  if (isReadyToForm) return 'Ready to Form'
   if (item.confirmedCount >= item.match.required_count) return 'Ready'
   return null
 }
 
-function getMatchBoardStatusParts(item: MatchListItem, showOverlapWarning = false) {
+function getMatchBoardStatusParts(item: MatchListItem, showOverlapWarning = false, isReadyToForm = false) {
   const compactCourtLabel = getMobileCompactCourtLabel(item.courtState.badgeLabel)
 
   return [
     showOverlapWarning ? 'Overlaps' : null,
-    getMobileCompactStatusLabel(item),
+    getMobileCompactStatusLabel(item, isReadyToForm),
     `${item.confirmedCount}/${item.match.required_count}`,
     compactCourtLabel,
   ].filter((part): part is string => Boolean(part))
@@ -1424,11 +1437,13 @@ function MatchBoardHostIcon() {
 function MatchBoardStatusMeta({
   item,
   showOverlapWarning = false,
+  isReadyToForm = false,
 }: {
   item: MatchListItem
   showOverlapWarning?: boolean
+  isReadyToForm?: boolean
 }) {
-  const statusParts = getMatchBoardStatusParts(item, showOverlapWarning)
+  const statusParts = getMatchBoardStatusParts(item, showOverlapWarning, isReadyToForm)
   const hostLabel = getOrganizerLabel(item)
   const summaryCount = Math.max(item.confirmedCount - 1, 0)
 
@@ -1459,27 +1474,30 @@ function MatchBoardStatusMeta({
 
 function MobileMatchCard({
   item,
+  userId = null,
   showOverlapWarning = false,
   onViewed,
 }: {
   item: MatchListItem
+  userId?: string | null
   showOverlapWarning?: boolean
   onViewed?: (matchId: string) => void
 }) {
   const whenWhereLabel = getMatchBoardWhenWhereLabel(item)
+  const isReadyToForm = isReadyToFormMatch(item, userId)
 
   return (
     <div className="block w-full min-w-0 rounded-[18px] border border-[#E2E8F0] bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:border-[#D6DEE9]">
       <div className="min-w-0 flex-1 space-y-1">
         <p className="truncate text-[13px] font-black leading-5 text-[#1E293B]">{whenWhereLabel}</p>
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <MatchBoardStatusMeta item={item} showOverlapWarning={showOverlapWarning} />
+          <MatchBoardStatusMeta item={item} showOverlapWarning={showOverlapWarning} isReadyToForm={isReadyToForm} />
           <Link
             href={`/dashboard?matchId=${item.match.id}`}
             onClick={() => onViewed?.(item.match.id)}
             className="shrink-0 text-[12px] font-extrabold text-[#0d6efd] hover:text-[#0b5ed7]"
           >
-            Details -&gt;
+            {isReadyToForm ? 'Form Match ->' : 'Details ->'}
           </Link>
         </div>
       </div>
@@ -1498,8 +1516,12 @@ function MatchBoardEnvelopeIcon() {
   )
 }
 
-function getActionNeededStatusLine(item: MatchListItem) {
-  const actionLabel = item.myParticipant?.join_method === 'requested' ? 'Needs confirm' : 'Invited'
+function getActionNeededStatusLine(item: MatchListItem, isReadyToForm = false) {
+  const actionLabel = isReadyToForm
+    ? 'Ready to Form'
+    : item.myParticipant?.join_method === 'requested'
+      ? 'Needs confirm'
+      : 'Invited'
   const compactCourtLabel = getMobileCompactCourtLabel(item.courtState.badgeLabel)
   const participantPreview = getParticipantPreview(getSafeParticipants(item), item.match.organizer_id)
 
@@ -1513,16 +1535,19 @@ function getActionNeededStatusLine(item: MatchListItem) {
 
 function MobileActionNeededCard({
   item,
+  userId = null,
   onViewed,
 }: {
   item: MatchListItem
+  userId?: string | null
   onViewed?: (matchId: string) => void
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [actionError, setActionError] = useState<string | null>(null)
   const whenWhereLabel = getMatchBoardWhenWhereLabel(item)
-  const statusLine = getActionNeededStatusLine(item)
+  const isReadyToForm = isReadyToFormMatch(item, userId)
+  const statusLine = getActionNeededStatusLine(item, isReadyToForm)
 
   const runAction = (kind: 'confirm' | 'decline') => {
     setActionError(null)
@@ -1548,22 +1573,34 @@ function MobileActionNeededCard({
         <p className="truncate text-[13px] font-black leading-5 text-[#1E293B]">{whenWhereLabel}</p>
         <p className="truncate text-[12px] font-extrabold leading-5 text-[#64748B]">{statusLine}</p>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => runAction('confirm')}
-            disabled={isPending}
-            className="rounded-full bg-[#0d6efd] px-3 py-1.5 text-[12px] font-black leading-none text-white shadow-[0_8px_16px_rgba(13,110,253,0.18)] disabled:opacity-50"
-          >
-            {isPending ? '...' : 'Confirm'}
-          </button>
-          <button
-            type="button"
-            onClick={() => runAction('decline')}
-            disabled={isPending}
-            className="rounded-full border border-[#D7E1EE] bg-white px-3 py-1.5 text-[12px] font-black leading-none text-[#536783] disabled:opacity-50"
-          >
-            Not this time
-          </button>
+          {isReadyToForm ? (
+            <Link
+              href={`/dashboard?matchId=${item.match.id}`}
+              onClick={() => onViewed?.(item.match.id)}
+              className="rounded-full bg-[#0B1F47] px-3 py-1.5 text-[12px] font-black leading-none text-white shadow-[0_8px_16px_rgba(11,31,71,0.18)]"
+            >
+              Form Match
+            </Link>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => runAction('confirm')}
+                disabled={isPending}
+                className="rounded-full bg-[#0d6efd] px-3 py-1.5 text-[12px] font-black leading-none text-white shadow-[0_8px_16px_rgba(13,110,253,0.18)] disabled:opacity-50"
+              >
+                {isPending ? '...' : 'Confirm'}
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction('decline')}
+                disabled={isPending}
+                className="rounded-full border border-[#D7E1EE] bg-white px-3 py-1.5 text-[12px] font-black leading-none text-[#536783] disabled:opacity-50"
+              >
+                Not this time
+              </button>
+            </>
+          )}
           <Link
             href={`/dashboard?matchId=${item.match.id}`}
             onClick={() => onViewed?.(item.match.id)}
@@ -1650,11 +1687,14 @@ export function MatchesPanel({
     for (const item of items) {
       const status = item.myParticipant?.status
       const isOrganizer = item.match.organizer_id === userId
+      const isReadyToForm = isReadyToFormMatch(item, userId)
       const dismissed = dismissedAlertMatchIds?.has(item.match.id) ?? false
 
       if (item.match.status === 'cancelled') {
         if (status && !isPast(item, now) && !dismissed) cancelled.push(item)
         else history.push(item)
+      } else if (isReadyToForm) {
+        actionNeeded.push(item)
       } else if (needsUserAction(item)) {
         if (item.match.status === 'active' && !isPast(item, now)) actionNeeded.push(item)
         else history.push(item)
@@ -1873,7 +1913,7 @@ export function MatchesPanel({
                     ) : (
                       <div className="w-full min-w-0 space-y-2">
                         {lookingFor.map((item) => (
-                          <MobileMatchCard key={`mobile-looking-${item.match.id}`} item={item} showOverlapWarning={hasTimeConflictWithItems(item, incoming)} onViewed={onViewedMatch} />
+                          <MobileMatchCard key={`mobile-looking-${item.match.id}`} item={item} userId={userId} showOverlapWarning={hasTimeConflictWithItems(item, incoming)} onViewed={onViewedMatch} />
                         ))}
                       </div>
                     )}
@@ -1890,7 +1930,7 @@ export function MatchesPanel({
                     ) : (
                       <div className="w-full min-w-0 space-y-2">
                         {history.slice(0, historyShown).map((item) => (
-                          <MobileMatchCard key={`mobile-history-${item.match.id}`} item={item} onViewed={onViewedMatch} />
+                          <MobileMatchCard key={`mobile-history-${item.match.id}`} item={item} userId={userId} onViewed={onViewedMatch} />
                         ))}
                         {historyShown < history.length ? (
                           <button
@@ -1911,7 +1951,7 @@ export function MatchesPanel({
                         <SectionHeading label="Action Needed" count={mobileActionCount} />
                         <div className="w-full min-w-0 space-y-2">
                           {visibleActionNeeded.map((item) => (
-                            <MobileActionNeededCard key={`mobile-action-${item.match.id}`} item={item} onViewed={onViewedMatch} />
+                            <MobileActionNeededCard key={`mobile-action-${item.match.id}`} item={item} userId={userId} onViewed={onViewedMatch} />
                           ))}
                           {visibleCancelled.map((item) => (
                             <MatchRow
@@ -1952,7 +1992,7 @@ export function MatchesPanel({
                       ) : (
                         <div className="w-full min-w-0 space-y-2">
                           {incoming.map((item) => (
-                            <MobileMatchCard key={`mobile-incoming-${item.match.id}`} item={item} onViewed={onViewedMatch} />
+                            <MobileMatchCard key={`mobile-incoming-${item.match.id}`} item={item} userId={userId} onViewed={onViewedMatch} />
                           ))}
                         </div>
                       )}

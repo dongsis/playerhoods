@@ -81,6 +81,11 @@ export function MatchCard({ item, userId }: Props) {
 
   const isOrganizer = userId === match.organizer_id
   const isCancelled = match.status === 'cancelled'
+  const isReadyToForm =
+    isOrganizer &&
+    match.status === 'active' &&
+    !match.formed_at &&
+    confirmedCount >= match.required_count
   const lineupShortWarning = isOrganizer ? item.lineupShortWarning : null
 
   const [menuOpen, setMenuOpen] = useState(false)
@@ -161,6 +166,8 @@ export function MatchCard({ item, userId }: Props) {
     ? <StatusBadge label="Match cancelled" tone="red" />
     : isFormed
       ? <StatusBadge label="Formed" tone="green" />
+      : isReadyToForm
+        ? <StatusBadge label="Ready to Form" tone="blue" />
       : <StatusBadge label={`${confirmedCount}/${match.required_count}`} tone="amber" />
 
   const courtTone =

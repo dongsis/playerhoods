@@ -283,6 +283,12 @@ function MobileMatchDetailHeaderSection({
             </p>
           </div>
 
+          {showReadyToConfirm ? (
+            <div className="rounded-[14px] border border-[#bfdbfe] bg-[#eff6ff] px-3 py-2 text-[12px] font-black leading-relaxed text-[#0B2A5B]">
+              Your lineup is full. Form Match to notify confirmed players.
+            </div>
+          ) : null}
+
           <div className="pt-1">
             <MatchOverviewPlayerRows viewModel={viewModel} onRemoveParticipant={onRemoveParticipant} />
           </div>
@@ -303,9 +309,9 @@ function MobileMatchDetailHeaderSection({
                 <form action={onConfirmMatch} className="shrink-0">
                   <button
                     type="submit"
-                    className="inline-flex h-9 items-center justify-center rounded-full bg-[#0B1F47] px-4 text-[12px] font-black text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
+                    className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full bg-[#0B1F47] px-4 text-[12px] font-black text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
                   >
-                    Form Match
+                    Form Match &amp; Notify Players
                   </button>
                 </form>
               ) : null}
@@ -539,6 +545,12 @@ function MatchHeaderSection({
               </div>
             ) : null}
 
+            {showReadyToConfirm ? (
+              <div className="mt-3 rounded-[16px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3 text-[13px] font-bold leading-relaxed text-[#0B2A5B]">
+                Your lineup is full. Form Match to notify confirmed players.
+              </div>
+            ) : null}
+
             <div className="mt-3 space-y-1.5">
               <p className="m-0 flex items-center gap-1.5 text-[14px] font-semibold text-[#475569]">
                 <IconCalendar size={13} />
@@ -567,9 +579,9 @@ function MatchHeaderSection({
                   <form action={onConfirmMatch} className="shrink-0">
                     <button
                       type="submit"
-                      className="inline-flex h-10 items-center justify-center rounded-full bg-[#0B1F47] px-5 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
+                      className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-full bg-[#0B1F47] px-5 text-[13px] font-bold text-white shadow-[0_10px_24px_rgba(11,31,71,0.18)]"
                     >
-                      Form Match
+                      Form Match &amp; Notify Players
                     </button>
                   </form>
                 ) : null}
@@ -673,7 +685,7 @@ function MatchParticipantsSection({
       ? `${viewModel.confirmedCount}/${viewModel.match.required_count} players confirmed`
       : isLineupFull
         ? viewModel.isOrganizer
-          ? `${playersInCopy} Form the match when you're ready.`
+          ? `${playersInCopy} Form Match to notify confirmed players.`
           : `${viewModel.confirmedCount} players are confirmed. Waiting for the host to form the match.`
         : `${playersInCopy} ${remainingSpots} more ${remainingSpots === 1 ? 'spot' : 'spots'} to form the match.`
   const playersTitle = viewModel.isFormed
