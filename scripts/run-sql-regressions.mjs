@@ -136,6 +136,10 @@ const suites = [
     functionName: 'test_runner_issue179_public_participant_status',
   },
   {
+    file: 'tests/test_runner_issue210_game_on_promoted_waiting_player.sql',
+    functionName: 'test_runner_issue210_game_on_promoted_waiting_player',
+  },
+  {
     file: 'tests/test_runner_issue87_exposed_auth_users_view.sql',
     functionName: 'test_runner_issue87_exposed_auth_users_view',
   },
