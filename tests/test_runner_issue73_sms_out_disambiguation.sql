@@ -248,7 +248,7 @@ BEGIN
 
   INSERT INTO _issue73_results VALUES (
     'coded OUT on pending invite returns YES or NO guidance without mutation',
-    v_reply = 'Reply NO BC to decline this invite, or YES BC to accept.'
+    v_reply = 'Reply NO BC if not this time, or YES BC if you''d like to play.'
       AND v_removed_at IS NULL
       AND v_consumed_count = 0,
     'reply=' || coalesce(v_reply, 'NULL')
@@ -270,7 +270,7 @@ BEGIN
 
   INSERT INTO _issue73_results VALUES (
     'coded OUT on confirmed two-character code withdraws successfully',
-    v_reply = 'You are no longer marked as playing. The organizer has been notified.'
+    v_reply = 'You''re no longer marked as playing. The organizer has been notified.'
       AND v_removed_at IS NOT NULL
       AND v_consumed_count = 1,
     'reply=' || coalesce(v_reply, 'NULL')

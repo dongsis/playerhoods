@@ -132,6 +132,10 @@ const suites = [
     functionName: 'test_runner_public_join_not_this_time_sms',
   },
   {
+    file: 'tests/test_runner_issue212_normalize_sms_copy.sql',
+    functionName: 'test_runner_issue212_normalize_sms_copy',
+  },
+  {
     file: 'tests/test_runner_issue179_public_participant_status.sql',
     functionName: 'test_runner_issue179_public_participant_status',
   },

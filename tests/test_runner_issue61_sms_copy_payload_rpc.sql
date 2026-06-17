@@ -104,6 +104,7 @@ BEGIN
     start_time,
     duration_minutes,
     game_type,
+    level,
     required_count,
     invitation_scope_group_ids,
     can_participants_invite_users,
@@ -111,9 +112,9 @@ BEGIN
     can_participants_manage_participants,
     created_at
   ) VALUES
-    (v_match_id, v_org, 'active', v_venue_id, '{}'::uuid[], current_date + 7, '18:30'::time, 90, 'tennis', 4, '{}'::uuid[], true, true, true, now()),
-    (v_match_multi_1, v_org, 'active', v_venue_id, '{}'::uuid[], current_date + 8, '09:00'::time, 90, 'tennis', 4, '{}'::uuid[], true, true, true, now()),
-    (v_match_multi_2, v_org, 'active', v_venue_id, '{}'::uuid[], current_date + 9, '19:15'::time, 90, 'tennis', 4, '{}'::uuid[], true, true, true, now());
+    (v_match_id, v_org, 'active', v_venue_id, '{}'::uuid[], current_date + 7, '18:30'::time, 90, 'tennis', '3.5-4.0', 4, '{}'::uuid[], true, true, true, now()),
+    (v_match_multi_1, v_org, 'active', v_venue_id, '{}'::uuid[], current_date + 8, '09:00'::time, 90, 'tennis', null, 4, '{}'::uuid[], true, true, true, now()),
+    (v_match_multi_2, v_org, 'active', v_venue_id, '{}'::uuid[], current_date + 9, '19:15'::time, 90, 'tennis', null, 4, '{}'::uuid[], true, true, true, now());
 
   INSERT INTO public.match_participants (
     id,
@@ -151,9 +152,11 @@ BEGIN
   INTO v_payload;
 
   INSERT INTO _issue61_results VALUES (
-    'notification_match_payload includes guest recipient_name and venue_timezone',
+    'notification_match_payload includes guest recipient_name venue_timezone level and SMS summary',
     v_payload->>'recipient_name' = 'Issue 61 Guest'
-      AND v_payload->>'venue_timezone' = 'America/Vancouver',
+      AND v_payload->>'venue_timezone' = 'America/Vancouver'
+      AND v_payload->>'level_label' = '3.5-4.0'
+      AND v_payload->>'match_summary_sms' = '4 players needed.',
     v_payload::text
   );
 
@@ -161,9 +164,10 @@ BEGIN
   INTO v_payload;
 
   INSERT INTO _issue61_results VALUES (
-    'notification_match_payload includes registered recipient_name',
+    'notification_match_payload includes registered recipient_name level and venue_timezone',
     v_payload->>'recipient_name' = 'Issue 61 Registered'
-      AND v_payload->>'venue_timezone' = 'America/Vancouver',
+      AND v_payload->>'venue_timezone' = 'America/Vancouver'
+      AND v_payload->>'level_label' = '3.5-4.0',
     v_payload::text
   );
 
@@ -171,9 +175,11 @@ BEGIN
   INTO v_payload;
 
   INSERT INTO _issue61_results VALUES (
-    'host managed confirmation payload includes recipient_name and venue_timezone',
+    'host managed confirmation payload includes recipient_name venue_timezone level and summary',
     v_payload->>'recipient_name' = 'Issue 61 Guest'
       AND v_payload->>'venue_timezone' = 'America/Vancouver'
+      AND v_payload->>'level_label' = '3.5-4.0'
+      AND v_payload->>'match_summary_sms' = '4 players needed.'
       AND v_payload->>'organizer_display_name' = 'Issue 61 Organizer',
     v_payload::text
   );
@@ -191,8 +197,8 @@ BEGIN
     AND consumed_at IS NULL;
 
   INSERT INTO _issue61_results VALUES (
-    'pending organizer approval YES copy mentions OUT and preserves active code',
-    v_reply = 'You''re marked as interested. Reply OUT ' || v_code || ' if you need to back out. We''ll let you know if you''re confirmed to play.'
+    'pending organizer approval YES copy uses host review language and preserves active code',
+    v_reply = 'You''re marked as interested. The host can now review your request. We''ll let you know if you''re confirmed.'
       AND v_accepted_at IS NOT NULL
       AND v_active_code_count = 1,
     'reply=' || coalesce(v_reply, 'NULL') || ' active_codes=' || v_active_code_count::text
@@ -201,8 +207,8 @@ BEGIN
   v_reply_2 := public.rpc_sms_reply_handle(v_phone, 'YES ' || v_code);
 
   INSERT INTO _issue61_results VALUES (
-    'repeated YES copy mentions OUT',
-    v_reply_2 = 'You''re already marked as in. Reply OUT ' || v_code || ' if you need to back out.',
+    'repeated YES copy keeps interested semantics before host confirmation',
+    v_reply_2 = 'You''re already marked as interested. The host can now review your request. We''ll let you know if you''re confirmed.',
     'reply=' || coalesce(v_reply_2, 'NULL')
   );
 
@@ -218,8 +224,8 @@ BEGIN
     AND consumed_at IS NULL;
 
   INSERT INTO _issue61_results VALUES (
-    'NO after accepted copy mentions OUT and does not remove or consume',
-    v_reply = 'You''re already marked as in. Reply OUT ' || v_code || ' if you need to back out.'
+    'NO after interested copy mentions OUT and does not remove or consume',
+    v_reply = 'You''re already marked as interested. Reply OUT ' || v_code || ' if you can''t make it.'
       AND v_removed_at IS NULL
       AND v_active_code_count = 1,
     'reply=' || coalesce(v_reply, 'NULL') || ' removed_at=' || coalesce(v_removed_at::text, 'NULL') || ' active_codes=' || v_active_code_count::text
@@ -258,10 +264,10 @@ BEGIN
 
   INSERT INTO _issue61_results VALUES (
     'HELP copy includes YES NO OUT and DETAILS without placeholder',
-    position('YES with your invite code' in v_reply) > 0
-      AND position('NO with your invite code' in v_reply) > 0
-      AND position('OUT with your code' in v_reply) > 0
-      AND position('DETAILS with your code' in v_reply) > 0
+    position('Private invite: reply YES code or NO code' in v_reply) > 0
+      AND position('Public join: reply JOIN or NO' in v_reply) > 0
+      AND position('Confirmed match: reply OUT code' in v_reply) > 0
+      AND position('DETAILS code' in v_reply) > 0
       AND position('{code}' in v_reply) = 0,
     'reply=' || coalesce(v_reply, 'NULL')
   );
@@ -270,10 +276,10 @@ BEGIN
 
   INSERT INTO _issue61_results VALUES (
     'unknown command copy includes YES NO OUT and DETAILS without placeholder',
-    position('YES with your invite code' in v_reply) > 0
-      AND position('NO with your invite code' in v_reply) > 0
-      AND position('OUT with your code' in v_reply) > 0
-      AND position('DETAILS with your code' in v_reply) > 0
+    position('Private invite: reply YES code or NO code' in v_reply) > 0
+      AND position('Public join: reply JOIN or NO' in v_reply) > 0
+      AND position('Confirmed match: reply OUT code' in v_reply) > 0
+      AND position('DETAILS code' in v_reply) > 0
       AND position('{code}' in v_reply) = 0,
     'reply=' || coalesce(v_reply, 'NULL')
   );

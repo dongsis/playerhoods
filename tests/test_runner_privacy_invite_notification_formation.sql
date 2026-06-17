@@ -288,7 +288,7 @@ BEGIN
   INSERT INTO _notification_mvp_results(test_name, ok, details)
   SELECT
     'sms reply accepts supported commands',
-    public.rpc_sms_reply_handle('+15555550123', 'MAYBE') = 'Maybe is not supported yet. Reply YES with your invite code or NO with your invite code for a pending invite, JOIN for a public join text, or OUT with your code if you need to back out.',
+    public.rpc_sms_reply_handle('+15555550123', 'MAYBE') = 'Maybe is not supported yet. Reply YES code or NO code for a private invite, JOIN for a public join text, or OUT code if you need to back out.',
     public.rpc_sms_reply_handle('+15555550123', 'MAYBE');
 
   INSERT INTO _notification_mvp_results(test_name, ok, details)

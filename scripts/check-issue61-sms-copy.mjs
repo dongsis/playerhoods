@@ -70,8 +70,10 @@ for (const snippet of oldInviteCopy) {
   }
 }
 
-assertIncludes(invitation, 'Reply YES ${data.replyCode} or NO ${data.replyCode}.', 'renderInvitationSms')
-assertIncludes(matchInvite, 'Reply YES ${match.replyCode} or NO ${match.replyCode}.', 'renderMatchInviteSms')
+assertIncludes(invitation, "Reply YES ${data.replyCode} if you'd like to play, or NO ${data.replyCode} if not this time.", 'renderInvitationSms')
+assertIncludes(invitation, 'Reply STOP to opt out.', 'renderInvitationSms')
+assertIncludes(matchInvite, "Reply YES ${match.replyCode} if you'd like to play, or NO ${match.replyCode} if not this time.", 'renderMatchInviteSms')
+assertIncludes(matchInvite, 'Reply STOP to opt out.', 'renderMatchInviteSms')
 assertIncludes(guestDelegateConfirmed, "You're confirmed:", 'renderGuestDelegateConfirmedSms')
 assertIncludes(gameFormed, 'Game on.', 'renderGameFormedSms')
 assertIncludes(timeChange, 'Update: match time changed to', 'renderMatchTimeChangeSms')
@@ -79,8 +81,10 @@ assertIncludes(removed, 'You were removed from this match:', 'renderMatchRemoved
 assertIncludes(confirmedLineup, 'Reply OUT ${match.replyCode}', 'renderConfirmedLineupSms')
 assertIncludes(reminder, 'Reply OUT ${match.replyCode}', 'renderMatchReminderSms')
 assertIncludes(hostManaged, 'Reply OUT ${match.replyCode}', 'renderHostOfflineConfirmationSms')
+assertIncludes(hostManaged, 'confirmed you for a ${matchKind}', 'renderHostOfflineConfirmationSms')
 assertIncludes(criticalUpdate, 'Reply OUT ${match.replyCode}', 'renderCriticalUpdateSms')
 
+assertIncludes(confirmedLineup, 'PlayerHoods: Game on', 'renderConfirmedLineupSms')
 assertIncludes(confirmedLineup, "We'll only text if plans change.", 'renderConfirmedLineupSms')
 assertIncludes(reminder, 'Match reminder.', 'renderMatchReminderSms')
 assertIncludes(cancellation, 'This match was cancelled:', 'renderCancellationSms')

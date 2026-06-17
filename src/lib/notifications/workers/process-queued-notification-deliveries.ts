@@ -114,6 +114,8 @@ function buildMatchInfo(payload: Record<string, unknown>): {
   recipientName: string | null
   sportName: string | null
   venueTimezone: string | null
+  levelLabel: string | null
+  matchSummarySms: string | null
 } {
   return {
     matchId: (payload.match_id as string) ?? '',
@@ -129,6 +131,8 @@ function buildMatchInfo(payload: Record<string, unknown>): {
     recipientName: (payload.recipient_name as string) ?? null,
     sportName: (payload.sport_name as string) ?? null,
     venueTimezone: (payload.venue_timezone as string) ?? null,
+    levelLabel: ((payload.level_label as string) ?? (payload.levelLabel as string)) ?? null,
+    matchSummarySms: ((payload.match_summary_sms as string) ?? (payload.matchSummarySms as string)) ?? null,
   }
 }
 
@@ -174,6 +178,13 @@ function invitationSubject(organizerName: string, venueName: string | null | und
   const name = sanitizeSenderName(organizerName)
   const venue = venueName?.trim()
   return venue ? `${name} invited you to play at ${venue}` : `${name} invited you to play`
+}
+
+function playersNeededSummary(requiredCount: number | null | undefined, confirmedCount: number | null | undefined): string | null {
+  if (requiredCount == null || requiredCount <= 0 || confirmedCount == null) return null
+  const needed = Math.max(requiredCount - confirmedCount, 0)
+  if (needed <= 0) return null
+  return `${needed} player${needed === 1 ? '' : 's'} needed.`
 }
 
 function buildInvitationResponseUrl(invitationId: string, channel: 'email' | 'sms'): string | null {
@@ -245,7 +256,15 @@ async function enrichInvitationContext(
     inviterDisplayName: string
     recipientName: string | null
     matchId: string | null
-    matchSummary: { game_type: string | null; sport_name?: string | null; match_date: string | null; start_time?: string | null; club_name: string | null } | null
+    matchSummary: {
+      game_type: string | null
+      sport_name?: string | null
+      match_date: string | null
+      start_time?: string | null
+      club_name: string | null
+      level_label?: string | null
+      match_summary_sms?: string | null
+    } | null
   },
 ): Promise<typeof fallback> {
   if (!invitationId) return fallback
@@ -268,27 +287,13 @@ async function enrichInvitationContext(
     fallback.inviterDisplayName
   const recipientName = invitationRow?.target_name?.trim() || fallback.recipientName
 
-  if (
-    fallback.matchSummary?.club_name
-    && fallback.matchSummary.match_date
-    && fallback.matchSummary.start_time
-    && fallback.matchSummary.sport_name
-  ) {
-    return {
-      inviterDisplayName,
-      recipientName,
-      matchId: invitationRow?.related_type === 'match' ? invitationRow.related_id ?? fallback.matchId : fallback.matchId,
-      matchSummary: fallback.matchSummary,
-    }
-  }
-
   if (invitationRow?.related_type !== 'match' || !invitationRow.related_id) {
     return { inviterDisplayName, recipientName, matchId: fallback.matchId, matchSummary: fallback.matchSummary }
   }
 
   const { data: match } = await supabase
     .from('matches')
-    .select('game_type, sport_id, match_date, start_time, venue_id')
+    .select('game_type, sport_id, match_date, start_time, venue_id, level, required_count')
     .eq('id', invitationRow.related_id)
     .maybeSingle()
 
@@ -298,6 +303,8 @@ async function enrichInvitationContext(
     match_date?: string | null
     start_time?: string | null
     venue_id?: string | null
+    level?: string | null
+    required_count?: number | null
   } | null
 
   let sportName = fallback.matchSummary?.sport_name ?? null
@@ -320,6 +327,13 @@ async function enrichInvitationContext(
     venueName = (venue as { name?: string | null } | null)?.name ?? null
   }
 
+  const { count: confirmedCount } = await supabase
+    .from('match_participants')
+    .select('id', { count: 'exact', head: true })
+    .eq('match_id', invitationRow.related_id)
+    .is('removed_at', null)
+    .eq('status', 'confirmed')
+
   return {
     inviterDisplayName,
     recipientName,
@@ -330,6 +344,8 @@ async function enrichInvitationContext(
       match_date: matchRow?.match_date ?? fallback.matchSummary?.match_date ?? null,
       start_time: matchRow?.start_time ?? fallback.matchSummary?.start_time ?? null,
       club_name: venueName,
+      level_label: matchRow?.level ?? fallback.matchSummary?.level_label ?? null,
+      match_summary_sms: fallback.matchSummary?.match_summary_sms ?? playersNeededSummary(matchRow?.required_count, confirmedCount),
     },
   }
 }
@@ -349,7 +365,15 @@ async function processNotificationDeliveryRows(
       target_email?: string
       target_name?: string
       recipient_name?: string
-      match_summary?: { game_type?: string | null; sport_name?: string | null; match_date?: string | null; start_time?: string | null; club_name?: string | null }
+      match_summary?: {
+        game_type?: string | null
+        sport_name?: string | null
+        match_date?: string | null
+        start_time?: string | null
+        club_name?: string | null
+        level_label?: string | null
+        match_summary_sms?: string | null
+      }
       nominator_display_name?: string
       match_id?: string
       match_participant_id?: string
@@ -379,7 +403,15 @@ async function processNotificationDeliveryRows(
     if (templateType === 'invitation') {
       const ms = payload.match_summary
       const fallbackMatchSummary = ms
-        ? { game_type: ms.game_type ?? null, sport_name: ms.sport_name ?? null, match_date: ms.match_date ?? null, start_time: ms.start_time ?? null, club_name: ms.club_name ?? null }
+        ? {
+            game_type: ms.game_type ?? null,
+            sport_name: ms.sport_name ?? null,
+            match_date: ms.match_date ?? null,
+            start_time: ms.start_time ?? null,
+            club_name: ms.club_name ?? null,
+            level_label: ms.level_label ?? null,
+            match_summary_sms: ms.match_summary_sms ?? null,
+          }
         : null
       const invitationId = (payload.invitation_id as string) ?? ''
       const context = await enrichInvitationContext(supabase, invitationId, {
@@ -511,7 +543,11 @@ async function processNotificationDeliveryRows(
         ?? (payload.inviter_display_name as string)
         ?? (await getMatchOrganizerName(supabase, m.matchId))
         ?? 'The host'
-      smsBody = renderPublicJoinNotThisTimeSms(organizerDisplayName)
+      const smsMatch = await withSmsJoinPath(supabase, m, 'view')
+      smsBody = renderPublicJoinNotThisTimeSms({
+        ...smsMatch,
+        hostDisplayName: organizerDisplayName,
+      })
     } else if (templateType === 'critical_update') {
       const m = buildMatchInfo(payload)
       subject = 'PlayerHoods match update'

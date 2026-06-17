@@ -41,6 +41,9 @@ DECLARE
   v_template text;
   v_destination text;
   v_host_name text;
+  v_level_label text;
+  v_summary_sms text;
+  v_magic_link_path text;
 BEGIN
   CREATE TEMP TABLE IF NOT EXISTS _public_join_not_this_time_results(
     test_name text,
@@ -108,16 +111,17 @@ BEGIN
     venue_id,
     sport_id,
     game_type,
+    level,
     required_count,
     match_date,
     start_time,
     duration_minutes
   ) VALUES
-    (v_match, v_host, 'active', v_venue, 1, 'not_this_time', 2, current_date + 7, '18:00'::time, 90),
-    (v_match_non_public, v_host, 'active', v_venue, 1, 'not_this_time_non_public', 2, current_date + 8, '19:00'::time, 90),
-    (v_match_invited, v_host, 'active', v_venue, 1, 'not_this_time_invited', 2, current_date + 9, '20:00'::time, 90),
-    (v_match_confirmed, v_host, 'active', v_venue, 1, 'not_this_time_confirmed', 2, current_date + 10, '21:00'::time, 90),
-    (v_match_optout, v_host, 'active', v_venue, 1, 'not_this_time_optout', 2, current_date + 11, '22:00'::time, 90);
+    (v_match, v_host, 'active', v_venue, 1, 'not_this_time', '3.0-3.5', 2, current_date + 7, '18:00'::time, 90),
+    (v_match_non_public, v_host, 'active', v_venue, 1, 'not_this_time_non_public', null, 2, current_date + 8, '19:00'::time, 90),
+    (v_match_invited, v_host, 'active', v_venue, 1, 'not_this_time_invited', null, 2, current_date + 9, '20:00'::time, 90),
+    (v_match_confirmed, v_host, 'active', v_venue, 1, 'not_this_time_confirmed', null, 2, current_date + 10, '21:00'::time, 90),
+    (v_match_optout, v_host, 'active', v_venue, 1, 'not_this_time_optout', null, 2, current_date + 11, '22:00'::time, 90);
 
   PERFORM set_config(
     'request.jwt.claims',
@@ -141,8 +145,15 @@ BEGIN
 
   v_status := public.notification_enqueue_public_join_not_this_time_if_needed(v_confirm.match_participant_id, v_host);
 
-  SELECT count(*)::integer, max(payload->>'template_type'), max(destination), max(payload->>'organizer_display_name')
-  INTO v_count, v_template, v_destination, v_host_name
+  SELECT
+    count(*)::integer,
+    max(payload->>'template_type'),
+    max(destination),
+    max(payload->>'organizer_display_name'),
+    max(payload->>'level_label'),
+    max(payload->>'match_summary_sms'),
+    max(payload->>'magic_link_path')
+  INTO v_count, v_template, v_destination, v_host_name, v_level_label, v_summary_sms, v_magic_link_path
   FROM public.notification_deliveries
   WHERE payload->>'template_type' = 'public_join_not_this_time'
     AND payload->>'match_participant_id' = v_confirm.match_participant_id::text;
@@ -153,8 +164,15 @@ BEGIN
       AND v_count = 1
       AND v_template = 'public_join_not_this_time'
       AND v_destination = v_phone
-      AND v_host_name = 'Nancy Host',
-    'status=' || coalesce(v_status, 'null') || ', deliveries=' || coalesce(v_count::text, 'null')
+      AND v_host_name = 'Nancy Host'
+      AND v_level_label = '3.0-3.5'
+      AND v_summary_sms = '2 players needed.'
+      AND v_magic_link_path LIKE '/i/%',
+    'status=' || coalesce(v_status, 'null')
+      || ', deliveries=' || coalesce(v_count::text, 'null')
+      || ', level=' || coalesce(v_level_label, 'null')
+      || ', summary=' || coalesce(v_summary_sms, 'null')
+      || ', magic=' || coalesce(v_magic_link_path, 'null')
   );
 
   v_status_repeat := public.notification_enqueue_public_join_not_this_time_if_needed(v_confirm.match_participant_id, v_host);

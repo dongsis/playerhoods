@@ -19,6 +19,8 @@ type PublicSignupSmsStartRow = {
   start_time: string | null
   venue_name: string | null
   host_display_name: string | null
+  level_label: string | null
+  match_summary_sms: string | null
 }
 
 function redirectToSignup(token: string, params: Record<string, string>): never {
@@ -156,11 +158,14 @@ export async function startPublicMatchSignupAction(token: string, formData: Form
 
     const smsBody = renderPublicJoinRequestSms({
       hostDisplayName: signup.host_display_name ?? 'Someone',
+      recipientName: signup.recipient_name,
       gameType: signup.game_type ?? signup.sport_name ?? 'match',
       sportName: signup.sport_name,
       matchDate: signup.match_date,
       startTime: signup.start_time,
       venueName: signup.venue_name,
+      levelLabel: signup.level_label,
+      matchSummarySms: signup.match_summary_sms,
       smsJoinPath: `/j/${signup.sms_token}`,
       siteUrl: '',
     })

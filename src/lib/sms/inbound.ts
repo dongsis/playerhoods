@@ -5,6 +5,9 @@ type RpcClient = SupabaseClient<Database> & {
   rpc: (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
 }
 
+const GENERIC_SMS_REPLY_HELP =
+  'Reply with the command from your PlayerHoods text. Private invites use YES or NO, public join texts use JOIN or NO, confirmed matches use OUT, and DETAILS returns the match link.'
+
 export async function handleInboundSms(
   supabase: SupabaseClient<Database>,
   input: { from: string | null; body: string | null },
@@ -13,7 +16,7 @@ export async function handleInboundSms(
   const body = input.body?.trim()
 
   if (!from || !body) {
-    return 'Reply JOIN for a public join text, YES for an invite, NO to decline, or DETAILS for the match link.'
+    return GENERIC_SMS_REPLY_HELP
   }
 
   const { data, error } = await (supabase as unknown as RpcClient).rpc('rpc_sms_reply_handle', {
@@ -23,10 +26,10 @@ export async function handleInboundSms(
 
   if (error) {
     console.error('[sms] inbound handler failed:', error)
-    return 'We could not process that reply. Reply JOIN for a public join text, YES for an invite, NO to decline, or DETAILS for the match link.'
+    return `We could not process that reply. ${GENERIC_SMS_REPLY_HELP}`
   }
 
   return typeof data === 'string'
     ? data
-    : 'Reply JOIN for a public join text, YES for an invite, NO to decline, or DETAILS for the match link.'
+    : GENERIC_SMS_REPLY_HELP
 }

@@ -1,22 +1,29 @@
 import type { MatchInfo } from '@/lib/email/templates'
 import { formatInvitationToken } from '@/lib/invitations/invitation-token'
+import { formatMatchLevelLabel } from '@/lib/match-level'
 import { getSiteOrigin } from '@/lib/site-url'
+
+type SmsMatchSummary = {
+  game_type: string | null
+  sport_name?: string | null
+  match_date: string | null
+  start_time?: string | null
+  club_name: string | null
+  level_label?: string | null
+  match_summary_sms?: string | null
+}
 
 type InvitationSmsData = {
   inviterDisplayName: string
   recipientName?: string | null
   invitationId: string
-  matchSummary?: {
-    game_type: string | null
-    sport_name?: string | null
-    match_date: string | null
-    start_time?: string | null
-    club_name: string | null
-  } | null
+  matchSummary?: SmsMatchSummary | null
   siteUrl: string
   unsubscribeUrl?: string | null
   replyCode?: string | null
   responseUrl?: string | null
+  levelLabel?: string | null
+  matchSummarySms?: string | null
 }
 
 type MatchSmsData = MatchInfo & {
@@ -27,17 +34,29 @@ type MatchSmsData = MatchInfo & {
   recipientName?: string | null
   sportName?: string | null
   venueTimezone?: string | null
+  levelLabel?: string | null
+  matchSummarySms?: string | null
 }
 
 type PublicJoinRequestSmsData = {
   hostDisplayName: string
+  recipientName?: string | null
   gameType?: string | null
   sportName?: string | null
   matchDate?: string | null
   startTime?: string | null
   venueName?: string | null
+  levelLabel?: string | null
+  matchSummarySms?: string | null
   smsJoinPath: string
   siteUrl: string
+}
+
+type PublicJoinNotThisTimeSmsData = Pick<
+  MatchSmsData,
+  'matchId' | 'siteUrl' | 'magicLinkPath' | 'recipientName'
+> & {
+  hostDisplayName?: string | null
 }
 
 function normalizeBaseUrl(siteUrl: string | null | undefined): string {
@@ -111,27 +130,76 @@ function recipientPrefix(prefix: string, recipientName: string | null | undefine
   return name ? `${prefix}, ${name}.` : fallback
 }
 
+function firstName(name: string | null | undefined): string | null {
+  const value = name?.trim()
+  if (!value) return null
+  return value.split(/\s+/)[0] || null
+}
+
+function greeting(recipientName: string | null | undefined): string {
+  const name = firstName(recipientName)
+  return name ? `Hey ${name}` : 'Hey there'
+}
+
+function cleanLine(value: string | null | undefined): string | null {
+  const text = value?.trim()
+  return text || null
+}
+
+function resolvedLevelLabel(value: string | null | undefined): string | null {
+  return formatMatchLevelLabel(value)
+}
+
+function formatMatchKind(
+  sportName: string | null | undefined,
+  gameType: string | null | undefined,
+  levelLabel: string | null | undefined,
+): string {
+  const activity = formatActivityLabel(sportName, gameType).replace(/\s+match$/i, '').trim()
+  const level = resolvedLevelLabel(levelLabel)
+  const label = [level, activity].filter(Boolean).join(' ').trim() || 'match'
+  return /\bmatch$/i.test(label) ? label : `${label} match`
+}
+
+function openingLine(
+  recipientName: string | null | undefined,
+  hostName: string | null | undefined,
+  matchKind: string,
+  venueName: string | null | undefined,
+  dateTime: string,
+  verb = 'has an opening for',
+): string {
+  const host = hostName?.trim() || 'Someone'
+  const venue = venueName?.trim() || 'TBD'
+  return `PlayerHoods: ${greeting(recipientName)}, ${host} ${verb} a ${matchKind} at ${venue}, ${dateTime}.`
+}
+
+function pushOptionalSummary(lines: Array<string | null>, summary: string | null | undefined): void {
+  const cleanSummary = cleanLine(summary)
+  if (cleanSummary) {
+    lines.push('', cleanSummary)
+  }
+}
+
 export function renderInvitationSms(data: InvitationSmsData): string {
   const baseUrl = normalizeBaseUrl(data.siteUrl)
-  const activity = formatActivityLabel(data.matchSummary?.sport_name, data.matchSummary?.game_type)
-  const date = formatSmsDate(data.matchSummary?.match_date)
-  const time = formatSmsTime(data.matchSummary?.start_time)
+  const dateTime = formatSmsDateTime(data.matchSummary?.match_date, data.matchSummary?.start_time)
   const venueName = data.matchSummary?.club_name?.trim()
   const token = formatInvitationToken(data.invitationId)
   const invitationUrl = data.responseUrl ?? `${baseUrl}/i/${token}`
-  const detailLines = [[date, time].filter(Boolean).join(', ') || null, venueName].filter(Boolean)
-  const replyText = data.replyCode ? `Reply YES ${data.replyCode} or NO ${data.replyCode}.` : null
-  const recipientName = data.recipientName?.trim()
-  const opening = recipientName
-    ? `Hi ${recipientName}, ${data.inviterDisplayName} invited you to ${activity}:`
-    : `${data.inviterDisplayName} invited you to ${activity}:`
-  return [
-    opening,
-    ...detailLines,
-    '',
-    replyText,
-    `Details: ${invitationUrl}`,
-  ].filter((line): line is string => line != null).join('\n')
+  const levelLabel = data.levelLabel ?? data.matchSummary?.level_label ?? null
+  const matchKind = formatMatchKind(data.matchSummary?.sport_name, data.matchSummary?.game_type, levelLabel)
+  const replyText = data.replyCode
+    ? `Reply YES ${data.replyCode} if you'd like to play, or NO ${data.replyCode} if not this time.`
+    : null
+  const lines: Array<string | null> = [
+    openingLine(data.recipientName, data.inviterDisplayName, matchKind, venueName, dateTime),
+  ]
+
+  pushOptionalSummary(lines, data.matchSummarySms ?? data.matchSummary?.match_summary_sms)
+  lines.push('', replyText, `Details: ${invitationUrl}`, 'Reply STOP to opt out.')
+
+  return lines.filter((line): line is string => line != null).join('\n')
 }
 
 export function renderGuestParticipantInviteSms(match: MatchInfo, inviterName: string): string {
@@ -207,56 +275,67 @@ export function renderMatchRemovedSms(match: MatchInfo): string {
 export function renderMatchInviteSms(match: MatchSmsData, organizerName = 'Someone'): string {
   const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
-  const replyText = match.replyCode ? `Reply YES ${match.replyCode} or NO ${match.replyCode}.` : null
-  const activity = formatActivityLabel(match.sportName, match.gameType)
-  const recipientName = match.recipientName?.trim()
-  const opening = recipientName
-    ? `Hi ${recipientName}, ${organizerName} invited you to ${activity}:`
-    : `${organizerName} invited you to ${activity}:`
-  return [
-    opening,
-    dateTime,
-    location,
-    '',
-    replyText,
-    `Details: ${matchLink(match)}`,
-  ].filter((line): line is string => line != null).join('\n')
+  const replyText = match.replyCode
+    ? `Reply YES ${match.replyCode} if you'd like to play, or NO ${match.replyCode} if not this time.`
+    : null
+  const matchKind = formatMatchKind(match.sportName, match.gameType, match.levelLabel)
+  const lines: Array<string | null> = [
+    openingLine(match.recipientName, organizerName, matchKind, location, dateTime),
+  ]
+
+  pushOptionalSummary(lines, match.matchSummarySms)
+  lines.push('', replyText, `Details: ${matchLink(match)}`, 'Reply STOP to opt out.')
+
+  return lines.filter((line): line is string => line != null).join('\n')
 }
 
 export function renderPublicJoinRequestSms(data: PublicJoinRequestSmsData): string {
   const baseUrl = normalizeBaseUrl(data.siteUrl)
   const path = data.smsJoinPath.startsWith('/') ? data.smsJoinPath : `/${data.smsJoinPath}`
   const detailsUrl = `${baseUrl}${path}`
-  const activity = formatActivityLabel(data.sportName, data.gameType)
   const venue = data.venueName?.trim() || 'TBD'
   const dateTime = formatSmsDateTime(data.matchDate, data.startTime)
-  const hostName = data.hostDisplayName?.trim() || 'Someone'
+  const matchKind = formatMatchKind(data.sportName, data.gameType, data.levelLabel)
+  const lines = [
+    openingLine(data.recipientName, data.hostDisplayName, matchKind, venue, dateTime),
+  ]
 
-  return [
-    `PlayerHoods: ${hostName} has a ${activity} at ${venue}, ${dateTime}.`,
+  pushOptionalSummary(lines, data.matchSummarySms)
+  lines.push(
     '',
     'Reply JOIN to request a spot, or NO if not this time.',
     `Details: ${detailsUrl}`,
-  ].join('\n')
+    'Reply STOP to opt out.',
+  )
+
+  return lines.join('\n')
 }
 
-export function renderPublicJoinNotThisTimeSms(hostName = 'The host'): string {
-  const name = hostName.trim() || 'The host'
-  return `${name} couldn't add you to this match this time.`
+export function renderPublicJoinNotThisTimeSms(data: PublicJoinNotThisTimeSmsData): string {
+  const hostName = data.hostDisplayName?.trim() || 'The host'
+  return [
+    `PlayerHoods: ${greeting(data.recipientName)}, not this time - ${hostName} couldn't add you to this match.`,
+    '',
+    `Details: ${matchLink(data)}`,
+    'Reply STOP to opt out.',
+  ].join('\n')
 }
 
 export function renderConfirmedLineupSms(match: MatchSmsData): string {
   const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
   const outText = match.replyCode ? `Reply OUT ${match.replyCode} if you can't make it.` : null
+  const matchKind = formatMatchKind(match.sportName, match.gameType, match.levelLabel)
+  const name = firstName(match.recipientName)
+  const opening = name
+    ? `PlayerHoods: Game on, ${name}. You're confirmed for a ${matchKind} at ${location}, ${dateTime}.`
+    : `PlayerHoods: Game on. You're confirmed for a ${matchKind} at ${location}, ${dateTime}.`
   return [
-    recipientPrefix('Game on', match.recipientName, 'Game on.'),
-    '',
-    dateTime,
-    location,
+    opening,
     '',
     outText,
     `Details: ${matchLink(match)}`,
+    'Reply STOP to opt out.',
     "We'll only text if plans change.",
   ].filter((line): line is string => line != null).join('\n')
 }
@@ -280,16 +359,18 @@ export function renderHostOfflineConfirmationSms(match: MatchSmsData, hostName =
   const dateTime = formatSmsDateTime(match.matchDate, match.startTime)
   const location = match.venueName ?? 'TBD'
   const outText = match.replyCode ? `Reply OUT ${match.replyCode} if you can't make it.` : null
-  const opening = match.recipientName?.trim()
-    ? `Hi ${match.recipientName.trim()}, ${hostName} added you as confirmed:`
-    : `${hostName} added you as confirmed:`
+  const matchKind = formatMatchKind(match.sportName, match.gameType, match.levelLabel)
+  const statusLine = match.isFormed
+    ? "Game On. You're in the confirmed lineup."
+    : "This is not the final lineup yet. We'll send Game On if the match is formed."
   return [
-    opening,
-    dateTime,
-    location,
+    `PlayerHoods: ${greeting(match.recipientName)}, ${hostName} confirmed you for a ${matchKind} at ${location}, ${dateTime}.`,
+    '',
+    statusLine,
     '',
     outText,
     `Details: ${matchLink(match)}`,
+    'Reply STOP to opt out.',
   ].filter((line): line is string => line != null).join('\n')
 }
 
