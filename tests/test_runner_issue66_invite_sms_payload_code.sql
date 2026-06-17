@@ -105,6 +105,7 @@ BEGIN
     start_time,
     duration_minutes,
     game_type,
+    level,
     required_count,
     invitation_scope_group_ids,
     can_participants_invite_users,
@@ -121,6 +122,7 @@ BEGIN
     '13:15'::time,
     90,
     'doubles',
+    'Club level',
     4,
     '{}'::uuid[],
     true,
@@ -168,11 +170,13 @@ BEGIN
   );
 
   INSERT INTO _issue66_results VALUES (
-    'match_invite payload includes recipient name and sport name',
+    'match_invite payload includes recipient name sport level and summary',
     v_payload->>'template_type' = 'match_invite'
       AND v_payload->>'recipient_name' = 'Issue 66 Player'
       AND v_payload->>'sport_name' = 'tennis'
-      AND v_payload->>'game_type' = 'doubles',
+      AND v_payload->>'game_type' = 'doubles'
+      AND v_payload->>'level_label' = 'Club level'
+      AND v_payload->>'match_summary_sms' = '4 players needed.',
     'payload=' || coalesce(v_payload::text, 'NULL')
   );
 
@@ -180,7 +184,7 @@ BEGIN
 
   INSERT INTO _issue66_results VALUES (
     'two-character code parses for YES reply',
-    v_reply = 'You''re marked as in. Reply OUT ' || v_code || ' if you need to back out.',
+    v_reply = 'You''re marked as in for this match. We''ll send Game On if the lineup is formed. Reply OUT ' || v_code || ' if you can''t make it.',
     'reply=' || coalesce(v_reply, 'NULL')
   );
 
@@ -204,7 +208,7 @@ BEGIN
 
   INSERT INTO _issue66_results VALUES (
     'existing longer active codes remain parseable',
-    v_reply = 'You''re marked as in. Reply OUT OLD66 if you need to back out.',
+    v_reply = 'You''re marked as in for this match. We''ll send Game On if the lineup is formed. Reply OUT OLD66 if you can''t make it.',
     'reply=' || coalesce(v_reply, 'NULL')
   );
 

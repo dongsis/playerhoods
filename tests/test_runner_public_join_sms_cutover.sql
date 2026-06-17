@@ -137,18 +137,19 @@ BEGIN
     venue_id,
     sport_id,
     game_type,
+    level,
     required_count,
     match_date,
     start_time,
     duration_minutes
   ) VALUES
-    (v_match, v_host, 'active', v_venue, 1, 'sms_cutover', 2, current_date + 7, '18:00'::time, 90),
-    (v_match_decline, v_host, 'active', v_venue, 1, 'sms_cutover_decline', 2, current_date + 8, '19:00'::time, 90),
-    (v_match_expired, v_host, 'active', v_venue, 1, 'sms_cutover_expired', 2, current_date + 9, '20:00'::time, 90),
-    (v_match_yes, v_host, 'active', v_venue, 1, 'sms_cutover_yes', 2, current_date + 10, '21:00'::time, 90),
-    (v_match_registered, v_host, 'active', v_venue, 1, 'sms_cutover_registered', 2, current_date + 11, '22:00'::time, 90),
-    (v_match_overlap_public, v_host, 'active', v_venue, 1, 'sms_cutover_overlap_public', 2, current_date + 12, '18:30'::time, 90),
-    (v_match_overlap_invite, v_host, 'active', v_venue, 1, 'sms_cutover_overlap_invite', 2, current_date + 13, '19:30'::time, 90);
+    (v_match, v_host, 'active', v_venue, 1, 'sms_cutover', '3.5-4.0', 2, current_date + 7, '18:00'::time, 90),
+    (v_match_decline, v_host, 'active', v_venue, 1, 'sms_cutover_decline', null, 2, current_date + 8, '19:00'::time, 90),
+    (v_match_expired, v_host, 'active', v_venue, 1, 'sms_cutover_expired', null, 2, current_date + 9, '20:00'::time, 90),
+    (v_match_yes, v_host, 'active', v_venue, 1, 'sms_cutover_yes', null, 2, current_date + 10, '21:00'::time, 90),
+    (v_match_registered, v_host, 'active', v_venue, 1, 'sms_cutover_registered', null, 2, current_date + 11, '22:00'::time, 90),
+    (v_match_overlap_public, v_host, 'active', v_venue, 1, 'sms_cutover_overlap_public', null, 2, current_date + 12, '18:30'::time, 90),
+    (v_match_overlap_invite, v_host, 'active', v_venue, 1, 'sms_cutover_overlap_invite', null, 2, current_date + 13, '19:30'::time, 90);
 
   INSERT INTO public.guests (id, display_name, phone, status, created_by)
   VALUES (v_overlap_direct_guest, 'Direct Invite Same Phone', v_overlap_phone, 'active', v_host);
@@ -306,8 +307,14 @@ BEGIN
       AND v_start.status = 'sms_queued'
       AND v_start.sms_send_required = true
       AND v_start.sms_token IS NOT NULL
+      AND v_start.recipient_name = 'Annie Chen'
+      AND v_start.level_label = '3.5-4.0'
+      AND v_start.match_summary_sms = '2 players needed.'
       AND v_participant_count = 0,
-    'status=' || coalesce(v_start.status, 'null') || ', participants=' || v_participant_count::text
+    'status=' || coalesce(v_start.status, 'null')
+      || ', level=' || coalesce(v_start.level_label, 'null')
+      || ', summary=' || coalesce(v_start.match_summary_sms, 'null')
+      || ', participants=' || v_participant_count::text
   );
 
   SELECT * INTO v_start_repeat
@@ -477,6 +484,7 @@ BEGIN
       AND v_participant_count = 1
       AND v_overlap_direct_accepted_at IS NULL
       AND v_overlap_reply LIKE 'Request sent.%'
+      AND v_overlap_reply LIKE '%We''ll let you know if you''re confirmed.%'
       AND position('active invite' in lower(v_overlap_reply)) = 0
       AND position('{code}' in v_overlap_reply) = 0,
     'reply=' || coalesce(v_overlap_reply, 'null')
